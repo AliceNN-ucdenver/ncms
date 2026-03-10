@@ -1,0 +1,72 @@
+[project]
+name = "ncms"
+version = "0.1.0"
+description = "NeMo Cognitive Memory System - Vector-free persistent cognitive memory for AI agents"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Shawn McCarthy", email = "shawn@mccarthysoftware.com" }
+]
+requires-python = ">=3.12"
+keywords = ["ai", "agents", "memory", "mcp", "cognitive", "knowledge-graph", "nemo"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.6,<3.0",
+    "pydantic-settings>=2.2,<3.0",
+    "aiosqlite>=0.20,<1.0",
+    "tantivy>=0.22,<1.0",
+    "networkx>=3.2,<4.0",
+    "mcp[cli]>=1.9,<2.0",
+    "click>=8.1,<9.0",
+    "rich>=13.7,<14.0",
+    "litellm>=1.40,<2.0",
+    "anyio>=4.3,<5.0",
+]
+
+[project.optional-dependencies]
+splade = [
+    "fastembed>=0.3,<1.0",
+]
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<1.0",
+    "pytest-cov>=5.0,<6.0",
+    "mypy>=1.9,<2.0",
+    "ruff>=0.3,<1.0",
+]
+
+[project.scripts]
+ncms = "ncms.interfaces.cli.main:cli"
+ncms-commit-hook = "ncms.interfaces.cli.commit_hook:main"
+ncms-context-loader = "ncms.interfaces.cli.context_loader:main"
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.15.5",
+]

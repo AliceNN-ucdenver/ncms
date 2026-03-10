@@ -1,0 +1,170 @@
+"""Integration tests for the full memory pipeline: store -> index -> search -> score."""
+
+import pytest
+
+
+class TestMemoryPipeline:
+    @pytest.mark.asyncio
+    async def test_store_and_search(self, memory_service):
+        """Store a memory and find it via search."""
+        stored = await memory_service.store_memory(
+            content="GET /api/v2/users returns a paginated list of users",
+            domains=["api"],
+            source_agent="test-agent",
+        )
+
+        results = await memory_service.search("users endpoint")
+        assert len(results) >= 1
+        assert any(r.memory.id == stored.id for r in results)
+
+    @pytest.mark.asyncio
+    async def test_domain_filter(self, memory_service):
+        """Search should filter by domain, returning only matching memories."""
+        api_mem = await memory_service.store_memory(
+            content="user authentication flow uses JWT tokens",
+            domains=["api", "auth"],
+        )
+        frontend_mem = await memory_service.store_memory(
+            content="user profile component renders avatar",
+            domains=["frontend"],
+        )
+
+        api_results = await memory_service.search("user", domain="api")
+        frontend_results = await memory_service.search("user", domain="frontend")
+
+        api_ids = {r.memory.id for r in api_results}
+        frontend_ids = {r.memory.id for r in frontend_results}
+
+        assert api_mem.id in api_ids
+        assert frontend_mem.id not in api_ids
+        assert frontend_mem.id in frontend_ids
+        assert api_mem.id not in frontend_ids
+
+    @pytest.mark.asyncio
+    async def test_multiple_memories_ranked(self, memory_service):
+        """More specific matches should rank higher than generic ones."""
+        specific = await memory_service.store_memory(
+            content="The users table has columns: id, name, email",
+            domains=["db"],
+        )
+        generic = await memory_service.store_memory(
+            content="PostgreSQL database configuration and connection pooling",
+            domains=["db"],
+        )
+
+        results = await memory_service.search("users table columns", limit=5)
+        assert len(results) >= 1
+        # The specific match should appear before the generic one
+        result_ids = [r.memory.id for r in results]
+        assert specific.id in result_ids
+        if generic.id in result_ids:
+            assert result_ids.index(specific.id) < result_ids.index(generic.id)
+
+    @pytest.mark.asyncio
+    async def test_activation_increases_with_access(self, memory_service):
+        """Accessing a memory multiple times should increase its base-level activation."""
+        await memory_service.store_memory(
+            content="important API endpoint specification for users list",
+            domains=["api"],
+        )
+
+        # First search establishes baseline activation
+        r1 = await memory_service.search("API endpoint specification")
+        assert len(r1) >= 1
+        initial_base_level = r1[0].base_level
+
+        # Search again - each search logs access, increasing base_level
+        r2 = await memory_service.search("API endpoint specification")
+        assert len(r2) >= 1
+
+        # Base level should increase (or at least not decrease) with more accesses
+        assert r2[0].base_level >= initial_base_level
+
+    @pytest.mark.asyncio
+    async def test_delete_removes_from_search(self, memory_service):
+        """Deleted memories should not appear in search results."""
+        mem = await memory_service.store_memory(
+            content="temporary knowledge to be deleted soon",
+            domains=["temp"],
+        )
+
+        results_before = await memory_service.search("temporary knowledge deleted")
+        assert any(r.memory.id == mem.id for r in results_before)
+
+        await memory_service.delete_memory(mem.id)
+
+        results_after = await memory_service.search("temporary knowledge deleted")
+        assert not any(r.memory.id == mem.id for r in results_after)
+
+    @pytest.mark.asyncio
+    async def test_search_no_results(self, memory_service):
+        """Searching for nonexistent content should return empty list."""
+        results = await memory_service.search("xyzzy_nonexistent_gibberish_query")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_memory_count(self, memory_service):
+        """memory_count should reflect stored memories."""
+        initial = await memory_service.memory_count()
+        await memory_service.store_memory(content="count test one", domains=["test"])
+        await memory_service.store_memory(content="count test two", domains=["test"])
+        final = await memory_service.memory_count()
+        assert final == initial + 2
+
+    @pytest.mark.asyncio
+    async def test_store_with_structured_data(self, memory_service):
+        """Structured data should persist through store and retrieval."""
+        structured = {"method": "GET", "path": "/users", "response": "User[]"}
+        mem = await memory_service.store_memory(
+            content="GET /users returns user list",
+            domains=["api"],
+            memory_type="interface-spec",
+            structured=structured,
+        )
+        results = await memory_service.search("GET users")
+        matched = [r for r in results if r.memory.id == mem.id]
+        assert len(matched) == 1
+        assert matched[0].memory.structured == structured
+
+
+class TestEntityOperations:
+    @pytest.mark.asyncio
+    async def test_add_entity(self, memory_service):
+        """Adding an entity should create it in the graph."""
+        initial_count = memory_service.entity_count()
+        entity = await memory_service.add_entity("UserService", "service")
+        assert entity.name == "UserService"
+        assert entity.type == "service"
+        assert memory_service.entity_count() == initial_count + 1
+
+    @pytest.mark.asyncio
+    async def test_duplicate_entity_returns_existing(self, memory_service):
+        """Adding an entity with same name should return the existing one."""
+        initial_count = memory_service.entity_count()
+        e1 = await memory_service.add_entity("UserService", "service")
+        e2 = await memory_service.add_entity("UserService", "service")
+        assert e1.id == e2.id
+        # Count should only increase by 1, not 2
+        assert memory_service.entity_count() == initial_count + 1
+
+    @pytest.mark.asyncio
+    async def test_add_relationship(self, memory_service):
+        """Adding a relationship should connect entities in the graph."""
+        initial_count = memory_service.relationship_count()
+        e1 = await memory_service.add_entity("UserService", "service")
+        e2 = await memory_service.add_entity("/users", "endpoint")
+        await memory_service.add_relationship(e1.id, e2.id, "exposes")
+        assert memory_service.relationship_count() == initial_count + 1
+
+    @pytest.mark.asyncio
+    async def test_entity_and_relationship_counts(self, memory_service):
+        """Counts should reflect the actual graph state."""
+        initial_entities = memory_service.entity_count()
+        initial_rels = memory_service.relationship_count()
+
+        e1 = await memory_service.add_entity("ServiceA", "service")
+        e2 = await memory_service.add_entity("ServiceB", "service")
+        await memory_service.add_relationship(e1.id, e2.id, "calls")
+
+        assert memory_service.entity_count() == initial_entities + 2
+        assert memory_service.relationship_count() == initial_rels + 1

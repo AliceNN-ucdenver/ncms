@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+    <linearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="wakeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <filter id="ds2" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrowW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="white"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="380" rx="12" fill="#0f172a"/>
+
+  <text x="450" y="32" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Agent Sleep / Wake / Surrogate Response</text>
+  <text x="450" y="50" text-anchor="middle" fill="#94a3b8" font-size="11">Knowledge persists even when agents go offline</text>
+
+  <!-- Timeline bar -->
+  <rect x="60" y="70" width="780" height="3" rx="1.5" fill="#334155"/>
+
+  <!-- Phase 1: Online -->
+  <g filter="url(#ds2)">
+    <rect x="60" y="90" width="180" height="130" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+    <rect x="60" y="90" width="180" height="30" rx="10" fill="url(#liveGrad)"/>
+    <rect x="60" y="110" width="180" height="10" fill="url(#liveGrad)"/>
+    <text x="150" y="110" text-anchor="middle" fill="white" font-size="13" font-weight="600">1. Online</text>
+    <circle cx="220" cy="100" r="5" fill="white" opacity="0.9"/>
+
+    <text x="150" y="145" text-anchor="middle" fill="#86efac" font-size="10" font-weight="500">API Agent: LIVE</text>
+    <text x="150" y="165" text-anchor="middle" fill="#94a3b8" font-size="9">Stores knowledge</text>
+    <text x="150" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">Responds to asks</text>
+    <text x="150" y="195" text-anchor="middle" fill="#94a3b8" font-size="9">Processes announcements</text>
+  </g>
+  <circle cx="150" cy="71" r="5" fill="#22c55e"/>
+
+  <!-- Arrow 1->2 -->
+  <path d="M 240 155 Q 260 155 272 155" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <!-- Phase 2: Sleep -->
+  <g filter="url(#ds2)">
+    <rect x="280" y="90" width="180" height="130" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="280" y="90" width="180" height="30" rx="10" fill="url(#sleepGrad)"/>
+    <rect x="280" y="110" width="180" height="10" fill="url(#sleepGrad)"/>
+    <text x="370" y="110" text-anchor="middle" fill="white" font-size="13" font-weight="600">2. Sleep</text>
+    <text x="370" y="143" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="500">Publish Snapshot</text>
+    <text x="370" y="165" text-anchor="middle" fill="#94a3b8" font-size="9">Collects working knowledge</text>
+    <text x="370" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">Persists to SQLite</text>
+    <text x="370" y="195" text-anchor="middle" fill="#94a3b8" font-size="9">Goes offline</text>
+    <!-- Zzz -->
+    <text x="440" cy="100" y="100" fill="#f59e0b" font-size="11" opacity="0.5">z</text>
+    <text x="448" cy="100" y="94" fill="#f59e0b" font-size="13" opacity="0.7">z</text>
+    <text x="455" cy="100" y="86" fill="#f59e0b" font-size="15" opacity="0.9">z</text>
+  </g>
+  <circle cx="370" cy="71" r="5" fill="#f59e0b"/>
+
+  <!-- Arrow 2->3 -->
+  <path d="M 460 155 Q 480 155 492 155" stroke="#f59e0b" stroke-width="2" fill="none" marker-end="url(#arrowAmber)"/>
+
+  <!-- Phase 3: Surrogate -->
+  <g filter="url(#ds2)">
+    <rect x="500" y="90" width="180" height="130" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6,3"/>
+    <rect x="500" y="90" width="180" height="30" rx="10" fill="#92400e" opacity="0.9"/>
+    <rect x="500" y="110" width="180" height="10" fill="#92400e" opacity="0.9"/>
+    <text x="590" y="110" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="600">3. Surrogate</text>
+    <text x="590" y="143" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="500">WARM Mode Response</text>
+    <text x="590" y="165" text-anchor="middle" fill="#94a3b8" font-size="9">Another agent asks</text>
+    <text x="590" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">Matches snapshot entries</text>
+    <text x="590" y="195" text-anchor="middle" fill="#94a3b8" font-size="9">Confidence discounted 0.8x</text>
+  </g>
+  <circle cx="590" cy="71" r="5" fill="#f59e0b" stroke="#f59e0b" stroke-width="1" fill-opacity="0.4"/>
+
+  <!-- Arrow 3->4 -->
+  <path d="M 680 155 Q 700 155 712 155" stroke="#22c55e" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <!-- Phase 4: Wake -->
+  <g filter="url(#ds2)">
+    <rect x="720" y="90" width="155" height="130" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+    <rect x="720" y="90" width="155" height="30" rx="10" fill="url(#liveGrad)"/>
+    <rect x="720" y="110" width="155" height="10" fill="url(#liveGrad)"/>
+    <text x="797" y="110" text-anchor="middle" fill="white" font-size="13" font-weight="600">4. Wake</text>
+    <text x="797" y="143" text-anchor="middle" fill="#86efac" font-size="10" font-weight="500">Back to LIVE</text>
+    <text x="797" y="165" text-anchor="middle" fill="#94a3b8" font-size="9">Restores from snapshot</text>
+    <text x="797" y="180" text-anchor="middle" fill="#94a3b8" font-size="9">Re-registers domains</text>
+    <text x="797" y="195" text-anchor="middle" fill="#94a3b8" font-size="9">Full confidence again</text>
+  </g>
+  <circle cx="797" cy="71" r="5" fill="#22c55e"/>
+
+  <!-- Bottom scenario cards -->
+  <rect x="60" y="250" width="380" height="110" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="80" y="275" fill="#e2e8f0" font-size="12" font-weight="600">Use Case: Late Night Development</text>
+  <text x="80" y="297" fill="#94a3b8" font-size="10">The API team works 9-5. Their agent goes to sleep at EOD.</text>
+  <text x="80" y="315" fill="#94a3b8" font-size="10">At 2 AM, the frontend dev asks about an endpoint spec.</text>
+  <text x="80" y="333" fill="#fbbf24" font-size="10" font-weight="500">NCMS responds from the snapshot. No one waits until morning.</text>
+  <text x="80" y="350" fill="#64748b" font-size="9">Response marked as "warm" so the developer knows it's from cache.</text>
+
+  <rect x="460" y="250" width="415" height="110" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="480" y="275" fill="#e2e8f0" font-size="12" font-weight="600">Response Mode Comparison</text>
+  <!-- Live bar -->
+  <rect x="480" y="290" width="170" height="20" rx="4" fill="#22c55e" opacity="0.8"/>
+  <text x="565" y="304" text-anchor="middle" fill="white" font-size="10" font-weight="600">LIVE  conf: 0.90</text>
+  <text x="665" y="304" fill="#94a3b8" font-size="9">Direct from agent</text>
+
+  <!-- Warm bar -->
+  <rect x="480" y="316" width="136" height="20" rx="4" fill="#f59e0b" opacity="0.8"/>
+  <text x="548" y="330" text-anchor="middle" fill="white" font-size="10" font-weight="600">WARM  conf: 0.72</text>
+  <text x="632" y="330" fill="#94a3b8" font-size="9">From snapshot (0.8x discount)</text>
+
+  <!-- Cold bar -->
+  <rect x="480" y="342" width="80" height="14" rx="4" fill="#64748b" opacity="0.6"/>
+  <text x="520" y="353" text-anchor="middle" fill="white" font-size="9" font-weight="500">COLD</text>
+  <text x="575" y="353" fill="#64748b" font-size="9">Expired / no match</text>
+</svg>

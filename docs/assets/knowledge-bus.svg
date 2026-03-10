@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="askGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="annGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+    <linearGradient id="subGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="ds3" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="400" rx="12" fill="#0f172a"/>
+
+  <text x="450" y="32" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Knowledge Bus — Osmotic Agent Coordination</text>
+  <text x="450" y="50" text-anchor="middle" fill="#94a3b8" font-size="11">Domain-routed messaging: Ask/Respond, Announce/Subscribe, Inbox delivery</text>
+
+  <!-- Central Bus -->
+  <g filter="url(#ds3)">
+    <rect x="270" y="75" width="360" height="60" rx="30" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
+    <text x="450" y="102" text-anchor="middle" fill="#7dd3fc" font-size="15" font-weight="700">Knowledge Bus</text>
+    <text x="450" y="122" text-anchor="middle" fill="#94a3b8" font-size="10">AsyncIO In-Process Event Bus</text>
+  </g>
+
+  <!-- Domain pills on bus -->
+  <rect x="295" y="108" width="50" height="16" rx="8" fill="#0369a1" opacity="0.8"/>
+  <text x="320" y="119" text-anchor="middle" fill="#bae6fd" font-size="8">api:*</text>
+  <rect x="355" y="108" width="35" height="16" rx="8" fill="#0369a1" opacity="0.8"/>
+  <text x="372" y="119" text-anchor="middle" fill="#bae6fd" font-size="8">db:*</text>
+  <rect x="510" y="108" width="60" height="16" rx="8" fill="#0369a1" opacity="0.8"/>
+  <text x="540" y="119" text-anchor="middle" fill="#bae6fd" font-size="8">frontend:*</text>
+  <rect x="580" y="108" width="35" height="16" rx="8" fill="#0369a1" opacity="0.8"/>
+  <text x="597" y="119" text-anchor="middle" fill="#bae6fd" font-size="8">ui:*</text>
+
+  <!-- === USE CASE 1: Ask/Respond === -->
+  <text x="140" y="165" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">Ask / Respond</text>
+
+  <!-- Frontend Agent (asker) -->
+  <g filter="url(#ds3)">
+    <rect x="40" y="180" width="140" height="80" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
+    <rect x="40" y="180" width="140" height="24" rx="8" fill="#6366f1" opacity="0.8"/>
+    <rect x="40" y="196" width="140" height="8" fill="#6366f1" opacity="0.8"/>
+    <text x="110" y="197" text-anchor="middle" fill="white" font-size="10" font-weight="600">Frontend Agent</text>
+    <text x="110" y="222" text-anchor="middle" fill="#94a3b8" font-size="9">Asks: "What does</text>
+    <text x="110" y="236" text-anchor="middle" fill="#94a3b8" font-size="9">GET /users return?"</text>
+    <text x="110" y="252" text-anchor="middle" fill="#93c5fd" font-size="8">domain: api</text>
+  </g>
+
+  <!-- Ask arrow up to bus -->
+  <path d="M 150 180 L 150 160 Q 150 150 160 150 L 320 150 Q 330 150 330 140" stroke="#3b82f6" stroke-width="2" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="235" y="147" text-anchor="middle" fill="#3b82f6" font-size="9" font-weight="500">ask()</text>
+
+  <!-- API Agent (responder) -->
+  <g filter="url(#ds3)">
+    <rect x="40" y="280" width="140" height="80" rx="8" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
+    <rect x="40" y="280" width="140" height="24" rx="8" fill="#22c55e" opacity="0.8"/>
+    <rect x="40" y="296" width="140" height="8" fill="#22c55e" opacity="0.8"/>
+    <text x="110" y="297" text-anchor="middle" fill="white" font-size="10" font-weight="600">API Agent</text>
+    <text x="110" y="322" text-anchor="middle" fill="#94a3b8" font-size="9">Responds: JSON with</text>
+    <text x="110" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">users, cursor, has_more</text>
+    <text x="110" y="352" text-anchor="middle" fill="#86efac" font-size="8">confidence: 0.90</text>
+  </g>
+
+  <!-- Bus routes to responder -->
+  <path d="M 310 135 Q 300 130 290 130 L 190 130 Q 180 130 180 140 L 180 160 Q 180 170 170 170 L 115 170 Q 105 170 105 180 L 105 280" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-dasharray="5,3"/>
+  <text x="220" y="127" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">route &amp; deliver</text>
+
+  <!-- Inbox arrow -->
+  <path d="M 75 280 L 75 260 L 85 260" stroke="#22c55e" stroke-width="1.5" fill="none" marker-end="url(#arrowBlue)"/>
+  <rect x="63" y="264" width="35" height="14" rx="4" fill="#1e293b" stroke="#22c55e" stroke-width="0.5"/>
+  <text x="80" y="274" text-anchor="middle" fill="#86efac" font-size="7">inbox</text>
+
+  <!-- === USE CASE 2: Announce === -->
+  <text x="450" y="165" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="600">Announce / Subscribe</text>
+
+  <!-- DB Agent (announcer) -->
+  <g filter="url(#ds3)">
+    <rect x="360" y="180" width="180" height="80" rx="8" fill="#1e293b" stroke="#ef4444" stroke-width="1.5"/>
+    <rect x="360" y="180" width="180" height="24" rx="8" fill="#ef4444" opacity="0.8"/>
+    <rect x="360" y="196" width="180" height="8" fill="#ef4444" opacity="0.8"/>
+    <text x="450" y="197" text-anchor="middle" fill="white" font-size="10" font-weight="600">Database Agent</text>
+    <text x="450" y="220" text-anchor="middle" fill="#94a3b8" font-size="9">Announces: breaking-change</text>
+    <text x="450" y="234" text-anchor="middle" fill="#94a3b8" font-size="9">"Added required 'role' column"</text>
+    <text x="450" y="250" text-anchor="middle" fill="#fca5a5" font-size="8">severity: critical</text>
+  </g>
+
+  <!-- Announce arrow to bus -->
+  <path d="M 450 180 L 450 140" stroke="#ef4444" stroke-width="2" fill="none" marker-end="url(#arrowRed)"/>
+  <text x="465" y="162" fill="#ef4444" font-size="9" font-weight="500">announce()</text>
+
+  <!-- Fan-out arrows -->
+  <g opacity="0.6">
+    <path d="M 450 260 L 380 290" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowRed)"/>
+    <path d="M 450 260 L 520 290" stroke="#ef4444" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowRed)"/>
+  </g>
+
+  <!-- Subscriber 1 -->
+  <g filter="url(#ds3)">
+    <rect x="310" y="290" width="140" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="380" y="312" text-anchor="middle" fill="#94a3b8" font-size="10">API Agent</text>
+    <text x="380" y="330" text-anchor="middle" fill="#86efac" font-size="9">subscribed: db:*</text>
+    <rect x="418" y="338" width="25" height="10" rx="3" fill="#22c55e" opacity="0.6"/>
+    <text x="430" y="346" text-anchor="middle" fill="white" font-size="6">1</text>
+  </g>
+
+  <!-- Subscriber 2 -->
+  <g filter="url(#ds3)">
+    <rect x="460" y="290" width="140" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="530" y="312" text-anchor="middle" fill="#94a3b8" font-size="10">Frontend Agent</text>
+    <text x="530" y="330" text-anchor="middle" fill="#86efac" font-size="9">subscribed: api:*</text>
+    <rect x="568" y="338" width="25" height="10" rx="3" fill="#64748b" opacity="0.6"/>
+    <text x="580" y="346" text-anchor="middle" fill="white" font-size="6">0</text>
+  </g>
+
+  <!-- === USE CASE 3: Inbox === -->
+  <text x="760" y="165" text-anchor="middle" fill="#5eead4" font-size="13" font-weight="600">Inbox Pattern</text>
+
+  <g filter="url(#ds3)">
+    <rect x="670" y="180" width="200" height="170" rx="8" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5"/>
+    <rect x="670" y="180" width="200" height="24" rx="8" fill="#0e7490" opacity="0.8"/>
+    <rect x="670" y="196" width="200" height="8" fill="#0e7490" opacity="0.8"/>
+    <text x="770" y="197" text-anchor="middle" fill="#cffafe" font-size="10" font-weight="600">Agent Inbox</text>
+
+    <!-- Inbox messages -->
+    <rect x="685" y="215" width="170" height="28" rx="5" fill="#164e63" stroke="#22d3ee" stroke-width="0.5"/>
+    <circle cx="700" cy="229" r="4" fill="#22c55e"/>
+    <text x="715" y="226" fill="#94a3b8" font-size="8">KnowledgeResponse</text>
+    <text x="715" y="237" fill="#5eead4" font-size="8">from: api-agent  mode: live</text>
+
+    <rect x="685" y="249" width="170" height="28" rx="5" fill="#164e63" stroke="#22d3ee" stroke-width="0.5"/>
+    <circle cx="700" cy="263" r="4" fill="#f59e0b"/>
+    <text x="715" y="260" fill="#94a3b8" font-size="8">KnowledgeResponse</text>
+    <text x="715" y="271" fill="#fbbf24" font-size="8">from: api-agent  mode: warm</text>
+
+    <rect x="685" y="283" width="170" height="28" rx="5" fill="#164e63" stroke="#ef4444" stroke-width="0.5"/>
+    <circle cx="700" cy="297" r="4" fill="#ef4444"/>
+    <text x="715" y="294" fill="#94a3b8" font-size="8">KnowledgeAnnounce</text>
+    <text x="715" y="305" fill="#fca5a5" font-size="8">breaking-change  sev: critical</text>
+
+    <text x="770" y="335" text-anchor="middle" fill="#64748b" font-size="9">drain_inbox() to process</text>
+  </g>
+
+  <!-- Flow arrows into inbox -->
+  <path d="M 630 105 Q 640 105 650 105 L 660 105 Q 670 105 670 115 L 670 180" stroke="#22d3ee" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowTeal)"/>
+
+  <!-- Bottom label -->
+  <text x="450" y="390" text-anchor="middle" fill="#475569" font-size="9">All communication is non-blocking, domain-routed, and protocol-based (swappable transport)</text>
+</svg>

@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+wheels/
+*.egg-info
+*.egg
+
+# Virtual environments
+.venv
+
+# NCMS data
+*.db
+*.db-journal
+ncms_data/
+.ncms/
+
+# Tools
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+.DS_Store

@@ -1,0 +1,81 @@
+"""MCP resource implementations for NCMS.
+
+Resources provide read-only data access via ncms:// URIs.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+
+from ncms.application.bus_service import BusService
+from ncms.application.memory_service import MemoryService
+from ncms.application.snapshot_service import SnapshotService
+
+
+def register_resources(
+    mcp: FastMCP,
+    memory_svc: MemoryService,
+    bus_svc: BusService,
+    snapshot_svc: SnapshotService,
+) -> None:
+    """Register all NCMS MCP resources on the given server."""
+
+    @mcp.resource("ncms://domains")
+    async def list_domains() -> str:
+        """List all knowledge domains with their providers."""
+        domain_map = bus_svc.list_domains()
+        lines = ["# Knowledge Domains\n"]
+        for domain, agents in sorted(domain_map.items()):
+            status_list = ", ".join(agents)
+            lines.append(f"- **{domain}**: {status_list}")
+        if not domain_map:
+            lines.append("No domains registered.")
+        return "\n".join(lines)
+
+    @mcp.resource("ncms://agents")
+    async def list_agents() -> str:
+        """List all registered agents with status."""
+        agents = bus_svc.get_all_agents()
+        lines = ["# Registered Agents\n"]
+        for agent in agents:
+            lines.append(
+                f"- **{agent.agent_id}** [{agent.status}] "
+                f"domains: {', '.join(agent.domains)}"
+            )
+        if not agents:
+            lines.append("No agents registered.")
+        return "\n".join(lines)
+
+    @mcp.resource("ncms://graph/entities")
+    async def list_entities() -> str:
+        """Browse knowledge graph entities."""
+        entities = await memory_svc.list_entities()
+        lines = ["# Knowledge Graph Entities\n"]
+        for entity in entities[:100]:
+            lines.append(f"- **{entity.name}** ({entity.type}) [id: {entity.id}]")
+        total = memory_svc.entity_count()
+        lines.append(f"\nTotal: {total} entities, {memory_svc.relationship_count()} relationships")
+        return "\n".join(lines)
+
+    @mcp.resource("ncms://status")
+    async def system_status() -> str:
+        """NCMS system status overview."""
+        mem_count = await memory_svc.memory_count()
+        entity_count = memory_svc.entity_count()
+        rel_count = memory_svc.relationship_count()
+        agents = bus_svc.get_all_agents()
+        domains = bus_svc.list_domains()
+
+        online = sum(1 for a in agents if a.status == "online")
+        sleeping = sum(1 for a in agents if a.status == "sleeping")
+
+        return "\n".join([
+            "# NCMS System Status\n",
+            f"- **Memories**: {mem_count}",
+            f"- **Entities**: {entity_count}",
+            f"- **Relationships**: {rel_count}",
+            f"- **Agents**: {len(agents)} ({online} online, {sleeping} sleeping)",
+            f"- **Domains**: {len(domains)}",
+        ])
