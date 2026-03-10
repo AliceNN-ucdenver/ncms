@@ -19,6 +19,8 @@ class NetworkXGraph:
         # Track which entities are linked to which memories
         self._memory_entities: dict[str, set[str]] = {}  # memory_id -> set of entity_ids
         self._entity_memories: dict[str, set[str]] = {}  # entity_id -> set of memory_ids
+        # O(1) name → entity_id lookup (lowercase keys)
+        self._name_index: dict[str, str] = {}
 
     def add_entity(self, entity: Entity) -> None:
         self._graph.add_node(
@@ -27,6 +29,7 @@ class NetworkXGraph:
             type=entity.type,
             attributes=entity.attributes,
         )
+        self._name_index[entity.name.lower()] = entity.id
 
     def add_relationship(self, rel: Relationship) -> None:
         self._graph.add_edge(
@@ -86,6 +89,10 @@ class NetworkXGraph:
             )
         return entities
 
+    def find_entity_by_name(self, name: str) -> str | None:
+        """O(1) lookup of entity ID by name (case-insensitive)."""
+        return self._name_index.get(name.lower())
+
     def get_entity_ids_for_memory(self, memory_id: str) -> list[str]:
         return list(self._memory_entities.get(memory_id, set()))
 
@@ -122,3 +129,4 @@ class NetworkXGraph:
         self._graph.clear()
         self._memory_entities.clear()
         self._entity_memories.clear()
+        self._name_index.clear()

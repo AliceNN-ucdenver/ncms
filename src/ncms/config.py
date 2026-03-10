@@ -45,6 +45,8 @@ class NCMSConfig(BaseSettings):
     tier1_candidates: int = 50
     tier2_candidates: int = 20
     tier3_judge_top_k: int = 10
+    scoring_weight_bm25: float = 0.6
+    scoring_weight_actr: float = 0.4
 
     # Consolidation
     consolidation_importance_threshold: float = 50.0

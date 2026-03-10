@@ -15,11 +15,10 @@ from ncms.application.bus_service import BusService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.domain.models import (
+    ImpactAssessment,
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgePayload,
-    AskContext,
-    ImpactAssessment,
 )
 
 

@@ -15,8 +15,6 @@ from ncms.domain.models import (
     AgentInfo,
     KnowledgeAnnounce,
     KnowledgeAsk,
-    KnowledgePayload,
-    KnowledgeProvenance,
     KnowledgeResponse,
     SubscriptionFilter,
 )
@@ -33,10 +31,12 @@ class BusService:
         bus: AsyncKnowledgeBus,
         snapshot_service: SnapshotService,
         surrogate_enabled: bool = True,
+        event_log: object | None = None,
     ):
         self._bus = bus
         self._snapshot = snapshot_service
         self._surrogate_enabled = surrogate_enabled
+        self._event_log = event_log
 
     @property
     def bus(self) -> AsyncKnowledgeBus:
@@ -126,12 +126,20 @@ class BusService:
                             ask.ask_id,
                             agent.agent_id,
                         )
+                        if self._event_log:
+                            self._event_log.bus_surrogate(
+                                ask_id=ask.ask_id,
+                                from_agent=agent.agent_id,
+                                confidence=response.confidence,
+                                snapshot_age_seconds=response.snapshot_age_seconds,
+                                answer=response.knowledge.content,
+                            )
                         return response
                     tried_agents.add(agent.agent_id)
 
         # Also check snapshots for agents that have fully deregistered
         # (their snapshots persist in storage even after deregistration)
-        for domain in ask.domains:
+        for _domain in ask.domains:
             # We can't enumerate all snapshots by domain easily, so skip for now
             pass
 

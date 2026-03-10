@@ -47,6 +47,45 @@ def demo() -> None:
 
 
 @cli.command()
+@click.option("--host", default="0.0.0.0", help="Bind address")
+@click.option("--port", default=8420, type=int, help="Port number")
+@click.option("--demo/--no-demo", "run_demo_flag", default=True, help="Run demo agents")
+@click.option("--open/--no-open", "open_browser", default=True, help="Open browser automatically")
+def dashboard(host: str, port: int, run_demo_flag: bool, open_browser: bool) -> None:
+    """Start the NCMS observability dashboard (web UI).
+
+    Opens a browser-based dashboard showing agents, bus activity,
+    and Knowledge Bus visualization in real-time.
+
+    Requires: pip install ncms[dashboard]
+    """
+    try:
+        from ncms.interfaces.http.dashboard import run_dashboard
+    except ImportError:
+        click.echo(
+            "Dashboard dependencies not installed. Run:\n"
+            "  pip install ncms[dashboard]\n"
+            "  # or: uv sync --extra dashboard",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    url = f"http://localhost:{port}"
+    click.echo(f"Starting NCMS Dashboard at {url}", err=True)
+    if run_demo_flag:
+        click.echo("Demo agents will start automatically.", err=True)
+
+    if open_browser:
+        import threading
+        import webbrowser
+
+        # Open browser after a short delay to let the server start
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+
+    asyncio.run(run_dashboard(host=host, port=port, run_demo=run_demo_flag))
+
+
+@cli.command()
 @click.option("--db", default=None, help="Database path")
 def info(db: str | None) -> None:
     """Show NCMS system status."""
@@ -89,7 +128,10 @@ def info(db: str | None) -> None:
 @click.option("--domains", "-d", multiple=True, help="Knowledge domains for imported content.")
 @click.option("--project", "-p", default=None, help="Project context.")
 @click.option("--recursive/--no-recursive", default=True, help="Recurse into directories.")
-def load(paths: tuple[str, ...], domains: tuple[str, ...], project: str | None, recursive: bool) -> None:
+def load(
+    paths: tuple[str, ...], domains: tuple[str, ...],
+    project: str | None, recursive: bool,
+) -> None:
     """Load knowledge from files into NCMS memory (The Matrix download).
 
     Supports: .md, .txt, .json, .yaml, .csv, .html, .rst
@@ -104,12 +146,13 @@ def load(paths: tuple[str, ...], domains: tuple[str, ...], project: str | None, 
     console = Console()
 
     async def _load() -> None:
-        from ncms.config import NCMSConfig
-        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
-        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
-        from ncms.application.memory_service import MemoryService
+        from ncms.application.graph_service import GraphService
         from ncms.application.knowledge_loader import KnowledgeLoader
+        from ncms.application.memory_service import MemoryService
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
         config = NCMSConfig()
         store = SQLiteStore(db_path=config.db_path)
@@ -118,6 +161,7 @@ def load(paths: tuple[str, ...], domains: tuple[str, ...], project: str | None, 
         index.initialize()
         graph = NetworkXGraph()
         memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
+        await GraphService(store=store, graph=graph).rebuild_from_store()
         loader = KnowledgeLoader(memory_svc)
 
         domain_list = list(domains) if domains else None

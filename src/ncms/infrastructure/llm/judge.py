@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
-from ncms.domain.models import Memory, ScoredMemory
+from ncms.domain.models import ScoredMemory
 
 logger = logging.getLogger(__name__)
 

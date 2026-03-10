@@ -39,11 +39,12 @@ async def _handle_event(
     tool_input: bool,
     project: str | None,
 ) -> None:
-    from ncms.config import NCMSConfig
-    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-    from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
-    from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+    from ncms.application.graph_service import GraphService
     from ncms.application.memory_service import MemoryService
+    from ncms.config import NCMSConfig
+    from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+    from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
     config = NCMSConfig()
     store = SQLiteStore(db_path=config.db_path)
@@ -54,6 +55,7 @@ async def _handle_event(
 
     graph = NetworkXGraph()
     memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
+    await GraphService(store=store, graph=graph).rebuild_from_store()
 
     try:
         # Read stdin if available

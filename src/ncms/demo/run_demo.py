@@ -13,24 +13,23 @@ from __future__ import annotations
 
 import asyncio
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich import box
 
 from ncms.application.bus_service import BusService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.config import NCMSConfig
+from ncms.demo.agents.api_agent import ApiAgent
+from ncms.demo.agents.database_agent import DatabaseAgent
+from ncms.demo.agents.frontend_agent import FrontendAgent
 from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-
-from ncms.demo.agents.api_agent import ApiAgent
-from ncms.demo.agents.frontend_agent import FrontendAgent
-from ncms.demo.agents.database_agent import DatabaseAgent
 
 console = Console()
 
@@ -229,6 +228,29 @@ Deployment: Vercel with edge functions for SSR.
 
     result(f"Total memories stored: {await memory_svc.memory_count()}")
 
+    # Show auto-extracted entities
+    entity_table = Table(
+        box=box.ROUNDED,
+        title="Auto-Extracted Knowledge Graph Entities",
+        show_header=True,
+        header_style="bold",
+    )
+    entity_table.add_column("Entity", style="bold white")
+    entity_table.add_column("Type", style="cyan")
+
+    all_entities = await memory_svc.list_entities()
+    # Show up to 15 entities, sorted by type
+    for entity in sorted(all_entities, key=lambda e: e.type)[:15]:
+        entity_table.add_row(entity.name, entity.type)
+    if len(all_entities) > 15:
+        entity_table.add_row(f"... +{len(all_entities) - 15} more", "[dim]...[/]")
+
+    console.print(entity_table)
+    result(
+        f"Knowledge graph: {memory_svc.entity_count()} entities, "
+        f"{memory_svc.relationship_count()} relationships"
+    )
+
     # ── Phase 2: Live Knowledge Exchange ─────────────────────────────
     header("Phase 2: Live Knowledge Exchange")
 
@@ -366,25 +388,34 @@ Deployment: Vercel with edge functions for SSR.
 
     results_table = Table(
         box=box.ROUNDED,
-        title="Search Results: 'users endpoint schema'",
+        title="Search Results: 'users endpoint schema'  (3-Tier Pipeline)",
         show_header=True,
         header_style="bold",
     )
     results_table.add_column("#", justify="right", style="dim")
-    results_table.add_column("Content", max_width=50)
+    results_table.add_column("Content", max_width=45)
     results_table.add_column("Agent", style="cyan")
     results_table.add_column("BM25", justify="right")
-    results_table.add_column("Base Level", justify="right")
+    results_table.add_column("Base", justify="right")
+    results_table.add_column("Spread", justify="right", style="magenta")
+    results_table.add_column("RetProb", justify="right")
     results_table.add_column("Total", justify="right", style="bold green")
 
     for i, sr in enumerate(search_results, 1):
-        content_preview = sr.memory.content[:50] + "..." if len(sr.memory.content) > 50 else sr.memory.content
+        content_preview = (
+            sr.memory.content[:45] + "..."
+            if len(sr.memory.content) > 45
+            else sr.memory.content
+        )
+        spread_style = "bold magenta" if sr.spreading > 0 else "dim"
         results_table.add_row(
             str(i),
             content_preview,
             sr.memory.source_agent or "?",
             f"{sr.bm25_score:.2f}",
             f"{sr.base_level:.2f}",
+            Text(f"{sr.spreading:.2f}", style=spread_style),
+            f"{sr.retrieval_prob:.2f}",
             f"{sr.total_activation:.2f}",
         )
 
@@ -412,13 +443,13 @@ Deployment: Vercel with edge functions for SSR.
     console.print()
     console.print(Panel(
         "[bold]What you just saw:[/]\n\n"
-        "1. Three agents registered expertise domains and stored knowledge\n"
-        "2. Frontend agent asked API agent a question via the Knowledge Bus\n"
-        "3. API agent went to sleep and published a Knowledge Snapshot\n"
-        "4. Frontend agent got a [yellow]surrogate response[/] from the snapshot\n"
+        "1. Knowledge downloaded Matrix-style and auto-indexed with entity extraction\n"
+        "2. Three agents stored domain knowledge (entities auto-extracted to graph)\n"
+        "3. Frontend agent asked API agent via the Knowledge Bus\n"
+        "4. API agent slept; frontend got a [yellow]surrogate response[/] from snapshot\n"
         "5. API agent woke up and answered [green]live[/] on the same question\n"
-        "6. Database agent announced a [red]breaking change[/] to all subscribers\n"
-        "7. Memory search showed [cyan]ACT-R activation scoring[/] in action\n\n"
+        "6. Database agent announced a [red]breaking change[/] to subscribers\n"
+        "7. 3-tier search: [cyan]BM25 + Spreading Activation + ACT-R scoring[/]\n\n"
         "[dim]All running in-process with zero external dependencies.[/]",
         title="[bold cyan]NCMS - It Just Works[/]",
         border_style="cyan",

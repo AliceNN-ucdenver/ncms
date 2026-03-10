@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ncms.domain.models import (
-    KnowledgePayload,
     KnowledgeProvenance,
     KnowledgeResponse,
     KnowledgeSnapshot,
@@ -82,10 +81,10 @@ class SnapshotService:
             return None
 
         # Check TTL
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ts = snapshot.timestamp
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
         age_hours = (now - ts).total_seconds() / 3600
         if age_hours > snapshot.ttl_hours:
             logger.info("Snapshot for %s expired (%.1fh old)", agent_id, age_hours)
@@ -137,10 +136,10 @@ class SnapshotService:
         if not best_entry or best_score == 0:
             return None
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         ts = snapshot.timestamp
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=UTC)
         age_seconds = int((now - ts).total_seconds())
 
         return KnowledgeResponse(

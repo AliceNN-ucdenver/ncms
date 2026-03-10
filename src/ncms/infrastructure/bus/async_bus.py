@@ -10,9 +10,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from ncms.domain.exceptions import AgentNotRegisteredError, BusTimeoutError
 from ncms.domain.models import (
     AgentInfo,
     KnowledgeAnnounce,
@@ -29,8 +28,14 @@ AskHandler = Callable[[KnowledgeAsk], Awaitable[KnowledgeResponse | None]]
 class AsyncKnowledgeBus:
     """In-process asyncio-based Knowledge Bus."""
 
-    def __init__(self, ask_timeout_ms: int = 5000):
+    def __init__(
+        self,
+        ask_timeout_ms: int = 5000,
+        event_log: object | None = None,
+    ):
         self._ask_timeout_ms = ask_timeout_ms
+        # Optional EventLog for dashboard observability (duck-typed to avoid import)
+        self._event_log = event_log
 
         # Agent registry
         self._agents: dict[str, AgentInfo] = {}
@@ -78,6 +83,8 @@ class AsyncKnowledgeBus:
                 providers.append(agent_id)
 
         logger.info("Agent %s registered for domains: %s", agent_id, domains)
+        if self._event_log:
+            self._event_log.agent_registered(agent_id, domains)
 
     async def deregister_provider(self, agent_id: str) -> None:
         info = self._agents.pop(agent_id, None)
@@ -88,11 +95,15 @@ class AsyncKnowledgeBus:
                     providers.remove(agent_id)
             self._ask_handlers.pop(agent_id, None)
             logger.info("Agent %s deregistered", agent_id)
+            if self._event_log:
+                self._event_log.agent_deregistered(agent_id)
 
     async def update_availability(self, agent_id: str, status: str) -> None:
         if agent_id in self._agents:
             self._agents[agent_id].status = status  # type: ignore[assignment]
-            self._agents[agent_id].last_seen = datetime.now(timezone.utc)
+            self._agents[agent_id].last_seen = datetime.now(UTC)
+            if self._event_log:
+                self._event_log.agent_status(agent_id, status)
 
     def is_agent_online(self, agent_id: str) -> bool:
         info = self._agents.get(agent_id)
@@ -136,6 +147,15 @@ class AsyncKnowledgeBus:
         # Remove the asking agent from targets
         target_agents.discard(ask.from_agent)
 
+        if self._event_log:
+            self._event_log.bus_ask(
+                ask_id=ask.ask_id,
+                from_agent=ask.from_agent,
+                question=ask.question,
+                domains=ask.domains,
+                targets=list(target_agents),
+            )
+
         if not target_agents:
             logger.debug("No live providers for domains %s", ask.domains)
             return ask.ask_id
@@ -157,8 +177,18 @@ class AsyncKnowledgeBus:
                 # Collect valid responses into the asking agent's inbox
                 for result in results:
                     if isinstance(result, KnowledgeResponse):
-                        self._response_inbox.setdefault(ask.from_agent, []).append(result)
-            except asyncio.TimeoutError:
+                        self._response_inbox.setdefault(ask.from_agent, []).append(
+                            result
+                        )
+                        if self._event_log:
+                            self._event_log.bus_response(
+                                ask_id=result.ask_id,
+                                from_agent=result.from_agent,
+                                source_mode=result.source_mode,
+                                confidence=result.confidence,
+                                answer=result.knowledge.content,
+                            )
+            except TimeoutError:
                 logger.warning("Ask %s timed out after %dms", ask.ask_id, ask.ttl_ms)
 
         return ask.ask_id
@@ -176,7 +206,7 @@ class AsyncKnowledgeBus:
         """Manually add a response to an agent's inbox (for surrogate responses)."""
         # Find which agent asked
         # Responses go to whoever's inbox matches the ask
-        for agent_id, inbox in self._response_inbox.items():
+        for agent_id, _inbox in self._response_inbox.items():
             self._response_inbox.setdefault(agent_id, []).append(response)
             break
 
@@ -184,15 +214,31 @@ class AsyncKnowledgeBus:
 
     async def announce(self, announcement: KnowledgeAnnounce) -> None:
         """Broadcast announcement to all subscribed agents."""
+        recipients: list[str] = []
         for agent_id, sub_filter in self._subscriptions.items():
             if agent_id == announcement.from_agent:
                 continue  # Don't announce to self
 
             if self._matches_filter(announcement, sub_filter):
                 self._announcement_inbox.setdefault(agent_id, []).append(announcement)
+                recipients.append(agent_id)
                 logger.debug(
                     "Announcement %s delivered to %s", announcement.announce_id, agent_id
                 )
+
+        if self._event_log:
+            severity = "info"
+            if announcement.impact:
+                severity = announcement.impact.severity
+            self._event_log.bus_announce(
+                announce_id=announcement.announce_id,
+                from_agent=announcement.from_agent,
+                event=announcement.event,
+                domains=announcement.domains,
+                severity=severity,
+                recipients=recipients,
+                content=announcement.knowledge.content,
+            )
 
     async def subscribe(
         self,

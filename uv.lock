@@ -1552,6 +1552,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+dashboard = [
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "mypy" },
     { name = "pytest" },
@@ -1592,9 +1596,11 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0,<6.0" },
     { name = "rich", specifier = ">=13.7,<14.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.3,<1.0" },
+    { name = "starlette", marker = "extra == 'dashboard'", specifier = ">=0.37,<1.0" },
     { name = "tantivy", specifier = ">=0.22,<1.0" },
+    { name = "uvicorn", marker = "extra == 'dashboard'", specifier = ">=0.29,<1.0" },
 ]
-provides-extras = ["splade", "docs", "dev"]
+provides-extras = ["splade", "docs", "dashboard", "dev"]
 
 [package.metadata.requires-dev]
 dev = [

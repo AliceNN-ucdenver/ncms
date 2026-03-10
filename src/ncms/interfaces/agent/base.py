@@ -6,7 +6,6 @@ Knowledge Bus: register, ask, announce, sleep (snapshot), wake (restore).
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 
@@ -14,14 +13,13 @@ from ncms.application.bus_service import BusService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.domain.models import (
+    ImpactAssessment,
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgePayload,
     KnowledgeResponse,
     KnowledgeSnapshot,
-    ImpactAssessment,
     SnapshotEntry,
-    SubscriptionFilter,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,12 +226,11 @@ class KnowledgeAgent(ABC):
             importance=8.0 if announcement.impact.breaking_change else 5.0,
         )
 
-    async def on_restore(self, snapshot: KnowledgeSnapshot) -> None:
+    async def on_restore(self, snapshot: KnowledgeSnapshot) -> None:  # noqa: B027
         """Called when agent wakes up and loads a previous snapshot.
 
         Default: no-op. Override to process restored knowledge.
         """
-        pass
 
     # ── Internal ─────────────────────────────────────────────────────────
 

@@ -7,9 +7,9 @@ store, search, recall, and manage the full retrieval pipeline.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 from ncms.config import NCMSConfig
+from ncms.domain.entity_extraction import extract_entity_names
 from ncms.domain.models import (
     AccessRecord,
     Entity,
@@ -20,6 +20,7 @@ from ncms.domain.models import (
 from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
+    retrieval_probability,
     spreading_activation,
     total_activation,
 )
@@ -39,11 +40,14 @@ class MemoryService:
         index: TantivyEngine,
         graph: NetworkXGraph,
         config: NCMSConfig | None = None,
+        event_log: object | None = None,
     ):
         self._store = store
         self._index = index
         self._graph = graph
         self._config = config or NCMSConfig()
+        # Optional EventLog for dashboard observability (duck-typed to avoid import)
+        self._event_log = event_log
 
     @property
     def store(self) -> SQLiteStore:
@@ -86,18 +90,20 @@ class MemoryService:
         # Index in Tantivy
         self._index.index_memory(memory)
 
-        # Process entities if provided
-        if entities:
-            for e_data in entities:
-                entity = Entity(
-                    name=e_data["name"],
-                    type=e_data.get("type", "concept"),
-                    attributes=e_data.get("attributes", {}),
-                )
-                await self._store.save_entity(entity)
-                self._graph.add_entity(entity)
-                await self._store.link_memory_entity(memory.id, entity.id)
-                self._graph.link_memory_entity(memory.id, entity.id)
+        # Auto-extract entities from content + merge with manually provided ones
+        auto_entities = extract_entity_names(content)
+        manual = list(entities or [])
+        manual_names = {e["name"].lower() for e in manual}
+        all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
+
+        for e_data in all_entities:
+            entity = await self.add_entity(
+                name=e_data["name"],
+                entity_type=e_data.get("type", "concept"),
+                attributes=e_data.get("attributes", {}),
+            )
+            await self._store.link_memory_entity(memory.id, entity.id)
+            self._graph.link_memory_entity(memory.id, entity.id)
 
         # Process relationships if provided
         if relationships:
@@ -117,6 +123,15 @@ class MemoryService:
         )
 
         logger.info("Stored memory %s: %s", memory.id, content[:80])
+        if self._event_log:
+            self._event_log.memory_stored(
+                memory_id=memory.id,
+                content_preview=content,
+                memory_type=memory_type,
+                domains=memory.domains,
+                entity_count=len(all_entities),
+                agent_id=source_agent,
+            )
         return memory
 
     # ── Search ───────────────────────────────────────────────────────────
@@ -136,6 +151,20 @@ class MemoryService:
         if not bm25_results:
             return []
 
+        # Extract entities from query for spreading activation context
+        # Use graph O(1) name index when available, fall back to SQLite
+        query_entity_names = extract_entity_names(query)
+        context_entity_ids: list[str] = []
+        for qe in query_entity_names:
+            eid = self._graph.find_entity_by_name(qe["name"])
+            if eid:
+                context_entity_ids.append(eid)
+            else:
+                # Fall back to SQLite for entities not yet in graph
+                existing = await self._store.find_entity_by_name(qe["name"])
+                if existing:
+                    context_entity_ids.append(existing.id)
+
         # Load full memory objects and compute activation scores
         scored: list[ScoredMemory] = []
         for memory_id, bm25_score in bm25_results:
@@ -143,30 +172,42 @@ class MemoryService:
             if not memory:
                 continue
 
-            # Domain filter
-            if domain and domain not in memory.domains:
-                # Check prefix match
-                if not any(d.startswith(domain) for d in memory.domains):
-                    continue
+            # Domain filter (exact match or prefix match)
+            if domain and domain not in memory.domains and not any(
+                d.startswith(domain) for d in memory.domains
+            ):
+                continue
 
             # Tier 2: ACT-R activation scoring
             access_ages = await self._store.get_access_times(memory_id)
             bl = base_level_activation(access_ages, decay=self._config.actr_decay)
 
-            # Spreading activation from graph
+            # Spreading activation from graph via shared entities
             memory_entities = self._graph.get_entity_ids_for_memory(memory_id)
-            # For now, context entities are empty (would come from query entity extraction)
             spread = spreading_activation(
                 memory_entity_ids=memory_entities,
-                context_entity_ids=[],
+                context_entity_ids=context_entity_ids,
                 source_activation=self._config.actr_max_spread,
             )
 
             noise = activation_noise(sigma=self._config.actr_noise)
             act = total_activation(bl, spread, noise)
 
-            # Combine BM25 and activation
-            combined = bm25_score * 0.6 + act * 0.4
+            # Combine BM25 and activation using configurable weights
+            w_bm25 = self._config.scoring_weight_bm25
+            w_actr = self._config.scoring_weight_actr
+            combined = bm25_score * w_bm25 + act * w_actr
+
+            # Compute retrieval probability for threshold filtering
+            ret_prob = retrieval_probability(
+                act,
+                threshold=self._config.actr_threshold,
+                tau=self._config.actr_temperature,
+            )
+
+            # Filter out very low probability candidates
+            if ret_prob < 0.05:
+                continue
 
             scored.append(
                 ScoredMemory(
@@ -175,6 +216,7 @@ class MemoryService:
                     base_level=bl,
                     spreading=spread,
                     total_activation=combined,
+                    retrieval_prob=ret_prob,
                 )
             )
 
@@ -187,9 +229,59 @@ class MemoryService:
                 )
             )
 
-        # Sort by combined score (descending)
+        # Sort by combined score (descending) — Tier 2 ranking
         scored.sort(key=lambda s: s.total_activation, reverse=True)
-        return scored[:limit]
+
+        # Tier 3: Optional LLM-as-judge reranking
+        if self._config.llm_judge_enabled and scored:
+            scored = await self._apply_llm_judge(query, scored)
+
+        results = scored[:limit]
+        if self._event_log:
+            self._event_log.memory_searched(
+                query=query,
+                result_count=len(results),
+                top_score=results[0].total_activation if results else None,
+                agent_id=agent_id,
+            )
+        return results
+
+    async def _apply_llm_judge(
+        self, query: str, scored: list[ScoredMemory],
+    ) -> list[ScoredMemory]:
+        """Apply LLM-as-judge reranking to top candidates (Tier 3)."""
+        from ncms.infrastructure.llm.judge import judge_relevance
+
+        # Only judge the top-k candidates to control cost
+        top_k = self._config.tier3_judge_top_k
+        candidates = scored[:top_k]
+        remainder = scored[top_k:]
+
+        judge_results = await judge_relevance(
+            query, candidates, model=self._config.llm_model,
+        )
+
+        # Build lookup of judge scores by memory_id
+        judge_scores = {mid: score for mid, score in judge_results}
+
+        # Blend: combined = activation * 0.4 + judge_relevance * 0.6
+        reranked: list[ScoredMemory] = []
+        for sm in candidates:
+            judge_score = judge_scores.get(sm.memory.id, 0.5)
+            blended = sm.total_activation * 0.4 + judge_score * 0.6
+            reranked.append(
+                ScoredMemory(
+                    memory=sm.memory,
+                    bm25_score=sm.bm25_score,
+                    base_level=sm.base_level,
+                    spreading=sm.spreading,
+                    total_activation=blended,
+                    retrieval_prob=sm.retrieval_prob,
+                )
+            )
+
+        reranked.sort(key=lambda s: s.total_activation, reverse=True)
+        return reranked + remainder
 
     # ── Direct Access ────────────────────────────────────────────────────
 
@@ -210,7 +302,9 @@ class MemoryService:
 
     # ── Entity Operations ────────────────────────────────────────────────
 
-    async def add_entity(self, name: str, entity_type: str, attributes: dict | None = None) -> Entity:
+    async def add_entity(
+        self, name: str, entity_type: str, attributes: dict | None = None,
+    ) -> Entity:
         # Check for existing entity with same name
         existing = await self._store.find_entity_by_name(name)
         if existing:

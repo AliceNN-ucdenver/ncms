@@ -6,7 +6,7 @@ This module has zero infrastructure dependencies.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _uuid() -> str:
@@ -230,6 +230,7 @@ class ScoredMemory(BaseModel):
     base_level: float = 0.0
     spreading: float = 0.0
     total_activation: float = 0.0
+    retrieval_prob: float = 1.0
 
 
 # ---------------------------------------------------------------------------

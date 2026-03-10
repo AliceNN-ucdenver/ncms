@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-136_passing-brightgreen" alt="136 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-189_passing-brightgreen" alt="189 Tests Passing">
 </p>
 
 ---
@@ -69,6 +69,21 @@ The demo runs three collaborative agents through a complete lifecycle including 
 
 All in-process. All in-memory. Zero external dependencies. Under 10 seconds.
 
+### Observability Dashboard
+
+```bash
+pip install "ncms[dashboard]"
+uv run ncms dashboard
+```
+
+Opens a real-time web dashboard at `http://localhost:8420` showing:
+
+- **Agent Panel** &mdash; Live status cards for each agent (online/sleeping/offline) with domain registrations
+- **Bus Activity Feed** &mdash; Real-time SSE stream of asks, responses, announcements, surrogate dispatches
+- **Memory Graph** &mdash; Interactive D3 force-directed visualization of entities, relationships, and linked memories
+
+The dashboard auto-runs demo agents by default. Use `--no-demo` for a blank canvas that observes your own agents.
+
 ---
 
 ## How It Works
@@ -87,16 +102,17 @@ Traditional memory systems compress documents into dense vectors, losing precisi
 
 **Tier 1 &mdash; BM25 Sparse Search** via Tantivy (Rust). Exact lexical matching plus stemming. When you search for `getProfile`, it matches `getProfile` &mdash; not "things conceptually near profiles."
 
-**Tier 2 &mdash; Knowledge Graph** via NetworkX. Entities and relationships extracted from memories. Multi-hop traversal finds connections BM25 misses: "UserService EXPOSES /profile" linked to "FrontendApp DEPENDS_ON UserService."
-
-**Tier 3 &mdash; ACT-R Cognitive Scoring.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science.
+**Tier 2 &mdash; ACT-R Cognitive Scoring + Knowledge Graph Spreading.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science.
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
-base_level(m) = ln( sum( (time_since_access)^(-0.5) ) )
+base_level(m) = ln( sum( (time_since_access)^(-decay) ) )
+combined(m)   = bm25_score * w_bm25 + activation * w_actr
 ```
 
-Recently and frequently accessed memories rise to the top. Dormant memories decay naturally. No manual curation needed.
+Entities (services, endpoints, technologies, tables) are **automatically extracted** from memories and queries. When query entities overlap with a memory's linked entities, spreading activation boosts that memory's score. The BM25/ACT-R weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_ACTR`). Sub-threshold memories are filtered by retrieval probability.
+
+**Tier 3 &mdash; LLM-as-Judge Reranking** (optional). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k Tier 2 candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking. Works with any model via [LiteLLM](https://github.com/BerriAI/litellm).
 
 ### Knowledge Bus: Osmotic Agent Coordination
 
@@ -356,10 +372,10 @@ uv run ncms serve
 
 ```
 src/ncms/
-  domain/           Pure models, protocols, ACT-R scoring (zero deps)
-  application/      Memory service, bus service, snapshot service, knowledge loader
+  domain/           Pure models, protocols, scoring, entity extraction (zero deps)
+  application/      Memory service, bus service, snapshot service, graph service, loader
   infrastructure/   SQLite, Tantivy, NetworkX, AsyncIO bus, LLM judge
-  interfaces/       MCP server, CLI, agent base class, hooks
+  interfaces/       MCP server, CLI, HTTP dashboard, agent base class, hooks
 ```
 
 **Clean Architecture.** Domain layer has zero infrastructure dependencies. Every infrastructure component implements a Protocol interface. Swap SQLite for Postgres, NetworkX for Neo4j, or AsyncIO for Redis Pub/Sub &mdash; no application code changes.
@@ -375,11 +391,22 @@ Environment variables with `NCMS_` prefix:
 | `NCMS_DB_PATH` | `~/.ncms/ncms.db` | SQLite database path |
 | `NCMS_INDEX_PATH` | `~/.ncms/index` | Tantivy index directory |
 | `NCMS_ACTR_DECAY` | `0.5` | Memory decay rate |
+| `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval activation threshold |
+| `NCMS_SCORING_WEIGHT_BM25` | `0.6` | BM25 weight in combined score |
+| `NCMS_SCORING_WEIGHT_ACTR` | `0.4` | ACT-R weight in combined score |
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Knowledge Bus ask timeout |
-| `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge scoring |
+| `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge reranking |
 | `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM-as-judge |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (default 7 days) |
+
+## Roadmap
+
+- [ ] Distributed memory configured through `config.yaml` for the NeMo Agent Toolkit config file
+- [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
+- [ ] SPLADE sparse vector scoring as Tier 1.5 (between BM25 and ACT-R)
+- [ ] Neo4j graph backend for production-scale knowledge graphs
+- [ ] Dashboard: historical replay and time-travel debugging
 
 ## License
 

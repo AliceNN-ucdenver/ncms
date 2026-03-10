@@ -9,6 +9,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from ncms.application.bus_service import BusService
+from ncms.application.graph_service import GraphService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.config import NCMSConfig
@@ -48,6 +49,10 @@ async def create_ncms_services(
         snapshot_service=snapshot_svc,
         surrogate_enabled=config.bus_surrogate_enabled,
     )
+
+    # Rebuild in-memory graph from persistent store (rehydrate after restart)
+    graph_svc = GraphService(store=store, graph=graph)
+    await graph_svc.rebuild_from_store()
 
     return memory_svc, bus_svc, snapshot_svc
 

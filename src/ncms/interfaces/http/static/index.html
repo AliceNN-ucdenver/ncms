@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NCMS Dashboard</title>
+<style>
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-card: #1c2129;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --accent-green: #3fb950;
+    --accent-amber: #d29922;
+    --accent-red: #f85149;
+    --accent-blue: #58a6ff;
+    --accent-purple: #bc8cff;
+    --accent-cyan: #39d2c0;
+    --accent-pink: #f778ba;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Header ────────────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    height: 56px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent-purple);
+    letter-spacing: 1px;
+  }
+
+  .logo-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+  }
+
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+  }
+
+  .stat-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .connection-dot.disconnected {
+    background: var(--accent-red);
+    animation: none;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main Layout (Architecture Diagram) ─────────────────────────── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(100vh - 56px);
+    padding: 24px 32px;
+    gap: 0;
+    overflow: auto;
+  }
+
+  /* ── Agent Areas ────────────────────────────────────────────────── */
+  .agents-area {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+    max-width: 1400px;
+  }
+
+  .agents-top { margin-bottom: 0; }
+  .agents-bottom { margin-top: 0; }
+
+  /* ── Agent Node ─────────────────────────────────────────────────── */
+  .agent-node {
+    width: 260px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.3s;
+  }
+
+  .agent-node:hover {
+    border-color: var(--accent-purple);
+  }
+
+  .agent-connector-wrapper {
+    display: flex;
+    justify-content: center;
+  }
+
+  .agent-connector {
+    width: 2px;
+    height: 28px;
+    background: var(--border);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  .agent-connector.flow-active {
+    background: var(--accent-purple);
+    box-shadow: 0 0 8px rgba(188, 140, 255, 0.5);
+  }
+
+  @keyframes flowPulse {
+    0% { background: var(--accent-purple); box-shadow: 0 0 8px rgba(188, 140, 255, 0.6); }
+    100% { background: var(--border); box-shadow: none; }
+  }
+
+  .agent-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 6px;
+  }
+
+  .agent-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .status-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .status-online { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .status-sleeping { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
+  .status-offline { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+
+  .agent-domains {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 12px 8px;
+  }
+
+  .domain-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-blue);
+    border-radius: 4px;
+    border: 1px solid rgba(88, 166, 255, 0.2);
+  }
+
+  .activity-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding: 4px 0;
+  }
+
+  .activity-list::-webkit-scrollbar { width: 4px; }
+  .activity-list::-webkit-scrollbar-track { background: transparent; }
+  .activity-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .activity-item:hover {
+    background: var(--bg-tertiary);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .activity-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .icon-ask { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+  .icon-response { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .icon-announce { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
+  .icon-surrogate { background: rgba(247, 120, 186, 0.15); color: var(--accent-pink); }
+  .icon-memory { background: rgba(57, 210, 192, 0.15); color: var(--accent-cyan); }
+  .icon-search { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+  .icon-agent { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+
+  .activity-text {
+    flex: 1;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .activity-time {
+    color: var(--text-muted);
+    font-size: 10px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    padding-top: 2px;
+  }
+
+  .no-activity {
+    color: var(--text-muted);
+    font-size: 11px;
+    text-align: center;
+    padding: 16px 8px;
+    font-style: italic;
+  }
+
+  /* ── Knowledge Bus Backbone ─────────────────────────────────────── */
+  .bus-backbone {
+    width: 90%;
+    max-width: 1400px;
+    height: 44px;
+    background: linear-gradient(90deg,
+      rgba(188, 140, 255, 0.08) 0%,
+      rgba(188, 140, 255, 0.18) 30%,
+      rgba(88, 166, 255, 0.18) 70%,
+      rgba(57, 210, 192, 0.08) 100%
+    );
+    border: 1px solid rgba(188, 140, 255, 0.25);
+    border-radius: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin: 0;
+  }
+
+  .bus-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-purple);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .bus-label::before,
+  .bus-label::after {
+    content: '';
+    width: 40px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-purple), transparent);
+  }
+
+  /* ── Waiting State ──────────────────────────────────────────────── */
+  .waiting-message {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 40px;
+    font-style: italic;
+  }
+
+  /* ── Detail Modal ───────────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: modalFade 0.2s ease;
+  }
+
+  @keyframes modalFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 560px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+
+  .modal-close:hover {
+    color: var(--text-primary);
+  }
+
+  .modal-type {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent-purple);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .modal-agent {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  .modal-field {
+    margin-bottom: 12px;
+  }
+
+  .modal-field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+
+  .modal-field-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+    word-break: break-word;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+
+  .modal-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .modal-tag {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-blue);
+    border: 1px solid rgba(88, 166, 255, 0.2);
+  }
+
+  .modal-confidence {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .confidence-high { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .confidence-med { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
+  .confidence-low { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="connection-dot" id="connection-dot"></div>
+    <div>
+      <span class="logo">NCMS</span>
+      <span class="logo-sub">Dashboard</span>
+    </div>
+  </div>
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat">Memories <span class="stat-value" id="stat-memories">0</span></div>
+    <div class="stat">Entities <span class="stat-value" id="stat-entities">0</span></div>
+    <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
+    <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Agents above the bus -->
+  <div class="agents-area agents-top" id="agents-top">
+    <div class="waiting-message">Waiting for agents to connect...</div>
+  </div>
+
+  <!-- Central Knowledge Bus backbone -->
+  <div class="bus-backbone">
+    <span class="bus-label">Knowledge Bus</span>
+  </div>
+
+  <!-- Agents below the bus (overflow) -->
+  <div class="agents-area agents-bottom" id="agents-bottom"></div>
+</div>
+
+<!-- Detail modal (rendered dynamically) -->
+<div id="modal-root"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────
+const state = {
+  agents: {},
+  eventCount: 0,
+  agentActivities: {},   // agent_id -> [event, ...]
+  eventStore: {},        // event.id -> event (for modal lookup)
+};
+
+const MAX_ACTIVITIES = 25;
+
+// ── SSE Connection ───────────────────────────────────────────────────
+let eventSource = null;
+let reconnectTimeout = null;
+
+function connectSSE() {
+  if (eventSource) eventSource.close();
+
+  eventSource = new EventSource('/api/events/stream');
+
+  eventSource.onopen = () => {
+    document.getElementById('connection-dot').classList.remove('disconnected');
+  };
+
+  eventSource.onerror = () => {
+    document.getElementById('connection-dot').classList.add('disconnected');
+    eventSource.close();
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(connectSSE, 3000);
+  };
+
+  const eventTypes = [
+    'agent.registered', 'agent.deregistered', 'agent.status',
+    'bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate',
+    'memory.stored', 'memory.searched'
+  ];
+
+  eventTypes.forEach(type => {
+    eventSource.addEventListener(type, (e) => {
+      handleEvent(JSON.parse(e.data));
+    });
+  });
+}
+
+// ── Event Handling ───────────────────────────────────────────────────
+function handleEvent(event) {
+  state.eventCount++;
+  state.eventStore[event.id] = event;
+
+  // Agent lifecycle events
+  if (event.type.startsWith('agent.')) {
+    handleAgentEvent(event);
+  }
+
+  // Route events to agent activity lists
+  if (event.agent_id) {
+    addAgentActivity(event.agent_id, event);
+  }
+
+  // Also add to target/recipient agents
+  if (event.type === 'bus.ask' && event.data.targets) {
+    event.data.targets.forEach(t => {
+      if (t !== event.agent_id) addAgentActivity(t, event);
+    });
+  }
+  if (event.type === 'bus.announce' && event.data.recipients) {
+    event.data.recipients.forEach(r => {
+      if (r !== event.agent_id) addAgentActivity(r, event);
+    });
+  }
+
+  // Animate connector
+  animateFlow(event.agent_id);
+
+  updateStats();
+}
+
+function handleAgentEvent(event) {
+  const agentId = event.agent_id;
+  if (!agentId) return;
+
+  if (event.type === 'agent.registered') {
+    state.agents[agentId] = {
+      agent_id: agentId,
+      domains: event.data.domains || [],
+      status: 'online',
+    };
+  } else if (event.type === 'agent.deregistered') {
+    if (state.agents[agentId]) {
+      state.agents[agentId].status = 'offline';
+    }
+  } else if (event.type === 'agent.status') {
+    if (state.agents[agentId]) {
+      state.agents[agentId].status = event.data.status;
+    }
+  }
+
+  renderAgents();
+}
+
+// ── Agent Activity ───────────────────────────────────────────────────
+function addAgentActivity(agentId, event) {
+  if (!state.agentActivities[agentId]) {
+    state.agentActivities[agentId] = [];
+  }
+
+  // Avoid duplicate events in same agent's feed
+  const existing = state.agentActivities[agentId];
+  if (existing.length > 0 && existing[0].id === event.id) return;
+
+  existing.unshift(event);
+  if (existing.length > MAX_ACTIVITIES) {
+    existing.pop();
+  }
+  renderAgentActivity(agentId);
+}
+
+function renderAgentActivity(agentId) {
+  const list = document.getElementById(`activity-${agentId}`);
+  if (!list) return;
+
+  const activities = state.agentActivities[agentId] || [];
+  if (activities.length === 0) {
+    list.innerHTML = '<div class="no-activity">No activity yet</div>';
+    return;
+  }
+
+  list.innerHTML = activities.map(e => activityItemHTML(e)).join('');
+}
+
+function activityItemHTML(event) {
+  const d = event.data || {};
+  const time = formatTime(event.timestamp);
+  let icon, text;
+
+  switch (event.type) {
+    case 'bus.ask':
+      icon = '<span class="activity-icon icon-ask">?</span>';
+      text = d.question || 'Asked a question';
+      break;
+    case 'bus.response':
+      icon = '<span class="activity-icon icon-response">&#x2713;</span>';
+      text = d.answer || `Responded (${d.source_mode}, ${(d.confidence * 100).toFixed(0)}%)`;
+      break;
+    case 'bus.announce':
+      icon = '<span class="activity-icon icon-announce">!</span>';
+      text = d.content || `Announced: ${d.event}`;
+      break;
+    case 'bus.surrogate':
+      icon = '<span class="activity-icon icon-surrogate">&#x2601;</span>';
+      text = d.answer || `Surrogate (${(d.confidence * 100).toFixed(0)}%)`;
+      break;
+    case 'memory.stored':
+      icon = '<span class="activity-icon icon-memory">&#x2B22;</span>';
+      text = d.content || 'Memory stored';
+      break;
+    case 'memory.searched':
+      icon = '<span class="activity-icon icon-search">&#x2315;</span>';
+      text = `Search: "${d.query}" (${d.result_count})`;
+      break;
+    case 'agent.registered':
+      icon = '<span class="activity-icon icon-agent">+</span>';
+      text = 'Registered';
+      break;
+    case 'agent.deregistered':
+      icon = '<span class="activity-icon icon-agent">&minus;</span>';
+      text = 'Deregistered';
+      break;
+    case 'agent.status':
+      icon = '<span class="activity-icon icon-agent">&#x25CF;</span>';
+      text = `Status: ${d.status}`;
+      break;
+    default:
+      icon = '<span class="activity-icon icon-agent">&#x2022;</span>';
+      text = event.type;
+  }
+
+  const shortText = text.length > 50 ? text.slice(0, 47) + '...' : text;
+
+  return `<div class="activity-item" onclick="showDetail('${event.id}')">
+    ${icon}
+    <span class="activity-text" title="${escapeHtml(text)}">${escapeHtml(shortText)}</span>
+    <span class="activity-time">${time}</span>
+  </div>`;
+}
+
+// ── Agent Rendering ──────────────────────────────────────────────────
+function renderAgents() {
+  const agents = Object.values(state.agents);
+  const topPanel = document.getElementById('agents-top');
+  const bottomPanel = document.getElementById('agents-bottom');
+
+  if (agents.length === 0) {
+    topPanel.innerHTML = '<div class="waiting-message">Waiting for agents to connect...</div>';
+    bottomPanel.innerHTML = '';
+    return;
+  }
+
+  // Split: up to 4 on top, rest on bottom
+  const topCount = Math.min(agents.length, 4);
+  const topAgents = agents.slice(0, topCount);
+  const bottomAgents = agents.slice(topCount);
+
+  topPanel.innerHTML = topAgents.map(a => agentNodeHTML(a, 'bottom')).join('');
+  bottomPanel.innerHTML = bottomAgents.map(a => agentNodeHTML(a, 'top')).join('');
+}
+
+function agentNodeHTML(agent, connectorSide) {
+  const activities = state.agentActivities[agent.agent_id] || [];
+  const activityHTML = activities.length > 0
+    ? activities.map(e => activityItemHTML(e)).join('')
+    : '<div class="no-activity">No activity yet</div>';
+
+  const connector = `<div class="agent-connector-wrapper">
+    <div class="agent-connector" id="connector-${agent.agent_id}"></div>
+  </div>`;
+
+  const card = `<div class="agent-node" id="agent-${agent.agent_id}">
+    <div class="agent-header">
+      <span class="agent-name">${agent.agent_id}</span>
+      <span class="status-badge status-${agent.status}">${agent.status}</span>
+    </div>
+    <div class="agent-domains">
+      ${(agent.domains || []).map(d => `<span class="domain-tag">${d}</span>`).join('')}
+    </div>
+    <div class="activity-list" id="activity-${agent.agent_id}">
+      ${activityHTML}
+    </div>
+  </div>`;
+
+  // Connector goes below card for top agents, above card for bottom agents
+  return connectorSide === 'bottom'
+    ? card + connector
+    : connector + card;
+}
+
+// ── Connector Animation ──────────────────────────────────────────────
+function animateFlow(agentId) {
+  if (!agentId) return;
+  const connector = document.getElementById(`connector-${agentId}`);
+  if (!connector) return;
+
+  connector.classList.remove('flow-active');
+  // Force reflow to restart animation
+  void connector.offsetWidth;
+  connector.classList.add('flow-active');
+  setTimeout(() => connector.classList.remove('flow-active'), 800);
+}
+
+// ── Detail Modal ─────────────────────────────────────────────────────
+function showDetail(eventId) {
+  const event = state.eventStore[eventId];
+  if (!event) return;
+
+  const d = event.data || {};
+  let fieldsHTML = '';
+
+  if (event.type === 'bus.ask') {
+    fieldsHTML += modalField('Question', d.question || '(empty)');
+    fieldsHTML += modalField('Domains', tagsHTML(d.domains));
+    fieldsHTML += modalField('Routed To', tagsHTML(d.targets));
+  } else if (event.type === 'bus.response') {
+    fieldsHTML += modalField('Answer', d.answer || '(not available)');
+    fieldsHTML += modalField('Source Mode', d.source_mode);
+    fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
+  } else if (event.type === 'bus.announce') {
+    fieldsHTML += modalField('Event', d.event);
+    fieldsHTML += modalField('Content', d.content || '(not available)');
+    fieldsHTML += modalField('Severity', d.severity);
+    fieldsHTML += modalField('Domains', tagsHTML(d.domains));
+    fieldsHTML += modalField('Recipients', tagsHTML(d.recipients));
+  } else if (event.type === 'bus.surrogate') {
+    fieldsHTML += modalField('Answer', d.answer || '(not available)');
+    fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
+    fieldsHTML += modalField('Snapshot Age', formatAge(d.snapshot_age_seconds));
+  } else if (event.type === 'memory.stored') {
+    fieldsHTML += modalField('Content', d.content || '');
+    fieldsHTML += modalField('Type', d.type);
+    fieldsHTML += modalField('Domains', tagsHTML(d.domains));
+    fieldsHTML += modalField('Entities Extracted', String(d.entity_count || 0));
+  } else if (event.type === 'memory.searched') {
+    fieldsHTML += modalField('Query', d.query || '');
+    fieldsHTML += modalField('Results', String(d.result_count));
+    if (d.top_score != null) {
+      fieldsHTML += modalField('Top Score', d.top_score.toFixed(3));
+    }
+  } else {
+    fieldsHTML += modalField('Data', '<pre>' + escapeHtml(JSON.stringify(d, null, 2)) + '</pre>');
+  }
+
+  const modal = document.getElementById('modal-root');
+  modal.innerHTML = `
+    <div class="modal-overlay" onclick="closeModal(event)">
+      <div class="modal-content" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-type">${event.type}</div>
+        <div class="modal-agent">${event.agent_id || 'System'} &middot; ${formatTimeFull(event.timestamp)}</div>
+        ${fieldsHTML}
+      </div>
+    </div>`;
+}
+
+function closeModal(e) {
+  if (e && e.target && !e.target.classList.contains('modal-overlay')) return;
+  document.getElementById('modal-root').innerHTML = '';
+}
+
+function modalField(label, value) {
+  return `<div class="modal-field">
+    <div class="modal-field-label">${label}</div>
+    <div class="modal-field-value">${value}</div>
+  </div>`;
+}
+
+function tagsHTML(items) {
+  if (!items || items.length === 0) return '<span style="color: var(--text-muted)">none</span>';
+  return '<div class="modal-tags">' +
+    items.map(t => `<span class="modal-tag">${escapeHtml(t)}</span>`).join('') +
+    '</div>';
+}
+
+function confidenceHTML(confidence) {
+  if (confidence == null) return 'N/A';
+  const pct = (confidence * 100).toFixed(1);
+  const cls = confidence >= 0.7 ? 'confidence-high' :
+              confidence >= 0.4 ? 'confidence-med' : 'confidence-low';
+  return `<span class="modal-confidence ${cls}">${pct}%</span>`;
+}
+
+// ── Utils ────────────────────────────────────────────────────────────
+function formatTime(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString('en-US', {
+      hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  } catch { return ''; }
+}
+
+function formatTimeFull(isoStr) {
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString('en-US', {
+      hour12: false, month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  } catch { return isoStr; }
+}
+
+function formatAge(seconds) {
+  if (!seconds && seconds !== 0) return 'unknown';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Stats ────────────────────────────────────────────────────────────
+async function updateStats() {
+  try {
+    const resp = await fetch('/api/stats');
+    const data = await resp.json();
+    document.getElementById('stat-memories').textContent = data.memory_count;
+    document.getElementById('stat-entities').textContent = data.entity_count;
+    document.getElementById('stat-agents').textContent = `${data.agents_online}/${data.agent_count}`;
+    document.getElementById('stat-events').textContent = data.event_count;
+  } catch (e) { /* ignore */ }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  connectSSE();
+  updateStats();
+  setInterval(updateStats, 5000);
+
+  // Close modal on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+  });
+});
+</script>
+</body>
+</html>

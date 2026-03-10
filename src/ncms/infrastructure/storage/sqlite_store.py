@@ -7,7 +7,7 @@ All SQL is parameterized to prevent injection.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -24,7 +24,7 @@ from ncms.infrastructure.storage.migrations import run_migrations
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class SQLiteStore:
@@ -134,7 +134,7 @@ class SQLiteStore:
 
     async def get_access_times(self, memory_id: str) -> list[float]:
         """Return ages in seconds of all accesses for a memory."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cursor = await self.db.execute(
             "SELECT accessed_at FROM access_log WHERE memory_id = ? ORDER BY accessed_at DESC",
             (memory_id,),
@@ -144,7 +144,7 @@ class SQLiteStore:
         for row in rows:
             accessed = datetime.fromisoformat(row[0])
             if accessed.tzinfo is None:
-                accessed = accessed.replace(tzinfo=timezone.utc)
+                accessed = accessed.replace(tzinfo=UTC)
             age = (now - accessed).total_seconds()
             if age > 0:
                 ages.append(age)

@@ -5,8 +5,6 @@ Resources provide read-only data access via ncms:// URIs.
 
 from __future__ import annotations
 
-from typing import Any
-
 from mcp.server.fastmcp import FastMCP
 
 from ncms.application.bus_service import BusService

@@ -20,9 +20,11 @@ uv sync                          # Install all deps
 uv sync --extra docs             # Install with document support (DOCX/PPTX/PDF/XLSX)
 uv run ncms demo                 # Run interactive demo (in-memory, no side effects)
 uv run ncms serve                # Start MCP server
+uv run ncms dashboard            # Start observability dashboard (web UI)
+uv run ncms dashboard --no-demo  # Dashboard without auto-starting demo agents
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (136 tests)
+uv run pytest tests/ -v          # Run all tests (193 tests)
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
@@ -37,26 +39,31 @@ src/ncms/
 │   ├── models.py     # All Pydantic models (Memory, KnowledgeAsk, KnowledgeResponse, etc.)
 │   ├── protocols.py  # Protocol interfaces (MemoryStore, IndexEngine, GraphEngine, etc.)
 │   ├── scoring.py    # ACT-R activation math (pure functions, no I/O)
+│   ├── entity_extraction.py # Auto entity extraction (regex, heuristics, tech names)
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
-│   ├── graph_service.py         # Entity resolution, subgraph extraction
+│   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
 │   ├── consolidation_service.py # Decay, merge, prune background tasks
-│   └── knowledge_loader.py      # "Matrix download" — import files into memory (+ markitdown for DOCX/PPTX/PDF/XLSX)
+│   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 7 tables, WAL mode, parameterized SQL
 │   ├── storage/migrations.py    # DDL for schema creation and versioning
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
-│   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph
+│   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
-│   └── llm/judge.py            # Optional LLM-as-judge via litellm
+│   ├── llm/judge.py            # Optional LLM-as-judge via litellm
+│   └── observability/event_log.py # Ring buffer event log + SSE subscriber support
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
 │   ├── mcp/tools.py            # 10 MCP tools
 │   ├── mcp/resources.py        # 4 MCP resources (ncms://...)
-│   ├── cli/main.py             # Click CLI: ncms serve|demo|info|load
+│   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST)
+│   ├── http/demo_runner.py     # Dashboard demo scenario runner
+│   ├── http/static/index.html  # SPA frontend (D3 graph, SSE event feed)
+│   ├── cli/main.py             # Click CLI: ncms serve|demo|dashboard|info|load
 │   ├── cli/commit_hook.py      # ncms-commit-hook for Claude Code/Copilot
 │   ├── cli/context_loader.py   # ncms-context-loader for session start
 │   └── agent/base.py           # KnowledgeAgent ABC (start/sleep/wake/shutdown)
