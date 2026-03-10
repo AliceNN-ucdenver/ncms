@@ -100,34 +100,39 @@
     50% { opacity: 0.4; }
   }
 
-  /* ── Main Layout (Architecture Diagram) ─────────────────────────── */
+  /* ── Main Layout ─────────────────────────────────────────────── */
   .main {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     height: calc(100vh - 56px);
-    padding: 24px 32px;
+    padding: 24px 32px 16px;
     gap: 0;
     overflow: auto;
   }
 
-  /* ── Agent Areas ────────────────────────────────────────────────── */
+  /* ── Agent Area (all above bus) ──────────────────────────────── */
   .agents-area {
     display: flex;
-    gap: 24px;
+    gap: 28px;
     justify-content: center;
     flex-wrap: wrap;
     width: 100%;
     max-width: 1400px;
+    margin-bottom: 0;
   }
 
-  .agents-top { margin-bottom: 0; }
-  .agents-bottom { margin-top: 0; }
+  /* ── Agent Column: card + connector ─────────────────────────── */
+  .agent-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 270px;
+  }
 
-  /* ── Agent Node ─────────────────────────────────────────────────── */
+  /* ── Agent Node ─────────────────────────────────────────────── */
   .agent-node {
-    width: 260px;
+    width: 270px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -140,28 +145,68 @@
     border-color: var(--accent-purple);
   }
 
-  .agent-connector-wrapper {
-    display: flex;
-    justify-content: center;
-  }
-
+  /* ── Connector Line (agent → bus) ───────────────────────────── */
   .agent-connector {
-    width: 2px;
-    height: 28px;
+    width: 3px;
+    height: 40px;
     background: var(--border);
-    transition: background 0.3s, box-shadow 0.3s;
+    position: relative;
+    overflow: visible;
+    transition: background 0.3s;
   }
 
-  .agent-connector.flow-active {
-    background: var(--accent-purple);
-    box-shadow: 0 0 8px rgba(188, 140, 255, 0.5);
+  /* Flow dot that travels down the connector line */
+  .agent-connector .flow-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    left: -2px;
+    top: -4px;
+    opacity: 0;
+    pointer-events: none;
   }
 
-  @keyframes flowPulse {
-    0% { background: var(--accent-purple); box-shadow: 0 0 8px rgba(188, 140, 255, 0.6); }
-    100% { background: var(--border); box-shadow: none; }
+  .agent-connector .flow-dot.sending {
+    background: var(--accent-blue);
+    box-shadow: 0 0 6px var(--accent-blue);
   }
 
+  .agent-connector .flow-dot.receiving {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+  }
+
+  @keyframes flowDown {
+    0%   { top: -4px; opacity: 1; }
+    100% { top: 36px; opacity: 0.3; }
+  }
+
+  @keyframes flowUp {
+    0%   { top: 36px; opacity: 1; }
+    100% { top: -4px; opacity: 0.3; }
+  }
+
+  .agent-connector .flow-dot.animate-send {
+    animation: flowDown 0.5s ease-out forwards;
+  }
+
+  .agent-connector .flow-dot.animate-receive {
+    animation: flowUp 0.5s ease-out forwards;
+  }
+
+  /* Active glow on connector */
+  .agent-connector.flow-send {
+    background: var(--accent-blue);
+    box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+  }
+
+  .agent-connector.flow-receive {
+    background: var(--accent-green);
+    box-shadow: 0 0 8px rgba(63, 185, 80, 0.4);
+  }
+
+  /* ── Agent Card Content ─────────────────────────────────────── */
   .agent-header {
     display: flex;
     align-items: center;
@@ -307,7 +352,7 @@
     font-style: italic;
   }
 
-  /* ── Knowledge Bus Backbone ─────────────────────────────────────── */
+  /* ── Knowledge Bus Backbone ─────────────────────────────────── */
   .bus-backbone {
     width: 90%;
     max-width: 1400px;
@@ -325,6 +370,7 @@
     justify-content: center;
     position: relative;
     margin: 0;
+    flex-shrink: 0;
   }
 
   .bus-label {
@@ -346,7 +392,7 @@
     background: linear-gradient(90deg, transparent, var(--accent-purple), transparent);
   }
 
-  /* ── Waiting State ──────────────────────────────────────────────── */
+  /* ── Waiting State ──────────────────────────────────────────── */
   .waiting-message {
     color: var(--text-muted);
     font-size: 13px;
@@ -355,7 +401,7 @@
     font-style: italic;
   }
 
-  /* ── Detail Modal ───────────────────────────────────────────────── */
+  /* ── Detail Modal ───────────────────────────────────────────── */
   .modal-overlay {
     position: fixed;
     inset: 0;
@@ -606,8 +652,8 @@
 </div>
 
 <div class="main">
-  <!-- Agents above the bus -->
-  <div class="agents-area agents-top" id="agents-top">
+  <!-- All agents above the bus -->
+  <div class="agents-area" id="agents-area">
     <div class="waiting-message">Waiting for agents to connect...</div>
   </div>
 
@@ -615,9 +661,6 @@
   <div class="bus-backbone">
     <span class="bus-label">Knowledge Bus</span>
   </div>
-
-  <!-- Agents below the bus (overflow) -->
-  <div class="agents-area agents-bottom" id="agents-bottom"></div>
 </div>
 
 <!-- Detail modal (rendered dynamically) -->
@@ -687,14 +730,14 @@ function handleEvent(event) {
     const thread = state.askIndex[d.ask_id];
     if (thread) {
       thread.responses.push(event);
-      // Also add reply to the ASKING agent's feed (the agent who asked the question)
+      // Also add reply to the ASKING agent's feed
       const askingAgent = thread.askEvent.agent_id;
       if (askingAgent && askingAgent !== event.agent_id) {
-        // Mark this as a reply so we render it differently
         const replyEntry = Object.assign({}, event, { _isReply: true, _replyFrom: event.agent_id });
         state.eventStore[event.id + '_reply'] = replyEntry;
         addAgentActivity(askingAgent, replyEntry);
-        animateFlow(askingAgent);
+        // Animate a RECEIVE on the asking agent's connector
+        animateFlow(askingAgent, 'receive');
       }
     }
   }
@@ -707,17 +750,26 @@ function handleEvent(event) {
   // Also add to target/recipient agents
   if (event.type === 'bus.ask' && d.targets) {
     d.targets.forEach(t => {
-      if (t !== event.agent_id) addAgentActivity(t, event);
+      if (t !== event.agent_id) {
+        addAgentActivity(t, event);
+        animateFlow(t, 'receive');
+      }
     });
   }
   if (event.type === 'bus.announce' && d.recipients) {
     d.recipients.forEach(r => {
-      if (r !== event.agent_id) addAgentActivity(r, event);
+      if (r !== event.agent_id) {
+        addAgentActivity(r, event);
+        animateFlow(r, 'receive');
+      }
     });
   }
 
-  // Animate connector
-  animateFlow(event.agent_id);
+  // Animate SEND on the originating agent's connector
+  if (event.agent_id && !event._isReply) {
+    const isSending = ['bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate'].includes(event.type);
+    animateFlow(event.agent_id, isSending ? 'send' : 'neutral');
+  }
 
   updateStats();
 }
@@ -792,7 +844,6 @@ function activityItemHTML(event) {
     const snapshotTag = isSurrogate ? '<span class="snapshot-badge">snapshot</span>' : '';
     fromLabel = `<div class="${fromClass}">${escapeHtml(replyFrom)}${snapshotTag}</div>`;
     const shortText = text.length > 45 ? text.slice(0, 42) + '...' : text;
-    // Use the real event id (strip _reply suffix) for modal
     const realId = event.id.replace(/_reply$/, '');
     return `<div class="activity-item" onclick="showDetail('${realId}')">
       ${icon}
@@ -820,7 +871,6 @@ function activityItemHTML(event) {
     case 'bus.surrogate':
       icon = '<span class="activity-icon icon-surrogate">&#x2601;</span>';
       text = d.answer || `Surrogate (${(d.confidence * 100).toFixed(0)}%)`;
-      // Surrogate items in the responder's own feed get a snapshot badge appended
       const surShort = text.length > 40 ? text.slice(0, 37) + '...' : text;
       return `<div class="activity-item" onclick="showDetail('${event.id}')">
         ${icon}
@@ -866,64 +916,72 @@ function activityItemHTML(event) {
 // ── Agent Rendering ──────────────────────────────────────────────────
 function renderAgents() {
   const agents = Object.values(state.agents);
-  const topPanel = document.getElementById('agents-top');
-  const bottomPanel = document.getElementById('agents-bottom');
+  const panel = document.getElementById('agents-area');
 
   if (agents.length === 0) {
-    topPanel.innerHTML = '<div class="waiting-message">Waiting for agents to connect...</div>';
-    bottomPanel.innerHTML = '';
+    panel.innerHTML = '<div class="waiting-message">Waiting for agents to connect...</div>';
     return;
   }
 
-  // Split: up to 4 on top, rest on bottom
-  const topCount = Math.min(agents.length, 4);
-  const topAgents = agents.slice(0, topCount);
-  const bottomAgents = agents.slice(topCount);
-
-  topPanel.innerHTML = topAgents.map(a => agentNodeHTML(a, 'bottom')).join('');
-  bottomPanel.innerHTML = bottomAgents.map(a => agentNodeHTML(a, 'top')).join('');
+  panel.innerHTML = agents.map(a => agentColumnHTML(a)).join('');
 }
 
-function agentNodeHTML(agent, connectorSide) {
+function agentColumnHTML(agent) {
   const activities = state.agentActivities[agent.agent_id] || [];
   const activityHTML = activities.length > 0
     ? activities.map(e => activityItemHTML(e)).join('')
     : '<div class="no-activity">No activity yet</div>';
 
-  const connector = `<div class="agent-connector-wrapper">
-    <div class="agent-connector" id="connector-${agent.agent_id}"></div>
+  return `<div class="agent-column">
+    <div class="agent-node" id="agent-${agent.agent_id}">
+      <div class="agent-header">
+        <span class="agent-name">${agent.agent_id}</span>
+        <span class="status-badge status-${agent.status}">${agent.status}</span>
+      </div>
+      <div class="agent-domains">
+        ${(agent.domains || []).map(d => `<span class="domain-tag">${d}</span>`).join('')}
+      </div>
+      <div class="activity-list" id="activity-${agent.agent_id}">
+        ${activityHTML}
+      </div>
+    </div>
+    <div class="agent-connector" id="connector-${agent.agent_id}">
+      <div class="flow-dot" id="flow-dot-${agent.agent_id}"></div>
+    </div>
   </div>`;
-
-  const card = `<div class="agent-node" id="agent-${agent.agent_id}">
-    <div class="agent-header">
-      <span class="agent-name">${agent.agent_id}</span>
-      <span class="status-badge status-${agent.status}">${agent.status}</span>
-    </div>
-    <div class="agent-domains">
-      ${(agent.domains || []).map(d => `<span class="domain-tag">${d}</span>`).join('')}
-    </div>
-    <div class="activity-list" id="activity-${agent.agent_id}">
-      ${activityHTML}
-    </div>
-  </div>`;
-
-  // Connector goes below card for top agents, above card for bottom agents
-  return connectorSide === 'bottom'
-    ? card + connector
-    : connector + card;
 }
 
 // ── Connector Animation ──────────────────────────────────────────────
-function animateFlow(agentId) {
+function animateFlow(agentId, direction) {
   if (!agentId) return;
   const connector = document.getElementById(`connector-${agentId}`);
+  const dot = document.getElementById(`flow-dot-${agentId}`);
   if (!connector) return;
 
-  connector.classList.remove('flow-active');
-  // Force reflow to restart animation
-  void connector.offsetWidth;
-  connector.classList.add('flow-active');
-  setTimeout(() => connector.classList.remove('flow-active'), 800);
+  // Clear previous states
+  connector.classList.remove('flow-send', 'flow-receive');
+
+  if (direction === 'send') {
+    connector.classList.add('flow-send');
+    if (dot) {
+      dot.className = 'flow-dot sending';
+      void dot.offsetWidth; // force reflow
+      dot.classList.add('animate-send');
+    }
+  } else if (direction === 'receive') {
+    connector.classList.add('flow-receive');
+    if (dot) {
+      dot.className = 'flow-dot receiving';
+      void dot.offsetWidth;
+      dot.classList.add('animate-receive');
+    }
+  }
+
+  // Reset after animation
+  setTimeout(() => {
+    connector.classList.remove('flow-send', 'flow-receive');
+    if (dot) dot.className = 'flow-dot';
+  }, 600);
 }
 
 // ── Detail Modal ─────────────────────────────────────────────────────
@@ -938,13 +996,11 @@ function showDetail(eventId) {
     fieldsHTML += modalField('Question', d.question || '(empty)');
     fieldsHTML += modalField('Domains', tagsHTML(d.domains));
     fieldsHTML += modalField('Routed To', tagsHTML(d.targets));
-    // Show conversation thread: the ask + any responses
     fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'bus.response') {
     fieldsHTML += modalField('Answer', d.answer || '(not available)');
     fieldsHTML += modalField('Source Mode', d.source_mode);
     fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
-    // Show conversation thread: the original ask + this response
     fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'bus.announce') {
     fieldsHTML += modalField('Event', d.event);
@@ -956,7 +1012,6 @@ function showDetail(eventId) {
     fieldsHTML += modalField('Answer', d.answer || '(not available)');
     fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
     fieldsHTML += modalField('Snapshot Age', formatAge(d.snapshot_age_seconds));
-    // Show conversation thread: the original ask + this surrogate
     fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'memory.stored') {
     fieldsHTML += modalField('Content', d.content || '');

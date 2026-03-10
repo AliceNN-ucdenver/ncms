@@ -160,7 +160,7 @@ class TestSnapshotFlow:
     async def test_surrogate_response_has_discounted_confidence(
         self, bus_service, memory_service, snapshot_service
     ):
-        """Surrogate responses should have lower confidence than live responses."""
+        """Surrogate responses should apply the 0.8 discount factor."""
         agent = SimpleAgent("conf-test", ["api"], bus_service, memory_service, snapshot_service)
         await agent.start()
         await agent.store_knowledge(
@@ -168,7 +168,7 @@ class TestSnapshotFlow:
             domains=["api"],
         )
 
-        await agent.sleep()
+        snapshot = await agent.sleep()
 
         requester = SimpleAgent(
             "requester", ["frontend"], bus_service, memory_service, snapshot_service
@@ -181,8 +181,12 @@ class TestSnapshotFlow:
         )
 
         assert response is not None
-        # Surrogate confidence should be discounted (< 1.0)
-        assert response.confidence < 1.0
+        # Surrogate confidence = entry_confidence × 0.8 (discount factor)
+        # The entry confidence comes from collect_working_knowledge (default 0.5)
+        snapshot_entry_conf = SnapshotEntry.model_fields["confidence"].default
+        surrogate_discount = 0.8
+        expected_confidence = snapshot_entry_conf * surrogate_discount
+        assert response.confidence == pytest.approx(expected_confidence, abs=0.01)
 
     @pytest.mark.asyncio
     async def test_sleep_makes_agent_offline(

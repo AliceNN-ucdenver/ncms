@@ -92,7 +92,7 @@ class KnowledgeAsk(BaseModel):
     urgency: Literal["blocking", "important", "background"] = "important"
     context: AskContext = Field(default_factory=AskContext)
     response_format: str = "any"
-    ttl_ms: int = 30000
+    ttl_ms: int = 5000
     created_at: datetime = Field(default_factory=_utcnow)
 
 

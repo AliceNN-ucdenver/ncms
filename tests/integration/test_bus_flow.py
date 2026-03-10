@@ -12,6 +12,13 @@ from ncms.domain.models import (
     SubscriptionFilter,
 )
 
+# Shared test timeouts — fast enough for in-process tests, long enough to avoid flakes.
+# Matches the fixture's bus ask_timeout_ms (2000) for consistency.
+TEST_TIMEOUT_MS = 2000
+
+# Shorter timeout for negative cases (no provider, no match) — keeps tests fast.
+NEGATIVE_TIMEOUT_MS = 500
+
 
 class TestBusRouting:
     @pytest.mark.asyncio
@@ -37,7 +44,7 @@ class TestBusRouting:
             question="What is the API?",
             domains=["api"],
         )
-        response = await bus_service.ask_sync(ask, timeout_ms=2000)
+        response = await bus_service.ask_sync(ask, timeout_ms=TEST_TIMEOUT_MS)
 
         assert response is not None
         assert response.knowledge.content == expected_content
@@ -53,7 +60,7 @@ class TestBusRouting:
             question="Anything?",
             domains=["nonexistent-domain"],
         )
-        response = await bus_service.ask_sync(ask, timeout_ms=500)
+        response = await bus_service.ask_sync(ask, timeout_ms=NEGATIVE_TIMEOUT_MS)
         assert response is None
 
     @pytest.mark.asyncio
@@ -79,7 +86,7 @@ class TestBusRouting:
             question=question_text,
             domains=["info"],
         )
-        await bus_service.ask_sync(ask, timeout_ms=2000)
+        await bus_service.ask_sync(ask, timeout_ms=TEST_TIMEOUT_MS)
 
         assert len(received_questions) == 1
         assert received_questions[0] == question_text
@@ -100,7 +107,7 @@ class TestBusRouting:
 
         await bus_service.register_provider("asker", ["other"])
         ask = KnowledgeAsk(from_agent="asker", question="?", domains=["test-domain"])
-        response = await bus_service.ask_sync(ask, timeout_ms=2000)
+        response = await bus_service.ask_sync(ask, timeout_ms=TEST_TIMEOUT_MS)
 
         assert response is not None
         assert response.ask_id == ask.ask_id

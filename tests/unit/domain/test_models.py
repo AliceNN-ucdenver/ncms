@@ -109,6 +109,13 @@ class TestKnowledgeAsk:
         a2 = KnowledgeAsk(from_agent="t", question="q2")
         assert a1.ask_id != a2.ask_id
 
+    def test_ttl_ms_default_matches_bus_config(self):
+        """Default ttl_ms should match the bus config default (prevents drift)."""
+        from ncms.config import NCMSConfig
+        config = NCMSConfig(db_path=":memory:")
+        ask = KnowledgeAsk(from_agent="t", question="q")
+        assert ask.ttl_ms == config.bus_ask_timeout_ms
+
 
 class TestKnowledgeResponse:
     def test_live_mode_default(self):
