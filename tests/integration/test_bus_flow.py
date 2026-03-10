@@ -196,6 +196,102 @@ class TestAnnouncements:
         assert len(remaining) == 0
 
 
+class TestBroadcastDomain:
+    """Tests for the * broadcast domain behavior."""
+
+    @pytest.mark.asyncio
+    async def test_empty_domains_broadcasts_to_all(self, bus_service):
+        """Announcing with no domains should reach all agents via broadcast."""
+        await bus_service.register_provider("sender", ["db"])
+        await bus_service.register_provider("agent-a", ["api"])
+        await bus_service.register_provider("agent-b", ["frontend"])
+        # agent-a and agent-b have no explicit subscriptions beyond auto "*"
+
+        announcement = KnowledgeAnnounce(
+            from_agent="sender",
+            event="updated",
+            domains=[],  # No domains — should broadcast to all
+            knowledge=KnowledgePayload(content="system-wide notice"),
+        )
+        await bus_service.announce(announcement)
+
+        ann_a = await bus_service.get_announcements("agent-a")
+        ann_b = await bus_service.get_announcements("agent-b")
+        assert len(ann_a) == 1
+        assert ann_a[0].knowledge.content == "system-wide notice"
+        assert len(ann_b) == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_star_domain_reaches_all(self, bus_service):
+        """Announcing with domains=['*'] should reach all agents."""
+        await bus_service.register_provider("sender", ["db"])
+        await bus_service.register_provider("receiver", ["api"])
+
+        announcement = KnowledgeAnnounce(
+            from_agent="sender",
+            event="updated",
+            domains=["*"],
+            knowledge=KnowledgePayload(content="star broadcast"),
+        )
+        await bus_service.announce(announcement)
+
+        announcements = await bus_service.get_announcements("receiver")
+        assert len(announcements) == 1
+        assert announcements[0].knowledge.content == "star broadcast"
+
+    @pytest.mark.asyncio
+    async def test_specific_domain_does_not_match_broadcast_subscription(self, bus_service):
+        """A domain-specific announcement should NOT match the * subscription alone."""
+        await bus_service.register_provider("sender", ["db"])
+        await bus_service.register_provider("bystander", ["frontend"])
+        # bystander only has auto "*" subscription, not "db"
+
+        announcement = KnowledgeAnnounce(
+            from_agent="sender",
+            event="updated",
+            domains=["db"],
+            knowledge=KnowledgePayload(content="db-only update"),
+        )
+        await bus_service.announce(announcement)
+
+        announcements = await bus_service.get_announcements("bystander")
+        assert len(announcements) == 0
+
+    @pytest.mark.asyncio
+    async def test_explicit_subscription_still_works_alongside_broadcast(self, bus_service):
+        """Agents with explicit domain subscriptions should still receive domain announcements."""
+        await bus_service.register_provider("sender", ["db"])
+        await bus_service.register_provider("receiver", ["api"])
+        await bus_service.subscribe("receiver", ["db"])  # explicit subscription
+
+        announcement = KnowledgeAnnounce(
+            from_agent="sender",
+            event="updated",
+            domains=["db"],
+            knowledge=KnowledgePayload(content="db update"),
+        )
+        await bus_service.announce(announcement)
+
+        announcements = await bus_service.get_announcements("receiver")
+        assert len(announcements) == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_not_sent_to_self(self, bus_service):
+        """Broadcast announcements should not be delivered to the sender."""
+        await bus_service.register_provider("sender", ["db"])
+
+        announcement = KnowledgeAnnounce(
+            from_agent="sender",
+            event="updated",
+            domains=[],
+            knowledge=KnowledgePayload(content="self-broadcast test"),
+        )
+        await bus_service.announce(announcement)
+
+        announcements = await bus_service.get_announcements("sender")
+        assert len(announcements) == 0
+
+
 class TestAgentLifecycle:
     @pytest.mark.asyncio
     async def test_deregister_removes_agent(self, bus_service):

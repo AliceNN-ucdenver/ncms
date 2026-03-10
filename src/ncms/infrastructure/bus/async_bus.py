@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 AskHandler = Callable[[KnowledgeAsk], Awaitable[KnowledgeResponse | None]]
 
+# Reserved broadcast domain — all agents subscribe to this automatically.
+# Announcements with no domains get routed here so they reach everyone.
+BROADCAST_DOMAIN = "*"
+
 
 class AsyncKnowledgeBus:
     """In-process asyncio-based Knowledge Bus."""
@@ -81,6 +85,18 @@ class AsyncKnowledgeBus:
             providers = self._domain_providers.setdefault(domain, [])
             if agent_id not in providers:
                 providers.append(agent_id)
+
+        # Auto-subscribe to broadcast domain so agent receives system-wide announces
+        if agent_id not in self._subscriptions:
+            self._subscriptions[agent_id] = SubscriptionFilter(domains=[BROADCAST_DOMAIN])
+        elif BROADCAST_DOMAIN not in (self._subscriptions[agent_id].domains or []):
+            existing = list(self._subscriptions[agent_id].domains or [])
+            existing.append(BROADCAST_DOMAIN)
+            self._subscriptions[agent_id] = SubscriptionFilter(
+                domains=existing,
+                severity_min=self._subscriptions[agent_id].severity_min,
+                tags=self._subscriptions[agent_id].tags,
+            )
 
         logger.info("Agent %s registered for domains: %s", agent_id, domains)
         if self._event_log:
@@ -246,7 +262,15 @@ class AsyncKnowledgeBus:
         domains: list[str],
         filter_policy: SubscriptionFilter | None = None,
     ) -> None:
-        self._subscriptions[agent_id] = filter_policy or SubscriptionFilter(domains=domains)
+        policy = filter_policy or SubscriptionFilter(domains=domains)
+        # Ensure broadcast domain is always included
+        if policy.domains is not None and BROADCAST_DOMAIN not in policy.domains:
+            policy = SubscriptionFilter(
+                domains=[*policy.domains, BROADCAST_DOMAIN],
+                severity_min=policy.severity_min,
+                tags=policy.tags,
+            )
+        self._subscriptions[agent_id] = policy
 
     # ── Inbox ────────────────────────────────────────────────────────────
 
@@ -273,11 +297,21 @@ class AsyncKnowledgeBus:
         announcement: KnowledgeAnnounce,
         sub_filter: SubscriptionFilter,
     ) -> bool:
-        if sub_filter.domains:
-            # Check if any announcement domain matches any subscription domain
-            for ann_domain in announcement.domains:
-                for sub_domain in sub_filter.domains:
-                    if ann_domain == sub_domain or ann_domain.startswith(sub_domain + ":"):
-                        return True
-            return False
-        return True  # No filter = receive everything
+        if not sub_filter.domains:
+            return True  # No filter = receive everything
+
+        # Effective announcement domains — empty means broadcast via "*"
+        ann_domains = announcement.domains if announcement.domains else [BROADCAST_DOMAIN]
+
+        for ann_domain in ann_domains:
+            for sub_domain in sub_filter.domains:
+                # Broadcast "*" only matches broadcast — not every domain
+                if ann_domain == BROADCAST_DOMAIN and sub_domain == BROADCAST_DOMAIN:
+                    return True
+                # Skip wildcard for regular domain matching
+                if ann_domain == BROADCAST_DOMAIN or sub_domain == BROADCAST_DOMAIN:
+                    continue
+                # Regular domain + prefix matching
+                if ann_domain == sub_domain or ann_domain.startswith(sub_domain + ":"):
+                    return True
+        return False
