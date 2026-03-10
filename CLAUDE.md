@@ -24,7 +24,7 @@ uv run ncms dashboard            # Start observability dashboard (web UI)
 uv run ncms dashboard --no-demo  # Dashboard without auto-starting demo agents
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (198 tests)
+uv run pytest tests/ -v          # Run all tests (191 tests)
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint

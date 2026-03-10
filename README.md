@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-189_passing-brightgreen" alt="189 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-191_passing-brightgreen" alt="191 Tests Passing">
 </p>
 
 ---
@@ -78,9 +78,10 @@ uv run ncms dashboard
 
 Opens a real-time web dashboard at `http://localhost:8420` showing:
 
-- **Agent Panel** &mdash; Live status cards for each agent (online/sleeping/offline) with domain registrations
-- **Bus Activity Feed** &mdash; Real-time SSE stream of asks, responses, announcements, surrogate dispatches
-- **Memory Graph** &mdash; Interactive D3 force-directed visualization of entities, relationships, and linked memories
+- **Architecture Diagram Layout** &mdash; Central Knowledge Bus backbone with agent cards arranged around it, connected by animated flow lines
+- **Per-Agent Activity Feeds** &mdash; Real-time SSE stream of asks, responses, announcements, and surrogate dispatches scoped to each agent
+- **Conversation Threading** &mdash; Click any activity item to see the full ask/response thread, including answer text, confidence scores, and source mode (live vs. snapshot)
+- **Snapshot Badges** &mdash; Surrogate responses are visually distinguished from live agent responses
 
 The dashboard auto-runs demo agents by default. Use `--no-demo` for a blank canvas that observes your own agents.
 
@@ -112,7 +113,7 @@ combined(m)   = bm25_score * w_bm25 + activation * w_actr
 
 Entities (services, endpoints, technologies, tables) are **automatically extracted** from memories and queries. When query entities overlap with a memory's linked entities, spreading activation boosts that memory's score. The BM25/ACT-R weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_ACTR`). Sub-threshold memories are filtered by retrieval probability.
 
-**Tier 3 &mdash; LLM-as-Judge Reranking** (optional). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k Tier 2 candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking. Works with any model via [LiteLLM](https://github.com/BerriAI/litellm).
+**Tier 3 &mdash; LLM-as-Judge Reranking** (optional, experimental). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k Tier 2 candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking. Requires [LiteLLM](https://github.com/BerriAI/litellm) and a configured model. Currently a lightweight integration &mdash; structured prompting and caching are on the roadmap.
 
 ### Knowledge Bus: Osmotic Agent Coordination
 
@@ -137,6 +138,7 @@ await agent.announce_knowledge(
 
 **Ask/Respond** &mdash; Non-blocking queries routed by domain, not by agent name.
 **Announce/Subscribe** &mdash; Fire-and-forget broadcasts to all interested agents.
+**Broadcast Domain (`*`)** &mdash; Every agent auto-subscribes to the `*` channel on registration. Announcements with empty domains (or `domains=["*"]`) reach all agents. Domain-specific announcements still require explicit subscriptions, so filtering is preserved.
 **Inbox** &mdash; Responses queue up. Agents process them between task steps.
 
 ### Snapshot Surrogate Response
@@ -295,7 +297,7 @@ await agent.wake()             # Restore from snapshot, go online
 await agent.shutdown()         # Final snapshot + deregister
 ```
 
-When integrated with NeMo Agent Toolkit (NeMoClaw), the `KnowledgeAgent` base class plugs into NAT's `MemoryEditor` and `MemoryManager` interfaces, making NCMS a drop-in replacement for Mem0, Zep, or Redis memory backends.
+The `KnowledgeAgent` base class is designed to plug into NeMo Agent Toolkit's `MemoryEditor` and `MemoryManager` interfaces. The NAT adapter is on the [roadmap](#roadmap) &mdash; once complete, NCMS will be a drop-in replacement for Mem0, Zep, or Redis memory backends in any NAT agent type.
 
 ## Coding Agent Quickstart
 
@@ -333,9 +335,9 @@ Add NCMS hooks to `.claude/settings.json`:
 - `Stop`: Knowledge from the completed task committed to NCMS
 - `PreCompact`: Full context dump before window compaction (critical &mdash; compaction destroys context)
 
-### GitHub Copilot
+### GitHub Copilot (Planned)
 
-Add to `.github/hooks/ncms-hooks.json` (on default branch):
+> **Note:** Copilot hook integration is on the roadmap. The configuration below shows the intended shape once implemented.
 
 ```json
 {
@@ -402,11 +404,25 @@ Environment variables with `NCMS_` prefix:
 
 ## Roadmap
 
-- [ ] Distributed memory configured through `config.yaml` for the NeMo Agent Toolkit config file
-- [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
+**Retrieval & Scoring**
 - [ ] SPLADE sparse vector scoring as Tier 1.5 (between BM25 and ACT-R)
-- [ ] Neo4j graph backend for production-scale knowledge graphs
-- [ ] Dashboard: historical replay and time-travel debugging
+- [ ] Contradiction detection engine for conflicting memories
+- [ ] Consolidation background worker (decay, merge, prune)
+
+**Knowledge Bus & Agents**
+- [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
+- [ ] Periodic snapshot scheduler with incremental delta publishing
+- [ ] NeMo Agent Toolkit `MemoryEditor`/`MemoryManager` plugin adapter
+
+**Infrastructure & Packaging**
+- [ ] Distributed memory configured through NeMo Agent Toolkit `config.yaml`
+- [ ] Neo4j / FalkorDB graph backend for production-scale knowledge graphs
+- [ ] Docker container with Helm charts (NIM-compatible packaging)
+- [ ] REST/gRPC API following NIM conventions
+
+**Dashboard & Observability**
+- [ ] Historical replay and time-travel debugging
+- [ ] Prometheus metrics and OpenTelemetry traces
 
 ## License
 
