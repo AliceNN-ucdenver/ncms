@@ -249,11 +249,20 @@
 
   .icon-ask { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
   .icon-response { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .icon-reply { background: rgba(63, 185, 80, 0.12); color: var(--accent-green); }
   .icon-announce { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
   .icon-surrogate { background: rgba(247, 120, 186, 0.15); color: var(--accent-pink); }
   .icon-memory { background: rgba(57, 210, 192, 0.15); color: var(--accent-cyan); }
   .icon-search { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
   .icon-agent { background: rgba(188, 140, 255, 0.15); color: var(--accent-purple); }
+
+  .activity-from {
+    font-size: 10px;
+    color: var(--accent-green);
+    font-weight: 600;
+    line-height: 1;
+    margin-bottom: 1px;
+  }
 
   .activity-text {
     flex: 1;
@@ -441,6 +450,101 @@
   .confidence-high { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
   .confidence-med { background: rgba(210, 153, 34, 0.15); color: var(--accent-amber); }
   .confidence-low { background: rgba(248, 81, 73, 0.15); color: var(--accent-red); }
+
+  /* ── Conversation Thread (in modal) ──────────────────────────── */
+  .thread-section {
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+  }
+
+  .thread-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .thread-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .thread-message {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .thread-message:hover {
+    border-color: var(--accent-purple);
+  }
+
+  .thread-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .thread-avatar.ask { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+  .thread-avatar.response { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .thread-avatar.surrogate { background: rgba(247, 120, 186, 0.15); color: var(--accent-pink); }
+
+  .thread-body { flex: 1; min-width: 0; }
+
+  .thread-agent {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .thread-agent-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 700;
+  }
+
+  .badge-asker { background: rgba(88, 166, 255, 0.15); color: var(--accent-blue); }
+  .badge-responder { background: rgba(63, 185, 80, 0.15); color: var(--accent-green); }
+  .badge-surrogate { background: rgba(247, 120, 186, 0.15); color: var(--accent-pink); }
+
+  .thread-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    word-break: break-word;
+  }
+
+  .thread-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
 </style>
 </head>
 <body>
@@ -486,6 +590,7 @@ const state = {
   eventCount: 0,
   agentActivities: {},   // agent_id -> [event, ...]
   eventStore: {},        // event.id -> event (for modal lookup)
+  askIndex: {},          // ask_id -> { askEvent, responses: [event, ...] }
 };
 
 const MAX_ACTIVITIES = 25;
@@ -527,10 +632,31 @@ function connectSSE() {
 function handleEvent(event) {
   state.eventCount++;
   state.eventStore[event.id] = event;
+  const d = event.data || {};
 
   // Agent lifecycle events
   if (event.type.startsWith('agent.')) {
     handleAgentEvent(event);
+  }
+
+  // Index asks and responses for conversation threading
+  if (event.type === 'bus.ask' && d.ask_id) {
+    state.askIndex[d.ask_id] = { askEvent: event, responses: [] };
+  }
+  if ((event.type === 'bus.response' || event.type === 'bus.surrogate') && d.ask_id) {
+    const thread = state.askIndex[d.ask_id];
+    if (thread) {
+      thread.responses.push(event);
+      // Also add reply to the ASKING agent's feed (the agent who asked the question)
+      const askingAgent = thread.askEvent.agent_id;
+      if (askingAgent && askingAgent !== event.agent_id) {
+        // Mark this as a reply so we render it differently
+        const replyEntry = Object.assign({}, event, { _isReply: true, _replyFrom: event.agent_id });
+        state.eventStore[event.id + '_reply'] = replyEntry;
+        addAgentActivity(askingAgent, replyEntry);
+        animateFlow(askingAgent);
+      }
+    }
   }
 
   // Route events to agent activity lists
@@ -539,13 +665,13 @@ function handleEvent(event) {
   }
 
   // Also add to target/recipient agents
-  if (event.type === 'bus.ask' && event.data.targets) {
-    event.data.targets.forEach(t => {
+  if (event.type === 'bus.ask' && d.targets) {
+    d.targets.forEach(t => {
       if (t !== event.agent_id) addAgentActivity(t, event);
     });
   }
-  if (event.type === 'bus.announce' && event.data.recipients) {
-    event.data.recipients.forEach(r => {
+  if (event.type === 'bus.announce' && d.recipients) {
+    d.recipients.forEach(r => {
       if (r !== event.agent_id) addAgentActivity(r, event);
     });
   }
@@ -612,7 +738,29 @@ function renderAgentActivity(agentId) {
 function activityItemHTML(event) {
   const d = event.data || {};
   const time = formatTime(event.timestamp);
-  let icon, text;
+  let icon, text, fromLabel = '';
+
+  // Check if this is a reply routed to the asking agent's feed
+  if (event._isReply) {
+    const replyFrom = event._replyFrom || event.agent_id;
+    const isSurrogate = event.type === 'bus.surrogate';
+    icon = isSurrogate
+      ? '<span class="activity-icon icon-surrogate">&#x21A9;</span>'
+      : '<span class="activity-icon icon-reply">&#x21A9;</span>';
+    text = d.answer || (isSurrogate ? `Surrogate (${(d.confidence * 100).toFixed(0)}%)` : 'Response');
+    fromLabel = `<div class="activity-from">${escapeHtml(replyFrom)}</div>`;
+    const shortText = text.length > 45 ? text.slice(0, 42) + '...' : text;
+    // Use the real event id (strip _reply suffix) for modal
+    const realId = event.id.replace(/_reply$/, '');
+    return `<div class="activity-item" onclick="showDetail('${realId}')">
+      ${icon}
+      <div style="flex:1;min-width:0;overflow:hidden">
+        ${fromLabel}
+        <span class="activity-text" title="${escapeHtml(text)}">${escapeHtml(shortText)}</span>
+      </div>
+      <span class="activity-time">${time}</span>
+    </div>`;
+  }
 
   switch (event.type) {
     case 'bus.ask':
@@ -740,10 +888,14 @@ function showDetail(eventId) {
     fieldsHTML += modalField('Question', d.question || '(empty)');
     fieldsHTML += modalField('Domains', tagsHTML(d.domains));
     fieldsHTML += modalField('Routed To', tagsHTML(d.targets));
+    // Show conversation thread: the ask + any responses
+    fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'bus.response') {
     fieldsHTML += modalField('Answer', d.answer || '(not available)');
     fieldsHTML += modalField('Source Mode', d.source_mode);
     fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
+    // Show conversation thread: the original ask + this response
+    fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'bus.announce') {
     fieldsHTML += modalField('Event', d.event);
     fieldsHTML += modalField('Content', d.content || '(not available)');
@@ -754,6 +906,8 @@ function showDetail(eventId) {
     fieldsHTML += modalField('Answer', d.answer || '(not available)');
     fieldsHTML += modalField('Confidence', confidenceHTML(d.confidence));
     fieldsHTML += modalField('Snapshot Age', formatAge(d.snapshot_age_seconds));
+    // Show conversation thread: the original ask + this surrogate
+    fieldsHTML += buildThreadHTML(d.ask_id, event);
   } else if (event.type === 'memory.stored') {
     fieldsHTML += modalField('Content', d.content || '');
     fieldsHTML += modalField('Type', d.type);
@@ -806,6 +960,62 @@ function confidenceHTML(confidence) {
   const cls = confidence >= 0.7 ? 'confidence-high' :
               confidence >= 0.4 ? 'confidence-med' : 'confidence-low';
   return `<span class="modal-confidence ${cls}">${pct}%</span>`;
+}
+
+// ── Conversation Thread (for modal) ──────────────────────────────────
+function buildThreadHTML(askId, currentEvent) {
+  if (!askId) return '';
+  const thread = state.askIndex[askId];
+  if (!thread) return '';
+
+  let html = '<div class="thread-section">';
+  html += '<div class="thread-label">Conversation</div>';
+
+  // The original ask
+  const askEvt = thread.askEvent;
+  const askData = askEvt.data || {};
+  const isCurrentAsk = (currentEvent.id === askEvt.id);
+  html += `<div class="thread-message" onclick="showDetail('${askEvt.id}')" style="${isCurrentAsk ? 'border-color: var(--accent-blue);' : ''}">
+    <div class="thread-avatar ask">?</div>
+    <div class="thread-body">
+      <div class="thread-agent">
+        ${escapeHtml(askEvt.agent_id || 'unknown')}
+        <span class="thread-agent-badge badge-asker">asked</span>
+      </div>
+      <div class="thread-text">${escapeHtml(askData.question || '(empty)')}</div>
+      <div class="thread-meta">${formatTimeFull(askEvt.timestamp)}${askData.domains ? ' &middot; ' + askData.domains.join(', ') : ''}</div>
+    </div>
+  </div>`;
+
+  // All responses
+  for (const resp of thread.responses) {
+    const rd = resp.data || {};
+    const isSurrogate = resp.type === 'bus.surrogate';
+    const isCurrent = (currentEvent.id === resp.id);
+    const avatarClass = isSurrogate ? 'surrogate' : 'response';
+    const badgeClass = isSurrogate ? 'badge-surrogate' : 'badge-responder';
+    const badgeText = isSurrogate ? 'surrogate' : 'responded';
+    const confPct = rd.confidence != null ? ` &middot; ${(rd.confidence * 100).toFixed(0)}%` : '';
+
+    html += `<div class="thread-message" onclick="showDetail('${resp.id}')" style="${isCurrent ? 'border-color: var(--accent-green);' : ''}">
+      <div class="thread-avatar ${avatarClass}">${isSurrogate ? '&#x2601;' : '&#x2713;'}</div>
+      <div class="thread-body">
+        <div class="thread-agent">
+          ${escapeHtml(resp.agent_id || 'unknown')}
+          <span class="thread-agent-badge ${badgeClass}">${badgeText}</span>
+        </div>
+        <div class="thread-text">${escapeHtml(rd.answer || '(no answer text)')}</div>
+        <div class="thread-meta">${formatTimeFull(resp.timestamp)}${confPct}${isSurrogate && rd.snapshot_age_seconds ? ' &middot; snapshot ' + formatAge(rd.snapshot_age_seconds) + ' old' : ''}</div>
+      </div>
+    </div>`;
+  }
+
+  if (thread.responses.length === 0) {
+    html += '<div style="color: var(--text-muted); font-size: 12px; font-style: italic; padding: 8px 0;">Awaiting response...</div>';
+  }
+
+  html += '</div>';
+  return html;
 }
 
 // ── Utils ────────────────────────────────────────────────────────────
