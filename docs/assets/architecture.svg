@@ -184,12 +184,12 @@
     <circle cx="10" cy="8" r="6" fill="#22c55e"/>
     <text x="10" y="11" text-anchor="middle" fill="#0f172a" font-size="7" font-weight="700">L</text>
     <text x="22" y="12" fill="#94a3b8" font-size="10">Live</text>
-    <circle cx="60" cy="8" r="6" fill="#f59e0b"/>
-    <text x="60" y="11" text-anchor="middle" fill="#0f172a" font-size="7" font-weight="700">S</text>
-    <text x="72" y="12" fill="#94a3b8" font-size="10">Sleeping</text>
-    <circle cx="120" cy="8" r="6" fill="#ef4444"/>
-    <text x="120" y="11" text-anchor="middle" fill="#0f172a" font-size="7" font-weight="700">O</text>
-    <text x="132" y="12" fill="#94a3b8" font-size="10">Offline</text>
+    <circle cx="70" cy="8" r="6" fill="#f59e0b"/>
+    <text x="70" y="11" text-anchor="middle" fill="#0f172a" font-size="7" font-weight="700">S</text>
+    <text x="82" y="12" fill="#94a3b8" font-size="10">Sleeping</text>
+    <circle cx="155" cy="8" r="6" fill="#ef4444"/>
+    <text x="155" y="11" text-anchor="middle" fill="#0f172a" font-size="7" font-weight="700">O</text>
+    <text x="167" y="12" fill="#94a3b8" font-size="10">Offline</text>
   </g>
   <text x="860" y="650" text-anchor="end" fill="#475569" font-size="9">ncms v0.1.0</text>
 </svg>
