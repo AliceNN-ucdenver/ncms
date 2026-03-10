@@ -49,42 +49,41 @@
   <text x="577" y="133" text-anchor="middle" fill="#bae6fd" font-size="8">ui:*</text>
 
   <!-- === USE CASE 1: Ask/Respond === -->
-  <text x="140" y="158" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">Ask / Respond</text>
+  <text x="150" y="158" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">Ask / Respond</text>
 
-  <!-- Frontend Agent (asker) -->
+  <!-- Frontend Agent (asker) — LEFT -->
   <g filter="url(#ds3)">
-    <rect x="40" y="180" width="140" height="80" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
-    <rect x="40" y="180" width="140" height="24" rx="8" fill="#6366f1" opacity="0.8"/>
-    <rect x="40" y="196" width="140" height="8" fill="#6366f1" opacity="0.8"/>
-    <text x="110" y="197" text-anchor="middle" fill="white" font-size="10" font-weight="600">Frontend Agent</text>
-    <text x="110" y="222" text-anchor="middle" fill="#94a3b8" font-size="9">Asks: "What does</text>
-    <text x="110" y="236" text-anchor="middle" fill="#94a3b8" font-size="9">GET /users return?"</text>
-    <text x="110" y="252" text-anchor="middle" fill="#93c5fd" font-size="8">domain: api</text>
+    <rect x="15" y="200" width="125" height="75" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
+    <rect x="15" y="200" width="125" height="22" rx="8" fill="#6366f1" opacity="0.8"/>
+    <rect x="15" y="214" width="125" height="8" fill="#6366f1" opacity="0.8"/>
+    <text x="77" y="217" text-anchor="middle" fill="white" font-size="10" font-weight="600">Frontend Agent</text>
+    <text x="77" y="238" text-anchor="middle" fill="#94a3b8" font-size="9">Asks: "What does</text>
+    <text x="77" y="252" text-anchor="middle" fill="#94a3b8" font-size="9">GET /users return?"</text>
+    <text x="77" y="268" text-anchor="middle" fill="#93c5fd" font-size="8">domain: api</text>
   </g>
 
-  <!-- Ask arrow up to bus -->
-  <path d="M 150 180 L 150 160 Q 150 155 160 155 L 320 155 Q 330 155 330 150" stroke="#3b82f6" stroke-width="2" fill="none" marker-end="url(#arrowBlue)"/>
-  <text x="235" y="152" text-anchor="middle" fill="#3b82f6" font-size="9" font-weight="500">ask()</text>
+  <!-- Ask arrow: Frontend up to bus -->
+  <path d="M 110 200 L 110 175 Q 110 168 120 168 L 298 168 Q 308 168 308 158 L 308 148" stroke="#3b82f6" stroke-width="2" fill="none" marker-end="url(#arrowBlue)"/>
+  <text x="88" y="190" fill="#3b82f6" font-size="9" font-weight="500">ask()</text>
 
-  <!-- API Agent (responder) -->
+  <!-- API Agent (responder) — RIGHT -->
   <g filter="url(#ds3)">
-    <rect x="40" y="280" width="140" height="80" rx="8" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
-    <rect x="40" y="280" width="140" height="24" rx="8" fill="#22c55e" opacity="0.8"/>
-    <rect x="40" y="296" width="140" height="8" fill="#22c55e" opacity="0.8"/>
-    <text x="110" y="297" text-anchor="middle" fill="white" font-size="10" font-weight="600">API Agent</text>
-    <text x="110" y="322" text-anchor="middle" fill="#94a3b8" font-size="9">Responds: JSON with</text>
-    <text x="110" y="336" text-anchor="middle" fill="#94a3b8" font-size="9">users, cursor, has_more</text>
-    <text x="110" y="352" text-anchor="middle" fill="#86efac" font-size="8">confidence: 0.90</text>
+    <rect x="160" y="200" width="125" height="75" rx="8" fill="#1e293b" stroke="#22c55e" stroke-width="1.5"/>
+    <rect x="160" y="200" width="125" height="22" rx="8" fill="#22c55e" opacity="0.8"/>
+    <rect x="160" y="214" width="125" height="8" fill="#22c55e" opacity="0.8"/>
+    <text x="222" y="217" text-anchor="middle" fill="white" font-size="10" font-weight="600">API Agent</text>
+    <text x="222" y="238" text-anchor="middle" fill="#94a3b8" font-size="9">Responds: JSON with</text>
+    <text x="222" y="252" text-anchor="middle" fill="#94a3b8" font-size="9">users, cursor, has_more</text>
+    <text x="222" y="268" text-anchor="middle" fill="#86efac" font-size="8">confidence: 0.90</text>
   </g>
 
-  <!-- Bus routes to responder -->
-  <path d="M 310 148 Q 300 143 290 143 L 190 143 Q 180 143 180 153 L 180 160 Q 180 170 170 170 L 115 170 Q 105 170 105 180 L 105 280" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-dasharray="5,3"/>
-  <text x="220" y="140" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">route &amp; deliver</text>
+  <!-- Bus routes ask to responder -->
+  <path d="M 330 148 L 330 175 Q 330 183 320 183 L 240 183 Q 230 183 230 193 L 230 200" stroke="#22c55e" stroke-width="1.5" fill="none" stroke-dasharray="5,3"/>
+  <text x="280" y="195" fill="#22c55e" font-size="9" font-weight="500">route &amp; deliver</text>
 
-  <!-- Inbox arrow -->
-  <path d="M 75 280 L 75 260 L 85 260" stroke="#22c55e" stroke-width="1.5" fill="none" marker-end="url(#arrowBlue)"/>
-  <rect x="63" y="264" width="35" height="14" rx="4" fill="#1e293b" stroke="#22c55e" stroke-width="0.5"/>
-  <text x="80" y="274" text-anchor="middle" fill="#86efac" font-size="7">inbox</text>
+  <!-- Inbox badge on API Agent -->
+  <rect x="252" y="279" width="35" height="14" rx="4" fill="#1e293b" stroke="#22c55e" stroke-width="0.5"/>
+  <text x="269" y="289" text-anchor="middle" fill="#86efac" font-size="7">inbox</text>
 
   <!-- === USE CASE 2: Announce === -->
   <text x="450" y="158" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="600">Announce / Subscribe</text>
