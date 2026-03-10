@@ -1,11 +1,13 @@
 """Knowledge Loader - "Download knowledge to your agents like Neo in the Matrix."
 
 Imports knowledge from various file formats into the NCMS memory store.
-Supports: Markdown, plain text, JSON, YAML, and structured data files.
+Supports: Markdown, plain text, JSON, YAML, CSV, HTML, and (with `ncms[docs]`)
+rich document formats including DOCX, PPTX, PDF, and XLSX via MarkItDown.
 
 Usage:
     loader = KnowledgeLoader(memory_service)
     stats = await loader.load_file("architecture.md", domains=["arch"])
+    stats = await loader.load_file("design.pptx", domains=["design"])  # needs ncms[docs]
     stats = await loader.load_directory("docs/", domains=["docs"])
     stats = await loader.load_text("raw knowledge text", domains=["custom"])
 """
@@ -22,6 +24,14 @@ from typing import Any
 from ncms.application.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
+
+# Dynamic import — markitdown is optional (`pip install ncms[docs]`)
+try:
+    from markitdown import MarkItDown
+
+    _HAS_MARKITDOWN = True
+except ImportError:  # pragma: no cover
+    _HAS_MARKITDOWN = False
 
 
 @dataclass
@@ -42,16 +52,37 @@ class KnowledgeLoader:
     each chunk as an individual memory for precise retrieval.
     """
 
-    # Supported file extensions and their handlers
-    SUPPORTED_EXTENSIONS = {
+    # Text-based formats — always available (stdlib parsing)
+    TEXT_EXTENSIONS = {
         ".md", ".markdown",  # Markdown
         ".txt", ".text",     # Plain text
         ".json",             # JSON
-        ".yaml", ".yml",     # YAML (if pyyaml available)
+        ".yaml", ".yml",     # YAML
         ".csv",              # CSV
         ".rst",              # reStructuredText
         ".html", ".htm",     # HTML (basic text extraction)
     }
+
+    # Rich document formats — require `ncms[docs]` (markitdown)
+    DOCUMENT_EXTENSIONS = {
+        ".docx",  # Microsoft Word
+        ".pptx",  # Microsoft PowerPoint
+        ".pdf",   # PDF documents
+        ".xlsx",  # Microsoft Excel
+    }
+
+    @property
+    def SUPPORTED_EXTENSIONS(self) -> set[str]:  # noqa: N802
+        """All currently loadable extensions (text + documents if markitdown installed)."""
+        exts = set(self.TEXT_EXTENSIONS)
+        if _HAS_MARKITDOWN:
+            exts |= self.DOCUMENT_EXTENSIONS
+        return exts
+
+    @staticmethod
+    def has_markitdown() -> bool:
+        """Check whether markitdown is available for rich document support."""
+        return _HAS_MARKITDOWN
 
     def __init__(
         self,
@@ -62,6 +93,7 @@ class KnowledgeLoader:
         self._memory = memory_service
         self._chunk_max_chars = chunk_max_chars
         self._source_tag = source_tag
+        self._markitdown = MarkItDown() if _HAS_MARKITDOWN else None
 
     async def load_file(
         self,
@@ -79,25 +111,36 @@ class KnowledgeLoader:
             stats.errors.append(f"File not found: {path}")
             return stats
 
-        try:
-            content = path.read_text(encoding="utf-8", errors="replace")
-        except Exception as e:
-            stats.errors.append(f"Failed to read {path}: {e}")
-            return stats
-
         ext = path.suffix.lower()
         file_domains = domains or [path.stem]
 
-        if ext in (".md", ".markdown", ".rst"):
-            chunks = self._chunk_markdown(content)
-        elif ext == ".json":
-            chunks = self._chunk_json(content)
-        elif ext == ".csv":
-            chunks = self._chunk_csv(content)
-        elif ext in (".html", ".htm"):
-            chunks = self._chunk_html(content)
+        # ── Rich document formats (markitdown) ────────────────────────
+        if ext in self.DOCUMENT_EXTENSIONS:
+            if not self._markitdown:
+                stats.errors.append(
+                    f"Cannot load {ext} file: install document support with "
+                    "`pip install ncms[docs]`"
+                )
+                return stats
+            chunks = self._convert_document(path)
         else:
-            chunks = self._chunk_plain_text(content)
+            # ── Text-based formats (stdlib) ───────────────────────────
+            try:
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except Exception as e:
+                stats.errors.append(f"Failed to read {path}: {e}")
+                return stats
+
+            if ext in (".md", ".markdown", ".rst"):
+                chunks = self._chunk_markdown(content)
+            elif ext == ".json":
+                chunks = self._chunk_json(content)
+            elif ext == ".csv":
+                chunks = self._chunk_csv(content)
+            elif ext in (".html", ".htm"):
+                chunks = self._chunk_html(content)
+            else:
+                chunks = self._chunk_plain_text(content)
 
         stats.files_processed = 1
         stats.chunks_total = len(chunks)
@@ -192,7 +235,6 @@ class KnowledgeLoader:
         """Split markdown by headings, keeping each section as a chunk."""
         chunks: list[str] = []
         current_chunk: list[str] = []
-        current_heading = ""
 
         for line in content.split("\n"):
             # Detect headings (# ## ### etc.)
@@ -203,7 +245,6 @@ class KnowledgeLoader:
                     if text:
                         chunks.append(text)
                 current_chunk = [line]
-                current_heading = line
             else:
                 current_chunk.append(line)
 
@@ -292,3 +333,22 @@ class KnowledgeLoader:
         text = re.sub(r"<[^>]+>", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         return self._chunk_plain_text(text)
+
+    def _convert_document(self, path: Path) -> list[str]:
+        """Convert a rich document (DOCX/PPTX/PDF/XLSX) to markdown chunks.
+
+        Uses markitdown to convert the document to markdown, then
+        applies the standard markdown chunking strategy.
+        """
+        assert self._markitdown is not None  # guarded by caller
+        try:
+            result = self._markitdown.convert(str(path))
+            markdown = result.text_content
+        except Exception as e:
+            logger.error("markitdown conversion failed for %s: %s", path.name, e)
+            return []
+
+        if not markdown or not markdown.strip():
+            return []
+
+        return self._chunk_markdown(markdown)

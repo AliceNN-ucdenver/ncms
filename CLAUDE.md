@@ -17,11 +17,12 @@ NeMo Cognitive Memory System (NCMS) — a Python library providing persistent co
 
 ```bash
 uv sync                          # Install all deps
+uv sync --extra docs             # Install with document support (DOCX/PPTX/PDF/XLSX)
 uv run ncms demo                 # Run interactive demo (in-memory, no side effects)
 uv run ncms serve                # Start MCP server
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (129 tests)
+uv run pytest tests/ -v          # Run all tests (136 tests)
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
@@ -43,7 +44,7 @@ src/ncms/
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction
 │   ├── consolidation_service.py # Decay, merge, prune background tasks
-│   └── knowledge_loader.py      # "Matrix download" — import files into memory
+│   └── knowledge_loader.py      # "Matrix download" — import files into memory (+ markitdown for DOCX/PPTX/PDF/XLSX)
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 7 tables, WAL mode, parameterized SQL
 │   ├── storage/migrations.py    # DDL for schema creation and versioning
@@ -66,7 +67,7 @@ src/ncms/
 
 ## Key Design Decisions
 
-1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE optional via `ncms[splade]`.
+1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE optional via `ncms[splade]`. Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
 2. **Three-tier retrieval**: BM25 candidates → ACT-R cognitive rescoring → optional LLM-as-judge.
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.

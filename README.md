@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-129_passing-brightgreen" alt="129 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-136_passing-brightgreen" alt="136 Tests Passing">
 </p>
 
 ---
@@ -144,15 +144,22 @@ loader = KnowledgeLoader(memory_service)
 
 # Load architecture docs, API specs, meeting notes
 stats = await loader.load_file("docs/architecture.md", domains=["arch"])
+stats = await loader.load_file("design-deck.pptx", domains=["design"])  # needs ncms[docs]
 stats = await loader.load_directory("docs/", domains=["docs"])
 stats = await loader.load_text(raw_text, domains=["platform"])
 ```
 
-Supports Markdown, plain text, JSON, YAML, CSV, HTML, and reStructuredText. Content is automatically chunked by semantic boundaries (headings, paragraphs, entries) for precise retrieval.
+**Built-in formats** (no extra deps): Markdown, plain text, JSON, YAML, CSV, HTML, reStructuredText.
+
+**Rich document formats** (install `ncms[docs]`): DOCX, PPTX, PDF, XLSX &mdash; powered by Microsoft's [MarkItDown](https://github.com/microsoft/markitdown). Documents are converted to Markdown, then chunked by semantic boundaries automatically.
 
 ```bash
+# Install with document support
+pip install "ncms[docs]"
+
 # CLI version
 uv run ncms load docs/architecture.md --domains arch platform
+uv run ncms load design-deck.pptx --domains design
 ```
 
 ---
@@ -167,6 +174,9 @@ uv add ncms
 
 # With pip
 pip install ncms
+
+# With rich document support (DOCX, PPTX, PDF, XLSX)
+pip install "ncms[docs]"
 ```
 
 ### Run the Demo
