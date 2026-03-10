@@ -264,6 +264,23 @@
     margin-bottom: 1px;
   }
 
+  .activity-from.from-snapshot {
+    color: var(--accent-pink);
+  }
+
+  .snapshot-badge {
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(247, 120, 186, 0.15);
+    color: var(--accent-pink);
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+
   .activity-text {
     flex: 1;
     color: var(--text-secondary);
@@ -392,6 +409,29 @@
     color: var(--accent-purple);
     font-weight: 600;
     margin-bottom: 8px;
+  }
+
+  .source-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .source-live {
+    background: rgba(63, 185, 80, 0.12);
+    color: var(--accent-green);
+    border: 1px solid rgba(63, 185, 80, 0.25);
+  }
+
+  .source-snapshot {
+    background: rgba(247, 120, 186, 0.12);
+    color: var(--accent-pink);
+    border: 1px solid rgba(247, 120, 186, 0.25);
   }
 
   .modal-agent {
@@ -748,7 +788,9 @@ function activityItemHTML(event) {
       ? '<span class="activity-icon icon-surrogate">&#x21A9;</span>'
       : '<span class="activity-icon icon-reply">&#x21A9;</span>';
     text = d.answer || (isSurrogate ? `Surrogate (${(d.confidence * 100).toFixed(0)}%)` : 'Response');
-    fromLabel = `<div class="activity-from">${escapeHtml(replyFrom)}</div>`;
+    const fromClass = isSurrogate ? 'activity-from from-snapshot' : 'activity-from';
+    const snapshotTag = isSurrogate ? '<span class="snapshot-badge">snapshot</span>' : '';
+    fromLabel = `<div class="${fromClass}">${escapeHtml(replyFrom)}${snapshotTag}</div>`;
     const shortText = text.length > 45 ? text.slice(0, 42) + '...' : text;
     // Use the real event id (strip _reply suffix) for modal
     const realId = event.id.replace(/_reply$/, '');
@@ -778,7 +820,15 @@ function activityItemHTML(event) {
     case 'bus.surrogate':
       icon = '<span class="activity-icon icon-surrogate">&#x2601;</span>';
       text = d.answer || `Surrogate (${(d.confidence * 100).toFixed(0)}%)`;
-      break;
+      // Surrogate items in the responder's own feed get a snapshot badge appended
+      const surShort = text.length > 40 ? text.slice(0, 37) + '...' : text;
+      return `<div class="activity-item" onclick="showDetail('${event.id}')">
+        ${icon}
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <span class="activity-text" title="${escapeHtml(text)}">${escapeHtml(surShort)}<span class="snapshot-badge">snapshot</span></span>
+        </div>
+        <span class="activity-time">${time}</span>
+      </div>`;
     case 'memory.stored':
       icon = '<span class="activity-icon icon-memory">&#x2B22;</span>';
       text = d.content || 'Memory stored';
@@ -923,6 +973,15 @@ function showDetail(eventId) {
     fieldsHTML += modalField('Data', '<pre>' + escapeHtml(JSON.stringify(d, null, 2)) + '</pre>');
   }
 
+  // Source banner for responses
+  let sourceBanner = '';
+  if (event.type === 'bus.response') {
+    sourceBanner = '<div class="source-banner source-live">&#x2713; Live Agent Response</div>';
+  } else if (event.type === 'bus.surrogate') {
+    const age = d.snapshot_age_seconds ? ` &middot; snapshot ${formatAge(d.snapshot_age_seconds)} old` : '';
+    sourceBanner = `<div class="source-banner source-snapshot">&#x2601; Snapshot Response${age}</div>`;
+  }
+
   const modal = document.getElementById('modal-root');
   modal.innerHTML = `
     <div class="modal-overlay" onclick="closeModal(event)">
@@ -930,6 +989,7 @@ function showDetail(eventId) {
         <button class="modal-close" onclick="closeModal()">&times;</button>
         <div class="modal-type">${event.type}</div>
         <div class="modal-agent">${event.agent_id || 'System'} &middot; ${formatTimeFull(event.timestamp)}</div>
+        ${sourceBanner}
         ${fieldsHTML}
       </div>
     </div>`;
