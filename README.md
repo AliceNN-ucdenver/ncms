@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-191_passing-brightgreen" alt="191 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-192_passing-brightgreen" alt="192 Tests Passing">
 </p>
 
 ---
