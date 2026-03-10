@@ -80,9 +80,15 @@ def dashboard(host: str, port: int, run_demo_flag: bool, open_browser: bool) -> 
         import webbrowser
 
         # Open browser after a short delay to let the server start
-        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+        # Daemon thread so it won't block process exit on Ctrl+C
+        t = threading.Timer(1.5, webbrowser.open, args=[url])
+        t.daemon = True
+        t.start()
 
-    asyncio.run(run_dashboard(host=host, port=port, run_demo=run_demo_flag))
+    try:
+        asyncio.run(run_dashboard(host=host, port=port, run_demo=run_demo_flag))
+    except KeyboardInterrupt:
+        click.echo("\nDashboard stopped.", err=True)
 
 
 @cli.command()

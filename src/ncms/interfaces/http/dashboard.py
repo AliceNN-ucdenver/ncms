@@ -289,6 +289,17 @@ async def run_dashboard(
         app, host=host, port=port, log_level="info",
     )
     server = uvicorn.Server(config_uvicorn)
+
+    # Install signal handlers so Ctrl+C triggers graceful shutdown
+    # instead of abrupt termination (which leaves the port in TIME_WAIT)
+    import signal
+
+    def _handle_shutdown(sig: int, frame: object) -> None:
+        server.should_exit = True
+
+    signal.signal(signal.SIGINT, _handle_shutdown)
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+
     try:
         await server.serve()
     finally:
