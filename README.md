@@ -50,7 +50,7 @@ Three lines. Your agents now have persistent, searchable, shared memory with cog
 ## See It Working
 
 ```bash
-git clone https://github.com/shawnmccarthy/ncms.git
+git clone https://github.com/AliceNN-ucdenver/ncms.git
 cd ncms
 uv sync
 uv run ncms demo
