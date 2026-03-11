@@ -82,5 +82,8 @@ class NCMSConfig(BaseSettings):
     consolidation_knowledge_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
     consolidation_knowledge_max_insights_per_run: int = 5
 
+    # Pipeline observability
+    pipeline_debug: bool = False  # Emit candidate details in pipeline events
+
     # MCP
     mcp_transport: str = "stdio"

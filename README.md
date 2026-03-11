@@ -490,6 +490,9 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 - [x] SPLADE sparse neural retrieval &mdash; learned term expansion fused with BM25 via RRF
 - [x] Contradiction detection &mdash; LLM-powered detection at ingest with bidirectional annotation
 
+**Ingestion**
+- [ ] Directory watcher &mdash; filesystem monitor that auto-imports new files via the load pipeline, using GLiNER or LLM to classify domains
+
 **Knowledge Bus & Agents**
 - [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
 - [ ] Periodic snapshot scheduler with incremental delta publishing
@@ -504,6 +507,9 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 **Dashboard & Observability**
 - [ ] Historical replay and time-travel debugging
 - [ ] Prometheus metrics and OpenTelemetry traces
+
+**Evaluation**
+- [ ] Retrieval pipeline ablation study &mdash; BEIR benchmarks + synthetic ACT-R temporal data ([design doc](docs/ablation-study-design.md))
 
 ## Acknowledgments
 

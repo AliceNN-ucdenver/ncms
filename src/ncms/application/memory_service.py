@@ -338,10 +338,15 @@ class MemoryService:
         # Tier 1: BM25 candidate retrieval via Tantivy
         t0 = time.perf_counter()
         bm25_results = self._index.search(query, limit=self._config.tier1_candidates)
-        _emit_stage("bm25", (time.perf_counter() - t0) * 1000, {
+        bm25_data: dict[str, object] = {
             "candidate_count": len(bm25_results),
             "top_score": round(bm25_results[0][1], 3) if bm25_results else None,
-        })
+        }
+        if self._config.pipeline_debug and bm25_results:
+            bm25_data["candidates"] = await self._load_candidate_previews(
+                bm25_results[:20]
+            )
+        _emit_stage("bm25", (time.perf_counter() - t0) * 1000, bm25_data)
 
         # Tier 1 (parallel): SPLADE candidate retrieval (if enabled)
         splade_results: list[tuple[str, float]] = []
@@ -353,17 +358,35 @@ class MemoryService:
                 )
             except Exception:
                 logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
-            _emit_stage("splade", (time.perf_counter() - t0) * 1000, {
+            splade_data: dict[str, object] = {
                 "candidate_count": len(splade_results),
-            })
+            }
+            if self._config.pipeline_debug and splade_results:
+                splade_data["candidates"] = (
+                    await self._load_candidate_previews(
+                        splade_results[:20]
+                    )
+                )
+            _emit_stage(
+                "splade", (time.perf_counter() - t0) * 1000, splade_data,
+            )
 
         # Fuse BM25 + SPLADE via Reciprocal Rank Fusion
         if splade_results:
             t0 = time.perf_counter()
             fused_candidates = self._rrf_fuse(bm25_results, splade_results)
-            _emit_stage("rrf_fusion", (time.perf_counter() - t0) * 1000, {
+            rrf_data: dict[str, object] = {
                 "fused_count": len(fused_candidates),
-            })
+            }
+            if self._config.pipeline_debug and fused_candidates:
+                rrf_data["candidates"] = (
+                    await self._load_candidate_previews(
+                        fused_candidates[:20]
+                    )
+                )
+            _emit_stage(
+                "rrf_fusion", (time.perf_counter() - t0) * 1000, rrf_data,
+            )
         else:
             fused_candidates = bm25_results
 
@@ -433,11 +456,24 @@ class MemoryService:
                         len(candidate_entity_pool),
                     )
 
-            _emit_stage("graph_expansion", (time.perf_counter() - t0) * 1000, {
+            graph_exp_data: dict[str, object] = {
                 "entity_pool_size": len(candidate_entity_pool),
                 "novel_candidates": novel_count,
                 "total_candidates": len(all_candidates),
-            })
+            }
+            if self._config.pipeline_debug and novel_count > 0:
+                # novel IDs are the last novel_count entries
+                novel_tuples = all_candidates[-novel_count:]
+                graph_exp_data["candidates"] = (
+                    await self._load_candidate_previews(
+                        novel_tuples[:20]
+                    )
+                )
+            _emit_stage(
+                "graph_expansion",
+                (time.perf_counter() - t0) * 1000,
+                graph_exp_data,
+            )
 
         # Load full memory objects and compute activation scores
         t0 = time.perf_counter()
@@ -518,12 +554,34 @@ class MemoryService:
                 )
             )
 
-        _emit_stage("actr_scoring", (time.perf_counter() - t0) * 1000, {
+        actr_data: dict[str, object] = {
             "candidates_scored": candidates_scored,
             "passed_threshold": len(scored),
             "filtered_below_threshold": filtered_below_threshold,
             "top_activation": round(top_activation, 3),
-        })
+        }
+        if self._config.pipeline_debug and scored:
+            # Sort by activation before taking top 20
+            debug_scored = sorted(
+                scored, key=lambda s: s.total_activation, reverse=True,
+            )
+            actr_data["candidates"] = [
+                {
+                    "id": s.memory.id,
+                    "content": s.memory.content[:120],
+                    "score": round(s.total_activation, 3),
+                    "bm25_score": round(s.bm25_score, 3),
+                    "splade_score": round(s.splade_score, 3),
+                    "base_level": round(s.base_level, 3),
+                    "spreading": round(s.spreading, 3),
+                    "total_activation": round(s.total_activation, 3),
+                    "retrieval_prob": round(s.retrieval_prob, 3),
+                }
+                for s in debug_scored[:20]
+            ]
+        _emit_stage(
+            "actr_scoring", (time.perf_counter() - t0) * 1000, actr_data,
+        )
 
         # Sort by combined score (descending) — Tier 2 ranking
         scored.sort(key=lambda s: s.total_activation, reverse=True)
@@ -556,6 +614,22 @@ class MemoryService:
                 agent_id=agent_id,
             )
         return results
+
+    async def _load_candidate_previews(
+        self, candidates: list[tuple[str, float]], limit: int = 20,
+    ) -> list[dict[str, object]]:
+        """Load content previews for candidate IDs (debug mode only)."""
+        result: list[dict[str, object]] = []
+        for mid, score in candidates[:limit]:
+            memory = await self._store.get_memory(mid)
+            result.append({
+                "id": mid,
+                "score": round(score, 3),
+                "content": (
+                    memory.content[:120] if memory else "(not found)"
+                ),
+            })
+        return result
 
     async def _apply_llm_judge(
         self, query: str, scored: list[ScoredMemory],

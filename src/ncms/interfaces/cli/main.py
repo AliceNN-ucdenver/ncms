@@ -51,7 +51,10 @@ def demo() -> None:
 @click.option("--port", default=8420, type=int, help="Port number")
 @click.option("--demo/--no-demo", "run_demo_flag", default=True, help="Run demo agents")
 @click.option("--open/--no-open", "open_browser", default=True, help="Open browser automatically")
-def dashboard(host: str, port: int, run_demo_flag: bool, open_browser: bool) -> None:
+@click.option("--debug/--no-debug", "debug_flag", default=False, help="Emit candidate details")
+def dashboard(
+    host: str, port: int, run_demo_flag: bool, open_browser: bool, debug_flag: bool,
+) -> None:
     """Start the NCMS observability dashboard (web UI).
 
     Opens a browser-based dashboard showing agents, bus activity,
@@ -75,6 +78,11 @@ def dashboard(host: str, port: int, run_demo_flag: bool, open_browser: bool) -> 
     if run_demo_flag:
         click.echo("Demo agents will start automatically.", err=True)
 
+    # Demo mode implies pipeline debug for richer observability
+    effective_debug = debug_flag or run_demo_flag
+    if effective_debug:
+        click.echo("Pipeline debug enabled (candidate details in events).", err=True)
+
     if open_browser:
         import threading
         import webbrowser
@@ -86,7 +94,10 @@ def dashboard(host: str, port: int, run_demo_flag: bool, open_browser: bool) -> 
         t.start()
 
     try:
-        asyncio.run(run_dashboard(host=host, port=port, run_demo=run_demo_flag))
+        asyncio.run(run_dashboard(
+            host=host, port=port, run_demo=run_demo_flag,
+            pipeline_debug=effective_debug,
+        ))
     except KeyboardInterrupt:
         click.echo("\nDashboard stopped.", err=True)
 

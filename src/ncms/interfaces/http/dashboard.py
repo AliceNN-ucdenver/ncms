@@ -291,6 +291,7 @@ async def run_dashboard(
     host: str = "0.0.0.0",
     port: int = 8420,
     run_demo: bool = False,
+    pipeline_debug: bool = False,
 ) -> None:
     """Start the dashboard web server with full NCMS services.
 
@@ -298,6 +299,7 @@ async def run_dashboard(
         host: Bind address.
         port: Port number.
         run_demo: If True, also run demo agents for instant visual activity.
+        pipeline_debug: If True, emit candidate details in pipeline events.
     """
     import uvicorn
 
@@ -313,7 +315,7 @@ async def run_dashboard(
     event_log = EventLog(max_events=5000)
 
     # Wire up infrastructure with event_log
-    config = NCMSConfig(db_path=":memory:")
+    config = NCMSConfig(db_path=":memory:", pipeline_debug=pipeline_debug)
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
     index = TantivyEngine()

@@ -758,6 +758,79 @@
     white-space: nowrap;
   }
 
+  /* ── Pipeline candidates (debug mode) ────────────────────────── */
+  .pipeline-candidates-header {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-purple);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+
+  .pipeline-candidates {
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .pipeline-candidates::-webkit-scrollbar { width: 4px; }
+  .pipeline-candidates::-webkit-scrollbar-track { background: transparent; }
+  .pipeline-candidates::-webkit-scrollbar-thumb {
+    background: var(--border); border-radius: 2px;
+  }
+
+  .pipeline-candidate-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    transition: background 0.15s;
+  }
+
+  .pipeline-candidate-item:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .pipeline-candidate-rank {
+    color: var(--text-muted);
+    font-size: 10px;
+    min-width: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pipeline-candidate-score {
+    color: var(--accent-cyan);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 10px;
+    min-width: 48px;
+    text-align: right;
+  }
+
+  .pipeline-candidate-content {
+    color: var(--text-secondary);
+    font-size: 10px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pipeline-candidate-scores {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
   /* ── Conversation Thread (in modal) ──────────────────────────── */
   .thread-section {
     margin-top: 16px;
@@ -1952,8 +2025,10 @@ function buildStageDetailHTML(stageInfo) {
   const d = stageInfo.data || {};
   const stageName = STAGE_LABELS[stageInfo.stage] || stageInfo.stage;
 
-  // Build key-value rows from data, excluding internal fields
-  const skipKeys = new Set(['pipeline_id', 'pipeline_type', 'stage', 'duration_ms']);
+  // Build key-value rows from data, excluding internal fields and candidates
+  const skipKeys = new Set([
+    'pipeline_id', 'pipeline_type', 'stage', 'duration_ms', 'candidates',
+  ]);
   const rows = Object.entries(d)
     .filter(([k]) => !skipKeys.has(k))
     .map(([k, v]) => {
@@ -1972,11 +2047,39 @@ function buildStageDetailHTML(stageInfo) {
       </div>`;
     }).join('');
 
-  if (!rows) return '';
+  // Build candidate list (debug mode only)
+  let candidateHTML = '';
+  if (d.candidates && Array.isArray(d.candidates) && d.candidates.length > 0) {
+    const isActr = stageInfo.stage === 'actr_scoring';
+    const items = d.candidates.map((c, i) => {
+      const score = typeof c.score === 'number' ? c.score.toFixed(3) : '—';
+      let extraScores = '';
+      if (isActr && c.total_activation !== undefined) {
+        extraScores = `<span class="pipeline-candidate-scores">`
+          + `bm25:${(c.bm25_score || 0).toFixed(2)}`
+          + ` bl:${(c.base_level || 0).toFixed(2)}`
+          + ` sp:${(c.spreading || 0).toFixed(2)}`
+          + ` p:${(c.retrieval_prob || 0).toFixed(2)}`
+          + `</span>`;
+      }
+      return `<div class="pipeline-candidate-item" title="${escapeHtml(c.id || '')}">
+        <span class="pipeline-candidate-rank">#${i + 1}</span>
+        <span class="pipeline-candidate-score">${score}</span>
+        <span class="pipeline-candidate-content">${escapeHtml(c.content || c.id || '')}</span>
+        ${extraScores}
+      </div>`;
+    }).join('');
+    candidateHTML = `
+      <div class="pipeline-candidates-header">Candidates (${d.candidates.length})</div>
+      <div class="pipeline-candidates">${items}</div>`;
+  }
+
+  if (!rows && !candidateHTML) return '';
 
   return `<div class="pipeline-stage-detail">
     <div class="pipeline-stage-detail-title">${escapeHtml(stageName)} &middot; ${stageInfo.duration_ms.toFixed(2)}ms</div>
     ${rows}
+    ${candidateHTML}
   </div>`;
 }
 
