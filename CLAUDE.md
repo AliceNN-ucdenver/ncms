@@ -24,7 +24,11 @@ uv run ncms dashboard            # Start observability dashboard (web UI)
 uv run ncms dashboard --no-demo  # Dashboard without auto-starting demo agents
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (297 tests)
+uv run ncms topics set <domain> <labels...>  # Set entity labels for a domain
+uv run ncms topics list [domain] # Show cached entity labels
+uv run ncms topics detect <domain> <paths...>  # Auto-detect labels via LLM
+uv run ncms topics clear <domain>  # Clear cached labels for a domain
+uv run pytest tests/ -v          # Run all tests
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
@@ -39,7 +43,7 @@ src/ncms/
 │   ├── models.py     # All Pydantic models (Memory, KnowledgeAsk, KnowledgeResponse, etc.)
 │   ├── protocols.py  # Protocol interfaces (MemoryStore, IndexEngine, GraphEngine, etc.)
 │   ├── scoring.py    # ACT-R activation math (pure functions, no I/O)
-│   ├── entity_extraction.py # Auto entity extraction (regex, heuristics, tech names)
+│   ├── entity_extraction.py # Entity label constants + label resolution (domain-agnostic)
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
@@ -57,7 +61,9 @@ src/ncms/
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
 │   ├── llm/judge.py            # Optional LLM-as-judge via litellm
 │   ├── llm/contradiction_detector.py # LLM contradiction detection at ingest
+│   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (required dependency)
 │   ├── extraction/keyword_extractor.py # LLM keyword bridge extraction
+│   ├── extraction/label_detector.py   # LLM-based domain label detection
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
 │   └── observability/event_log.py # Ring buffer event log + SSE subscriber support
@@ -68,7 +74,7 @@ src/ncms/
 │   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST)
 │   ├── http/demo_runner.py     # Dashboard demo scenario runner
 │   ├── http/static/index.html  # SPA frontend (D3 graph, SSE event feed)
-│   ├── cli/main.py             # Click CLI: ncms serve|demo|dashboard|info|load
+│   ├── cli/main.py             # Click CLI: ncms serve|demo|dashboard|info|load|topics
 │   ├── cli/commit_hook.py      # ncms-commit-hook for Claude Code/Copilot
 │   ├── cli/context_loader.py   # ncms-context-loader for session start
 │   └── agent/base.py           # KnowledgeAgent ABC (start/sleep/wake/shutdown)
@@ -79,7 +85,7 @@ src/ncms/
 
 ## Key Design Decisions
 
-1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE optional via `ncms[splade]`. Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
+1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE sparse neural retrieval via fastembed (required, disabled by default). Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
 2. **Three-tier retrieval**: BM25 candidates → ACT-R cognitive rescoring → optional LLM-as-judge.
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
@@ -132,7 +138,8 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
 | `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keywords |
 | `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
-| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval |
+| `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
+| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (required dep) |
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
 | `NCMS_SPLADE_TOP_K` | `50` | SPLADE candidates per search |
 | `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
@@ -141,6 +148,11 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM for insight synthesis |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for NER (required dep) |
+| `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence for entity extraction |
+| `NCMS_LABEL_DETECTION_MODEL` | `gpt-4o-mini` | LLM model for `ncms topics detect` |
+| `NCMS_LABEL_DETECTION_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for label detection |
+| `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 
 ## Local LLM Development

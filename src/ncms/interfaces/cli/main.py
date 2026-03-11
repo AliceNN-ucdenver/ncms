@@ -211,5 +211,263 @@ def load(
     asyncio.run(_load())
 
 
+@cli.group()
+def topics() -> None:
+    """Manage domain-specific entity extraction labels.
+
+    Labels control which entity types GLiNER extracts from content.
+    Without cached labels, NCMS uses universal defaults.
+    """
+    pass
+
+
+@topics.command("set")
+@click.argument("domain")
+@click.argument("labels", nargs=-1, required=True)
+@click.option("--db", default=None, help="Database path")
+def topics_set(domain: str, labels: tuple[str, ...], db: str | None) -> None:
+    """Set entity labels for a domain.
+
+    Examples:
+        ncms topics set api endpoint service protocol authentication
+        ncms topics set finance stock bond portfolio risk
+    """
+    import json
+
+    from rich.console import Console
+
+    console = Console()
+
+    async def _set() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            label_list = list(labels)
+            await store.set_consolidation_value(
+                f"entity_labels:{domain}", json.dumps(label_list)
+            )
+            console.print(
+                f"[green]Set {len(label_list)} labels for domain '{domain}':[/] "
+                + ", ".join(label_list)
+            )
+        finally:
+            await store.close()
+
+    asyncio.run(_set())
+
+
+@topics.command("list")
+@click.argument("domain", required=False)
+@click.option("--db", default=None, help="Database path")
+def topics_list(domain: str | None, db: str | None) -> None:
+    """List cached entity labels for one or all domains.
+
+    Examples:
+        ncms topics list          # Show all domains
+        ncms topics list api      # Show labels for 'api' domain
+    """
+    import json
+
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _list() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.domain.entity_extraction import UNIVERSAL_LABELS
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+
+            if domain:
+                raw = await store.get_consolidation_value(f"entity_labels:{domain}")
+                if raw:
+                    labels = json.loads(raw)
+                    console.print(f"[bold]Domain '{domain}':[/] {', '.join(labels)}")
+                else:
+                    console.print(
+                        f"[yellow]No cached labels for '{domain}'.[/] "
+                        f"Using universal fallback: {', '.join(UNIVERSAL_LABELS)}"
+                    )
+            else:
+                # Query all entity_labels:* keys from consolidation_state
+                cursor = await store.db.execute(
+                    "SELECT key, value FROM consolidation_state WHERE key LIKE 'entity_labels:%'"
+                )
+                rows = await cursor.fetchall()
+
+                if not rows:
+                    console.print(
+                        "[yellow]No domain labels cached.[/]\n"
+                        f"Universal fallback: {', '.join(UNIVERSAL_LABELS)}"
+                    )
+                    return
+
+                table = Table(title="Cached Domain Labels")
+                table.add_column("Domain", style="cyan")
+                table.add_column("Labels")
+                for row in rows:
+                    d = row[0].replace("entity_labels:", "")
+                    labels = json.loads(row[1])
+                    table.add_row(d, ", ".join(labels))
+                console.print(table)
+                console.print(
+                    f"\n[dim]Universal fallback (when no cache): "
+                    f"{', '.join(UNIVERSAL_LABELS)}[/]"
+                )
+        finally:
+            await store.close()
+
+    asyncio.run(_list())
+
+
+@topics.command("detect")
+@click.argument("domain")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--model", default=None, help="LLM model for detection (default: config value)")
+@click.option("--api-base", default=None, help="LLM API base URL")
+@click.option("--dry-run", is_flag=True, help="Show detected labels without saving")
+@click.option("--db", default=None, help="Database path")
+def topics_detect(
+    domain: str, paths: tuple[str, ...],
+    model: str | None, api_base: str | None,
+    dry_run: bool, db: str | None,
+) -> None:
+    """Auto-detect entity labels for a domain from sample files.
+
+    Reads sample content from files and uses an LLM to propose optimal
+    entity type labels for GLiNER extraction.
+
+    Examples:
+        ncms topics detect api docs/api-spec.md
+        ncms topics detect finance reports/ --dry-run
+        ncms topics detect biomedical papers/ --model ollama_chat/qwen3.5:35b-a3b
+    """
+    import json
+
+    from rich.console import Console
+
+    console = Console()
+
+    async def _detect() -> None:
+        from pathlib import Path
+
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.extraction.label_detector import detect_labels
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+
+        # Collect sample texts from files
+        import contextlib
+
+        text_suffixes = {
+            ".md", ".txt", ".json", ".yaml", ".yml",
+            ".rst", ".html", ".csv",
+        }
+        sample_texts: list[str] = []
+        for p in paths:
+            path = Path(p)
+            if path.is_dir():
+                for f in sorted(path.rglob("*"))[:20]:
+                    if f.is_file() and f.suffix in text_suffixes:
+                        with contextlib.suppress(Exception):
+                            sample_texts.append(f.read_text(errors="ignore")[:2000])
+            elif path.is_file():
+                try:
+                    sample_texts.append(path.read_text(errors="ignore")[:2000])
+                except Exception:
+                    console.print(f"[red]Could not read:[/] {path}")
+
+        if not sample_texts:
+            console.print("[red]No readable text found in the provided paths.[/]")
+            return
+
+        console.print(
+            f"Analyzing {len(sample_texts)} sample(s) for domain '{domain}'..."
+        )
+
+        llm_model = model or config.label_detection_model
+        llm_api_base = api_base or config.label_detection_api_base
+        labels = await detect_labels(
+            domain=domain,
+            sample_texts=sample_texts,
+            model=llm_model,
+            api_base=llm_api_base,
+        )
+
+        if not labels:
+            console.print("[red]Label detection returned no results.[/]")
+            return
+
+        console.print(f"[bold]Detected {len(labels)} labels:[/] {', '.join(labels)}")
+
+        if dry_run:
+            console.print("[yellow]Dry run — labels not saved.[/]")
+            return
+
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            await store.set_consolidation_value(
+                f"entity_labels:{domain}", json.dumps(labels)
+            )
+            console.print(f"[green]Saved labels for domain '{domain}'.[/]")
+        finally:
+            await store.close()
+
+    asyncio.run(_detect())
+
+
+@topics.command("clear")
+@click.argument("domain")
+@click.option("--db", default=None, help="Database path")
+def topics_clear(domain: str, db: str | None) -> None:
+    """Clear cached entity labels for a domain.
+
+    After clearing, NCMS will use universal fallback labels for this domain.
+
+    Examples:
+        ncms topics clear api
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _clear() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            await store.delete_consolidation_value(f"entity_labels:{domain}")
+            console.print(
+                f"[green]Cleared labels for domain '{domain}'.[/] "
+                "Will use universal fallback."
+            )
+        finally:
+            await store.close()
+
+    asyncio.run(_clear())
+
+
 if __name__ == "__main__":
     cli()

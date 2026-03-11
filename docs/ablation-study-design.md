@@ -143,6 +143,10 @@ config.actr_max_spread = 0.0              # -Spreading activation
 BEIR Dataset
     |
     v
+Seed domain-specific topics via `ncms topics set`
+(align GLiNER labels with dataset entity types)
+    |
+    v
 Load corpus into NCMS MemoryService (SQLite + Tantivy + NetworkX)
     |
     v
@@ -161,10 +165,40 @@ Compute metrics against ground truth qrels
 Output: table of (config x dataset x metric)
 ```
 
+### Topic Seeding per Dataset
+
+Before ingestion, set domain-specific entity labels matching each dataset's
+entity types. This ensures GLiNER extracts entities relevant to the domain
+rather than relying on universal fallback labels:
+
+| Dataset | Domain | Suggested Topics |
+|---------|--------|-----------------|
+| **SciFact** | `science` | `claim, evidence, study, method, result, finding` |
+| **NFCorpus** | `biomedical` | `disease, drug, protein, gene, symptom, treatment` |
+| **FiQA** | `finance` | `company, stock, market, fund, indicator, regulation` |
+| **DBPedia-Entity** | `encyclopedia` | `person, organization, location, event, concept, product` |
+| **NQ / HotpotQA** | `general` | *(use UNIVERSAL_LABELS -- no seeding needed)* |
+| **TREC-COVID** | `epidemiology` | `virus, vaccine, transmission, treatment, population, study` |
+| **Touche-2020** | `argument` | `claim, premise, stance, topic, evidence, source` |
+
+Seeding is done via the CLI or programmatically:
+```bash
+ncms topics set biomedical disease drug protein gene symptom treatment --db :memory:
+```
+
+Or programmatically in the harness:
+```python
+await store.set_consolidation_value(
+    "entity_labels:biomedical",
+    json.dumps(["disease", "drug", "protein", "gene", "symptom", "treatment"]),
+)
+```
+
 ### Key Implementation Notes
 
 - Use in-memory backends (`:memory:` SQLite, ephemeral Tantivy) for speed
-- Entity extraction runs at ingest time -- graph structure depends on content
+- **Topic seeding must occur BEFORE corpus ingestion** -- labels determine which entities GLiNER extracts
+- Entity extraction runs at ingest time -- graph structure depends on content and labels
 - Access patterns must be injected AFTER ingest but BEFORE search queries
 - Each configuration requires a fresh service instance (configs affect ingest too)
 - Track wall-clock time per stage via pipeline debug events
@@ -183,7 +217,7 @@ For each dataset, produce:
 ## Open Questions
 
 1. **Corpus size**: BEIR corpora range from 5K to 5M docs. Should we subsample large corpora or run full-scale?
-2. **Entity extraction quality**: Regex vs GLiNER will produce different graph structures. Should we ablate extraction methods too?
+2. **Topic label selection**: Domain-specific labels vs universal labels will produce different graph structures. Should we ablate label strategies (universal-only vs dataset-specific topics)?
 3. **Access pattern realism**: What distribution best models real agent access? Poisson? Power-law? Bursty?
 4. **Cross-dataset aggregation**: Report per-dataset or aggregate (BEIR-style normalized)?
 5. **Budget**: LLM Judge requires API calls. How many queries x candidates are feasible?

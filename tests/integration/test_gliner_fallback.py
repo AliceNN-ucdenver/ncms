@@ -1,108 +1,84 @@
-"""Integration tests for GLiNER/regex fallback routing logic.
+"""Integration tests for GLiNER entity extraction (now always used).
 
-These tests verify the extract_entities() routing function works correctly
-regardless of whether GLiNER is installed. No GLiNER dependency needed.
+GLiNER is a required dependency — regex fallback no longer exists.
+These tests verify the extraction pipeline works end-to-end.
 """
 
 from __future__ import annotations
 
-import logging
-from unittest.mock import patch
-
-import pytest
-
-from ncms.config import NCMSConfig
-from ncms.domain.entity_extraction import extract_entities, extract_entity_names
+from ncms.domain.entity_extraction import UNIVERSAL_LABELS, resolve_labels
+from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
 
 
-class TestGlinerFallback:
-    """Tests for the extract_entities() routing and fallback behavior."""
+class TestGlinerAlwaysUsed:
+    """Tests that GLiNER extraction is the sole extraction path."""
 
-    def test_extract_entities_uses_regex_when_gliner_disabled(self):
-        """With gliner_enabled=False, should use regex extraction."""
-        config = NCMSConfig(db_path=":memory:", gliner_enabled=False)
-        text = "PostgreSQL connection pooling with PgBouncer"
+    def test_gliner_extracts_from_technical_text(self):
+        """GLiNER should extract entities from technical content."""
+        results = extract_entities_gliner(
+            "PostgreSQL connection pooling with PgBouncer"
+        )
+        assert isinstance(results, list)
+        assert len(results) >= 1
+        names_lower = {e["name"].lower() for e in results}
+        assert "postgresql" in names_lower or "pgbouncer" in names_lower
 
-        result = extract_entities(text, config=config)
-        regex_result = extract_entity_names(text)
+    def test_gliner_extracts_from_non_technical_text(self):
+        """GLiNER should extract entities from general domain content."""
+        results = extract_entities_gliner(
+            "Apple Inc. acquired a startup in San Francisco last Tuesday"
+        )
+        assert isinstance(results, list)
+        assert len(results) >= 1
 
-        # Should produce identical results to regex
-        assert result == regex_result
+    def test_label_resolution_integrates_with_extraction(self):
+        """Resolved labels should flow through to GLiNER extraction."""
+        cached = {"finance": ["company", "stock", "market"]}
+        labels = resolve_labels(["finance"], cached_labels=cached)
+        assert labels == ["company", "stock", "market"]
 
-    def test_extract_entities_uses_regex_when_no_config(self):
-        """With no config, should fall back to regex extraction."""
-        text = "FastAPI backend with Redis caching"
+        # These labels work with GLiNER
+        results = extract_entities_gliner(
+            "Apple stock rose after the company announced quarterly earnings",
+            labels=labels,
+        )
+        assert isinstance(results, list)
+        for entity in results:
+            assert entity["type"] in labels
 
-        result = extract_entities(text, config=None)
-        regex_result = extract_entity_names(text)
+    def test_domain_cached_labels_override_universal(self):
+        """Domain-cached labels should replace universal defaults."""
+        cached = {"biomedical": ["disease", "drug", "protein", "gene"]}
+        labels = resolve_labels(["biomedical"], cached_labels=cached)
+        assert "disease" in labels
+        assert "person" not in labels  # Universal label not included
 
-        assert result == regex_result
+    def test_empty_text_returns_empty(self):
+        """Empty or very short text should return empty list."""
+        assert extract_entities_gliner("") == []
+        assert extract_entities_gliner("a") == []
 
-    def test_extract_entities_falls_back_when_gliner_not_installed(self, caplog):
-        """With gliner_enabled=True but gliner not installed, should fall back to regex."""
-        import sys
-
-        config = NCMSConfig(db_path=":memory:", gliner_enabled=True)
-        text = "PostgreSQL connection pooling with PgBouncer"
-
-        # Remove the module from sys.modules if cached, then block the import
-        saved = sys.modules.pop("ncms.infrastructure.extraction.gliner_extractor", None)
-        try:
-            # Setting a module to None in sys.modules causes ImportError on import
-            with patch.dict(
-                sys.modules,
-                {"ncms.infrastructure.extraction.gliner_extractor": None},
-            ):
-                with caplog.at_level(logging.WARNING):
-                    result = extract_entities(text, config=config)
-        finally:
-            # Restore original state
-            if saved is not None:
-                sys.modules["ncms.infrastructure.extraction.gliner_extractor"] = saved
-
-        regex_result = extract_entity_names(text)
-        assert result == regex_result
-        assert any("gliner" in r.message.lower() for r in caplog.records)
-
-    def test_extract_entities_falls_back_on_gliner_error(self, caplog):
-        """If GLiNER raises a runtime error, should fall back to regex with warning."""
-        config = NCMSConfig(db_path=":memory:", gliner_enabled=True)
-        text = "PostgreSQL connection pooling with PgBouncer"
-
-        with patch(
-            "ncms.infrastructure.extraction.gliner_extractor.extract_entities_gliner",
-            side_effect=RuntimeError("Model loading failed"),
-        ):
-            with caplog.at_level(logging.WARNING):
-                result = extract_entities(text, config=config)
-
-        regex_result = extract_entity_names(text)
-        assert result == regex_result
-        assert any("falling back to regex" in r.message.lower() for r in caplog.records)
-
-    def test_extract_entities_returns_same_format_as_regex(self):
-        """extract_entities() should always return list[dict] with 'name' and 'type'."""
-        config = NCMSConfig(db_path=":memory:", gliner_enabled=False)
-        text = "UserService calls GET /api/v2/users with JWT auth"
-
-        result = extract_entities(text, config=config)
-
-        assert isinstance(result, list)
-        for entity in result:
+    def test_returns_correct_format(self):
+        """Entities should be list[dict] with 'name' and 'type' keys."""
+        results = extract_entities_gliner(
+            "UserService calls GET /api/v2/users with JWT auth"
+        )
+        assert isinstance(results, list)
+        for entity in results:
             assert isinstance(entity, dict)
             assert "name" in entity
             assert "type" in entity
             assert isinstance(entity["name"], str)
             assert isinstance(entity["type"], str)
 
-    def test_extract_entities_empty_text(self):
-        """Empty text should return empty list regardless of config."""
-        config_on = NCMSConfig(db_path=":memory:", gliner_enabled=True)
-        config_off = NCMSConfig(db_path=":memory:", gliner_enabled=False)
+    def test_universal_labels_used_without_cache(self):
+        """Without cached labels, extraction should use UNIVERSAL_LABELS."""
+        labels = resolve_labels(["unknown_domain"], cached_labels=None)
+        assert labels == UNIVERSAL_LABELS
 
-        # With gliner disabled — regex handles it
-        assert extract_entities("", config=config_off) == []
-        assert extract_entities("a", config=config_off) == []
-
-        # With gliner enabled but import will fail — falls back to regex
-        assert extract_entities("", config=config_on) == []
+        results = extract_entities_gliner(
+            "PostgreSQL and Redis are technologies used by the organization",
+            labels=labels,
+        )
+        for entity in results:
+            assert entity["type"] in UNIVERSAL_LABELS

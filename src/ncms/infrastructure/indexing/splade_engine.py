@@ -4,8 +4,6 @@ Uses fastembed's SparseTextEmbedding for ONNX-based SPLADE encoding.
 Stores sparse vectors in-memory for brute-force dot-product search.
 Suitable for corpora up to ~100K memories.
 
-Optional dependency: ``pip install ncms[splade]``
-
 Disabled by default; enable via config.splade_enabled = True.
 """
 
@@ -35,8 +33,13 @@ class SpladeEngine:
     brute-force dot-product search.  Suitable for corpora up to ~100K memories.
     """
 
-    def __init__(self, model_name: str = "prithivida/Splade_PP_en_v1"):
+    def __init__(
+        self,
+        model_name: str = "prithivida/Splade_PP_en_v1",
+        cache_dir: str | None = None,
+    ):
         self._model_name = model_name
+        self._cache_dir = cache_dir
         self._model: object | None = None  # Lazy-loaded SparseTextEmbedding
         self._vectors: dict[str, SparseVector] = {}
 
@@ -44,16 +47,13 @@ class SpladeEngine:
         """Lazy-load the SPLADE model on first use (~530 MB ONNX download)."""
         if self._model is not None:
             return
-        try:
-            from fastembed import SparseTextEmbedding
+        from fastembed import SparseTextEmbedding
 
-            self._model = SparseTextEmbedding(model_name=self._model_name)
-            logger.info("SPLADE model loaded: %s", self._model_name)
-        except ImportError:
-            raise ImportError(
-                "fastembed is required for SPLADE support. "
-                "Install with: pip install ncms[splade]"
-            ) from None
+        kwargs: dict[str, object] = {"model_name": self._model_name}
+        if self._cache_dir:
+            kwargs["cache_dir"] = self._cache_dir
+        self._model = SparseTextEmbedding(**kwargs)
+        logger.info("SPLADE model loaded: %s", self._model_name)
 
     def index_memory(self, memory: Memory) -> None:
         """Encode a memory's content and store its sparse vector."""

@@ -7,6 +7,7 @@ so the dashboard can visualize events in real-time.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from ncms.application.bus_service import BusService
@@ -45,6 +46,24 @@ async def run_demo_loop(
     await asyncio.sleep(STEP_DELAY)
     await db_agent.start()
     await asyncio.sleep(STEP_DELAY)
+
+    # ── Phase 1.5: Seed Domain-Specific Topics ──────────────────────────
+
+    store = memory_svc._store
+    await store.set_consolidation_value(
+        "entity_labels:api",
+        json.dumps(["endpoint", "service", "protocol", "token", "method"]),
+    )
+    await store.set_consolidation_value(
+        "entity_labels:frontend",
+        json.dumps(["component", "route", "library", "framework", "hook"]),
+    )
+    await store.set_consolidation_value(
+        "entity_labels:db",
+        json.dumps(["table", "column", "database", "index", "migration"]),
+    )
+    logger.info("Seeded domain-specific entity topics for demo")
+    await asyncio.sleep(0.5)
 
     # ── Phase 2: Store Domain Knowledge ───────────────────────────────────
 

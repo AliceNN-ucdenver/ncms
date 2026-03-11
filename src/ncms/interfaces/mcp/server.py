@@ -41,19 +41,16 @@ async def create_ncms_services(
     graph = NetworkXGraph()
     bus = AsyncKnowledgeBus(ask_timeout_ms=config.bus_ask_timeout_ms)
 
-    # Optional SPLADE engine
+    # SPLADE sparse neural retrieval (disabled by default)
     splade = None
     if config.splade_enabled:
-        try:
-            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
 
-            splade = SpladeEngine(model_name=config.splade_model)
-            logger.info("SPLADE engine enabled with model: %s", config.splade_model)
-        except ImportError:
-            logger.warning(
-                "SPLADE enabled but fastembed not installed. "
-                "Install with: pip install ncms[splade]"
-            )
+        splade = SpladeEngine(
+            model_name=config.splade_model,
+            cache_dir=config.model_cache_dir,
+        )
+        logger.info("SPLADE engine enabled with model: %s", config.splade_model)
 
     # Application services
     memory_svc = MemoryService(

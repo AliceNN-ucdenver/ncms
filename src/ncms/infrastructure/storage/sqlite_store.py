@@ -301,6 +301,12 @@ class SQLiteStore:
         )
         await self.db.commit()
 
+    async def delete_consolidation_value(self, key: str) -> None:
+        await self.db.execute(
+            "DELETE FROM consolidation_state WHERE key = ?", (key,)
+        )
+        await self.db.commit()
+
     # ── Row Converters ───────────────────────────────────────────────────
 
     @staticmethod

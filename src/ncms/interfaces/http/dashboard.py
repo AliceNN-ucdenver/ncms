@@ -253,6 +253,33 @@ def create_dashboard_app(
             "event_count": event_log.count(),
         })
 
+    async def api_topics(request: Request) -> JSONResponse:
+        """Return cached entity labels (topics) for all domains."""
+        import json
+
+        from ncms.domain.entity_extraction import UNIVERSAL_LABELS
+
+        store = memory_service._store
+        # Query all entity_labels:* keys from consolidation_state
+        rows = await store.db.execute_fetchall(
+            "SELECT key, value FROM consolidation_state"
+            " WHERE key LIKE 'entity_labels:%'"
+        )
+        domains: dict[str, list[str]] = {}
+        for key, value in rows:
+            domain = key.removeprefix("entity_labels:")
+            try:
+                labels = json.loads(value)
+                if isinstance(labels, list):
+                    domains[domain] = labels
+            except Exception:
+                pass
+
+        return JSONResponse({
+            "domains": domains,
+            "universal_labels": UNIVERSAL_LABELS,
+        })
+
     async def api_events(request: Request) -> JSONResponse:
         """Return recent events as JSON (non-streaming)."""
         from dataclasses import asdict
@@ -281,6 +308,7 @@ def create_dashboard_app(
         Route("/api/graph/entity/{entity_id}", api_graph_entity_detail),
         Route("/api/graph", api_graph),
         Route("/api/memories", api_memories),
+        Route("/api/topics", api_topics),
         Route("/api/stats", api_stats),
     ]
 

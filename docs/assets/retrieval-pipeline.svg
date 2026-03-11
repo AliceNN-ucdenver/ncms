@@ -156,11 +156,11 @@
   <rect x="340" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
   <text x="353" y="363" fill="#94a3b8" font-size="9">ACT-R (core)</text>
   <rect x="450" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="463" y="363" fill="#94a3b8" font-size="9">GLiNER NER (opt-in)</text>
+  <text x="463" y="363" fill="#94a3b8" font-size="9">GLiNER NER (required)</text>
   <rect x="590" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
   <text x="603" y="363" fill="#94a3b8" font-size="9">Keyword Bridges (opt-in)</text>
   <rect x="110" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="123" y="380" fill="#94a3b8" font-size="9">SPLADE (opt-in)</text>
+  <text x="123" y="380" fill="#94a3b8" font-size="9">SPLADE (required, disabled by default)</text>
   <rect x="240" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
   <text x="253" y="380" fill="#94a3b8" font-size="9">Consolidation (opt-in)</text>
   <rect x="420" y="372" width="8" height="8" rx="2" fill="#22c55e"/>

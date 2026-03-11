@@ -101,7 +101,7 @@ Traditional memory systems compress documents into dense vectors, losing precisi
   <img src="docs/assets/retrieval-pipeline.svg" alt="Retrieval Pipeline" width="100%">
 </p>
 
-**Tier 1 &mdash; BM25 + SPLADE Hybrid Search.** BM25 via Tantivy (Rust) provides exact lexical matching. SPLADE (optional, `pip install ncms[splade]`) adds learned sparse neural retrieval &mdash; expanding "API specification" to also match "endpoint", "schema", "contract". Results are fused via Reciprocal Rank Fusion (RRF). Enable with `NCMS_SPLADE_ENABLED=true`.
+**Tier 1 &mdash; BM25 + SPLADE Hybrid Search.** BM25 via Tantivy (Rust) provides exact lexical matching. SPLADE adds learned sparse neural retrieval &mdash; expanding "API specification" to also match "endpoint", "schema", "contract". Results are fused via Reciprocal Rank Fusion (RRF). Enable with `NCMS_SPLADE_ENABLED=true`.
 
 **Tier 1.5 &mdash; Graph-Expanded Discovery.** Entity relationships in the knowledge graph discover related memories search missed lexically. A query matching "connection pooling" also finds memories about "PostgreSQL replication" &mdash; because both share the `PostgreSQL` entity in the graph.
 
@@ -125,9 +125,7 @@ Entities are automatically extracted at store-time and search-time, feeding the 
   <img src="docs/assets/entity-extraction.svg" alt="Entity Extraction Pipeline" width="100%">
 </p>
 
-**Regex Heuristics** (built-in) &mdash; curated tech names, PascalCase identifiers, API paths, table references. Zero dependencies, always available as fallback.
-
-**GLiNER NER** (optional, `pip install ncms[gliner]`) &mdash; zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts semantic entities regex misses: "authentication", "caching strategy", "data pipeline". Enable with `NCMS_GLINER_ENABLED=true`.
+**GLiNER NER** (built-in, required dependency) &mdash; zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts entities across any domain: people, organizations, technologies, concepts, and more. Uses domain-agnostic universal labels by default, with per-domain label customization via `ncms topics` CLI commands.
 
 **Keyword Bridges** (optional) &mdash; semantic keywords extracted via LLM that connect otherwise disconnected subgraphs. "JWT validation" and "role-based access" share no entities, but both relate to the keyword "security". Enable with `NCMS_KEYWORD_BRIDGE_ENABLED=true`.
 
@@ -421,15 +419,17 @@ Environment variables with `NCMS_` prefix:
 | `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge reranking |
 | `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM-as-judge |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (default 7 days) |
-| `NCMS_GLINER_ENABLED` | `false` | Enable GLiNER entity extraction (`pip install ncms[gliner]`) |
-| `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for entity extraction |
+| `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for entity extraction (required dep) |
 | `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence score for entity extraction |
+| `NCMS_LABEL_DETECTION_MODEL` | `gpt-4o-mini` | LLM model for `ncms topics detect` auto-labeling |
+| `NCMS_LABEL_DETECTION_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for label detection |
 | `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM-extracted keyword bridge nodes |
 | `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | Maximum keywords extracted per memory |
 | `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keyword extraction |
 | `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
 | `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for LLM judge |
-| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (`pip install ncms[splade]`) |
+| `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
+| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval |
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
 | `NCMS_SPLADE_TOP_K` | `50` | Number of SPLADE candidates per search |
 | `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
@@ -483,11 +483,11 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 
 **Retrieval & Scoring**
 - [x] Graph-expanded retrieval (Tier 1.5) &mdash; entity-based cross-memory discovery
-- [x] GLiNER entity extraction &mdash; optional semantic NER (`pip install ncms[gliner]`)
+- [x] GLiNER entity extraction &mdash; required zero-shot NER with domain-agnostic universal labels + per-domain label customization via `ncms topics` CLI
 - [x] Keyword bridge nodes &mdash; LLM-extracted semantic concept bridges
 - [x] Knowledge consolidation &mdash; entity co-occurrence clustering + LLM insight synthesis
 - [x] vLLM / local LLM support &mdash; `api_base` config for all LLM features
-- [x] SPLADE sparse neural retrieval &mdash; learned term expansion fused with BM25 via RRF
+- [x] SPLADE sparse neural retrieval &mdash; required dependency, learned term expansion fused with BM25 via RRF
 - [x] Contradiction detection &mdash; LLM-powered detection at ingest with bidirectional annotation
 
 **Ingestion**
@@ -509,11 +509,12 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 - [ ] Prometheus metrics and OpenTelemetry traces
 
 **Evaluation**
-- [ ] Retrieval pipeline ablation study &mdash; BEIR benchmarks + synthetic ACT-R temporal data ([design doc](docs/ablation-study-design.md))
+- [ ] Retrieval pipeline ablation study &mdash; BEIR benchmarks + synthetic ACT-R temporal data; includes dataset-specific topic seeding via `ncms topics set` to align GLiNER extraction labels with each benchmark's entity types ([design doc](docs/ablation-study-design.md))
 
 ## Acknowledgments
 
-- **[GLiNER](https://github.com/urchade/GLiNER)** — Zero-shot Named Entity Recognition model by [Zaratiana et al. (NAACL 2024)](https://arxiv.org/abs/2311.08526). Used for optional semantic entity extraction (`pip install ncms[gliner]`).
+- **[GLiNER](https://github.com/urchade/GLiNER)** — Zero-shot Named Entity Recognition model by [Zaratiana et al. (NAACL 2024)](https://arxiv.org/abs/2311.08526). Required dependency for domain-agnostic entity extraction.
+- **[SPLADE](https://github.com/naver/splade)** — Sparse neural retrieval via learned term expansion by [Formal et al. (SIGIR 2021)](https://arxiv.org/abs/2107.05720). Required dependency for hybrid BM25 + SPLADE search, powered by [fastembed](https://github.com/qdrant/fastembed).
 - **[Tantivy](https://github.com/quickwit-oss/tantivy)** — Rust-based full-text search engine powering BM25 retrieval.
 - **[ACT-R](https://en.wikipedia.org/wiki/ACT-R)** — Cognitive architecture by John R. Anderson providing the activation scoring model.
 

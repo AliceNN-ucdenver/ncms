@@ -136,12 +136,15 @@ class TestSpladeEngine:
             if i > 0:
                 assert results[i][1] <= results[i - 1][1]
 
-    def test_import_error_without_fastembed(self):
-        """When fastembed is not installed, _ensure_model should raise ImportError."""
+    def test_cache_dir_passed_to_constructor(self):
+        """cache_dir should be stored for model loading."""
+        engine = SpladeEngine(cache_dir="/tmp/models")
+        assert engine._cache_dir == "/tmp/models"
+
+    def test_default_cache_dir_is_none(self):
+        """Default cache_dir should be None (uses HuggingFace default)."""
         engine = SpladeEngine()
-        with patch.dict("sys.modules", {"fastembed": None}):
-            with pytest.raises(ImportError, match="fastembed is required"):
-                engine._ensure_model()
+        assert engine._cache_dir is None
 
     @patch("ncms.infrastructure.indexing.splade_engine.SpladeEngine._ensure_model")
     def test_remove_nonexistent_is_safe(self, mock_ensure):

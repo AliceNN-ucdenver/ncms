@@ -1,20 +1,12 @@
 """Unit tests for GLiNER-based entity extraction.
 
-These tests require the gliner package to be installed (pip install ncms[gliner]).
-They are automatically skipped when gliner is not available.
+GLiNER is a required dependency — these tests always run.
 """
 
 from __future__ import annotations
 
-import pytest
-
-gliner = pytest.importorskip("gliner", reason="GLiNER not installed (pip install ncms[gliner])")
-
-from ncms.infrastructure.extraction.gliner_extractor import (
-    DEFAULT_LABELS,
-    _MAX_ENTITIES,
-    extract_entities_gliner,
-)
+from ncms.domain.entity_extraction import MAX_ENTITIES, UNIVERSAL_LABELS
+from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
 
 
 class TestGlinerExtractor:
@@ -55,8 +47,7 @@ class TestGlinerExtractor:
         )
 
     def test_max_entities_cap(self):
-        """Should never return more than _MAX_ENTITIES."""
-        # Create text with many potential entities
+        """Should never return more than MAX_ENTITIES."""
         techs = [
             "PostgreSQL", "Redis", "Kafka", "Docker", "Kubernetes",
             "React", "Angular", "Vue", "Django", "Flask",
@@ -66,7 +57,7 @@ class TestGlinerExtractor:
         ]
         text = "Our stack uses " + ", ".join(techs) + " for various purposes."
         results = extract_entities_gliner(text)
-        assert len(results) <= _MAX_ENTITIES
+        assert len(results) <= MAX_ENTITIES
 
     def test_empty_text_returns_empty(self):
         """Empty or very short text should return an empty list."""
@@ -74,13 +65,13 @@ class TestGlinerExtractor:
         assert extract_entities_gliner("a") == []
 
     def test_entity_types_match_labels(self):
-        """Extracted entity types should be from the default label set."""
+        """Extracted entity types should be from the universal label set."""
         results = extract_entities_gliner(
             "The authentication service uses JWT tokens and connects to PostgreSQL"
         )
         for entity in results:
-            assert entity["type"] in DEFAULT_LABELS, (
-                f"Entity type '{entity['type']}' not in DEFAULT_LABELS"
+            assert entity["type"] in UNIVERSAL_LABELS, (
+                f"Entity type '{entity['type']}' not in UNIVERSAL_LABELS"
             )
 
     def test_threshold_filters_low_confidence(self):
@@ -91,10 +82,19 @@ class TestGlinerExtractor:
         assert len(results_high) <= len(results_low)
 
     def test_plain_text_extracts_concepts(self):
-        """GLiNER should extract semantic concepts that regex would miss."""
+        """GLiNER should extract semantic concepts from natural language."""
         results = extract_entities_gliner(
             "The authentication flow handles access control and session management"
         )
-        # GLiNER should find conceptual entities like authentication, access control
-        # (regex extractor would miss these since they're not PascalCase or in tech list)
         assert len(results) >= 1, "Should extract at least one concept entity"
+
+    def test_custom_labels(self):
+        """Custom labels should be used for extraction instead of defaults."""
+        results = extract_entities_gliner(
+            "The portfolio contains stocks and bonds from NYSE",
+            labels=["financial instrument", "exchange", "portfolio"],
+        )
+        assert isinstance(results, list)
+        # Entity types should be from the custom labels, not UNIVERSAL_LABELS
+        for entity in results:
+            assert entity["type"] in ["financial instrument", "exchange", "portfolio"]

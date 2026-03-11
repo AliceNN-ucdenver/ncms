@@ -60,10 +60,17 @@ class NCMSConfig(BaseSettings):
     graph_expansion_depth: int = 1
     graph_expansion_max: int = 10
 
-    # GLiNER entity extraction (optional, pip install ncms[gliner])
-    gliner_enabled: bool = False
+    # Model cache directory (for GLiNER / SPLADE / fastembed downloads)
+    # Defaults to ~/.cache/huggingface/hub if not set
+    model_cache_dir: str | None = None
+
+    # GLiNER entity extraction (required dependency)
     gliner_model: str = "urchade/gliner_medium-v2.1"
     gliner_threshold: float = 0.3
+
+    # Label detection via LLM (for `ncms topics detect`)
+    label_detection_model: str = "gpt-4o-mini"
+    label_detection_api_base: str | None = None
 
     # Keyword bridge nodes (Phase 3)
     keyword_bridge_enabled: bool = False

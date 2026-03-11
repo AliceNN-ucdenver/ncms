@@ -11,7 +11,7 @@ import time
 import uuid
 
 from ncms.config import NCMSConfig
-from ncms.domain.entity_extraction import extract_entities
+from ncms.domain.entity_extraction import resolve_labels
 from ncms.domain.models import (
     AccessRecord,
     Entity,
@@ -61,6 +61,22 @@ class MemoryService:
     @property
     def graph(self) -> NetworkXGraph:
         return self._graph
+
+    async def _get_cached_labels(self, domains: list[str]) -> dict[str, list[str]]:
+        """Load domain-specific entity labels from consolidation_state."""
+        import json as _json
+
+        cached: dict[str, list[str]] = {}
+        for domain in domains:
+            raw = await self._store.get_consolidation_value(f"entity_labels:{domain}")
+            if raw:
+                try:
+                    labels = _json.loads(raw)
+                    if isinstance(labels, list):
+                        cached[domain] = labels
+                except Exception:
+                    pass
+        return cached
 
     # ── Store ────────────────────────────────────────────────────────────
 
@@ -128,13 +144,22 @@ class MemoryService:
 
         # Auto-extract entities from content + merge with manually provided ones
         t0 = time.perf_counter()
-        auto_entities = extract_entities(content, config=self._config)
+        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
+
+        cached = await self._get_cached_labels(domains or [])
+        labels = resolve_labels(domains or [], cached_labels=cached)
+        auto_entities = extract_entities_gliner(
+            content,
+            model_name=self._config.gliner_model,
+            threshold=self._config.gliner_threshold,
+            labels=labels,
+            cache_dir=self._config.model_cache_dir,
+        )
         manual = list(entities or [])
         manual_names = {e["name"].lower() for e in manual}
         all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
-        extractor = "gliner" if self._config.gliner_enabled else "regex"
         _emit_stage("entity_extraction", (time.perf_counter() - t0) * 1000, {
-            "extractor": extractor,
+            "extractor": "gliner",
             "auto_count": len(auto_entities),
             "manual_count": len(manual),
             "total_count": len(all_entities),
@@ -405,7 +430,18 @@ class MemoryService:
         # Extract entities from query for spreading activation context
         # Use graph O(1) name index when available, fall back to SQLite
         t0 = time.perf_counter()
-        query_entity_names = extract_entities(query, config=self._config)
+        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
+
+        search_domains = [domain] if domain else []
+        cached = await self._get_cached_labels(search_domains)
+        labels = resolve_labels(search_domains, cached_labels=cached)
+        query_entity_names = extract_entities_gliner(
+            query,
+            model_name=self._config.gliner_model,
+            threshold=self._config.gliner_threshold,
+            labels=labels,
+            cache_dir=self._config.model_cache_dir,
+        )
         context_entity_ids: list[str] = []
         for qe in query_entity_names:
             eid = self._graph.find_entity_by_name(qe["name"])

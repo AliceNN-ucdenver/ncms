@@ -16,6 +16,7 @@ import pytest
 
 from ncms.application.memory_service import MemoryService
 from ncms.config import NCMSConfig
+from ncms.domain.entity_extraction import UNIVERSAL_LABELS
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
@@ -192,10 +193,12 @@ class TestKeywordBridges:
                     domains=["auth"],
                 )
 
-            # "JWT" should exist as a technology entity (from regex), not duplicated
+            # "JWT" should exist as an entity (from GLiNER or keyword bridge)
             jwt_entity = await store.find_entity_by_name("JWT")
             assert jwt_entity is not None
-            assert jwt_entity.type == "technology"  # Original type preserved
+            # Type depends on extraction order: GLiNER may assign a universal label,
+            # or keyword bridge may create it first as "keyword"
+            assert jwt_entity.type in [*UNIVERSAL_LABELS, "keyword"]
 
             # "token management" should exist as a keyword entity
             tm_entity = await store.find_entity_by_name("token management")
@@ -249,7 +252,7 @@ class TestKeywordBridges:
             assert retrieved is not None
             assert retrieved.content == "PostgreSQL database with Redis caching"
 
-            # Regular entities should still be extracted (regex works independently)
+            # Regular entities should still be extracted (GLiNER works independently)
             entities = await svc.list_entities()
             entity_names = {e.name.lower() for e in entities}
             assert "postgresql" in entity_names or "redis" in entity_names
