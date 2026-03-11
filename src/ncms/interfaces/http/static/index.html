@@ -239,6 +239,10 @@
     flex-wrap: wrap;
     gap: 4px;
     padding: 0 12px 8px;
+    min-height: 40px;
+    max-height: 40px;
+    overflow: hidden;
+    align-content: flex-start;
   }
 
   .domain-tag {
@@ -559,6 +563,9 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px 18px;
+  }
+
+  .pipeline-card.pipeline-new {
     animation: fadeIn 0.3s ease;
   }
 
@@ -1827,38 +1834,18 @@ function handlePipelineEvent(event) {
   renderPipelinePanel();
 }
 
-function renderPipelinePanel() {
-  const panel = document.getElementById('pipeline-panel');
-  const pipelineId = state.activePipeline;
-
-  if (!pipelineId || !state.pipelines[pipelineId]) {
-    panel.innerHTML = '<div class="pipeline-empty">No pipeline activity yet</div>';
-    return;
-  }
-
-  const pipeline = state.pipelines[pipelineId];
+function buildPipelineStagesHTML(pipelineId, pipeline) {
   const stageOrder = pipeline.type === 'store' ? STORE_STAGES : SEARCH_STAGES;
   const reachedStages = new Set(pipeline.stages.map(s => s.stage));
   const stageDataMap = {};
   pipeline.stages.forEach(s => { stageDataMap[s.stage] = s; });
 
-  // Determine which stages are active (next expected) vs reached vs skipped
   const isComplete = reachedStages.has('complete');
   let lastReachedIdx = -1;
   stageOrder.forEach((s, i) => {
     if (reachedStages.has(s)) lastReachedIdx = i;
   });
 
-  // Type badge
-  const typeBadgeClass = pipeline.type === 'store' ? 'pipeline-type-store' : 'pipeline-type-search';
-  const typeLabel = pipeline.type === 'store' ? 'STORE' : 'SEARCH';
-
-  // Duration display
-  const durationStr = pipeline.total_duration_ms != null
-    ? `${pipeline.total_duration_ms.toFixed(1)}ms`
-    : 'running...';
-
-  // Build stages HTML
   let stagesHTML = '';
   stageOrder.forEach((stageName, i) => {
     const reached = reachedStages.has(stageName);
@@ -1873,7 +1860,6 @@ function renderPipelinePanel() {
     const stageData = stageDataMap[stageName];
     const timeStr = stageData ? `${stageData.duration_ms.toFixed(1)}ms` : '';
 
-    // Add arrow before stage (except first)
     if (i > 0) {
       const prevReached = reachedStages.has(stageOrder[i - 1]);
       const arrowClass = prevReached && reached ? 'pipeline-arrow reached' : 'pipeline-arrow';
@@ -1887,6 +1873,29 @@ function renderPipelinePanel() {
     </div>`;
   });
 
+  return { stagesHTML, stageDataMap };
+}
+
+function renderPipelinePanel() {
+  const panel = document.getElementById('pipeline-panel');
+  const pipelineId = state.activePipeline;
+
+  if (!pipelineId || !state.pipelines[pipelineId]) {
+    panel.innerHTML = '<div class="pipeline-empty">No pipeline activity yet</div>';
+    panel.removeAttribute('data-pipeline-id');
+    return;
+  }
+
+  const pipeline = state.pipelines[pipelineId];
+  const typeBadgeClass = pipeline.type === 'store' ? 'pipeline-type-store' : 'pipeline-type-search';
+  const typeLabel = pipeline.type === 'store' ? 'STORE' : 'SEARCH';
+  const durationStr = pipeline.total_duration_ms != null
+    ? `${pipeline.total_duration_ms.toFixed(1)}ms`
+    : 'running...';
+  const agentStr = pipeline.agent_id ? escapeHtml(pipeline.agent_id) : '';
+
+  const { stagesHTML, stageDataMap } = buildPipelineStagesHTML(pipelineId, pipeline);
+
   // Build detail section if a stage is expanded
   let detailHTML = '';
   if (state.expandedStage && state.expandedStage.pipelineId === pipelineId) {
@@ -1896,17 +1905,36 @@ function renderPipelinePanel() {
     }
   }
 
-  const agentStr = pipeline.agent_id ? escapeHtml(pipeline.agent_id) : '';
+  const currentRendered = panel.getAttribute('data-pipeline-id');
 
-  panel.innerHTML = `<div class="pipeline-card">
-    <div class="pipeline-header">
-      <span class="pipeline-type-badge ${typeBadgeClass}">${typeLabel}</span>
-      ${agentStr ? `<span class="pipeline-agent">${agentStr}</span>` : ''}
-      <span class="pipeline-duration">${durationStr}</span>
-    </div>
-    <div class="pipeline-stages">${stagesHTML}</div>
-    ${detailHTML}
-  </div>`;
+  if (currentRendered === pipelineId) {
+    // Same pipeline — update in-place without rebuilding the card
+    const dur = panel.querySelector('.pipeline-duration');
+    if (dur) dur.textContent = durationStr;
+
+    const stagesEl = panel.querySelector('.pipeline-stages');
+    if (stagesEl) stagesEl.innerHTML = stagesHTML;
+
+    // Update or insert detail section
+    const existingDetail = panel.querySelector('.pipeline-stage-detail');
+    if (existingDetail) existingDetail.remove();
+    if (detailHTML) {
+      const card = panel.querySelector('.pipeline-card');
+      if (card) card.insertAdjacentHTML('beforeend', detailHTML);
+    }
+  } else {
+    // New pipeline — full render with entrance animation
+    panel.setAttribute('data-pipeline-id', pipelineId);
+    panel.innerHTML = `<div class="pipeline-card pipeline-new">
+      <div class="pipeline-header">
+        <span class="pipeline-type-badge ${typeBadgeClass}">${typeLabel}</span>
+        ${agentStr ? `<span class="pipeline-agent">${agentStr}</span>` : ''}
+        <span class="pipeline-duration">${durationStr}</span>
+      </div>
+      <div class="pipeline-stages">${stagesHTML}</div>
+      ${detailHTML}
+    </div>`;
+  }
 }
 
 function toggleStageDetail(pipelineId, stage) {
