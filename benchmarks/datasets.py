@@ -27,19 +27,22 @@ DATASET_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "scifact": {
         "domain": "science",
         "labels": [
-            "claim", "evidence", "study", "method", "result", "finding",
+            "disease", "drug", "protein", "gene", "compound", "organism",
+            "cell", "tissue", "symptom", "treatment",
         ],
     },
     "nfcorpus": {
         "domain": "biomedical",
         "labels": [
             "disease", "drug", "protein", "gene", "symptom", "treatment",
+            "cell", "tissue", "compound", "organism",
         ],
     },
     "arguana": {
         "domain": "argument",
         "labels": [
-            "claim", "premise", "stance", "topic", "evidence", "source",
+            "person", "organization", "location", "policy",
+            "country", "event",
         ],
     },
 }

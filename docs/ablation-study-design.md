@@ -225,13 +225,18 @@ rather than relying on universal fallback labels:
 
 | Dataset | Domain | Suggested Topics |
 |---------|--------|-----------------|
-| **SciFact** | `science` | `claim, evidence, study, method, result, finding` |
-| **NFCorpus** | `biomedical` | `disease, drug, protein, gene, symptom, treatment` |
+| **SciFact** | `science` | `disease, drug, protein, gene, compound, organism, cell, tissue, symptom, treatment` |
+| **NFCorpus** | `biomedical` | `disease, drug, protein, gene, symptom, treatment, cell, tissue, compound, organism` |
 | **FiQA** | `finance` | `company, stock, market, fund, indicator, regulation` |
 | **DBPedia-Entity** | `encyclopedia` | `person, organization, location, event, concept, product` |
 | **NQ / HotpotQA** | `general` | *(use UNIVERSAL_LABELS -- no seeding needed)* |
 | **TREC-COVID** | `epidemiology` | `virus, vaccine, transmission, treatment, population, study` |
-| **Touche-2020** | `argument` | `claim, premise, stance, topic, evidence, source` |
+| **ArguAna** | `argument` | `person, organization, location, policy, country, event` |
+
+**Important:** GLiNER is a zero-shot NER model — it works best with *concrete entity types*
+(disease, protein, person) rather than abstract concepts (claim, evidence, finding).
+Abstract labels produce few or no entity extractions, starving the knowledge graph
+and making graph expansion a no-op.
 
 Seeding is done via the CLI or programmatically:
 ```bash
