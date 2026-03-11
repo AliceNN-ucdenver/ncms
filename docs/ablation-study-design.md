@@ -225,13 +225,13 @@ rather than relying on universal fallback labels:
 
 | Dataset | Domain | Suggested Topics |
 |---------|--------|-----------------|
-| **SciFact** | `science` | `disease, drug, protein, gene, compound, organism, cell, tissue, symptom, treatment` |
-| **NFCorpus** | `biomedical` | `disease, drug, protein, gene, symptom, treatment, cell, tissue, compound, organism` |
+| **SciFact** | `science` | `medical_condition, medication, protein, gene, chemical_compound, organism, cell_type, tissue, symptom, therapy` |
+| **NFCorpus** | `biomedical` | `disease, nutrient, vitamin, mineral, drug, food, protein, compound, symptom, treatment` |
 | **FiQA** | `finance` | `company, stock, market, fund, indicator, regulation` |
 | **DBPedia-Entity** | `encyclopedia` | `person, organization, location, event, concept, product` |
 | **NQ / HotpotQA** | `general` | *(use UNIVERSAL_LABELS -- no seeding needed)* |
 | **TREC-COVID** | `epidemiology` | `virus, vaccine, transmission, treatment, population, study` |
-| **ArguAna** | `argument` | `person, organization, location, policy, country, event` |
+| **ArguAna** | `argument` | `person, organization, location, nationality, event, law` |
 
 **Important:** GLiNER is a zero-shot NER model — it works best with *concrete entity types*
 (disease, protein, person) rather than abstract concepts (claim, evidence, finding).

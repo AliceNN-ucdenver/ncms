@@ -26,23 +26,27 @@ BEIR_BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datas
 DATASET_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "scifact": {
         "domain": "science",
+        # D_synonym_swap: 9.1 ent/doc, 181 unique — best doc coverage in taxonomy test
         "labels": [
-            "disease", "drug", "protein", "gene", "compound", "organism",
-            "cell", "tissue", "symptom", "treatment",
+            "medical_condition", "medication", "protein", "gene",
+            "chemical_compound", "organism", "cell_type", "tissue",
+            "symptom", "therapy",
         ],
     },
     "nfcorpus": {
         "domain": "biomedical",
+        # D_nutrition_bio: 9.3 ent/doc, 174 unique — nutrition-specific labels
         "labels": [
-            "disease", "drug", "protein", "gene", "symptom", "treatment",
-            "cell", "tissue", "compound", "organism",
+            "disease", "nutrient", "vitamin", "mineral", "drug",
+            "food", "protein", "compound", "symptom", "treatment",
         ],
     },
     "arguana": {
         "domain": "argument",
+        # A_traditional: 4.4 ent/doc, 77% query overlap — best for graph connectivity
         "labels": [
-            "person", "organization", "location", "policy",
-            "country", "event",
+            "person", "organization", "location", "nationality",
+            "event", "law",
         ],
     },
 }
