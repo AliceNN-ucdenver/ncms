@@ -86,6 +86,58 @@ Take a BEIR dataset (e.g., NQ) and overlay access histories:
 
 ---
 
+## Published Baselines (Target Scores)
+
+Reference nDCG@10 scores from established retrieval systems on BEIR benchmarks.
+These represent the scores NCMS's pipeline is measured against.
+
+### SciFact (Primary Benchmark)
+
+| Model | Type | nDCG@10 | Notes |
+|-------|------|:-------:|-------|
+| **BM25** | Lexical | 0.671 | Strong on scientific terminology |
+| **SPLADE v2** | Learned sparse | 0.693 | Sparse neural — closest to NCMS approach |
+| **ColBERT** | Late-interaction embedding | 0.693 | Expensive token-level interaction |
+| **ANCE** | Dense embedding (ANN) | 0.507 | Underperforms BM25 out-of-domain |
+| **TAS-B** | Dense embedding (distilled) | 0.502 | Distilled bi-encoder |
+| **DPR** | Dense embedding | ~0.32 | Worst out-of-domain transfer |
+
+**Key insight:** Dense embeddings (DPR, ANCE, TAS-B) *underperform* BM25 on SciFact.
+This is the out-of-domain generalization gap that BEIR was designed to expose, and
+validates NCMS's lexical-first architecture. SPLADE and ColBERT match at ~0.69.
+
+### BEIR Aggregate (Average across 18 datasets)
+
+| Model | Type | Avg nDCG@10 |
+|-------|------|:-----------:|
+| Voyage-Large-2 | Dense embedding | 0.548 |
+| Cohere Embed v4 | Dense embedding | 0.537 |
+| OpenAI text-3-large | Dense embedding | 0.519 |
+| E5-Mistral-7B | Dense embedding (LLM) | 0.512 |
+| **BM25** | Lexical | 0.412 |
+
+**Key insight:** On aggregate, dense embeddings win (~0.52–0.55 vs 0.41 for BM25).
+But per-dataset variance is high — BM25 is competitive or better on domain-specific
+corpora (SciFact, NFCorpus) where exact term matching matters.
+
+### NCMS Target Range
+
+| NCMS Config | Expected nDCG@10 | Rationale |
+|-------------|:-----------------:|-----------|
+| BM25 only | 0.65–0.68 | Should match published BM25 baseline |
+| + SPLADE | 0.68–0.71 | RRF fusion with sparse neural |
+| + Graph + ACT-R | 0.68–0.72 | Entity expansion + cognitive rescoring |
+| Full + LLM Judge | 0.70–0.75 | LLM reranking of top candidates |
+
+### Sources
+
+- [BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of IR Models (NeurIPS 2021)](https://arxiv.org/abs/2104.08663)
+- [BEIR GitHub Repository — Official Baselines](https://github.com/beir-cellar/beir)
+- [BEIR SciFact Benchmark — Model Comparison](https://www.emergentmind.com/topics/beir-scifact-benchmark)
+- [BEIR 2.0 Leaderboard — Aggregate Scores](https://app.ailog.fr/en/blog/news/beir-benchmark-update)
+
+---
+
 ## Ablation Configurations
 
 ### Subtractive (remove one component at a time)
