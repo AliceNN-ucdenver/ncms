@@ -24,7 +24,7 @@ uv run ncms dashboard            # Start observability dashboard (web UI)
 uv run ncms dashboard --no-demo  # Dashboard without auto-starting demo agents
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (192 tests)
+uv run pytest tests/ -v          # Run all tests (261 tests)
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
@@ -46,7 +46,7 @@ src/ncms/
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
-│   ├── consolidation_service.py # Decay, merge, prune background tasks
+│   ├── consolidation_service.py # Decay pass + knowledge consolidation (Phase 4)
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 7 tables, WAL mode, parameterized SQL
@@ -55,6 +55,9 @@ src/ncms/
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
 │   ├── llm/judge.py            # Optional LLM-as-judge via litellm
+│   ├── extraction/keyword_extractor.py # LLM keyword bridge extraction (Phase 3)
+│   ├── consolidation/clusterer.py  # Entity co-occurrence clustering (Phase 4)
+│   ├── consolidation/synthesizer.py # LLM insight synthesis (Phase 4)
 │   └── observability/event_log.py # Ring buffer event log + SSE subscriber support
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
@@ -123,7 +126,47 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Bus ask timeout |
 | `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge tier |
 | `NCMS_LLM_MODEL` | `gpt-4o-mini` | LLM model for judge |
+| `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for judge |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
+| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keywords |
+| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM for insight synthesis |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
+
+## Local LLM Development
+
+Ollama is installed via Homebrew with Qwen3.5:35b-a3b (35B MoE, 3B active, 256 experts):
+
+```bash
+brew services start ollama           # Start Ollama service
+ollama list                          # Verify qwen3.5:35b-a3b is available
+```
+
+Enable LLM features for local testing:
+
+```bash
+# Consolidation (Phase 4)
+NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true \
+NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b \
+uv run ncms demo
+
+# Keywords (Phase 3)
+NCMS_KEYWORD_BRIDGE_ENABLED=true \
+NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
+uv run ncms demo
+
+# Judge (Tier 3)
+NCMS_LLM_JUDGE_ENABLED=true \
+NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
+uv run ncms demo
+```
+
+**Ollama model prefix:** Use `ollama_chat/` prefix with litellm (no api_base needed).
+Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
+
+**vLLM (production):** Use `openai/` prefix + `api_base` on Linux + NVIDIA GPU.
 
 ## Important Patterns
 
@@ -132,3 +175,5 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 - **model_dump(mode="json")** — required when serializing models containing datetimes to JSON
 - **Domain protocols** — all infrastructure contracts defined in `domain/protocols.py`
 - **Agent lifecycle**: `start()` → work → `sleep()` (publish snapshot) → `wake()` (restore) → `shutdown()`
+- **LLM calls are non-fatal** — all LLM features (judge, keywords, consolidation) degrade gracefully on error
+- **litellm kwargs pattern** — build a `kwargs` dict, optionally add `api_base`, add `think=False` for Ollama models

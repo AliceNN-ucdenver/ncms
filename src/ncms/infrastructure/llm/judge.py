@@ -30,10 +30,12 @@ async def judge_relevance(
     query: str,
     candidates: list[ScoredMemory],
     model: str = "gpt-4o-mini",
+    api_base: str | None = None,
 ) -> list[tuple[str, float]]:
     """Use an LLM to judge relevance of candidate memories to a query.
 
     Returns list of (memory_id, relevance_score) sorted by relevance.
+    Supports vLLM/OpenAI-compatible endpoints via ``api_base``.
     """
     try:
         import litellm
@@ -42,7 +44,7 @@ async def judge_relevance(
             f"- [{c.memory.id}]: {c.memory.content[:200]}" for c in candidates
         )
 
-        response = await litellm.acompletion(
+        kwargs: dict = dict(
             model=model,
             messages=[
                 {
@@ -53,6 +55,13 @@ async def judge_relevance(
             temperature=0.0,
             max_tokens=500,
         )
+        if api_base:
+            kwargs["api_base"] = api_base
+        # Disable thinking mode for reasoning models (Qwen3, etc.)
+        if model.startswith("ollama"):
+            kwargs["think"] = False
+
+        response = await litellm.acompletion(**kwargs)
 
         content = response.choices[0].message.content  # type: ignore[union-attr]
         if not content:

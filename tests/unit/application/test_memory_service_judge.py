@@ -46,7 +46,7 @@ class TestLLMJudgeIntegration:
         )
 
         # Mock judge_relevance to prefer mem_b over mem_a
-        async def mock_judge(query, candidates, model=""):
+        async def mock_judge(query, candidates, model="", **kwargs):
             return [
                 (mem_b.id, 0.95),
                 (mem_a.id, 0.30),
@@ -80,7 +80,7 @@ class TestLLMJudgeIntegration:
         )
 
         # Mock judge to return fallback (simulating internal error handling)
-        async def mock_judge_fallback(query, candidates, model=""):
+        async def mock_judge_fallback(query, candidates, model="", **kwargs):
             return [(c.memory.id, c.total_activation) for c in candidates]
 
         with patch(

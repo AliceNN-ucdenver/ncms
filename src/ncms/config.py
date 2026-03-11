@@ -31,6 +31,7 @@ class NCMSConfig(BaseSettings):
 
     # LLM-as-Judge
     llm_model: str = "gpt-4o-mini"
+    llm_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
     llm_judge_enabled: bool = False
 
     # SPLADE
@@ -48,9 +49,32 @@ class NCMSConfig(BaseSettings):
     scoring_weight_bm25: float = 0.6
     scoring_weight_actr: float = 0.4
 
+    # Graph expansion (Tier 1.5)
+    graph_expansion_enabled: bool = True
+    graph_expansion_depth: int = 1
+    graph_expansion_max: int = 10
+
+    # GLiNER entity extraction (optional, pip install ncms[gliner])
+    gliner_enabled: bool = False
+    gliner_model: str = "urchade/gliner_medium-v2.1"
+    gliner_threshold: float = 0.3
+
+    # Keyword bridge nodes (Phase 3)
+    keyword_bridge_enabled: bool = False
+    keyword_max_per_memory: int = 8
+    keyword_llm_model: str = "gpt-4o-mini"
+    keyword_llm_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
+
     # Consolidation
     consolidation_importance_threshold: float = 50.0
     consolidation_enabled: bool = True
+
+    # Knowledge consolidation (Phase 4)
+    consolidation_knowledge_enabled: bool = False
+    consolidation_knowledge_min_cluster_size: int = 3
+    consolidation_knowledge_model: str = "gpt-4o-mini"
+    consolidation_knowledge_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
+    consolidation_knowledge_max_insights_per_run: int = 5
 
     # MCP
     mcp_transport: str = "stdio"

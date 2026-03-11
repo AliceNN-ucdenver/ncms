@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from ncms.config import NCMSConfig
-from ncms.domain.entity_extraction import extract_entity_names
+from ncms.domain.entity_extraction import extract_entities
 from ncms.domain.models import (
     AccessRecord,
     Entity,
@@ -91,7 +91,7 @@ class MemoryService:
         self._index.index_memory(memory)
 
         # Auto-extract entities from content + merge with manually provided ones
-        auto_entities = extract_entity_names(content)
+        auto_entities = extract_entities(content, config=self._config)
         manual = list(entities or [])
         manual_names = {e["name"].lower() for e in manual}
         all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
@@ -104,6 +104,31 @@ class MemoryService:
             )
             await self._store.link_memory_entity(memory.id, entity.id)
             self._graph.link_memory_entity(memory.id, entity.id)
+
+        # Phase 3: Extract keyword bridge nodes if enabled
+        if self._config.keyword_bridge_enabled:
+            try:
+                from ncms.infrastructure.extraction.keyword_extractor import extract_keywords
+
+                keywords = await extract_keywords(
+                    content,
+                    existing_entities=all_entities,
+                    model=self._config.keyword_llm_model,
+                    max_keywords=self._config.keyword_max_per_memory,
+                    api_base=self._config.keyword_llm_api_base,
+                )
+                for kw in keywords:
+                    kw_entity = await self.add_entity(
+                        name=kw["name"],
+                        entity_type="keyword",
+                    )
+                    await self._store.link_memory_entity(memory.id, kw_entity.id)
+                    self._graph.link_memory_entity(memory.id, kw_entity.id)
+            except Exception:
+                logger.warning(
+                    "Keyword extraction failed, continuing without keywords",
+                    exc_info=True,
+                )
 
         # Process relationships if provided
         if relationships:
@@ -153,7 +178,7 @@ class MemoryService:
 
         # Extract entities from query for spreading activation context
         # Use graph O(1) name index when available, fall back to SQLite
-        query_entity_names = extract_entity_names(query)
+        query_entity_names = extract_entities(query, config=self._config)
         context_entity_ids: list[str] = []
         for qe in query_entity_names:
             eid = self._graph.find_entity_by_name(qe["name"])
@@ -165,9 +190,41 @@ class MemoryService:
                 if existing:
                     context_entity_ids.append(existing.id)
 
+        # ── Tier 1.5: Graph-expanded candidate discovery ────────────────
+        # Collect entity IDs from BM25 hits, then discover related memories
+        # via shared graph entities that BM25 missed lexically.
+        bm25_ids = {mid for mid, _ in bm25_results}
+        all_candidates: list[tuple[str, float]] = list(bm25_results)
+
+        if self._config.graph_expansion_enabled:
+            bm25_entity_pool: set[str] = set()
+            for memory_id, _ in bm25_results:
+                entity_ids = self._graph.get_entity_ids_for_memory(memory_id)
+                bm25_entity_pool.update(entity_ids)
+
+            if bm25_entity_pool:
+                related_memory_ids = self._graph.get_related_memory_ids(
+                    list(bm25_entity_pool),
+                    depth=self._config.graph_expansion_depth,
+                )
+                novel_ids = related_memory_ids - bm25_ids
+                # Cap the expansion set
+                if len(novel_ids) > self._config.graph_expansion_max:
+                    novel_ids = set(list(novel_ids)[: self._config.graph_expansion_max])
+
+                for gid in novel_ids:
+                    all_candidates.append((gid, 0.0))
+
+                if novel_ids:
+                    logger.debug(
+                        "Graph expansion: %d novel candidates from %d entities",
+                        len(novel_ids),
+                        len(bm25_entity_pool),
+                    )
+
         # Load full memory objects and compute activation scores
         scored: list[ScoredMemory] = []
-        for memory_id, bm25_score in bm25_results:
+        for memory_id, bm25_score in all_candidates:
             memory = await self._store.get_memory(memory_id)
             if not memory:
                 continue
@@ -259,6 +316,7 @@ class MemoryService:
 
         judge_results = await judge_relevance(
             query, candidates, model=self._config.llm_model,
+            api_base=self._config.llm_api_base,
         )
 
         # Build lookup of judge scores by memory_id

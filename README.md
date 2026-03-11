@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-192_passing-brightgreen" alt="192 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-261_passing-brightgreen" alt="261 Tests Passing">
 </p>
 
 ---
@@ -41,7 +41,7 @@ Three lines. Your agents now have persistent, searchable, shared memory with cog
 
 | Problem | Traditional Approach | NCMS |
 |---------|---------------------|------|
-| Memory retrieval | Dense vector similarity (lossy) | **BM25 + ACT-R cognitive scoring** (precise) |
+| Memory retrieval | Dense vector similarity (lossy) | **BM25 + graph expansion + ACT-R cognitive scoring** (precise) |
 | Agent coordination | Polling shared files, explicit tool calls | **Embedded Knowledge Bus** (osmotic) |
 | Agent goes offline | Knowledge lost until restart | **Snapshot surrogate response** (always available) |
 | Dependencies | Vector DB + graph DB + message broker | **Zero. Single `pip install`.** |
@@ -93,17 +93,19 @@ The dashboard auto-runs demo agents by default. Use `--no-demo` for a blank canv
   <img src="docs/assets/architecture.svg" alt="NCMS Architecture" width="100%">
 </p>
 
-### Three-Tier Retrieval Pipeline
+### Retrieval Pipeline
 
-Traditional memory systems compress documents into dense vectors, losing precision. NCMS uses three complementary mechanisms that work together without a single embedding:
+Traditional memory systems compress documents into dense vectors, losing precision. NCMS uses complementary mechanisms that work together without a single embedding:
 
 <p align="center">
-  <img src="docs/assets/retrieval-pipeline.svg" alt="Three-Tier Retrieval Pipeline" width="100%">
+  <img src="docs/assets/retrieval-pipeline.svg" alt="Retrieval Pipeline" width="100%">
 </p>
 
 **Tier 1 &mdash; BM25 Sparse Search** via Tantivy (Rust). Exact lexical matching plus stemming. When you search for `getProfile`, it matches `getProfile` &mdash; not "things conceptually near profiles."
 
-**Tier 2 &mdash; ACT-R Cognitive Scoring + Knowledge Graph Spreading.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science.
+**Tier 1.5 &mdash; Graph-Expanded Discovery.** After BM25 returns candidates, entity relationships in the knowledge graph discover related memories BM25 missed lexically. A query matching "connection pooling" also finds memories about "PostgreSQL replication" &mdash; because both share the `PostgreSQL` entity in the graph.
+
+**Tier 2 &mdash; ACT-R Cognitive Scoring.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science.
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
@@ -111,9 +113,23 @@ base_level(m) = ln( sum( (time_since_access)^(-decay) ) )
 combined(m)   = bm25_score * w_bm25 + activation * w_actr
 ```
 
-Entities (services, endpoints, technologies, tables) are **automatically extracted** from memories and queries. When query entities overlap with a memory's linked entities, spreading activation boosts that memory's score. The BM25/ACT-R weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_ACTR`). Sub-threshold memories are filtered by retrieval probability.
+Graph-discovered memories enter scoring with `bm25_score = 0.0` and rank purely on cognitive activation. A frequently-accessed graph memory can outrank a weak BM25 hit. Weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_ACTR`).
 
-**Tier 3 &mdash; LLM-as-Judge Reranking** (optional, experimental). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k Tier 2 candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking. Requires [LiteLLM](https://github.com/BerriAI/litellm) and a configured model. Currently a lightweight integration &mdash; structured prompting and caching are on the roadmap.
+**Tier 3 &mdash; LLM-as-Judge Reranking** (optional). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking.
+
+### Entity Extraction
+
+Entities are automatically extracted at store-time and search-time, feeding the knowledge graph for spreading activation and graph expansion:
+
+<p align="center">
+  <img src="docs/assets/entity-extraction.svg" alt="Entity Extraction Pipeline" width="100%">
+</p>
+
+**Regex Heuristics** (built-in) &mdash; curated tech names, PascalCase identifiers, API paths, table references. Zero dependencies, always available as fallback.
+
+**GLiNER NER** (optional, `pip install ncms[gliner]`) &mdash; zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts semantic entities regex misses: "authentication", "caching strategy", "data pipeline". Enable with `NCMS_GLINER_ENABLED=true`.
+
+**Keyword Bridges** (optional) &mdash; semantic keywords extracted via LLM that connect otherwise disconnected subgraphs. "JWT validation" and "role-based access" share no entities, but both relate to the keyword "security". Enable with `NCMS_KEYWORD_BRIDGE_ENABLED=true`.
 
 ### Knowledge Bus: Osmotic Agent Coordination
 
@@ -401,13 +417,68 @@ Environment variables with `NCMS_` prefix:
 | `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge reranking |
 | `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM-as-judge |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (default 7 days) |
+| `NCMS_GLINER_ENABLED` | `false` | Enable GLiNER entity extraction (`pip install ncms[gliner]`) |
+| `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for entity extraction |
+| `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence score for entity extraction |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM-extracted keyword bridge nodes |
+| `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | Maximum keywords extracted per memory |
+| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keyword extraction |
+| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
+| `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for LLM judge |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation (Phase 4) |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | `3` | Min memories per entity cluster |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM model for insight synthesis |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for consolidation |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN` | `5` | Max insights created per consolidation run |
+
+## Local LLM Inference
+
+All LLM features (judge, keywords, consolidation) run against local models. Each feature has its own `MODEL` + optional `API_BASE` pair, so you can mix local and remote models. All calls use [litellm](https://docs.litellm.ai/) under the hood.
+
+### macOS with Ollama (Development)
+
+```bash
+brew install ollama
+brew services start ollama
+ollama pull qwen3.5:35b-a3b    # 35B MoE, 3B active — runs on 32GB+ Mac
+```
+
+```bash
+export NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
+export NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
+export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b
+```
+
+No `API_BASE` needed &mdash; litellm connects to Ollama automatically. Thinking mode is auto-disabled for `ollama` models to get clean JSON responses.
+
+### Linux + NVIDIA GPU with vLLM (Production)
+
+```bash
+pip install vllm
+vllm serve meta-llama/Llama-3.2-3B-Instruct --port 8000
+```
+
+```bash
+export NCMS_LLM_API_BASE=http://localhost:8000/v1
+export NCMS_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+export NCMS_KEYWORD_LLM_API_BASE=http://localhost:8000/v1
+export NCMS_KEYWORD_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+export NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE=http://localhost:8000/v1
+export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+```
+
+vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible endpoint.
 
 ## Roadmap
 
 **Retrieval & Scoring**
-- [ ] SPLADE sparse vector scoring as Tier 1.5 (between BM25 and ACT-R)
+- [x] Graph-expanded retrieval (Tier 1.5) &mdash; entity-based cross-memory discovery
+- [x] GLiNER entity extraction &mdash; optional semantic NER (`pip install ncms[gliner]`)
+- [x] Keyword bridge nodes &mdash; LLM-extracted semantic concept bridges
+- [x] Knowledge consolidation &mdash; entity co-occurrence clustering + LLM insight synthesis
+- [x] vLLM / local LLM support &mdash; `api_base` config for all LLM features
+- [ ] SPLADE sparse vector scoring (between BM25 and ACT-R)
 - [ ] Contradiction detection engine for conflicting memories
-- [ ] Consolidation background worker (decay, merge, prune)
 
 **Knowledge Bus & Agents**
 - [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
@@ -423,6 +494,12 @@ Environment variables with `NCMS_` prefix:
 **Dashboard & Observability**
 - [ ] Historical replay and time-travel debugging
 - [ ] Prometheus metrics and OpenTelemetry traces
+
+## Acknowledgments
+
+- **[GLiNER](https://github.com/urchade/GLiNER)** — Zero-shot Named Entity Recognition model by [Zaratiana et al. (NAACL 2024)](https://arxiv.org/abs/2311.08526). Used for optional semantic entity extraction (`pip install ncms[gliner]`).
+- **[Tantivy](https://github.com/quickwit-oss/tantivy)** — Rust-based full-text search engine powering BM25 retrieval.
+- **[ACT-R](https://en.wikipedia.org/wiki/ACT-R)** — Cognitive architecture by John R. Anderson providing the activation scoring model.
 
 ## License
 

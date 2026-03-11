@@ -99,6 +99,8 @@ class SQLiteStore:
         domain: str | None = None,
         agent_id: str | None = None,
         limit: int = 100,
+        since: str | None = None,
+        memory_type: str | None = None,
     ) -> list[Memory]:
         query = "SELECT * FROM memories WHERE 1=1"
         params: list[object] = []
@@ -109,6 +111,12 @@ class SQLiteStore:
         if agent_id:
             query += " AND source_agent = ?"
             params.append(agent_id)
+        if since:
+            query += " AND created_at > ?"
+            params.append(since)
+        if memory_type:
+            query += " AND type = ?"
+            params.append(memory_type)
 
         query += " ORDER BY updated_at DESC LIMIT ?"
         params.append(limit)

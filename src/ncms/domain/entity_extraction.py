@@ -11,7 +11,10 @@ No NLP models, no embeddings, no external services.
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 # ── Technology name catalog ──────────────────────────────────────────────
 # Matched case-insensitively with word boundaries.
@@ -165,3 +168,40 @@ def _find_canonical_tech(matched: str) -> str | None:
         if tech.lower() == lower:
             return tech
     return None
+
+
+def extract_entities(
+    text: str,
+    config: object | None = None,
+) -> list[dict[str, str]]:
+    """Extract entities from text. Uses GLiNER if enabled/available, else regex.
+
+    This is the primary entry point for entity extraction. It routes to GLiNER
+    when ``config.gliner_enabled`` is True and the package is installed,
+    otherwise falls back to the regex-based ``extract_entity_names()``.
+
+    Args:
+        text: Input text to extract entities from.
+        config: NCMSConfig instance (or None for regex-only).
+                Typed as ``object`` to avoid importing config in the domain layer.
+    """
+    if config and getattr(config, "gliner_enabled", False):
+        try:
+            from ncms.infrastructure.extraction.gliner_extractor import (
+                extract_entities_gliner,
+            )
+
+            return extract_entities_gliner(
+                text,
+                model_name=getattr(config, "gliner_model", "urchade/gliner_medium-v2.1"),
+                threshold=getattr(config, "gliner_threshold", 0.3),
+            )
+        except ImportError:
+            logger.warning(
+                "GLiNER not installed (pip install ncms[gliner]), using regex extraction"
+            )
+        except Exception:
+            logger.warning(
+                "GLiNER extraction failed, falling back to regex", exc_info=True
+            )
+    return extract_entity_names(text)

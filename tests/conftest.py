@@ -7,6 +7,7 @@ import pytest_asyncio
 
 from ncms.config import NCMSConfig
 from ncms.application.bus_service import BusService
+from ncms.application.consolidation_service import ConsolidationService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
@@ -55,6 +56,11 @@ async def bus():
     b = AsyncKnowledgeBus(ask_timeout_ms=2000)
     yield b
     await b.stop()
+
+
+@pytest_asyncio.fixture
+async def consolidation_service(store, index, graph, config):
+    return ConsolidationService(store=store, index=index, graph=graph, config=config)
 
 
 @pytest_asyncio.fixture

@@ -146,6 +146,7 @@ class Memory(BaseModel):
         "bug-fix",
         "dependency",
         "pending-work",
+        "insight",
     ] = "fact"
     importance: float = 5.0
     created_at: datetime = Field(default_factory=_utcnow)
