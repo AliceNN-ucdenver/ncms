@@ -4,24 +4,40 @@ Validates the full ablation pipeline with a subset of data,
 including queries with special characters that stress Tantivy's parser.
 
 Usage:
+    # Core configs only (no LLM required)
     uv run python -m benchmarks.smoke_test
+
+    # Include LLM configs (keyword bridges + LLM judge)
+    uv run python -m benchmarks.smoke_test --llm-model ollama_chat/qwen3.5:35b-a3b
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import random
 import time
 
-from benchmarks.configs import CORE_CONFIGS
+from benchmarks.configs import ABLATION_CONFIGS, CORE_CONFIGS
 from benchmarks.datasets import load_beir_dataset
 from benchmarks.harness import evaluate_dataset
 
 logger = logging.getLogger("benchmarks")
 
 
-async def run_smoke_test() -> None:
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="NCMS Ablation Smoke Test")
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        default=None,
+        help="LLM model for keyword bridges and judge (e.g. ollama_chat/qwen3.5:35b-a3b)",
+    )
+    return parser.parse_args()
+
+
+async def run_smoke_test(llm_model: str | None = None) -> None:
     """Run a 100-doc smoke test on SciFact."""
     logging.basicConfig(
         level=logging.INFO,
@@ -31,6 +47,10 @@ async def run_smoke_test() -> None:
 
     logger.info("=" * 60)
     logger.info("SMOKE TEST: 100 docs + tricky queries")
+    if llm_model:
+        logger.info("LLM model: %s (all configs including keyword bridges + judge)", llm_model)
+    else:
+        logger.info("LLM model: none (core configs only, use --llm-model to test all)")
     logger.info("=" * 60)
 
     # Load SciFact
@@ -50,11 +70,17 @@ async def run_smoke_test() -> None:
     selected_ids = selected_ids[:100]
 
     small_corpus = {doc_id: corpus[doc_id] for doc_id in selected_ids}
-    logger.info("Selected %d docs (including %d relevant)", len(small_corpus), len(relevant_doc_ids & set(selected_ids)))
+    logger.info(
+        "Selected %d docs (including %d relevant)",
+        len(small_corpus),
+        len(relevant_doc_ids & set(selected_ids)),
+    )
 
     # Use only queries that have special chars + some regular ones
     tricky_chars = "'\"():[]/{}\\"
-    tricky_qids = [qid for qid, text in queries.items() if any(c in text for c in tricky_chars)]
+    tricky_qids = [
+        qid for qid, text in queries.items() if any(c in text for c in tricky_chars)
+    ]
     regular_qids = [qid for qid in qrels if qid not in tricky_qids]
 
     # Take 20 tricky + 10 regular queries (only ones with qrels)
@@ -64,7 +90,11 @@ async def run_smoke_test() -> None:
     small_queries = {qid: queries[qid] for qid in eval_qids if qid in queries}
     small_qrels = {qid: qrels[qid] for qid in eval_qids if qid in qrels}
 
-    logger.info("Selected %d queries (%d with special chars)", len(small_queries), len([q for q in small_queries if q in tricky_qids]))
+    logger.info(
+        "Selected %d queries (%d with special chars)",
+        len(small_queries),
+        len([q for q in small_queries if q in tricky_qids]),
+    )
 
     # Log some example tricky queries
     for qid in list(small_queries)[:5]:
@@ -72,15 +102,17 @@ async def run_smoke_test() -> None:
 
     t0 = time.perf_counter()
 
-    # Run ALL core configs to validate each pipeline configuration
-    logger.info("Configs: %s", [c.display_name for c in CORE_CONFIGS])
+    # Select configs: all 8 if LLM available, 6 core otherwise
+    configs = ABLATION_CONFIGS if llm_model else CORE_CONFIGS
+    logger.info("Configs (%d): %s", len(configs), [c.display_name for c in configs])
 
     results = await evaluate_dataset(
         dataset_name="scifact",
         corpus=small_corpus,
         queries=small_queries,
         qrels=small_qrels,
-        configs=CORE_CONFIGS,
+        configs=configs,
+        llm_model=llm_model,
     )
 
     elapsed = time.perf_counter() - t0
@@ -99,15 +131,22 @@ async def run_smoke_test() -> None:
         )
 
     # Validate results are reasonable
-    for config_name, metrics in results.items():
+    expected_configs = [c.name for c in configs]
+    for config_name in expected_configs:
+        if config_name not in results:
+            logger.error("MISSING config: %s", config_name)
+            raise AssertionError(f"Missing results for config: {config_name}")
+
+        metrics = results[config_name]
         assert "nDCG@10" in metrics, f"Missing nDCG@10 for {config_name}"
         assert "MRR@10" in metrics, f"Missing MRR@10 for {config_name}"
         assert "Recall@100" in metrics, f"Missing Recall@100 for {config_name}"
         assert metrics["num_queries"] > 0, f"No queries evaluated for {config_name}"
         logger.info("  %s: %d queries evaluated", config_name, metrics["num_queries"])
 
-    logger.info("ALL CHECKS PASSED")
+    logger.info("ALL %d CONFIGS PASSED", len(results))
 
 
 if __name__ == "__main__":
-    asyncio.run(run_smoke_test())
+    args = parse_args()
+    asyncio.run(run_smoke_test(llm_model=args.llm_model))
