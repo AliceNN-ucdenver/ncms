@@ -136,13 +136,27 @@ await agent.announce_knowledge(
 
 ## Ablation Study
 
-Systematic evaluation of each pipeline component's contribution using standard [BEIR](https://github.com/beir-cellar/beir) IR benchmarks. Each dataset is ingested with domain-specific entity labels via `ncms topics set`, then queried under additive pipeline configurations.
+Systematic evaluation of each pipeline component's contribution using standard [BEIR](https://github.com/beir-cellar/beir) IR benchmarks. Full methodology in the [design doc](docs/ablation-study-design.md).
 
 **Datasets:** SciFact (5,183 docs / 300 queries), NFCorpus (3,633 docs / 323 queries), ArguAna (8,674 docs / 1,406 queries)
 
-<!-- Results table will be inserted here after benchmark completes -->
+### Domain-Specific Entity Labels
 
-*Results pending &mdash; benchmark in progress. See [design doc](docs/ablation-study-design.md) for full methodology.*
+Graph expansion depends on GLiNER extracting meaningful entities at ingest time. We tested 5 label taxonomies per dataset and found that **label choice is critical** &mdash; abstract labels like `claim, evidence, study` produce zero entities, while concrete labels like `disease, protein, gene` produce 6&ndash;9 entities per document:
+
+| Dataset | Domain | Selected Labels | Ent/Doc |
+|---------|--------|-----------------|:-------:|
+| **SciFact** | Science | `medical_condition, medication, protein, gene, chemical_compound, organism, cell_type, tissue, symptom, therapy` | 9.1 |
+| **NFCorpus** | Nutrition | `disease, nutrient, vitamin, mineral, drug, food, protein, compound, symptom, treatment` | 9.3 |
+| **ArguAna** | Debate | `person, organization, location, nationality, event, law` | 4.4 |
+
+Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` outperforms `disease` for scientific text, while nutrition-specific labels (`nutrient, vitamin, mineral, food`) are essential for dietary health corpora. See the [taxonomy experiment](docs/ablation-study-design.md#taxonomy-experiment) for the full comparison.
+
+### Results
+
+<!-- Results table and chart will be inserted here after benchmark completes -->
+
+*Results pending &mdash; benchmark in progress.*
 
 ---
 

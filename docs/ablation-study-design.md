@@ -221,22 +221,59 @@ Output: table of (config x dataset x metric)
 
 Before ingestion, set domain-specific entity labels matching each dataset's
 entity types. This ensures GLiNER extracts entities relevant to the domain
-rather than relying on universal fallback labels:
+rather than relying on universal fallback labels.
 
-| Dataset | Domain | Suggested Topics |
-|---------|--------|-----------------|
-| **SciFact** | `science` | `medical_condition, medication, protein, gene, chemical_compound, organism, cell_type, tissue, symptom, therapy` |
-| **NFCorpus** | `biomedical` | `disease, nutrient, vitamin, mineral, drug, food, protein, compound, symptom, treatment` |
-| **FiQA** | `finance` | `company, stock, market, fund, indicator, regulation` |
-| **DBPedia-Entity** | `encyclopedia` | `person, organization, location, event, concept, product` |
-| **NQ / HotpotQA** | `general` | *(use UNIVERSAL_LABELS -- no seeding needed)* |
-| **TREC-COVID** | `epidemiology` | `virus, vaccine, transmission, treatment, population, study` |
-| **ArguAna** | `argument` | `person, organization, location, nationality, event, law` |
+**Critical finding:** GLiNER is a zero-shot NER model that uses the semantic
+meaning of labels to find entities. Label choice has dramatic impact:
 
-**Important:** GLiNER is a zero-shot NER model — it works best with *concrete entity types*
-(disease, protein, person) rather than abstract concepts (claim, evidence, finding).
-Abstract labels produce few or no entity extractions, starving the knowledge graph
-and making graph expansion a no-op.
+- **Abstract labels** (`claim, evidence, study, method`) → 0 entities/doc (graph expansion is a no-op)
+- **Concrete labels** (`disease, protein, gene, drug`) → 6-9 entities/doc (rich graph connectivity)
+- **Synonym tuning** (`medication` vs `drug`, `medical_condition` vs `disease`) → measurable differences
+
+#### Taxonomy Experiment
+
+We tested 5 label sets per dataset (20 docs + 10 queries each), measuring
+entity density, unique entity names, and query-doc entity overlap:
+
+**SciFact** (scientific claim verification):
+
+| Label Set | Avg/Doc | Unique Names | Zero Docs | Notes |
+|-----------|:-------:|:------------:|:---------:|-------|
+| **D: synonym_swap** | **9.1** | **181** | 2/20 | **Selected** — best entity density |
+| Current (concrete) | 8.9 | 179 | 2/20 | Baseline concrete labels |
+| A: biomedical_std | 6.8 | 137 | 3/20 | Fewer labels, less coverage |
+| B: process | 3.4 | 68 | 2/20 | Abstract process terms |
+| C: granular | 1.9 | 39 | 8/20 | Too specific, many misses |
+
+**NFCorpus** (nutrition/health):
+
+| Label Set | Avg/Doc | Unique Names | Zero Docs | Query Overlap |
+|-----------|:-------:|:------------:|:---------:|:-------------:|
+| **D: nutrition_bio** | **9.3** | **174** | **0/20** | 8% |
+| Current (concrete) | 8.6 | 160 | 0/20 | 17% |
+| B: clinical | 7.5 | 144 | 0/20 | 11% |
+| A: dietary | 4.5 | 80 | 3/20 | 0% |
+| C: action | 3.5 | 67 | 2/20 | 17% |
+
+**ArguAna** (argumentation/debate):
+
+| Label Set | Avg/Doc | Unique Names | Query Overlap | Notes |
+|-----------|:-------:|:------------:|:-------------:|-------|
+| **A: traditional** | **4.4** | 76 | **77%** | **Selected** — best query connectivity |
+| Current | 4.3 | 77 | 76% | Nearly identical |
+| D: expanded | 3.0 | 57 | 74% | Too many labels dilutes |
+| C: policy | 1.7 | 29 | 83% | High overlap but low density |
+| B: argument | 0.1 | 3 | 50% | Abstract labels → total failure |
+
+#### Selected Labels
+
+| Dataset | Domain | Labels | Rationale |
+|---------|--------|--------|-----------|
+| **SciFact** | `science` | `medical_condition, medication, protein, gene, chemical_compound, organism, cell_type, tissue, symptom, therapy` | Synonym-tuned labels maximize entity density (9.1/doc) |
+| **NFCorpus** | `biomedical` | `disease, nutrient, vitamin, mineral, drug, food, protein, compound, symptom, treatment` | Nutrition-specific labels (nutrient, vitamin, mineral, food) match domain vocabulary |
+| **ArguAna** | `argument` | `person, organization, location, nationality, event, law` | Traditional NER with `nationality` and `law` for debate topics |
+| **FiQA** | `finance` | `company, stock, market, fund, indicator, regulation` | *(not yet tested)* |
+| **TREC-COVID** | `epidemiology` | `virus, vaccine, transmission, treatment, population, study` | *(not yet tested)* |
 
 Seeding is done via the CLI or programmatically:
 ```bash

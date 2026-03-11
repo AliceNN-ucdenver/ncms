@@ -103,6 +103,9 @@ def generate_chart(
 ) -> None:
     """Generate a grouped bar chart of nDCG@10 across configs and datasets.
 
+    Includes horizontal reference lines for published baselines so results
+    can be visually compared against established systems.
+
     Args:
         all_results: {dataset_name: {config_name: {metric: value}}}
         output_path: Path to save the PNG chart.
@@ -123,12 +126,21 @@ def generate_chart(
         logger.warning("No results to chart")
         return
 
+    # Published baselines for reference lines (SciFact nDCG@10)
+    # Only shown when SciFact is in the results
+    baselines: dict[str, tuple[float, str, str]] = {
+        "BM25 (published)": (0.671, "#E53935", "dashed"),
+        "SPLADE v2 / ColBERT": (0.693, "#7B1FA2", "dashdot"),
+        "DPR (dense)": (0.318, "#78909C", "dotted"),
+        "ANCE (dense)": (0.507, "#90A4AE", "dotted"),
+    }
+
     # Prepare data
     x = np.arange(len(configs))
     width = 0.8 / len(datasets)
     colors = ["#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#F44336"]
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(14, 7))
 
     for i, dataset in enumerate(datasets):
         ds_results = all_results[dataset]
@@ -148,13 +160,37 @@ def generate_chart(
                     f"{val:.3f}", ha="center", va="bottom", fontsize=7,
                 )
 
+    # Add published baseline reference lines (when SciFact is present)
+    if "scifact" in datasets:
+        for label, (value, color, style) in baselines.items():
+            ax.axhline(
+                y=value, color=color, linestyle=style, linewidth=1.2, alpha=0.7,
+            )
+            ax.text(
+                len(configs) - 0.5, value + 0.003, label,
+                fontsize=7, color=color, alpha=0.85,
+                ha="right", va="bottom", style="italic",
+            )
+
+    # Zoom y-axis to the interesting range instead of 0-1
+    all_values = []
+    for ds in datasets:
+        for c in configs:
+            v = all_results[ds].get(c.name, {}).get("nDCG@10", 0)
+            if v > 0:
+                all_values.append(v)
+
+    if all_values:
+        y_min = max(0, min(all_values + [0.318]) - 0.05)  # Include DPR baseline
+        y_max = min(1.0, max(all_values + [0.693]) + 0.05)  # Include SPLADE baseline
+        ax.set_ylim(y_min, y_max)
+
     ax.set_xlabel("Pipeline Configuration", fontsize=12)
     ax.set_ylabel("nDCG@10", fontsize=12)
     ax.set_title("NCMS Retrieval Pipeline Ablation Study", fontsize=14, fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels([c.display_name for c in configs], rotation=15, ha="right")
-    ax.legend(loc="upper left")
-    ax.set_ylim(0, 1.0)
+    ax.legend(loc="upper left", fontsize=9)
     ax.grid(axis="y", alpha=0.3)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
