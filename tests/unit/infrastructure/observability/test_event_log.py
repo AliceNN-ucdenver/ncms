@@ -140,6 +140,76 @@ class TestEventLog:
         assert queue not in log._subscribers
 
 
+class TestPipelineStageEmitter:
+    """Test the pipeline_stage() convenience emitter."""
+
+    def test_pipeline_stage_emits_correct_type(self):
+        log = EventLog()
+        log.pipeline_stage(
+            pipeline_id="abc123",
+            pipeline_type="store",
+            stage="persist",
+            duration_ms=1.5,
+            memory_id="mem-1",
+        )
+        event = log.recent(1)[0]
+        assert event.type == "pipeline.store.persist"
+        assert event.data["pipeline_id"] == "abc123"
+        assert event.data["duration_ms"] == 1.5
+        assert event.data["memory_id"] == "mem-1"
+
+    def test_pipeline_stage_search_type(self):
+        log = EventLog()
+        log.pipeline_stage(
+            pipeline_id="def456",
+            pipeline_type="search",
+            stage="bm25",
+            duration_ms=3.2,
+            data={"candidate_count": 42},
+        )
+        event = log.recent(1)[0]
+        assert event.type == "pipeline.search.bm25"
+        assert event.data["candidate_count"] == 42
+        assert event.data["pipeline_type"] == "search"
+
+    def test_pipeline_stage_with_agent_id(self):
+        log = EventLog()
+        log.pipeline_stage(
+            pipeline_id="ghi789",
+            pipeline_type="store",
+            stage="start",
+            duration_ms=0.0,
+            agent_id="api-agent",
+        )
+        event = log.recent(1)[0]
+        assert event.agent_id == "api-agent"
+
+    def test_pipeline_stage_extra_data_merged(self):
+        log = EventLog()
+        log.pipeline_stage(
+            pipeline_id="jkl012",
+            pipeline_type="store",
+            stage="entity_extraction",
+            duration_ms=5.0,
+            data={"auto_count": 3, "entity_names": ["JWT", "FastAPI"]},
+        )
+        event = log.recent(1)[0]
+        assert event.data["auto_count"] == 3
+        assert event.data["entity_names"] == ["JWT", "FastAPI"]
+        assert event.data["pipeline_id"] == "jkl012"
+
+    def test_pipeline_stage_rounds_duration(self):
+        log = EventLog()
+        log.pipeline_stage(
+            pipeline_id="mno345",
+            pipeline_type="search",
+            stage="actr_scoring",
+            duration_ms=1.23456789,
+        )
+        event = log.recent(1)[0]
+        assert event.data["duration_ms"] == 1.23
+
+
 class TestEventLogBusIntegration:
     """Test that bus emits events when event_log is provided."""
 

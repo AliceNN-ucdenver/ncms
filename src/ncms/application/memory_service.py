@@ -7,6 +7,8 @@ store, search, recall, and manage the full retrieval pipeline.
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 
 from ncms.config import NCMSConfig
 from ncms.domain.entity_extraction import extract_entities
@@ -76,6 +78,22 @@ class MemoryService:
         relationships: list[dict] | None = None,
     ) -> Memory:
         """Store a new memory with automatic indexing and graph updates."""
+        pipeline_id = uuid.uuid4().hex[:12]
+        pipeline_start = time.perf_counter()
+
+        def _emit_stage(
+            stage: str, duration_ms: float, data: dict | None = None,
+            memory_id: str | None = None,
+        ) -> None:
+            if self._event_log:
+                self._event_log.pipeline_stage(
+                    pipeline_id=pipeline_id, pipeline_type="store", stage=stage,
+                    duration_ms=duration_ms, data=data,
+                    agent_id=source_agent, memory_id=memory_id,
+                )
+
+        _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
+
         memory = Memory(
             content=content,
             type=memory_type,
@@ -88,26 +106,42 @@ class MemoryService:
         )
 
         # Persist to SQLite
+        t0 = time.perf_counter()
         await self._store.save_memory(memory)
+        _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
         # Index in Tantivy
+        t0 = time.perf_counter()
         self._index.index_memory(memory)
+        _emit_stage("bm25_index", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
         # Index in SPLADE (if enabled)
         if self._splade is not None:
+            t0 = time.perf_counter()
             try:
                 self._splade.index_memory(memory)
             except Exception:
                 logger.warning(
                     "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True
                 )
+            _emit_stage("splade_index", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
         # Auto-extract entities from content + merge with manually provided ones
+        t0 = time.perf_counter()
         auto_entities = extract_entities(content, config=self._config)
         manual = list(entities or [])
         manual_names = {e["name"].lower() for e in manual}
         all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
+        extractor = "gliner" if self._config.gliner_enabled else "regex"
+        _emit_stage("entity_extraction", (time.perf_counter() - t0) * 1000, {
+            "extractor": extractor,
+            "auto_count": len(auto_entities),
+            "manual_count": len(manual),
+            "total_count": len(all_entities),
+            "entity_names": [e["name"] for e in all_entities[:10]],
+        }, memory_id=memory.id)
 
+        t0 = time.perf_counter()
         for e_data in all_entities:
             entity = await self.add_entity(
                 name=e_data["name"],
@@ -116,9 +150,14 @@ class MemoryService:
             )
             await self._store.link_memory_entity(memory.id, entity.id)
             self._graph.link_memory_entity(memory.id, entity.id)
+        _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
+            "entities_linked": len(all_entities),
+        }, memory_id=memory.id)
 
-        # Phase 3: Extract keyword bridge nodes if enabled
+        # Extract keyword bridge nodes if enabled
+        keyword_count = 0
         if self._config.keyword_bridge_enabled:
+            t0 = time.perf_counter()
             try:
                 from ncms.infrastructure.extraction.keyword_extractor import extract_keywords
 
@@ -129,6 +168,7 @@ class MemoryService:
                     max_keywords=self._config.keyword_max_per_memory,
                     api_base=self._config.keyword_llm_api_base,
                 )
+                keyword_count = len(keywords)
                 for kw in keywords:
                     kw_entity = await self.add_entity(
                         name=kw["name"],
@@ -141,9 +181,15 @@ class MemoryService:
                     "Keyword extraction failed, continuing without keywords",
                     exc_info=True,
                 )
+            _emit_stage("keyword_bridge", (time.perf_counter() - t0) * 1000, {
+                "keyword_count": keyword_count,
+            }, memory_id=memory.id)
 
-        # Phase: Contradiction detection (uses shared llm_model + llm_api_base)
+        # Contradiction detection (uses shared llm_model + llm_api_base)
+        contradiction_count = 0
+        candidates_checked = 0
         if self._config.contradiction_detection_enabled:
+            t0 = time.perf_counter()
             try:
                 from ncms.infrastructure.llm.contradiction_detector import (
                     detect_contradictions,
@@ -178,6 +224,7 @@ class MemoryService:
                     ):
                         candidate_memories.append(cmem)
 
+                candidates_checked = len(candidate_memories)
                 if candidate_memories:
                     contradictions = await detect_contradictions(
                         new_memory=memory,
@@ -186,6 +233,7 @@ class MemoryService:
                         api_base=self._config.llm_api_base,
                     )
 
+                    contradiction_count = len(contradictions)
                     if contradictions:
                         # Annotate the new memory
                         structured_data = dict(memory.structured or {})
@@ -221,6 +269,10 @@ class MemoryService:
                     "Contradiction detection failed, continuing without contradictions",
                     exc_info=True,
                 )
+            _emit_stage("contradiction", (time.perf_counter() - t0) * 1000, {
+                "candidates_checked": candidates_checked,
+                "contradictions_found": contradiction_count,
+            }, memory_id=memory.id)
 
         # Process relationships if provided
         if relationships:
@@ -238,6 +290,14 @@ class MemoryService:
         await self._store.log_access(
             AccessRecord(memory_id=memory.id, accessing_agent=source_agent)
         )
+
+        # Pipeline complete
+        total_ms = (time.perf_counter() - pipeline_start) * 1000
+        _emit_stage("complete", total_ms, {
+            "memory_id": memory.id,
+            "entity_count": len(all_entities),
+            "total_duration_ms": round(total_ms, 2),
+        }, memory_id=memory.id)
 
         logger.info("Stored memory %s: %s", memory.id, content[:80])
         if self._event_log:
@@ -261,27 +321,58 @@ class MemoryService:
         agent_id: str | None = None,
     ) -> list[ScoredMemory]:
         """Execute the full retrieval pipeline: BM25 -> ACT-R rescoring."""
+        pipeline_id = uuid.uuid4().hex[:12]
+        pipeline_start = time.perf_counter()
+
+        def _emit_stage(
+            stage: str, duration_ms: float, data: dict | None = None,
+        ) -> None:
+            if self._event_log:
+                self._event_log.pipeline_stage(
+                    pipeline_id=pipeline_id, pipeline_type="search", stage=stage,
+                    duration_ms=duration_ms, data=data, agent_id=agent_id,
+                )
+
+        _emit_stage("start", 0.0, {"query": query[:200], "domain": domain, "limit": limit})
 
         # Tier 1: BM25 candidate retrieval via Tantivy
+        t0 = time.perf_counter()
         bm25_results = self._index.search(query, limit=self._config.tier1_candidates)
+        _emit_stage("bm25", (time.perf_counter() - t0) * 1000, {
+            "candidate_count": len(bm25_results),
+            "top_score": round(bm25_results[0][1], 3) if bm25_results else None,
+        })
 
         # Tier 1 (parallel): SPLADE candidate retrieval (if enabled)
         splade_results: list[tuple[str, float]] = []
         if self._splade is not None:
+            t0 = time.perf_counter()
             try:
                 splade_results = self._splade.search(
                     query, limit=self._config.splade_top_k
                 )
             except Exception:
                 logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
+            _emit_stage("splade", (time.perf_counter() - t0) * 1000, {
+                "candidate_count": len(splade_results),
+            })
 
         # Fuse BM25 + SPLADE via Reciprocal Rank Fusion
         if splade_results:
+            t0 = time.perf_counter()
             fused_candidates = self._rrf_fuse(bm25_results, splade_results)
+            _emit_stage("rrf_fusion", (time.perf_counter() - t0) * 1000, {
+                "fused_count": len(fused_candidates),
+            })
         else:
             fused_candidates = bm25_results
 
         if not fused_candidates:
+            total_ms = (time.perf_counter() - pipeline_start) * 1000
+            _emit_stage("complete", total_ms, {
+                "result_count": 0, "total_candidates_evaluated": 0,
+                "top_score": None, "total_duration_ms": round(total_ms, 2),
+            })
             return []
 
         # Build per-source score lookups
@@ -290,6 +381,7 @@ class MemoryService:
 
         # Extract entities from query for spreading activation context
         # Use graph O(1) name index when available, fall back to SQLite
+        t0 = time.perf_counter()
         query_entity_names = extract_entities(query, config=self._config)
         context_entity_ids: list[str] = []
         for qe in query_entity_names:
@@ -301,6 +393,10 @@ class MemoryService:
                 existing = await self._store.find_entity_by_name(qe["name"])
                 if existing:
                     context_entity_ids.append(existing.id)
+        _emit_stage("entity_extraction", (time.perf_counter() - t0) * 1000, {
+            "query_entities": [e["name"] for e in query_entity_names[:10]],
+            "context_entity_count": len(context_entity_ids),
+        })
 
         # ── Tier 1.5: Graph-expanded candidate discovery ────────────────
         # Collect entity IDs from fused hits, then discover related memories
@@ -309,11 +405,13 @@ class MemoryService:
         all_candidates: list[tuple[str, float]] = list(fused_candidates)
 
         if self._config.graph_expansion_enabled:
+            t0 = time.perf_counter()
             candidate_entity_pool: set[str] = set()
             for memory_id, _ in fused_candidates:
                 entity_ids = self._graph.get_entity_ids_for_memory(memory_id)
                 candidate_entity_pool.update(entity_ids)
 
+            novel_count = 0
             if candidate_entity_pool:
                 related_memory_ids = self._graph.get_related_memory_ids(
                     list(candidate_entity_pool),
@@ -324,6 +422,7 @@ class MemoryService:
                 if len(novel_ids) > self._config.graph_expansion_max:
                     novel_ids = set(list(novel_ids)[: self._config.graph_expansion_max])
 
+                novel_count = len(novel_ids)
                 for gid in novel_ids:
                     all_candidates.append((gid, 0.0))
 
@@ -334,8 +433,18 @@ class MemoryService:
                         len(candidate_entity_pool),
                     )
 
+            _emit_stage("graph_expansion", (time.perf_counter() - t0) * 1000, {
+                "entity_pool_size": len(candidate_entity_pool),
+                "novel_candidates": novel_count,
+                "total_candidates": len(all_candidates),
+            })
+
         # Load full memory objects and compute activation scores
+        t0 = time.perf_counter()
         scored: list[ScoredMemory] = []
+        candidates_scored = 0
+        filtered_below_threshold = 0
+        top_activation = 0.0
         for memory_id, _fused_score in all_candidates:
             memory = await self._store.get_memory(memory_id)
             if not memory:
@@ -379,8 +488,13 @@ class MemoryService:
                 tau=self._config.actr_temperature,
             )
 
+            candidates_scored += 1
+            if combined > top_activation:
+                top_activation = combined
+
             # Filter out very low probability candidates
             if ret_prob < 0.05:
+                filtered_below_threshold += 1
                 continue
 
             scored.append(
@@ -404,14 +518,36 @@ class MemoryService:
                 )
             )
 
+        _emit_stage("actr_scoring", (time.perf_counter() - t0) * 1000, {
+            "candidates_scored": candidates_scored,
+            "passed_threshold": len(scored),
+            "filtered_below_threshold": filtered_below_threshold,
+            "top_activation": round(top_activation, 3),
+        })
+
         # Sort by combined score (descending) — Tier 2 ranking
         scored.sort(key=lambda s: s.total_activation, reverse=True)
 
         # Tier 3: Optional LLM-as-judge reranking
         if self._config.llm_judge_enabled and scored:
+            t0 = time.perf_counter()
             scored = await self._apply_llm_judge(query, scored)
+            _emit_stage("llm_judge", (time.perf_counter() - t0) * 1000, {
+                "judged_count": min(len(scored), self._config.tier3_judge_top_k),
+                "model": self._config.llm_model,
+            })
 
         results = scored[:limit]
+
+        # Pipeline complete
+        total_ms = (time.perf_counter() - pipeline_start) * 1000
+        _emit_stage("complete", total_ms, {
+            "result_count": len(results),
+            "total_candidates_evaluated": candidates_scored,
+            "top_score": round(results[0].total_activation, 3) if results else None,
+            "total_duration_ms": round(total_ms, 2),
+        })
+
         if self._event_log:
             self._event_log.memory_searched(
                 query=query,

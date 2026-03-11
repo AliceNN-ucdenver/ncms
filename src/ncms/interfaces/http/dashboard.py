@@ -100,6 +100,68 @@ def create_dashboard_app(
             ]
         return JSONResponse(result)
 
+    async def api_graph_entity_detail(request: Request) -> JSONResponse:
+        """Return detailed info about a single entity and its connections."""
+        entity_id = request.path_params["entity_id"]
+        entity = await memory_service._store.get_entity(entity_id)
+        if not entity:
+            return JSONResponse({"error": "Entity not found"}, status_code=404)
+
+        graph = memory_service.graph
+
+        # Connected memories (via graph._entity_memories)
+        mem_ids = graph._entity_memories.get(entity_id, set())
+        connected_memories: list[dict[str, Any]] = []
+        for mid in list(mem_ids)[:50]:  # Cap at 50
+            memory = await memory_service.get_memory(mid)
+            if memory:
+                structured = memory.structured or {}
+                connected_memories.append({
+                    "id": memory.id,
+                    "content": memory.content[:200],
+                    "type": memory.type,
+                    "domains": memory.domains,
+                    "source_agent": memory.source_agent,
+                    "is_insight": memory.type == "insight",
+                    "has_contradictions": bool(structured.get("contradictions")),
+                    "is_contradicted": bool(structured.get("contradicted_by")),
+                    "created_at": memory.created_at.isoformat() if memory.created_at else None,
+                })
+
+        # Connected entities (via relationships)
+        relationships = await memory_service._store.get_relationships(entity_id)
+        connected_entities: list[dict[str, Any]] = []
+        seen_entity_ids: set[str] = set()
+        for rel in relationships:
+            other_id = (
+                rel.target_entity_id if rel.source_entity_id == entity_id
+                else rel.source_entity_id
+            )
+            if other_id in seen_entity_ids:
+                continue
+            seen_entity_ids.add(other_id)
+            other = await memory_service._store.get_entity(other_id)
+            if other:
+                connected_entities.append({
+                    "id": other.id,
+                    "name": other.name,
+                    "type": other.type,
+                    "relationship_type": rel.type,
+                    "direction": "outgoing" if rel.source_entity_id == entity_id else "incoming",
+                })
+
+        return JSONResponse({
+            "entity": {
+                "id": entity.id,
+                "name": entity.name,
+                "type": entity.type,
+                "attributes": entity.attributes,
+                "created_at": entity.created_at.isoformat() if entity.created_at else None,
+            },
+            "connected_memories": connected_memories,
+            "connected_entities": connected_entities,
+        })
+
     async def api_graph(request: Request) -> JSONResponse:
         """Return graph data for D3 force-directed visualization."""
         graph = memory_service.graph
@@ -115,6 +177,7 @@ def create_dashboard_app(
                 "name": entity.name,
                 "type": entity.type,
                 "group": "entity",
+                "attributes": entity.attributes,
             })
             entity_ids.add(entity.id)
 
@@ -126,12 +189,17 @@ def create_dashboard_app(
                 if mid not in memory_ids_seen:
                     memory = await memory_service.get_memory(mid)
                     if memory:
+                        structured = memory.structured or {}
                         nodes.append({
                             "id": mid,
                             "name": memory.content[:60],
                             "type": memory.type,
                             "group": "memory",
                             "domains": memory.domains,
+                            "source_agent": memory.source_agent,
+                            "is_insight": memory.type == "insight",
+                            "has_contradictions": bool(structured.get("contradictions")),
+                            "is_contradicted": bool(structured.get("contradicted_by")),
                         })
                         memory_ids_seen.add(mid)
                 # Entity -> Memory link
@@ -210,6 +278,7 @@ def create_dashboard_app(
         Route("/api/events", api_events),
         Route("/api/agents", api_agents),
         Route("/api/domains", api_domains),
+        Route("/api/graph/entity/{entity_id}", api_graph_entity_detail),
         Route("/api/graph", api_graph),
         Route("/api/memories", api_memories),
         Route("/api/stats", api_stats),

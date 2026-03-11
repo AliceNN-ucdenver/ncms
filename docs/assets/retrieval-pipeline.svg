@@ -60,10 +60,10 @@
     <rect x="140" y="75" width="155" height="180" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
     <rect x="140" y="75" width="155" height="30" rx="10" fill="url(#t1Grad)"/>
     <rect x="140" y="95" width="155" height="10" fill="url(#t1Grad)"/>
-    <text x="217" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 1: BM25</text>
-    <text x="217" y="122" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="500">Tantivy (Rust)</text>
-    <text x="217" y="142" text-anchor="middle" fill="#94a3b8" font-size="9">Lexical matching</text>
-    <text x="217" y="157" text-anchor="middle" fill="#94a3b8" font-size="9">English stemming</text>
+    <text x="217" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 1: BM25 + SPLADE</text>
+    <text x="217" y="122" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="500">Tantivy + Sparse Neural</text>
+    <text x="217" y="142" text-anchor="middle" fill="#94a3b8" font-size="9">Lexical + neural matching</text>
+    <text x="217" y="157" text-anchor="middle" fill="#94a3b8" font-size="9">RRF fusion scoring</text>
     <text x="217" y="172" text-anchor="middle" fill="#94a3b8" font-size="9">Domain filtering</text>
     <text x="217" y="198" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">50 candidates</text>
     <rect x="165" y="212" width="105" height="4" rx="2" fill="#0ea5e9" opacity="0.5"/>
@@ -143,24 +143,28 @@
   <!-- Formula bar at bottom -->
   <rect x="15" y="280" width="870" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
   <text x="35" y="301" fill="#e2e8f0" font-size="11" font-weight="500">Scoring:</text>
-  <text x="100" y="301" fill="#7dd3fc" font-size="11" font-family="'Fira Code', monospace">combined = bm25_score * 0.6  +  activation * 0.4</text>
-  <text x="35" y="319" fill="#94a3b8" font-size="9">Graph-discovered memories enter with bm25=0.0, ranked purely by cognitive activation (recency + frequency + context)</text>
+  <text x="100" y="301" fill="#7dd3fc" font-size="11" font-family="'Fira Code', monospace">combined = bm25 * w_bm25  +  splade * w_splade  +  activation * w_actr</text>
+  <text x="35" y="319" fill="#94a3b8" font-size="9">BM25 + SPLADE fused via RRF | Graph-discovered candidates ranked by cognitive activation (recency + frequency + context)</text>
 
-  <!-- Phase labels at bottom -->
+  <!-- Feature status bar -->
   <rect x="15" y="345" width="870" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
-  <text x="35" y="363" fill="#64748b" font-size="9" font-weight="500">Phase status:</text>
-  <rect x="140" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="153" y="363" fill="#94a3b8" font-size="9">BM25 (core)</text>
-  <rect x="240" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="253" y="363" fill="#94a3b8" font-size="9">Graph Expansion (Phase 1)</text>
-  <rect x="420" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="433" y="363" fill="#94a3b8" font-size="9">ACT-R (core)</text>
-  <rect x="530" y="355" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="543" y="363" fill="#94a3b8" font-size="9">LLM Judge (opt-in)</text>
-  <rect x="140" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="153" y="380" fill="#94a3b8" font-size="9">GLiNER NER (Phase 2, opt-in)</text>
-  <rect x="340" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="353" y="380" fill="#94a3b8" font-size="9">Keyword Bridges (Phase 3, opt-in)</text>
-  <rect x="560" y="372" width="8" height="8" rx="2" fill="#475569"/>
-  <text x="573" y="380" fill="#94a3b8" font-size="9">Consolidation (Phase 4, planned)</text>
+  <text x="35" y="363" fill="#64748b" font-size="9" font-weight="500">Features:</text>
+  <rect x="110" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="123" y="363" fill="#94a3b8" font-size="9">BM25 (core)</text>
+  <rect x="210" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="223" y="363" fill="#94a3b8" font-size="9">Graph Expansion</text>
+  <rect x="340" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="353" y="363" fill="#94a3b8" font-size="9">ACT-R (core)</text>
+  <rect x="450" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="463" y="363" fill="#94a3b8" font-size="9">GLiNER NER (opt-in)</text>
+  <rect x="590" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="603" y="363" fill="#94a3b8" font-size="9">Keyword Bridges (opt-in)</text>
+  <rect x="110" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="123" y="380" fill="#94a3b8" font-size="9">SPLADE (opt-in)</text>
+  <rect x="240" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="253" y="380" fill="#94a3b8" font-size="9">Consolidation (opt-in)</text>
+  <rect x="420" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="433" y="380" fill="#94a3b8" font-size="9">Contradiction Detection (opt-in)</text>
+  <rect x="650" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="663" y="380" fill="#94a3b8" font-size="9">LLM Judge (opt-in)</text>
 </svg>

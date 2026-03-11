@@ -187,6 +187,33 @@ class EventLog:
             },
         ))
 
+    def pipeline_stage(
+        self,
+        pipeline_id: str,
+        pipeline_type: str,
+        stage: str,
+        duration_ms: float,
+        data: dict[str, Any] | None = None,
+        agent_id: str | None = None,
+        memory_id: str | None = None,
+    ) -> None:
+        """Emit a pipeline stage event for store/search observability."""
+        event_data: dict[str, Any] = {
+            "pipeline_id": pipeline_id,
+            "pipeline_type": pipeline_type,
+            "stage": stage,
+            "duration_ms": round(duration_ms, 2),
+        }
+        if memory_id:
+            event_data["memory_id"] = memory_id
+        if data:
+            event_data.update(data)
+        self.emit(DashboardEvent(
+            type=f"pipeline.{pipeline_type}.{stage}",
+            agent_id=agent_id,
+            data=event_data,
+        ))
+
     def memory_searched(
         self,
         query: str,

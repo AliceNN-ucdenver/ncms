@@ -58,7 +58,7 @@ async def run_demo_loop(
     ]
     for content in api_knowledge:
         await api_agent.store_knowledge(content, domains=["api"])
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.8)
 
     await asyncio.sleep(STEP_DELAY)
 
@@ -71,7 +71,7 @@ async def run_demo_loop(
     ]
     for content in frontend_knowledge:
         await frontend_agent.store_knowledge(content, domains=["frontend"])
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.8)
 
     await asyncio.sleep(STEP_DELAY)
 
@@ -84,7 +84,7 @@ async def run_demo_loop(
     ]
     for content in db_knowledge:
         await db_agent.store_knowledge(content, domains=["db"])
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.8)
 
     await asyncio.sleep(STEP_DELAY)
 
@@ -130,15 +130,15 @@ async def run_demo_loop(
 
     # Search for JWT-related memories
     await memory_svc.search("JWT authentication token")
-    await asyncio.sleep(STEP_DELAY)
+    await asyncio.sleep(STEP_DELAY * 1.25)
 
     # Search for user endpoint memories
     await memory_svc.search("user profile API endpoint")
-    await asyncio.sleep(STEP_DELAY)
+    await asyncio.sleep(STEP_DELAY * 1.25)
 
     # Search for database schema
     await memory_svc.search("PostgreSQL users table schema")
-    await asyncio.sleep(STEP_DELAY)
+    await asyncio.sleep(STEP_DELAY * 1.25)
 
     # ── Phase 7: Wake API Agent ───────────────────────────────────────────
 
