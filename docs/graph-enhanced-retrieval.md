@@ -2,7 +2,7 @@
 
 ## Design Specification
 
-**From Regex Heuristics to LLM-Powered Entity Extraction**
+**From Regex Heuristics to Cognitive Retrieval**
 
 Version 0.1 Draft | March 2026
 
@@ -12,13 +12,15 @@ Version 0.1 Draft | March 2026
 
 1. [Overview](#1-overview)
 2. [Architecture](#2-architecture)
-3. [Phase 1: Graph-Expanded Retrieval (Tier 1.5)](#3-phase-1-graph-expanded-retrieval-tier-15)
-4. [Phase 2: GLiNER Entity Extraction](#4-phase-2-gliner-entity-extraction)
-5. [Phase 3: Semantic Keyword Bridge Nodes](#5-phase-3-semantic-keyword-bridge-nodes)
-6. [Phase 4: Consolidation Layer](#6-phase-4-consolidation-layer)
-7. [Phase 5: Synthesized Retrieval (Tier 4)](#7-phase-5-synthesized-retrieval-tier-4)
-8. [Configuration](#8-configuration)
-9. [Migration](#9-migration)
+3. [Graph-Expanded Retrieval (Tier 1.5)](#3-graph-expanded-retrieval-tier-15)
+4. [GLiNER Entity Extraction](#4-gliner-entity-extraction)
+5. [Semantic Keyword Bridge Nodes](#5-semantic-keyword-bridge-nodes)
+6. [Consolidation Layer](#6-consolidation-layer)
+7. [SPLADE Sparse Neural Retrieval](#7-splade-sparse-neural-retrieval)
+8. [Contradiction Detection](#8-contradiction-detection)
+9. [Synthesized Retrieval (Tier 4)](#9-synthesized-retrieval-tier-4)
+10. [Configuration](#10-configuration)
+11. [Migration](#11-migration)
 
 ---
 
@@ -56,13 +58,15 @@ It extracts only `JWT` (technology). It misses: `authentication`, `access contro
 
 A five-phase evolution where each phase independently adds value and makes subsequent phases more powerful:
 
-| Phase | What it adds | LLM required | Improves |
-|-------|-------------|--------------|----------|
-| 1 | Graph-expanded retrieval (Tier 1.5) | No | Query-time candidate discovery |
-| 2 | GLiNER entity extraction at store-time | No (209M NER model) | Graph data richness |
-| 3 | Semantic keyword bridge nodes | Yes (small/local) | Cross-subgraph connectivity |
-| 4 | Background consolidation | Yes (periodic) | Emergent relationship discovery |
-| 5 | Synthesized retrieval (Tier 4) | Yes (query-time) | Multi-memory answer quality |
+| Capability | What it adds | LLM required | Improves |
+|------------|-------------|--------------|----------|
+| Graph Expansion (Tier 1.5) | Entity-based cross-memory discovery | No | Query-time candidate discovery |
+| GLiNER NER | Semantic entity extraction at store-time | No (209M NER model) | Graph data richness |
+| Keyword Bridges | Semantic concept bridge nodes | Yes (small/local) | Cross-subgraph connectivity |
+| Consolidation | Background clustering + insight synthesis | Yes (periodic) | Emergent relationship discovery |
+| SPLADE | Learned sparse term expansion fused with BM25 | No (530M ONNX model) | Semantic recall in Tier 1 |
+| Contradiction Detection | LLM comparison at ingest time | Yes (at ingest) | Knowledge freshness/accuracy |
+| Synthesized Retrieval (Tier 4) | Multi-memory summarization | Yes (query-time) | Answer quality |
 
 ---
 
@@ -74,21 +78,26 @@ A five-phase evolution where each phase independently adds value and makes subse
                            ┌─────────────────────────────────────┐
                            │           STORE TIME                 │
                            │                                      │
-                           │  Content ──▶ [LLM Extract] ──────┐  │
-                           │               (Phase 2)           │  │
-                           │                 │                 │  │
-                           │            ┌────┴────┐      ┌────┴──┐
-                           │            │ Entities│      │Keywords│
-                           │            │ + Rels  │      │+Domain│
-                           │            └────┬────┘      └───┬───┘
-                           │                 │    Graph      │    │
-                           │            ┌────┴───────────────┴──┐ │
-                           │            │   NetworkX / Neo4j    │ │
-                           │            │   (Phase 3 bridges)   │ │
-                           │            └───────────────────────┘ │
+                           │  Content ──▶ [Entity Extract] ───┐  │
+                           │    │          Regex / GLiNER      │  │
+                           │    │              │               │  │
+                           │    │         ┌────┴────┐    ┌─────┴─┐│
+                           │    │         │ Entities│    │Keyword ││
+                           │    │         │ + Rels  │    │Bridges ││
+                           │    │         └────┬────┘    └──┬────┘│
+                           │    │              │   Graph    │     │
+                           │    │         ┌────┴───────────┴───┐ │
+                           │    │         │  NetworkX / Neo4j  │ │
+                           │    │         └────────────────────┘ │
+                           │    │                                 │
+                           │    ├──▶ [SPLADE Index]               │
+                           │    │     Sparse vector stored        │
+                           │    │                                 │
+                           │    └──▶ [Contradiction Check]        │
+                           │          LLM compares vs candidates  │
+                           │          Annotates both sides        │
                            │                                      │
                            │  Background: [Consolidation]         │
-                           │              (Phase 4)               │
                            │  Discovers cross-memory patterns     │
                            │  Creates insight nodes + rels        │
                            └──────────────────────────────────────┘
@@ -96,13 +105,14 @@ A five-phase evolution where each phase independently adds value and makes subse
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                            QUERY TIME                                    │
 │                                                                          │
-│  Query ──▶ [Tier 1: BM25]                                               │
-│              Tantivy lexical match                                       │
+│  Query ──▶ [Tier 1: BM25 + SPLADE Hybrid]                               │
+│              BM25 (Tantivy) + SPLADE (fastembed)                         │
+│              fused via Reciprocal Rank Fusion                            │
 │                    │                                                     │
 │                    ▼                                                     │
-│            [Tier 1.5: Graph Expansion]  ◀── Phase 1                     │
+│            [Tier 1.5: Graph Expansion]                                   │
 │              Discover entity-related                                     │
-│              memories BM25 missed                                        │
+│              memories search missed                                      │
 │                    │                                                     │
 │                    ▼                                                     │
 │            [Tier 2: ACT-R Scoring]                                       │
@@ -110,14 +120,11 @@ A five-phase evolution where each phase independently adds value and makes subse
 │              + noise → combined score                                    │
 │                    │                                                     │
 │                    ▼                                                     │
-│            [Tier 2.5: SPLADE]  (future, separate initiative)            │
-│                    │                                                     │
-│                    ▼                                                     │
 │            [Tier 3: LLM-as-Judge]                                        │
 │              optional reranking                                          │
 │                    │                                                     │
 │                    ▼                                                     │
-│            [Tier 4: LLM Synthesis]  ◀── Phase 5                         │
+│            [Tier 4: LLM Synthesis]  (planned)                            │
 │              multi-memory summarization                                  │
 │              with citations                                              │
 │                    │                                                     │
@@ -126,21 +133,25 @@ A five-phase evolution where each phase independently adds value and makes subse
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Phase Dependencies
+### Capability Dependencies
 
 ```
-Phase 1 (Graph Expansion)     ← standalone, uses existing graph data
-Phase 2 (GLiNER Extraction)    ← standalone, enriches graph data
-Phase 3 (Bridge Nodes)         ← builds on Phase 2 (richer extraction)
-Phase 4 (Consolidation)        ← builds on Phase 2+3 (richer graph)
-Phase 5 (Synthesis)            ← builds on Phase 1-4 (better retrieval)
+Graph Expansion          ← standalone, uses existing graph data
+GLiNER Extraction        ← standalone, enriches graph data
+Keyword Bridges          ← benefits from GLiNER (richer extraction)
+Consolidation            ← benefits from GLiNER + Bridges (richer graph)
+SPLADE                   ← standalone, parallel Tier 1 channel
+Contradiction Detection  ← standalone, uses search + graph for candidates
+Synthesis                ← benefits from all above (better retrieval)
 ```
 
-Phases 1 and 2 can be implemented independently and in any order. Phase 1 improves immediately with whatever graph data exists. Phase 2 makes Phase 1 dramatically more effective.
+Graph Expansion and GLiNER can be enabled independently. Graph Expansion improves immediately with whatever graph data exists. GLiNER makes Graph Expansion dramatically more effective. SPLADE and Contradiction Detection are fully independent of each other and the graph capabilities.
 
 ---
 
-## 3. Phase 1: Graph-Expanded Retrieval (Tier 1.5)
+## 3. Graph-Expanded Retrieval (Tier 1.5)
+
+**Status: Implemented**
 
 ### 3.1 Motivation
 
@@ -227,7 +238,7 @@ NCMS_GRAPH_EXPANSION_MAX=10          # Default: 10 (cap on novel candidates)
 
 ---
 
-## 4. Phase 2: GLiNER Entity Extraction
+## 4. GLiNER Entity Extraction
 
 **Status: Implemented**
 
@@ -293,7 +304,7 @@ Install: `pip install ncms[gliner]`
 
 ---
 
-## 5. Phase 3: Semantic Keyword Bridge Nodes
+## 5. Semantic Keyword Bridge Nodes
 
 **Status: Implemented**
 
@@ -364,7 +375,7 @@ NCMS_KEYWORD_LLM_MODEL=gpt-4o-mini      # Default: gpt-4o-mini
 
 ---
 
-## 6. Phase 4: Consolidation Layer
+## 6. Consolidation Layer
 
 **Status: Implemented**
 
@@ -462,7 +473,148 @@ NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN=5
 
 ---
 
-## 7. Phase 5: Synthesized Retrieval (Tier 4)
+## 7. SPLADE Sparse Neural Retrieval
+
+**Status: Implemented**
+
+### 7.1 Motivation
+
+BM25 relies on exact lexical matching — the query term must appear in the document. SPLADE (Sparse Lexical and Expansion Model) uses BERT's masked language model head to learn term expansions. A query for "API specification" also activates "endpoint", "schema", "contract" — terms a human would associate but BM25 cannot discover.
+
+Unlike dense vector retrieval, SPLADE produces sparse vectors that remain interpretable and compatible with inverted index architectures. This preserves the precision advantages of lexical search while adding semantic recall.
+
+### 7.2 Design
+
+**File:** `src/ncms/infrastructure/indexing/splade_engine.py`
+
+```python
+class SparseVector:
+    """Parallel arrays of vocabulary indices and weights."""
+    indices: list[int]
+    values: list[float]
+
+class SpladeEngine:
+    def __init__(self, model_name="prithivida/Splade_PP_en_v1"):
+        self._model = None           # Lazy-loaded SparseTextEmbedding
+        self._vectors: dict[str, SparseVector] = {}  # memory_id → sparse vec
+
+    def index_memory(self, memory: Memory) -> None:
+        """Encode content → sparse vector, store in dict."""
+
+    def search(self, query: str, limit: int = 50) -> list[tuple[str, float]]:
+        """Brute-force dot-product search against all stored vectors."""
+
+    def remove(self, memory_id: str) -> None
+```
+
+Uses [fastembed](https://github.com/qdrant/fastembed) for ONNX-based SPLADE inference (~530MB model, CPU). Lazy-loaded on first use. Install: `pip install ncms[splade]`.
+
+### 7.3 Reciprocal Rank Fusion (RRF)
+
+BM25 and SPLADE produce scores on incompatible scales. Rather than normalizing (fragile, distribution-dependent), results are fused via Reciprocal Rank Fusion (Cormack et al. 2009):
+
+```
+RRF(d) = Σ_r  1 / (k + rank_r(d))
+```
+
+Where `k = 60` (standard constant). Documents appearing in both BM25 and SPLADE result sets receive a rank boost. This is parameter-free and robust across score distributions.
+
+**File:** `src/ncms/application/memory_service.py` → `_rrf_fuse()` static method.
+
+### 7.4 Integration
+
+- **Store time:** After Tantivy indexing, SPLADE encodes and stores the sparse vector
+- **Search time:** BM25 and SPLADE run in parallel, fused via RRF, then passed to Tier 1.5 (Graph Expansion) and Tier 2 (ACT-R Scoring)
+- **Delete:** Removes from both Tantivy and SPLADE index
+- **Combined scoring:** `combined = bm25 * w_bm25 + splade * w_splade + activation * w_actr`
+
+### 7.5 Configuration
+
+```
+NCMS_SPLADE_ENABLED=false                        # Default: false (opt-in)
+NCMS_SPLADE_MODEL=prithivida/Splade_PP_en_v1     # ONNX model via fastembed
+NCMS_SPLADE_TOP_K=50                              # SPLADE candidates per search
+NCMS_SCORING_WEIGHT_SPLADE=0.0                    # Weight in combined score
+```
+
+Install: `pip install ncms[splade]`
+
+---
+
+## 8. Contradiction Detection
+
+**Status: Implemented**
+
+### 8.1 Motivation
+
+Knowledge evolves over time. A memory saying "The API uses session cookies" may be superseded by "The API uses JWT tokens". Without contradiction detection, both memories exist and compete during retrieval — the stale one potentially outranking the fresh one due to higher access frequency.
+
+Contradiction detection identifies these conflicts at ingest time and annotates both sides bidirectionally, so retrieval consumers can surface or filter stale knowledge.
+
+### 8.2 Design
+
+**File:** `src/ncms/infrastructure/llm/contradiction_detector.py`
+
+```python
+async def detect_contradictions(
+    new_memory: Memory,
+    existing_memories: list[Memory],
+    model: str = "gpt-4o-mini",
+    api_base: str | None = None,
+) -> list[dict]:
+    """Compare new memory against existing candidates via LLM.
+
+    Returns list of contradictions, each with:
+    - existing_memory_id: ID of the contradicted memory
+    - contradiction_type: factual | temporal | configuration
+    - explanation: brief description
+    - severity: low | medium | high
+    """
+```
+
+Follows the standard litellm pattern (code fence stripping, `think=False` for Ollama, non-fatal on error). Validates returned memory IDs against the actual candidate set to filter LLM hallucinated IDs.
+
+### 8.3 Candidate Discovery
+
+At ingest time, candidates are found via two channels:
+
+1. **Search similarity:** `self._index.search(content)` finds lexically similar memories
+2. **Graph traversal:** Entity overlap discovers related memories search missed
+
+Candidates are domain-scoped (only memories with overlapping domains) and capped at `contradiction_candidate_limit`.
+
+### 8.4 Bidirectional Annotation
+
+Contradictions are stored in `Memory.structured`:
+
+**New memory:**
+```json
+{"contradictions": [{"existing_memory_id": "abc", "contradiction_type": "factual",
+  "explanation": "Auth method differs", "severity": "high"}]}
+```
+
+**Existing memory:**
+```json
+{"contradicted_by": [{"newer_memory_id": "def", "contradiction_type": "factual",
+  "explanation": "Auth method differs", "severity": "high"}]}
+```
+
+Both sides are updated via `store.update_memory()`.
+
+### 8.5 Configuration
+
+Contradiction detection reuses the existing `llm_model` and `llm_api_base` config — no separate model configuration needed.
+
+```
+NCMS_CONTRADICTION_DETECTION_ENABLED=false    # Default: false (opt-in)
+NCMS_CONTRADICTION_CANDIDATE_LIMIT=5          # Max candidates per check
+NCMS_LLM_MODEL=gpt-4o-mini                   # Shared with LLM judge
+NCMS_LLM_API_BASE=                            # Shared with LLM judge
+```
+
+---
+
+## 9. Synthesized Retrieval (Tier 4)
 
 ### 7.1 Motivation
 
@@ -498,57 +650,71 @@ NCMS_SYNTHESIS_TOP_K=5
 
 ---
 
-## 8. Configuration Summary
+## 10. Configuration Summary
 
-### All New Config Values
+### All Config Values
 
-| Variable | Phase | Default | Purpose |
-|----------|-------|---------|---------|
-| `NCMS_GRAPH_EXPANSION_ENABLED` | 1 | `true` | Enable Tier 1.5 graph expansion |
-| `NCMS_GRAPH_EXPANSION_DEPTH` | 1 | `1` | Graph traversal depth |
-| `NCMS_GRAPH_EXPANSION_MAX` | 1 | `10` | Max graph-discovered candidates |
-| `NCMS_GLINER_ENABLED` | 2 | `false` | Enable GLiNER entity extraction |
-| `NCMS_GLINER_MODEL` | 2 | `urchade/gliner_medium-v2.1` | GLiNER model for extraction |
-| `NCMS_GLINER_THRESHOLD` | 2 | `0.3` | Min confidence for entity inclusion |
-| `NCMS_KEYWORD_BRIDGE_ENABLED` | 3 | `false` | Enable keyword bridge nodes |
-| `NCMS_KEYWORD_MAX_PER_MEMORY` | 3 | `8` | Max keywords per memory |
-| `NCMS_KEYWORD_LLM_MODEL` | 3 | `gpt-4o-mini` | LLM model for keyword extraction |
-| `NCMS_KEYWORD_LLM_API_BASE` | 3 | *(none)* | vLLM endpoint for keyword extraction |
-| `NCMS_LLM_API_BASE` | 3 | *(none)* | vLLM endpoint for LLM-as-judge |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | 4 | `false` | Enable knowledge consolidation |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | 4 | `3` | Min cluster size |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | 4 | `gpt-4o-mini` | Consolidation model |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | 4 | *(none)* | vLLM endpoint for consolidation |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN` | 4 | `5` | Max insights per run |
-| `NCMS_SYNTHESIS_ENABLED` | 5 | `false` | Enable Tier 4 synthesis |
-| `NCMS_SYNTHESIS_MODEL` | 5 | `gpt-4o-mini` | Synthesis model |
-| `NCMS_SYNTHESIS_TOP_K` | 5 | `5` | Memories to synthesize |
+| Variable | Capability | Default | Purpose |
+|----------|-----------|---------|---------|
+| `NCMS_GRAPH_EXPANSION_ENABLED` | Graph Expansion | `true` | Enable Tier 1.5 graph expansion |
+| `NCMS_GRAPH_EXPANSION_DEPTH` | Graph Expansion | `1` | Graph traversal depth |
+| `NCMS_GRAPH_EXPANSION_MAX` | Graph Expansion | `10` | Max graph-discovered candidates |
+| `NCMS_GLINER_ENABLED` | GLiNER NER | `false` | Enable GLiNER entity extraction |
+| `NCMS_GLINER_MODEL` | GLiNER NER | `urchade/gliner_medium-v2.1` | GLiNER model for extraction |
+| `NCMS_GLINER_THRESHOLD` | GLiNER NER | `0.3` | Min confidence for entity inclusion |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | Keyword Bridges | `false` | Enable keyword bridge nodes |
+| `NCMS_KEYWORD_MAX_PER_MEMORY` | Keyword Bridges | `8` | Max keywords per memory |
+| `NCMS_KEYWORD_LLM_MODEL` | Keyword Bridges | `gpt-4o-mini` | LLM model for keyword extraction |
+| `NCMS_KEYWORD_LLM_API_BASE` | Keyword Bridges | *(none)* | vLLM endpoint for keyword extraction |
+| `NCMS_SPLADE_ENABLED` | SPLADE | `false` | Enable SPLADE sparse retrieval |
+| `NCMS_SPLADE_MODEL` | SPLADE | `prithivida/Splade_PP_en_v1` | SPLADE ONNX model |
+| `NCMS_SPLADE_TOP_K` | SPLADE | `50` | SPLADE candidates per search |
+| `NCMS_SCORING_WEIGHT_SPLADE` | SPLADE | `0.0` | SPLADE weight in combined score |
+| `NCMS_CONTRADICTION_DETECTION_ENABLED` | Contradiction | `false` | Enable contradiction detection |
+| `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | Contradiction | `5` | Max candidates per check |
+| `NCMS_LLM_API_BASE` | LLM Judge + Contradiction | *(none)* | vLLM endpoint for LLM-as-judge |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | Consolidation | `false` | Enable knowledge consolidation |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | Consolidation | `3` | Min cluster size |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | Consolidation | `gpt-4o-mini` | Consolidation model |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | Consolidation | *(none)* | vLLM endpoint for consolidation |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN` | Consolidation | `5` | Max insights per run |
+| `NCMS_SYNTHESIS_ENABLED` | Synthesis | `false` | Enable Tier 4 synthesis |
+| `NCMS_SYNTHESIS_MODEL` | Synthesis | `gpt-4o-mini` | Synthesis model |
+| `NCMS_SYNTHESIS_TOP_K` | Synthesis | `5` | Memories to synthesize |
 
 All default to `false`/off — each phase is opt-in and backward compatible.
 
 ---
 
-## 9. Migration
+## 11. Migration
 
-### Phase 1: No Migration Required
+### Graph Expansion: No Migration Required
 
 Graph expansion uses existing entity data. Whatever entities the regex extractor has already produced are traversed at query time. No data changes needed.
 
-### Phase 2: Optional Re-extraction
+### GLiNER: Optional Re-extraction
 
 After enabling GLiNER extraction, existing memories still have their regex-extracted entities. Options:
 - **Lazy**: New memories get GLiNER extraction, old memories keep regex entities
 - **Batch**: Background task re-extracts entities for all existing memories using GLiNER
 
-### Phase 3: One-Time Bridge Generation
+### Keyword Bridges: One-Time Bridge Generation
 
 After enabling keyword bridges, run a one-time pass to extract keywords from all existing memories and create bridge nodes.
 
-### Phase 4: Automatic
+### Consolidation: Automatic
 
 Consolidation processes all memories from the start. No special migration.
 
-### Phase 5: No Migration Required
+### SPLADE: Requires Reindexing
+
+SPLADE vectors are stored in-memory. After enabling SPLADE, existing memories need to be re-indexed to build sparse vectors. New memories are indexed automatically. A reindex utility is planned.
+
+### Contradiction Detection: No Migration Required
+
+Contradiction detection runs at ingest time only. Existing memories are not retroactively checked. New memories stored after enabling will be checked against all existing candidates.
+
+### Synthesis: No Migration Required
 
 Synthesis is a query-time operation. No data changes needed.
 
@@ -557,6 +723,9 @@ Synthesis is a query-time operation. No data changes needed.
 ## References
 
 - Anderson, J.R. (2007). *How Can the Human Mind Occur in the Physical Universe?* — ACT-R activation theory
-- Zaratiana, U. et al. (2024). *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer* (NAACL 2024) — zero-shot NER model used in Phase 2
+- Zaratiana, U. et al. (2024). *GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer* (NAACL 2024) — zero-shot NER model for entity extraction
+- Formal, T. et al. (2021). *SPLADE: Sparse Lexical and Expansion Model for First Stage Ranking* — learned sparse retrieval
+- Cormack, G.V. et al. (2009). *Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods* — RRF fusion used for BM25 + SPLADE
+- [fastembed](https://github.com/qdrant/fastembed) — ONNX-based embedding library for SPLADE inference
 - Google Always-On Memory Agent — consolidation and multi-stage retrieval patterns
 - NCMS Design Specification (`docs/ncms-design-spec.md`) — core architecture

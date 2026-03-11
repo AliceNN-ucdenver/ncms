@@ -41,6 +41,7 @@ class MemoryService:
         graph: NetworkXGraph,
         config: NCMSConfig | None = None,
         event_log: object | None = None,
+        splade: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -48,6 +49,8 @@ class MemoryService:
         self._config = config or NCMSConfig()
         # Optional EventLog for dashboard observability (duck-typed to avoid import)
         self._event_log = event_log
+        # Optional SPLADE engine for sparse neural retrieval (duck-typed)
+        self._splade = splade
 
     @property
     def store(self) -> SQLiteStore:
@@ -90,6 +93,15 @@ class MemoryService:
         # Index in Tantivy
         self._index.index_memory(memory)
 
+        # Index in SPLADE (if enabled)
+        if self._splade is not None:
+            try:
+                self._splade.index_memory(memory)
+            except Exception:
+                logger.warning(
+                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True
+                )
+
         # Auto-extract entities from content + merge with manually provided ones
         auto_entities = extract_entities(content, config=self._config)
         manual = list(entities or [])
@@ -127,6 +139,86 @@ class MemoryService:
             except Exception:
                 logger.warning(
                     "Keyword extraction failed, continuing without keywords",
+                    exc_info=True,
+                )
+
+        # Phase: Contradiction detection (uses shared llm_model + llm_api_base)
+        if self._config.contradiction_detection_enabled:
+            try:
+                from ncms.infrastructure.llm.contradiction_detector import (
+                    detect_contradictions,
+                )
+
+                # Find similar existing memories (new memory already indexed)
+                candidates = self._index.search(
+                    content, limit=self._config.contradiction_candidate_limit + 1
+                )
+                candidate_ids = [mid for mid, _ in candidates if mid != memory.id]
+                candidate_ids = candidate_ids[: self._config.contradiction_candidate_limit]
+
+                # Also pull in graph-related memories via shared entities
+                for e_data in all_entities[:5]:
+                    eid = self._graph.find_entity_by_name(e_data["name"])
+                    if eid:
+                        related = self._graph.get_related_memory_ids([eid], depth=1)
+                        for rid in related:
+                            if rid != memory.id and rid not in candidate_ids:
+                                candidate_ids.append(rid)
+                                if len(candidate_ids) >= self._config.contradiction_candidate_limit:
+                                    break
+
+                # Domain-scope: only check overlapping domains
+                candidate_memories: list[Memory] = []
+                for cid in candidate_ids:
+                    cmem = await self._store.get_memory(cid)
+                    if cmem and (
+                        not memory.domains
+                        or not cmem.domains
+                        or set(memory.domains) & set(cmem.domains)
+                    ):
+                        candidate_memories.append(cmem)
+
+                if candidate_memories:
+                    contradictions = await detect_contradictions(
+                        new_memory=memory,
+                        existing_memories=candidate_memories,
+                        model=self._config.llm_model,
+                        api_base=self._config.llm_api_base,
+                    )
+
+                    if contradictions:
+                        # Annotate the new memory
+                        structured_data = dict(memory.structured or {})
+                        structured_data["contradictions"] = contradictions
+                        memory.structured = structured_data
+                        await self._store.update_memory(memory)
+
+                        # Annotate each contradicted existing memory
+                        for c in contradictions:
+                            existing = await self._store.get_memory(c["existing_memory_id"])
+                            if existing:
+                                ex_structured = dict(existing.structured or {})
+                                ex_contradictions = ex_structured.get("contradicted_by", [])
+                                ex_contradictions.append(
+                                    {
+                                        "newer_memory_id": memory.id,
+                                        "contradiction_type": c["contradiction_type"],
+                                        "explanation": c["explanation"],
+                                        "severity": c["severity"],
+                                    }
+                                )
+                                ex_structured["contradicted_by"] = ex_contradictions
+                                existing.structured = ex_structured
+                                await self._store.update_memory(existing)
+
+                        logger.info(
+                            "Detected %d contradiction(s) for memory %s",
+                            len(contradictions),
+                            memory.id,
+                        )
+            except Exception:
+                logger.warning(
+                    "Contradiction detection failed, continuing without contradictions",
                     exc_info=True,
                 )
 
@@ -173,8 +265,28 @@ class MemoryService:
         # Tier 1: BM25 candidate retrieval via Tantivy
         bm25_results = self._index.search(query, limit=self._config.tier1_candidates)
 
-        if not bm25_results:
+        # Tier 1 (parallel): SPLADE candidate retrieval (if enabled)
+        splade_results: list[tuple[str, float]] = []
+        if self._splade is not None:
+            try:
+                splade_results = self._splade.search(
+                    query, limit=self._config.splade_top_k
+                )
+            except Exception:
+                logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
+
+        # Fuse BM25 + SPLADE via Reciprocal Rank Fusion
+        if splade_results:
+            fused_candidates = self._rrf_fuse(bm25_results, splade_results)
+        else:
+            fused_candidates = bm25_results
+
+        if not fused_candidates:
             return []
+
+        # Build per-source score lookups
+        bm25_scores: dict[str, float] = {mid: score for mid, score in bm25_results}
+        splade_scores: dict[str, float] = {mid: score for mid, score in splade_results}
 
         # Extract entities from query for spreading activation context
         # Use graph O(1) name index when available, fall back to SQLite
@@ -191,23 +303,23 @@ class MemoryService:
                     context_entity_ids.append(existing.id)
 
         # ── Tier 1.5: Graph-expanded candidate discovery ────────────────
-        # Collect entity IDs from BM25 hits, then discover related memories
-        # via shared graph entities that BM25 missed lexically.
-        bm25_ids = {mid for mid, _ in bm25_results}
-        all_candidates: list[tuple[str, float]] = list(bm25_results)
+        # Collect entity IDs from fused hits, then discover related memories
+        # via shared graph entities that search missed lexically.
+        fused_ids = {mid for mid, _ in fused_candidates}
+        all_candidates: list[tuple[str, float]] = list(fused_candidates)
 
         if self._config.graph_expansion_enabled:
-            bm25_entity_pool: set[str] = set()
-            for memory_id, _ in bm25_results:
+            candidate_entity_pool: set[str] = set()
+            for memory_id, _ in fused_candidates:
                 entity_ids = self._graph.get_entity_ids_for_memory(memory_id)
-                bm25_entity_pool.update(entity_ids)
+                candidate_entity_pool.update(entity_ids)
 
-            if bm25_entity_pool:
+            if candidate_entity_pool:
                 related_memory_ids = self._graph.get_related_memory_ids(
-                    list(bm25_entity_pool),
+                    list(candidate_entity_pool),
                     depth=self._config.graph_expansion_depth,
                 )
-                novel_ids = related_memory_ids - bm25_ids
+                novel_ids = related_memory_ids - fused_ids
                 # Cap the expansion set
                 if len(novel_ids) > self._config.graph_expansion_max:
                     novel_ids = set(list(novel_ids)[: self._config.graph_expansion_max])
@@ -219,12 +331,12 @@ class MemoryService:
                     logger.debug(
                         "Graph expansion: %d novel candidates from %d entities",
                         len(novel_ids),
-                        len(bm25_entity_pool),
+                        len(candidate_entity_pool),
                     )
 
         # Load full memory objects and compute activation scores
         scored: list[ScoredMemory] = []
-        for memory_id, bm25_score in all_candidates:
+        for memory_id, _fused_score in all_candidates:
             memory = await self._store.get_memory(memory_id)
             if not memory:
                 continue
@@ -250,10 +362,15 @@ class MemoryService:
             noise = activation_noise(sigma=self._config.actr_noise)
             act = total_activation(bl, spread, noise)
 
-            # Combine BM25 and activation using configurable weights
+            # Look up per-source scores
+            bm25_score = bm25_scores.get(memory_id, 0.0)
+            splade_score_val = splade_scores.get(memory_id, 0.0)
+
+            # Combine BM25, SPLADE, and activation using configurable weights
             w_bm25 = self._config.scoring_weight_bm25
             w_actr = self._config.scoring_weight_actr
-            combined = bm25_score * w_bm25 + act * w_actr
+            w_splade = self._config.scoring_weight_splade
+            combined = bm25_score * w_bm25 + act * w_actr + splade_score_val * w_splade
 
             # Compute retrieval probability for threshold filtering
             ret_prob = retrieval_probability(
@@ -270,6 +387,7 @@ class MemoryService:
                 ScoredMemory(
                     memory=memory,
                     bm25_score=bm25_score,
+                    splade_score=splade_score_val,
                     base_level=bl,
                     spreading=spread,
                     total_activation=combined,
@@ -356,7 +474,33 @@ class MemoryService:
 
     async def delete_memory(self, memory_id: str) -> None:
         self._index.remove(memory_id)
+        if self._splade is not None:
+            self._splade.remove(memory_id)
         await self._store.delete_memory(memory_id)
+
+    @staticmethod
+    def _rrf_fuse(
+        bm25_results: list[tuple[str, float]],
+        splade_results: list[tuple[str, float]],
+        k: int = 60,
+    ) -> list[tuple[str, float]]:
+        """Reciprocal Rank Fusion of two result lists.
+
+        RRF score = sum(1 / (k + rank_i)) across all lists where the doc appears.
+        k=60 is the standard constant from the original RRF paper (Cormack et al. 2009).
+
+        Returns fused (memory_id, rrf_score) list sorted descending.
+        """
+        rrf_scores: dict[str, float] = {}
+
+        for rank, (mid, _score) in enumerate(bm25_results):
+            rrf_scores[mid] = rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
+
+        for rank, (mid, _score) in enumerate(splade_results):
+            rrf_scores[mid] = rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
+
+        fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+        return fused
 
     # ── Entity Operations ────────────────────────────────────────────────
 

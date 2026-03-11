@@ -24,7 +24,7 @@ uv run ncms dashboard            # Start observability dashboard (web UI)
 uv run ncms dashboard --no-demo  # Dashboard without auto-starting demo agents
 uv run ncms info                 # Show system info
 uv run ncms load <file>          # Load knowledge from file into memory store
-uv run pytest tests/ -v          # Run all tests (261 tests)
+uv run pytest tests/ -v          # Run all tests (297 tests)
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
@@ -46,18 +46,20 @@ src/ncms/
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
-│   ├── consolidation_service.py # Decay pass + knowledge consolidation (Phase 4)
+│   ├── consolidation_service.py # Decay pass + knowledge consolidation
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 7 tables, WAL mode, parameterized SQL
 │   ├── storage/migrations.py    # DDL for schema creation and versioning
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
+│   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
 │   ├── llm/judge.py            # Optional LLM-as-judge via litellm
-│   ├── extraction/keyword_extractor.py # LLM keyword bridge extraction (Phase 3)
-│   ├── consolidation/clusterer.py  # Entity co-occurrence clustering (Phase 4)
-│   ├── consolidation/synthesizer.py # LLM insight synthesis (Phase 4)
+│   ├── llm/contradiction_detector.py # LLM contradiction detection at ingest
+│   ├── extraction/keyword_extractor.py # LLM keyword bridge extraction
+│   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
+│   ├── consolidation/synthesizer.py # LLM insight synthesis
 │   └── observability/event_log.py # Ring buffer event log + SSE subscriber support
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
@@ -130,6 +132,12 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
 | `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keywords |
 | `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
+| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval |
+| `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
+| `NCMS_SPLADE_TOP_K` | `50` | SPLADE candidates per search |
+| `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
+| `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
+| `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM for insight synthesis |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
@@ -147,17 +155,22 @@ ollama list                          # Verify qwen3.5:35b-a3b is available
 Enable LLM features for local testing:
 
 ```bash
-# Consolidation (Phase 4)
+# Consolidation
 NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true \
 NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
 
-# Keywords (Phase 3)
+# Keywords
 NCMS_KEYWORD_BRIDGE_ENABLED=true \
 NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
 
-# Judge (Tier 3)
+# Contradiction Detection
+NCMS_CONTRADICTION_DETECTION_ENABLED=true \
+NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
+uv run ncms demo
+
+# LLM Judge (Tier 3)
 NCMS_LLM_JUDGE_ENABLED=true \
 NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
@@ -175,5 +188,5 @@ Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
 - **model_dump(mode="json")** — required when serializing models containing datetimes to JSON
 - **Domain protocols** — all infrastructure contracts defined in `domain/protocols.py`
 - **Agent lifecycle**: `start()` → work → `sleep()` (publish snapshot) → `wake()` (restore) → `shutdown()`
-- **LLM calls are non-fatal** — all LLM features (judge, keywords, consolidation) degrade gracefully on error
+- **LLM calls are non-fatal** — all LLM features (judge, keywords, consolidation, contradiction) degrade gracefully on error
 - **litellm kwargs pattern** — build a `kwargs` dict, optionally add `api_base`, add `think=False` for Ollama models

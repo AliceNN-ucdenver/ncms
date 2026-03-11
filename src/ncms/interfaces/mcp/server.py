@@ -6,6 +6,8 @@ via the FastMCP server with tools and resources.
 
 from __future__ import annotations
 
+import logging
+
 from mcp.server.fastmcp import FastMCP
 
 from ncms.application.bus_service import BusService
@@ -19,6 +21,8 @@ from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 from ncms.interfaces.mcp.resources import register_resources
 from ncms.interfaces.mcp.tools import register_tools
+
+logger = logging.getLogger(__name__)
 
 
 async def create_ncms_services(
@@ -37,8 +41,24 @@ async def create_ncms_services(
     graph = NetworkXGraph()
     bus = AsyncKnowledgeBus(ask_timeout_ms=config.bus_ask_timeout_ms)
 
+    # Optional SPLADE engine
+    splade = None
+    if config.splade_enabled:
+        try:
+            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+            splade = SpladeEngine(model_name=config.splade_model)
+            logger.info("SPLADE engine enabled with model: %s", config.splade_model)
+        except ImportError:
+            logger.warning(
+                "SPLADE enabled but fastembed not installed. "
+                "Install with: pip install ncms[splade]"
+            )
+
     # Application services
-    memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
+    memory_svc = MemoryService(
+        store=store, index=index, graph=graph, config=config, splade=splade,
+    )
     snapshot_svc = SnapshotService(
         store=store,
         max_entries=config.snapshot_max_entries,

@@ -55,6 +55,7 @@ def register_tools(
                 "domains": r.memory.domains,
                 "tags": r.memory.tags,
                 "bm25_score": round(r.bm25_score, 4),
+                "splade_score": round(r.splade_score, 4),
                 "base_level_activation": round(r.base_level, 4),
                 "spreading_activation": round(r.spreading, 4),
                 "total_activation": round(r.total_activation, 4),

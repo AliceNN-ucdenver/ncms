@@ -228,6 +228,7 @@ class ScoredMemory(BaseModel):
 
     memory: Memory
     bm25_score: float = 0.0
+    splade_score: float = 0.0
     base_level: float = 0.0
     spreading: float = 0.0
     total_activation: float = 0.0

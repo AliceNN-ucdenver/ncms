@@ -37,6 +37,12 @@ class NCMSConfig(BaseSettings):
     # SPLADE
     splade_enabled: bool = False
     splade_model: str = "prithivida/Splade_PP_en_v1"
+    splade_top_k: int = 50
+    scoring_weight_splade: float = 0.0
+
+    # Contradiction detection (uses llm_model + llm_api_base for the LLM)
+    contradiction_detection_enabled: bool = False
+    contradiction_candidate_limit: int = 5
 
     # Snapshot
     snapshot_max_entries: int = 50

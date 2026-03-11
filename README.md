@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-261_passing-brightgreen" alt="261 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-297_passing-brightgreen" alt="297 Tests Passing">
 </p>
 
 ---
@@ -41,7 +41,7 @@ Three lines. Your agents now have persistent, searchable, shared memory with cog
 
 | Problem | Traditional Approach | NCMS |
 |---------|---------------------|------|
-| Memory retrieval | Dense vector similarity (lossy) | **BM25 + graph expansion + ACT-R cognitive scoring** (precise) |
+| Memory retrieval | Dense vector similarity (lossy) | **BM25 + SPLADE + graph expansion + ACT-R cognitive scoring** (precise) |
 | Agent coordination | Polling shared files, explicit tool calls | **Embedded Knowledge Bus** (osmotic) |
 | Agent goes offline | Knowledge lost until restart | **Snapshot surrogate response** (always available) |
 | Dependencies | Vector DB + graph DB + message broker | **Zero. Single `pip install`.** |
@@ -101,23 +101,23 @@ Traditional memory systems compress documents into dense vectors, losing precisi
   <img src="docs/assets/retrieval-pipeline.svg" alt="Retrieval Pipeline" width="100%">
 </p>
 
-**Tier 1 &mdash; BM25 Sparse Search** via Tantivy (Rust). Exact lexical matching plus stemming. When you search for `getProfile`, it matches `getProfile` &mdash; not "things conceptually near profiles."
+**Tier 1 &mdash; BM25 + SPLADE Hybrid Search.** BM25 via Tantivy (Rust) provides exact lexical matching. SPLADE (optional, `pip install ncms[splade]`) adds learned sparse neural retrieval &mdash; expanding "API specification" to also match "endpoint", "schema", "contract". Results are fused via Reciprocal Rank Fusion (RRF). Enable with `NCMS_SPLADE_ENABLED=true`.
 
-**Tier 1.5 &mdash; Graph-Expanded Discovery.** After BM25 returns candidates, entity relationships in the knowledge graph discover related memories BM25 missed lexically. A query matching "connection pooling" also finds memories about "PostgreSQL replication" &mdash; because both share the `PostgreSQL` entity in the graph.
+**Tier 1.5 &mdash; Graph-Expanded Discovery.** Entity relationships in the knowledge graph discover related memories search missed lexically. A query matching "connection pooling" also finds memories about "PostgreSQL replication" &mdash; because both share the `PostgreSQL` entity in the graph.
 
 **Tier 2 &mdash; ACT-R Cognitive Scoring.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science.
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
 base_level(m) = ln( sum( (time_since_access)^(-decay) ) )
-combined(m)   = bm25_score * w_bm25 + activation * w_actr
+combined(m)   = bm25 * w_bm25 + splade * w_splade + activation * w_actr
 ```
 
-Graph-discovered memories enter scoring with `bm25_score = 0.0` and rank purely on cognitive activation. A frequently-accessed graph memory can outrank a weak BM25 hit. Weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_ACTR`).
+Graph-discovered memories enter scoring with `bm25_score = 0.0` and rank purely on cognitive activation. A frequently-accessed graph memory can outrank a weak BM25 hit. Weights are configurable (`NCMS_SCORING_WEIGHT_BM25`, `NCMS_SCORING_WEIGHT_SPLADE`, `NCMS_SCORING_WEIGHT_ACTR`).
 
 **Tier 3 &mdash; LLM-as-Judge Reranking** (optional). Enable `NCMS_LLM_JUDGE_ENABLED=true` to send the top-k candidates to an LLM for relevance scoring. Judge scores are blended with activation scores for final ranking.
 
-### Entity Extraction
+### Entity Extraction & Knowledge Enrichment
 
 Entities are automatically extracted at store-time and search-time, feeding the knowledge graph for spreading activation and graph expansion:
 
@@ -130,6 +130,10 @@ Entities are automatically extracted at store-time and search-time, feeding the 
 **GLiNER NER** (optional, `pip install ncms[gliner]`) &mdash; zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts semantic entities regex misses: "authentication", "caching strategy", "data pipeline". Enable with `NCMS_GLINER_ENABLED=true`.
 
 **Keyword Bridges** (optional) &mdash; semantic keywords extracted via LLM that connect otherwise disconnected subgraphs. "JWT validation" and "role-based access" share no entities, but both relate to the keyword "security". Enable with `NCMS_KEYWORD_BRIDGE_ENABLED=true`.
+
+**Contradiction Detection** (optional) &mdash; at ingest time, new memories are compared against existing related memories via LLM to detect factual contradictions. Both the new and existing memories are annotated bidirectionally, so stale knowledge is surfaced during retrieval. Enable with `NCMS_CONTRADICTION_DETECTION_ENABLED=true`.
+
+**Knowledge Consolidation** (optional) &mdash; background process that clusters memories by shared entities in the knowledge graph, then uses LLM synthesis to discover emergent cross-memory patterns. Insights are stored as searchable `Memory(type="insight")` records. Enable with `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true`.
 
 ### Knowledge Bus: Osmotic Agent Coordination
 
@@ -425,7 +429,13 @@ Environment variables with `NCMS_` prefix:
 | `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keyword extraction |
 | `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
 | `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for LLM judge |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation (Phase 4) |
+| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (`pip install ncms[splade]`) |
+| `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
+| `NCMS_SPLADE_TOP_K` | `50` | Number of SPLADE candidates per search |
+| `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
+| `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
+| `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | `3` | Min memories per entity cluster |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM model for insight synthesis |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for consolidation |
@@ -477,8 +487,8 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 - [x] Keyword bridge nodes &mdash; LLM-extracted semantic concept bridges
 - [x] Knowledge consolidation &mdash; entity co-occurrence clustering + LLM insight synthesis
 - [x] vLLM / local LLM support &mdash; `api_base` config for all LLM features
-- [ ] SPLADE sparse vector scoring (between BM25 and ACT-R)
-- [ ] Contradiction detection engine for conflicting memories
+- [x] SPLADE sparse neural retrieval &mdash; learned term expansion fused with BM25 via RRF
+- [x] Contradiction detection &mdash; LLM-powered detection at ingest with bidirectional annotation
 
 **Knowledge Bus & Agents**
 - [ ] Redis/NATS-backed Knowledge Bus transport for multi-process deployments
