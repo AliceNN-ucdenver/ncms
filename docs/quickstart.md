@@ -1,0 +1,376 @@
+# NCMS Quickstart Guide
+
+Everything you need to install, configure, and integrate NCMS into your agent workflow.
+
+## Installation
+
+```bash
+# With uv (recommended)
+uv add ncms
+
+# With pip
+pip install ncms
+
+# With rich document support (DOCX, PPTX, PDF, XLSX)
+pip install "ncms[docs]"
+
+# With dashboard
+pip install "ncms[dashboard]"
+```
+
+## Run the Demo
+
+```bash
+uv run ncms demo
+```
+
+The demo runs three collaborative agents through a complete lifecycle:
+
+```
+  Phase 0  Download architecture knowledge ("I know kung fu.")
+  Phase 1  Three agents store domain knowledge
+  Phase 2  Frontend agent asks API agent for endpoint specs (live response)
+  Phase 3  API agent goes to sleep, frontend gets surrogate response from snapshot
+  Phase 4  Database agent announces a breaking schema change
+  Phase 5  Memory search shows ACT-R activation scoring in action
+```
+
+All in-process. All in-memory. Zero external dependencies. Under 10 seconds.
+
+## Observability Dashboard
+
+```bash
+pip install "ncms[dashboard]"
+uv run ncms dashboard
+```
+
+Opens a real-time web dashboard at `http://localhost:8420`:
+
+- **Architecture Diagram Layout** &mdash; Central Knowledge Bus backbone with agent cards connected by animated flow lines
+- **Per-Agent Activity Feeds** &mdash; Real-time SSE stream of asks, responses, announcements, and surrogate dispatches
+- **Conversation Threading** &mdash; Click any activity item to see the full ask/response thread with confidence scores
+- **Snapshot Badges** &mdash; Surrogate responses are visually distinguished from live agent responses
+
+Use `--no-demo` for a blank canvas that observes your own agents.
+
+---
+
+## MCP Server
+
+Start the MCP server:
+
+```bash
+uv run ncms serve
+```
+
+### Claude Code
+
+Add to your `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "ncms": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/ncms", "ncms", "serve"]
+    }
+  }
+}
+```
+
+### Claude Code Hooks
+
+Add NCMS hooks to `.claude/settings.json` for automatic knowledge persistence:
+
+```json
+{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "ncms-commit-hook --event stop"
+      }]
+    }],
+    "PreCompact": [{
+      "hooks": [{
+        "type": "command",
+        "command": "ncms-commit-hook --event pre-compact"
+      }]
+    }],
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "ncms-context-loader --project $CLAUDE_PROJECT_DIR"
+      }]
+    }]
+  }
+}
+```
+
+**What happens:**
+- `SessionStart`: Previous session knowledge loaded automatically
+- `Stop`: Knowledge from the completed task committed to NCMS
+- `PreCompact`: Full context dump before window compaction (critical &mdash; compaction destroys context)
+
+### GitHub Copilot (Planned)
+
+> **Note:** Copilot hook integration is on the roadmap. The configuration below shows the intended shape once implemented.
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{
+      "type": "command",
+      "bash": "ncms-context-loader --project $(pwd)",
+      "cwd": ".", "timeoutSec": 15
+    }],
+    "sessionEnd": [{
+      "type": "command",
+      "bash": "ncms-commit-hook --event session-end",
+      "cwd": ".", "timeoutSec": 30
+    }],
+    "postToolUse": [{
+      "type": "command",
+      "bash": "ncms-commit-hook --event post-tool",
+      "cwd": ".", "timeoutSec": 10
+    }]
+  }
+}
+```
+
+### Any MCP-Compatible Agent (Cursor, etc.)
+
+Just connect to the MCP server:
+
+```bash
+uv run ncms serve
+```
+
+---
+
+## MCP Tools & Resources
+
+NCMS exposes 10 tools and browsable resources via the Model Context Protocol:
+
+| Tool | Description |
+|------|-------------|
+| `search_memory` | BM25 + ACT-R scored search across all memories |
+| `store_memory` | Store knowledge with automatic indexing |
+| `ask_knowledge` | Non-blocking ask routed to live agents |
+| `ask_knowledge_sync` | Blocking ask with surrogate fallback |
+| `announce_knowledge` | Broadcast changes to subscribed agents |
+| `commit_knowledge` | Store knowledge from a coding session |
+| `get_provenance` | Trace a memory's origin and access history |
+| `list_domains` | List all knowledge domains and providers |
+| `get_snapshot` | Retrieve an agent's Knowledge Snapshot |
+| `load_knowledge` | Import files into memory (Matrix download) |
+
+**Resources:** `ncms://status`, `ncms://domains`, `ncms://agents`, `ncms://graph/entities`
+
+---
+
+## NeMo Agent Integration
+
+Build knowledge-aware agents by extending `KnowledgeAgent`:
+
+```python
+from ncms.interfaces.agent.base import KnowledgeAgent
+from ncms.domain.models import (
+    KnowledgeAsk, KnowledgeResponse, KnowledgePayload,
+    KnowledgeProvenance, SnapshotEntry,
+)
+
+class MyAgent(KnowledgeAgent):
+    def declare_expertise(self) -> list[str]:
+        return ["my-domain", "my-domain:subtopic"]
+
+    def declare_subscriptions(self) -> list[str]:
+        return ["other-domain"]
+
+    async def on_ask(self, ask: KnowledgeAsk) -> KnowledgeResponse | None:
+        results = await self._memory.search(ask.question, domain="my-domain")
+        if results:
+            return KnowledgeResponse(
+                ask_id=ask.ask_id,
+                from_agent=self.agent_id,
+                confidence=0.9,
+                knowledge=KnowledgePayload(
+                    type="fact",
+                    content=results[0].memory.content,
+                ),
+                provenance=KnowledgeProvenance(source="memory-store"),
+            )
+        return None
+
+    async def collect_working_knowledge(self) -> list[SnapshotEntry]:
+        memories = await self._memory.list_memories(agent_id=self.agent_id)
+        return [
+            SnapshotEntry(
+                domain="my-domain",
+                knowledge=KnowledgePayload(type=m.type, content=m.content),
+            )
+            for m in memories
+        ]
+```
+
+**Lifecycle:**
+
+```python
+agent = MyAgent("my-agent", bus_service, memory_service, snapshot_service)
+await agent.start()           # Register + restore from snapshot
+await agent.store_knowledge("learned something important")
+await agent.ask_knowledge("what do you know about X?", domains=["other-domain"])
+snapshot = await agent.sleep() # Publish snapshot, go offline
+await agent.wake()             # Restore from snapshot, go online
+await agent.shutdown()         # Final snapshot + deregister
+```
+
+The `KnowledgeAgent` base class is designed to plug into NeMo Agent Toolkit's `MemoryEditor` and `MemoryManager` interfaces.
+
+---
+
+## Matrix-Style Knowledge Download
+
+Seed your agents with knowledge from any file format:
+
+```python
+from ncms.application.knowledge_loader import KnowledgeLoader
+
+loader = KnowledgeLoader(memory_service)
+
+# Load architecture docs, API specs, meeting notes
+stats = await loader.load_file("docs/architecture.md", domains=["arch"])
+stats = await loader.load_file("design-deck.pptx", domains=["design"])  # needs ncms[docs]
+stats = await loader.load_directory("docs/", domains=["docs"])
+stats = await loader.load_text(raw_text, domains=["platform"])
+```
+
+**Built-in formats** (no extra deps): Markdown, plain text, JSON, YAML, CSV, HTML, reStructuredText.
+
+**Rich document formats** (install `ncms[docs]`): DOCX, PPTX, PDF, XLSX &mdash; powered by Microsoft's [MarkItDown](https://github.com/microsoft/markitdown).
+
+```bash
+# CLI version
+uv run ncms load docs/architecture.md --domains arch platform
+uv run ncms load design-deck.pptx --domains design
+```
+
+---
+
+## Configuration Reference
+
+All settings via environment variables with `NCMS_` prefix:
+
+### Core Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NCMS_DB_PATH` | `~/.ncms/ncms.db` | SQLite database path |
+| `NCMS_INDEX_PATH` | `~/.ncms/index` | Tantivy index directory |
+| `NCMS_MODEL_CACHE_DIR` | *(HF cache)* | Directory for downloaded models (GLiNER, SPLADE) |
+| `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Knowledge Bus ask timeout |
+| `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (default 7 days) |
+
+### Retrieval & Scoring
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NCMS_ACTR_DECAY` | `0.5` | Memory decay rate |
+| `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
+| `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval activation threshold |
+| `NCMS_SCORING_WEIGHT_BM25` | `0.6` | BM25 weight in combined score |
+| `NCMS_SCORING_WEIGHT_ACTR` | `0.4` | ACT-R weight in combined score |
+| `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
+
+### Entity Extraction
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for entity extraction |
+| `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence score for entities |
+| `NCMS_LABEL_DETECTION_MODEL` | `gpt-4o-mini` | LLM model for `ncms topics detect` |
+| `NCMS_LABEL_DETECTION_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+
+### SPLADE Neural Retrieval
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval |
+| `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
+| `NCMS_SPLADE_TOP_K` | `50` | Number of SPLADE candidates per search |
+
+### LLM Features (Opt-in)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge reranking |
+| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM-as-judge |
+| `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
+| `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | Max keywords per memory |
+| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keyword extraction |
+| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
+| `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | `3` | Min memories per entity cluster |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM model for insight synthesis |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN` | `5` | Max insights per consolidation run |
+
+---
+
+## Local LLM Inference
+
+All LLM features run against local models via [litellm](https://docs.litellm.ai/). Each feature has its own `MODEL` + optional `API_BASE` pair, so you can mix local and remote models.
+
+### macOS with Ollama (Development)
+
+```bash
+brew install ollama
+brew services start ollama
+ollama pull qwen3.5:35b-a3b    # 35B MoE, 3B active — runs on 32GB+ Mac
+```
+
+```bash
+export NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
+export NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
+export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b
+```
+
+No `API_BASE` needed &mdash; litellm connects to Ollama automatically. Thinking mode is auto-disabled for `ollama` models to get clean JSON responses.
+
+### Linux + NVIDIA GPU with vLLM (Production)
+
+```bash
+pip install vllm
+vllm serve meta-llama/Llama-3.2-3B-Instruct --port 8000
+```
+
+```bash
+export NCMS_LLM_API_BASE=http://localhost:8000/v1
+export NCMS_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+export NCMS_KEYWORD_LLM_API_BASE=http://localhost:8000/v1
+export NCMS_KEYWORD_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+export NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE=http://localhost:8000/v1
+export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
+```
+
+vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible endpoint.
+
+---
+
+## Architecture
+
+```
+src/ncms/
+  domain/           Pure models, protocols, scoring, entity extraction (zero deps)
+  application/      Memory service, bus service, snapshot service, graph service, loader
+  infrastructure/   SQLite, Tantivy, NetworkX, AsyncIO bus, LLM judge
+  interfaces/       MCP server, CLI, HTTP dashboard, agent base class, hooks
+```
+
+**Clean Architecture.** Domain layer has zero infrastructure dependencies. Every infrastructure component implements a Protocol interface. Swap SQLite for Postgres, NetworkX for Neo4j, or AsyncIO for Redis Pub/Sub &mdash; no application code changes.
+
+**Embedded First.** Everything runs in-process with `pip install ncms`. No Docker. No Redis. No vector database. Scale up when you need to, not before.

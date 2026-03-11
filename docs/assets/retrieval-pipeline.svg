@@ -148,23 +148,26 @@
 
   <!-- Feature status bar -->
   <rect x="15" y="345" width="870" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
-  <text x="35" y="363" fill="#64748b" font-size="9" font-weight="500">Features:</text>
-  <rect x="110" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="123" y="363" fill="#94a3b8" font-size="9">BM25 (core)</text>
+  <!-- Core row -->
+  <text x="35" y="363" fill="#64748b" font-size="9" font-weight="500">Core:</text>
+  <rect x="75" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="88" y="363" fill="#94a3b8" font-size="9">BM25</text>
+  <rect x="135" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="148" y="363" fill="#94a3b8" font-size="9">SPLADE</text>
   <rect x="210" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
   <text x="223" y="363" fill="#94a3b8" font-size="9">Graph Expansion</text>
   <rect x="340" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="353" y="363" fill="#94a3b8" font-size="9">ACT-R (core)</text>
-  <rect x="450" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="463" y="363" fill="#94a3b8" font-size="9">GLiNER NER (required)</text>
-  <rect x="590" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="603" y="363" fill="#94a3b8" font-size="9">Keyword Bridges (opt-in)</text>
-  <rect x="110" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="123" y="380" fill="#94a3b8" font-size="9">SPLADE (required, disabled by default)</text>
-  <rect x="240" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="253" y="380" fill="#94a3b8" font-size="9">Consolidation (opt-in)</text>
-  <rect x="420" y="372" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="433" y="380" fill="#94a3b8" font-size="9">Contradiction Detection (opt-in)</text>
-  <rect x="650" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="663" y="380" fill="#94a3b8" font-size="9">LLM Judge (opt-in)</text>
+  <text x="353" y="363" fill="#94a3b8" font-size="9">ACT-R Scoring</text>
+  <rect x="455" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="468" y="363" fill="#94a3b8" font-size="9">GLiNER NER</text>
+  <!-- Opt-in row -->
+  <text x="35" y="380" fill="#64748b" font-size="9" font-weight="500">Opt-in:</text>
+  <rect x="85" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="98" y="380" fill="#94a3b8" font-size="9">Keyword Bridges</text>
+  <rect x="225" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="238" y="380" fill="#94a3b8" font-size="9">Consolidation</text>
+  <rect x="345" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="358" y="380" fill="#94a3b8" font-size="9">Contradiction Detection</text>
+  <rect x="520" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="533" y="380" fill="#94a3b8" font-size="9">LLM Judge</text>
 </svg>

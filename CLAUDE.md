@@ -33,6 +33,13 @@ uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
 uv run mypy src/                 # Type check
+
+# Benchmarks (ablation study)
+uv sync --group bench                                         # Install benchmark deps
+uv run python -m benchmarks.run_ablation                      # Full ablation (~2h)
+uv run python -m benchmarks.run_ablation --datasets scifact   # Single dataset (~30min)
+uv run python -m benchmarks.run_ablation --llm-model ollama_chat/qwen3.5:35b-a3b  # + LLM configs
+uv run ruff check benchmarks/                                 # Lint benchmark code
 ```
 
 ## Architecture (Clean Architecture)

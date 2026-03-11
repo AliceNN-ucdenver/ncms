@@ -76,3 +76,8 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.15.5",
 ]
+bench = [
+    "datasets>=2.0",
+    "matplotlib>=3.8",
+    "tabulate>=0.9",
+]
