@@ -213,8 +213,8 @@ class TestSynthesizeInsight:
 
     @pytest.mark.asyncio
     async def test_memory_content_truncated_in_prompt(self):
-        """Long memory content should be truncated at 300 chars in the prompt."""
-        long_content = "x" * 500
+        """Long memory content should be truncated at 2000 chars in the prompt."""
+        long_content = "x" * 3000
         cluster = MemoryCluster(
             memories=[Memory(content=long_content, domains=["test"])],
             shared_entity_ids={"e1"},
@@ -238,7 +238,7 @@ class TestSynthesizeInsight:
             # Check that content was truncated in the prompt
             call_kwargs = mock_llm.call_args[1]
             prompt_content = call_kwargs["messages"][0]["content"]
-            # The full 500-char content should not appear
+            # The full 3000-char content should not appear
             assert long_content not in prompt_content
-            # But the first 300 chars should
-            assert long_content[:300] in prompt_content
+            # But the first 2000 chars should
+            assert long_content[:2000] in prompt_content

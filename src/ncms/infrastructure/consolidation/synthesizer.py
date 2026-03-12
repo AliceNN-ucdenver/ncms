@@ -58,9 +58,9 @@ async def synthesize_insight(
     try:
         import litellm
 
-        # Format memories for the prompt (truncate each to 300 chars)
+        # Format memories for the prompt (truncate each to 2000 chars)
         memories_text = "\n".join(
-            f"- [{m.id[:8]}] ({', '.join(m.domains) or 'general'}): {m.content[:300]}"
+            f"- [{m.id[:8]}] ({', '.join(m.domains) or 'general'}): {m.content[:2000]}"
             for m in cluster.memories
         )
         shared_text = ", ".join(sorted(cluster.shared_entity_ids)[:15]) or "none"

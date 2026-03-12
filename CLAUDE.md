@@ -102,6 +102,32 @@ src/ncms/
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 
+## Text Chunking & LLM Prompt Limits
+
+Models with fixed token windows silently truncate long text. NCMS auto-chunks where possible and caps LLM prompts to fit the configured context window.
+
+### Auto-Chunked (no information loss)
+
+| Component | Token Limit | Chunk Size | Overlap | Merge Strategy |
+|-----------|-------------|-----------|---------|----------------|
+| GLiNER NER | 384 tokens | 1,200 chars | 100 chars | Entity dedup (lowercase, first wins) |
+| SPLADE embedding | 128 tokens | 400 chars | 50 chars | Max-pool per vocab index |
+
+### LLM Prompt Truncation (hardcoded, fits 32K context)
+
+| LLM Caller | File | Truncation | Worst-Case Tokens |
+|------------|------|------------|-------------------|
+| LLM Judge | `judge.py` | 4,000 chars/candidate × 10 candidates | ~10K tokens |
+| Keyword Extractor | `keyword_extractor.py` | 8,000 chars/doc | ~2K tokens |
+| Contradiction Detector (new) | `contradiction_detector.py` | 8,000 chars | ~2K tokens |
+| Contradiction Detector (existing) | `contradiction_detector.py` | 2,000 chars/memory × 5 | ~2.5K tokens |
+| Consolidation Synthesizer | `synthesizer.py` | 2,000 chars/memory × cluster | ~3K tokens |
+| Label Detector | `label_detector.py` | 500 chars/sample × 10 | ~1.5K tokens |
+
+### Display-Only Truncation (no data loss, cosmetic)
+
+Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI (`[:500]`), log previews (`[:120]`) — all display/logging only.
+
 ## Data Flow
 
 1. **Store**: Content → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph)
