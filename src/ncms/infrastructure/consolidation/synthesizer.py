@@ -12,6 +12,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
+
 if TYPE_CHECKING:
     from ncms.infrastructure.consolidation.clusterer import MemoryCluster
 
@@ -93,22 +95,7 @@ async def synthesize_insight(
         if not raw:
             return None
 
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        # Extract JSON object from reasoning output (safety net)
-        if not raw.startswith("{") and not raw.startswith("["):
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start : end + 1]
-
-        result = json.loads(raw)
+        result = _parse_llm_json(raw)
         if not isinstance(result, dict) or "insight" not in result:
             return None
 
@@ -120,6 +107,9 @@ async def synthesize_insight(
             "key_entities": list(result.get("key_entities", [])),
         }
 
+    except json.JSONDecodeError:
+        logger.warning("Insight synthesis JSON parse failed, raw=%s", raw[:500], exc_info=True)
+        return None
     except Exception:
         logger.warning("Insight synthesis failed, returning None", exc_info=True)
         return None

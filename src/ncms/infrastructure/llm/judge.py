@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from ncms.domain.models import ScoredMemory
+from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
 
 logger = logging.getLogger(__name__)
+
+# Module-level counters for judge observability
+_judge_stats: dict[str, int | float] = {"calls": 0, "success": 0, "errors": 0, "total_time": 0.0}
 
 JUDGE_PROMPT = """You are a relevance judge for a cognitive memory system.
 Given a search query and a list of candidate memories, score each memory's
@@ -37,6 +42,8 @@ async def judge_relevance(
     Returns list of (memory_id, relevance_score) sorted by relevance.
     Supports vLLM/OpenAI-compatible endpoints via ``api_base``.
     """
+    _judge_stats["calls"] += 1
+
     try:
         import litellm
 
@@ -63,33 +70,38 @@ async def judge_relevance(
         elif any(name in model.lower() for name in ("nemotron", "qwen")):
             kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
+        t0 = time.perf_counter()
         response = await litellm.acompletion(**kwargs)
+        llm_elapsed = time.perf_counter() - t0
+        _judge_stats["total_time"] += llm_elapsed
 
         content = response.choices[0].message.content  # type: ignore[union-attr]
         if not content:
             return [(c.memory.id, c.total_activation) for c in candidates]
 
-        # Strip markdown code fences if present
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
-
-        # Extract JSON array from reasoning output (safety net)
-        if not content.startswith("[") and not content.startswith("{"):
-            start = content.find("[")
-            end = content.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                content = content[start : end + 1]
-
-        scores = json.loads(content)
+        scores = _parse_llm_json(content)
+        _judge_stats["success"] += 1
+        logger.debug("LLM judge scored %d candidates in %.2fs", len(scores), llm_elapsed)
         return sorted(
             [(s["memory_id"], float(s["relevance"])) for s in scores],
             key=lambda x: x[1],
             reverse=True,
         )
+    except json.JSONDecodeError:
+        _judge_stats["errors"] += 1
+        logger.warning("LLM judge JSON parse failed, raw=%s", content[:500], exc_info=True)
+        return [(c.memory.id, c.total_activation) for c in candidates]
     except Exception:
+        _judge_stats["errors"] += 1
         logger.warning("LLM judge failed, falling back to activation scores", exc_info=True)
         return [(c.memory.id, c.total_activation) for c in candidates]
+
+
+def get_judge_stats() -> dict[str, int | float]:
+    """Return judge counters for monitoring."""
+    return dict(_judge_stats)
+
+
+def reset_judge_stats() -> None:
+    """Reset judge counters."""
+    _judge_stats.update(calls=0, success=0, errors=0, total_time=0.0)

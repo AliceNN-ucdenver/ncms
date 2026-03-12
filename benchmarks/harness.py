@@ -109,8 +109,9 @@ async def ingest_corpus(
         if not content:
             continue
 
-        # Truncate very long documents to keep ingestion fast
-        content = content[:4000]
+        # Truncate very long documents (99.7% of BEIR docs are under 10K chars;
+        # Spark vLLM max-model-len is 16384 tokens so 10K chars is safe)
+        content = content[:10000]
 
         memory = await svc.store_memory(
             content=content,
@@ -327,13 +328,34 @@ async def evaluate_dataset(
 
     # Phase C: LLM configs (separate ingest with keyword bridges)
     if llm_configs and llm_model:
+        from ncms.infrastructure.extraction.keyword_extractor import (
+            get_keyword_stats,
+            reset_keyword_stats,
+        )
+
+        reset_keyword_stats()
         logger.info("Phase C: Ingesting corpus WITH keyword bridges (%s)...", llm_model)
         llm_store, llm_index, llm_graph, llm_splade, _config, _d2m, llm_m2d = (
             await ingest_corpus(corpus, dataset_name, llm_model=llm_model)
         )
 
+        # Log keyword extraction summary
+        kw_stats = get_keyword_stats()
+        kw_nodes = sum(
+            1 for _, d in llm_graph._graph.nodes(data=True)  # type: ignore[union-attr]
+            if d.get("type") == "keyword"
+        )
+        logger.info(
+            "  Keywords: %d/%d ok, %d empty, %d errors, %d graph nodes",
+            kw_stats["success"], kw_stats["calls"], kw_stats["empty"],
+            kw_stats["errors"], kw_nodes,
+        )
+
+        from ncms.infrastructure.llm.judge import get_judge_stats, reset_judge_stats
+
         for config in llm_configs:
             logger.info("Phase C: Running config '%s'...", config.display_name)
+            reset_judge_stats()
             t0 = time.perf_counter()
 
             rankings = await run_config_queries(
@@ -356,13 +378,24 @@ async def evaluate_dataset(
                 "elapsed_seconds": round(elapsed, 1),
             }
 
+            # Log results + judge stats if judge was used
+            j_stats = get_judge_stats()
+            judge_info = ""
+            if j_stats["calls"] > 0:
+                avg_t = j_stats["total_time"] / j_stats["calls"] if j_stats["calls"] else 0
+                judge_info = (
+                    f"  judge: {j_stats['success']}/{j_stats['calls']} ok, "
+                    f"{j_stats['errors']} err, {avg_t:.2f}s avg"
+                )
+
             logger.info(
-                "  %s: nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f  (%.1fs)",
+                "  %s: nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f  (%.1fs)%s",
                 config.display_name,
                 metrics["nDCG@10"],
                 metrics["MRR@10"],
                 metrics["Recall@100"],
                 elapsed,
+                judge_info,
             )
 
         await llm_store.close()

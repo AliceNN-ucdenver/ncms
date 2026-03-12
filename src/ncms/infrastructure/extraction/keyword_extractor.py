@@ -13,8 +13,56 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+
+from json_repair import repair_json
 
 logger = logging.getLogger(__name__)
+
+# Module-level counters for keyword extraction observability
+_kw_stats: dict[str, int] = {"calls": 0, "success": 0, "empty": 0, "errors": 0}
+
+
+def _parse_llm_json(raw: str) -> object:
+    """Parse JSON from LLM output with automatic error repair.
+
+    Uses json-repair to handle common LLM JSON issues:
+    - Swapped closing brackets (]} → }])
+    - Trailing commas before ] or }
+    - Missing quotes, unescaped characters
+    - Markdown code fences (```json ... ```)
+    - Reasoning text before/after JSON
+    """
+    # Strip markdown code fences
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+    # Extract JSON from reasoning output
+    if not raw.startswith("[") and not raw.startswith("{"):
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            raw = raw[start : end + 1]
+        else:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                raw = raw[start : end + 1]
+
+    # Try parsing as-is first (fast path)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Repair malformed JSON (swapped brackets, trailing commas, etc.)
+    repaired = repair_json(raw, return_objects=True)
+    return repaired
+
 
 KEYWORD_PROMPT = """Extract 3-8 semantic keywords from this text.
 Keywords should be abstract domain concepts (not specific identifiers or technology names).
@@ -47,6 +95,8 @@ async def extract_keywords(
     if not content or len(content) < 5:
         return []
 
+    _kw_stats["calls"] += 1
+
     try:
         import litellm
 
@@ -74,28 +124,16 @@ async def extract_keywords(
         elif any(name in model.lower() for name in ("nemotron", "qwen")):
             kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
+        t0 = time.perf_counter()
         response = await litellm.acompletion(**kwargs)
+        llm_elapsed = time.perf_counter() - t0
 
         raw = response.choices[0].message.content  # type: ignore[union-attr]
         if not raw:
+            _kw_stats["empty"] += 1
             return []
 
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        # Extract JSON array from reasoning output (safety net)
-        if not raw.startswith("[") and not raw.startswith("{"):
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start : end + 1]
-
-        keywords = json.loads(raw)
+        keywords = _parse_llm_json(raw)
         if not isinstance(keywords, list):
             return []
 
@@ -116,8 +154,28 @@ async def extract_keywords(
             if len(results) >= max_keywords:
                 break
 
+        _kw_stats["success"] += 1
+        logger.debug(
+            "Keywords extracted: %d in %.2fs (%s)",
+            len(results), llm_elapsed, ", ".join(r["name"] for r in results),
+        )
         return results
 
+    except json.JSONDecodeError:
+        _kw_stats["errors"] += 1
+        logger.warning("Keyword extraction JSON parse failed, raw=%s", raw[:500], exc_info=True)
+        return []
     except Exception:
+        _kw_stats["errors"] += 1
         logger.warning("Keyword extraction failed, returning empty list", exc_info=True)
         return []
+
+
+def get_keyword_stats() -> dict[str, int]:
+    """Return keyword extraction counters for monitoring."""
+    return dict(_kw_stats)
+
+
+def reset_keyword_stats() -> None:
+    """Reset keyword extraction counters."""
+    _kw_stats.update(calls=0, success=0, empty=0, errors=0)

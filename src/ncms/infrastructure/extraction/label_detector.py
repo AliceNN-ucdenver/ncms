@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import logging
 
+from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 LABEL_DETECTION_PROMPT = """Analyze these sample texts from the "{domain}" knowledge domain.
@@ -76,22 +78,7 @@ async def detect_labels(
         if not raw:
             return []
 
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        # Extract JSON array from reasoning output (safety net)
-        if not raw.startswith("[") and not raw.startswith("{"):
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start : end + 1]
-
-        labels = json.loads(raw)
+        labels = _parse_llm_json(raw)
         if not isinstance(labels, list):
             return []
 
@@ -102,6 +89,9 @@ async def detect_labels(
             if isinstance(lbl, str) and 1 <= len(str(lbl).strip()) <= 50
         ][:15]
 
+    except json.JSONDecodeError:
+        logger.warning("Label detection JSON parse failed, raw=%s", raw[:500], exc_info=True)
+        return []
     except Exception:
         logger.warning("Label detection failed, returning empty list", exc_info=True)
         return []

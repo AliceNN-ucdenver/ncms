@@ -14,6 +14,7 @@ import json
 import logging
 
 from ncms.domain.models import Memory
+from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -84,22 +85,7 @@ async def detect_contradictions(
         if not raw:
             return []
 
-        # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip()
-
-        # Extract JSON array from reasoning output (safety net)
-        if not raw.startswith("[") and not raw.startswith("{"):
-            start = raw.find("[")
-            end = raw.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                raw = raw[start : end + 1]
-
-        contradictions = json.loads(raw)
+        contradictions = _parse_llm_json(raw)
         if not isinstance(contradictions, list):
             return []
 
@@ -124,6 +110,11 @@ async def detect_contradictions(
 
         return results
 
+    except json.JSONDecodeError:
+        logger.warning(
+            "Contradiction detection JSON parse failed, raw=%s", raw[:500], exc_info=True
+        )
+        return []
     except Exception:
         logger.warning(
             "Contradiction detection failed, returning empty list", exc_info=True
