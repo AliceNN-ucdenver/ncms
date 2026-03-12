@@ -132,6 +132,10 @@ where $\tau$ is the retrieval threshold and $s$ is the temperature parameter. Ca
 
 NCMS uses GLiNER (Zaratiana et al., 2024), a 209M-parameter DeBERTa-based zero-shot NER model, to extract entities at both ingest and query time. Unlike traditional NER systems that require domain-specific training data, GLiNER accepts arbitrary entity type labels at inference time, enabling domain adaptation through label selection alone.
 
+**Automatic text chunking.** GLiNER's DeBERTa backbone has a 384-token maximum sequence length, which corresponds to approximately 1,500 characters. Since BEIR documents can exceed 10,000 characters, naively passing full text to GLiNER results in silent truncation with entities from the document body never extracted. We implement automatic sentence-boundary chunking (1,200-character windows with 100-character overlap) that splits long documents, runs NER on each chunk, and merges entities by lowercase deduplication (first occurrence wins). This ensures entity extraction coverage across the full document while respecting the model's token limit.
+
+The same chunking strategy is applied to SPLADE (128-token window, ~400-character chunks), where sparse vectors from each chunk are merged via max-pooling per vocabulary index, preserving the strongest activation signal across the document.
+
 Extracted entities are stored in a NetworkX directed graph with bidirectional memory-entity links. The graph serves three functions:
 
 1. **Spreading activation**: Entity overlap between query and candidate enables ACT-R spreading activation scoring
@@ -279,7 +283,7 @@ Our taxonomy experiment revealed that GLiNER's zero-shot NER is highly sensitive
 - **Benchmark bias toward lexical overlap.** BEIR datasets favor systems with strong lexical matching, which may overstate BM25's contribution relative to real agent memory workloads.
 - **Static evaluation.** ACT-R's temporal features cannot be fairly evaluated on static benchmarks.
 - **Single-hop graph traversal.** The current graph expansion uses depth-1 traversal; multi-hop traversal may improve recall at the cost of precision.
-- **GLiNER model size.** The 209M-parameter GLiNER model adds ~50ms per document at ingest time, which may not be acceptable for high-throughput streaming ingestion.
+- **GLiNER model size.** The 209M-parameter GLiNER model adds ~50ms per chunk at ingest time. With automatic chunking, long documents (~10K chars) produce ~8 chunks, increasing per-document NER time to ~400ms. This may not be acceptable for high-throughput streaming ingestion.
 
 ---
 

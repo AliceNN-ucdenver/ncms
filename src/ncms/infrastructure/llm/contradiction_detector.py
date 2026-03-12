@@ -54,7 +54,7 @@ async def detect_contradictions(
         import litellm
 
         existing_text = "\n".join(
-            f"- [{m.id}]: {m.content[:300]}" for m in existing_memories
+            f"- [{m.id}]: {m.content[:2000]}" for m in existing_memories
         )
 
         kwargs: dict = dict(
@@ -63,7 +63,7 @@ async def detect_contradictions(
                 {
                     "role": "user",
                     "content": CONTRADICTION_PROMPT.format(
-                        new_content=new_memory.content[:2000],
+                        new_content=new_memory.content[:8000],
                         existing_memories=existing_text,
                     ),
                 }

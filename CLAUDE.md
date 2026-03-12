@@ -100,6 +100,7 @@ src/ncms/
 6. **Raw SQL via aiosqlite** — 7 tables don't need an ORM. WAL mode for concurrent reads.
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
+9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 
 ## Data Flow
 
@@ -212,7 +213,7 @@ docker run -d --gpus all --ipc=host --restart unless-stopped \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
-    --host 0.0.0.0 --port 8000 --trust-remote-code --max-model-len 16384
+    --host 0.0.0.0 --port 8000 --trust-remote-code --max-model-len 32768
 ```
 
 Enable LLM features via Spark:

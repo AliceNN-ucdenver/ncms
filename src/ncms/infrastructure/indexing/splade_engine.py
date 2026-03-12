@@ -4,6 +4,11 @@ Uses fastembed's SparseTextEmbedding for ONNX-based SPLADE encoding.
 Stores sparse vectors in-memory for brute-force dot-product search.
 Suitable for corpora up to ~100K memories.
 
+Long texts are automatically chunked at sentence boundaries so each
+chunk fits within SPLADE's 128-token window (~500 chars).  Sparse
+vectors from each chunk are merged by taking the max weight per
+vocabulary index, preserving the strongest signal across the document.
+
 Disabled by default; enable via config.splade_enabled = True.
 """
 
@@ -15,6 +20,51 @@ from dataclasses import dataclass, field
 from ncms.domain.models import Memory
 
 logger = logging.getLogger(__name__)
+
+# SPLADE's tokenizer truncates at 128 tokens.  At ~4 chars/token the safe
+# character budget is ~400 chars, leaving headroom for special tokens.
+_SPLADE_CHUNK_MAX_CHARS: int = 400
+_SPLADE_CHUNK_OVERLAP: int = 50
+
+# Sentence-ending delimiters ordered by preference
+_SENTENCE_SEPS: tuple[str, ...] = (". ", ".\n", "? ", "! ", "\n\n", "\n")
+
+
+def _chunk_text(
+    text: str,
+    max_chars: int = _SPLADE_CHUNK_MAX_CHARS,
+    overlap: int = _SPLADE_CHUNK_OVERLAP,
+) -> list[str]:
+    """Split *text* into chunks that fit SPLADE's 128-token window.
+
+    Uses the same sentence-boundary strategy as GLiNER chunking.
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = start + max_chars
+        if end >= len(text):
+            chunks.append(text[start:])
+            break
+
+        boundary = -1
+        for sep in _SENTENCE_SEPS:
+            pos = text.rfind(sep, start, end)
+            if pos > boundary:
+                boundary = pos + len(sep)
+
+        if boundary <= start:
+            boundary = text.rfind(" ", start, end)
+            if boundary <= start:
+                boundary = end
+
+        chunks.append(text[start:boundary])
+        start = max(start + 1, boundary - overlap)
+
+    return chunks
 
 
 @dataclass
@@ -29,6 +79,7 @@ class SpladeEngine:
     """SPLADE sparse neural retrieval engine.
 
     Encodes text into sparse vectors via fastembed's ONNX-based SPLADE model.
+    Long texts are chunked and merged (max-pool per vocab index).
     Stores vectors in-memory (``dict[str, SparseVector]``) and performs
     brute-force dot-product search.  Suitable for corpora up to ~100K memories.
     """
@@ -55,16 +106,47 @@ class SpladeEngine:
         self._model = SparseTextEmbedding(**kwargs)
         logger.info("SPLADE model loaded: %s", self._model_name)
 
-    def index_memory(self, memory: Memory) -> None:
-        """Encode a memory's content and store its sparse vector."""
-        self._ensure_model()
-        embeddings = list(self._model.embed([memory.content], batch_size=1))  # type: ignore[union-attr]
-        if embeddings:
+    def _embed_chunked(self, text: str) -> SparseVector:
+        """Encode text with chunking, merging via max-pool per vocab index."""
+        chunks = _chunk_text(text)
+
+        if len(chunks) == 1:
+            embeddings = list(self._model.embed(chunks, batch_size=1))  # type: ignore[union-attr]
+            if not embeddings:
+                return SparseVector()
             emb = embeddings[0]
-            self._vectors[memory.id] = SparseVector(
+            return SparseVector(
                 indices=emb.indices.tolist(),
                 values=emb.values.tolist(),
             )
+
+        # Encode all chunks and max-pool across vocab indices
+        merged: dict[int, float] = {}
+        embeddings = list(self._model.embed(chunks, batch_size=len(chunks)))  # type: ignore[union-attr]
+        for emb in embeddings:
+            for idx, val in zip(emb.indices.tolist(), emb.values.tolist(), strict=True):
+                if idx not in merged or val > merged[idx]:
+                    merged[idx] = val
+
+        if not merged:
+            return SparseVector()
+
+        sorted_items = sorted(merged.items())
+        logger.debug(
+            "SPLADE chunked %d chars into %d chunks, %d merged dims",
+            len(text), len(chunks), len(sorted_items),
+        )
+        return SparseVector(
+            indices=[i for i, _ in sorted_items],
+            values=[v for _, v in sorted_items],
+        )
+
+    def index_memory(self, memory: Memory) -> None:
+        """Encode a memory's content and store its sparse vector."""
+        self._ensure_model()
+        sv = self._embed_chunked(memory.content)
+        if sv.indices:
+            self._vectors[memory.id] = sv
 
     def remove(self, memory_id: str) -> None:
         """Remove a memory's sparse vector from the store."""

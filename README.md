@@ -249,7 +249,7 @@ docker run -d --gpus all --ipc=host --restart unless-stopped \
     --host 0.0.0.0 \
     --port 8000 \
     --trust-remote-code \
-    --max-model-len 16384
+    --max-model-len 32768
 ```
 
 **Point NCMS at the Spark:**

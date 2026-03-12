@@ -108,7 +108,7 @@ async def extract_keywords(
                 {
                     "role": "user",
                     "content": KEYWORD_PROMPT.format(
-                        content=content[:2000],
+                        content=content[:8000],
                         entity_names=entity_names_str,
                     ),
                 }

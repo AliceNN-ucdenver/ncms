@@ -48,7 +48,7 @@ async def judge_relevance(
         import litellm
 
         candidate_text = "\n".join(
-            f"- [{c.memory.id}]: {c.memory.content[:200]}" for c in candidates
+            f"- [{c.memory.id}]: {c.memory.content[:4000]}" for c in candidates
         )
 
         kwargs: dict = dict(

@@ -110,7 +110,7 @@ async def ingest_corpus(
             continue
 
         # Truncate very long documents (99.7% of BEIR docs are under 10K chars;
-        # Spark vLLM max-model-len is 16384 tokens so 10K chars is safe)
+        # Spark vLLM max-model-len is 32768 tokens so 10K chars is safe)
         content = content[:10000]
 
         memory = await svc.store_memory(
