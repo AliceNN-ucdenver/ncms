@@ -183,6 +183,7 @@ async def run_config_queries(
         scoring_weight_bm25=ablation_config.scoring_weight_bm25,
         scoring_weight_actr=ablation_config.scoring_weight_actr,
         scoring_weight_splade=ablation_config.scoring_weight_splade,
+        scoring_weight_graph=ablation_config.scoring_weight_graph,
         actr_threshold=ablation_config.actr_threshold,
         llm_judge_enabled=ablation_config.llm_judge_enabled,
         llm_model=llm_model or "gpt-4o-mini",

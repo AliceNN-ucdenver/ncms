@@ -547,11 +547,17 @@ class MemoryService:
             bm25_score = bm25_scores.get(memory_id, 0.0)
             splade_score_val = splade_scores.get(memory_id, 0.0)
 
-            # Combine BM25, SPLADE, and activation using configurable weights
+            # Combine BM25, SPLADE, activation, and graph scoring
             w_bm25 = self._config.scoring_weight_bm25
             w_actr = self._config.scoring_weight_actr
             w_splade = self._config.scoring_weight_splade
-            combined = bm25_score * w_bm25 + act * w_actr + splade_score_val * w_splade
+            w_graph = self._config.scoring_weight_graph
+            combined = (
+                bm25_score * w_bm25
+                + act * w_actr
+                + splade_score_val * w_splade
+                + spread * w_graph  # Entity overlap signal (independent of ACT-R weight)
+            )
 
             # Compute retrieval probability for threshold filtering
             ret_prob = retrieval_probability(

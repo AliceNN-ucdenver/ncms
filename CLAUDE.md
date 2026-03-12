@@ -104,7 +104,7 @@ src/ncms/
 ## Data Flow
 
 1. **Store**: Content → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph)
-2. **Search**: Query → BM25 candidates → access log ages → ACT-R scoring → ranked results
+2. **Search**: Query → BM25 candidates → SPLADE fusion → graph expansion → ACT-R + graph scoring → ranked results
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
@@ -150,6 +150,7 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
 | `NCMS_SPLADE_TOP_K` | `50` | SPLADE candidates per search |
 | `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
+| `NCMS_SCORING_WEIGHT_GRAPH` | `0.0` | Graph expansion entity-overlap weight (spreading activation) |
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |

@@ -32,6 +32,7 @@ class AblationConfig:
     scoring_weight_bm25: float
     scoring_weight_actr: float
     scoring_weight_splade: float
+    scoring_weight_graph: float  # Entity overlap via spreading activation
     actr_threshold: float  # -999.0 disables retrieval probability filter
     # LLM-powered features (opt-in)
     keyword_bridge_enabled: bool = False
@@ -40,6 +41,12 @@ class AblationConfig:
 
 
 # Additive ablation: build up from BM25 baseline
+#
+# Key insight: graph expansion finds candidates via entity traversal, but those
+# candidates need a scoring signal to rank above zero.  The `scoring_weight_graph`
+# parameter gives spreading activation (entity overlap with query) its own
+# independent weight, so graph-expanded candidates get a nonzero combined score
+# even when ACT-R base-level weight is zero.
 CORE_CONFIGS: list[AblationConfig] = [
     AblationConfig(
         name="bm25_only",
@@ -49,6 +56,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=1.0,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.0,
+        scoring_weight_graph=0.0,
         actr_threshold=-999.0,
     ),
     AblationConfig(
@@ -59,6 +67,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=1.0,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.0,
+        scoring_weight_graph=0.3,  # Entity overlap scores graph-expanded candidates
         actr_threshold=-999.0,
     ),
     AblationConfig(
@@ -69,6 +78,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.0,
+        scoring_weight_graph=0.0,
         actr_threshold=-2.0,
     ),
     AblationConfig(
@@ -79,6 +89,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.3,
+        scoring_weight_graph=0.0,
         actr_threshold=-999.0,
     ),
     AblationConfig(
@@ -89,6 +100,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.3,
+        scoring_weight_graph=0.3,  # Entity overlap scores graph-expanded candidates
         actr_threshold=-999.0,
     ),
     AblationConfig(
@@ -99,6 +111,7 @@ CORE_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
+        scoring_weight_graph=0.3,  # Full pipeline uses all scoring signals
         actr_threshold=-2.0,
     ),
 ]
@@ -113,6 +126,7 @@ LLM_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
+        scoring_weight_graph=0.3,
         actr_threshold=-2.0,
         keyword_bridge_enabled=True,
         requires_llm=True,
@@ -125,6 +139,7 @@ LLM_CONFIGS: list[AblationConfig] = [
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
+        scoring_weight_graph=0.3,
         actr_threshold=-2.0,
         keyword_bridge_enabled=True,
         llm_judge_enabled=True,

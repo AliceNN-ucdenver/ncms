@@ -54,6 +54,7 @@ class NCMSConfig(BaseSettings):
     tier3_judge_top_k: int = 10
     scoring_weight_bm25: float = 0.6
     scoring_weight_actr: float = 0.4
+    scoring_weight_graph: float = 0.0  # Graph-expansion entity overlap (spreading activation)
 
     # Graph expansion (Tier 1.5)
     graph_expansion_enabled: bool = True
