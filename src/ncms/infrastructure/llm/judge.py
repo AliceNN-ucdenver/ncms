@@ -57,15 +57,32 @@ async def judge_relevance(
         )
         if api_base:
             kwargs["api_base"] = api_base
-        # Disable thinking mode for reasoning models (Qwen3, etc.)
+        # Disable thinking mode for reasoning models
         if model.startswith("ollama"):
             kwargs["think"] = False
+        elif any(name in model.lower() for name in ("nemotron", "qwen")):
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
         response = await litellm.acompletion(**kwargs)
 
         content = response.choices[0].message.content  # type: ignore[union-attr]
         if not content:
             return [(c.memory.id, c.total_activation) for c in candidates]
+
+        # Strip markdown code fences if present
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            if content.endswith("```"):
+                content = content[:-3]
+            content = content.strip()
+
+        # Extract JSON array from reasoning output (safety net)
+        if not content.startswith("[") and not content.startswith("{"):
+            start = content.find("[")
+            end = content.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                content = content[start : end + 1]
 
         scores = json.loads(content)
         return sorted(

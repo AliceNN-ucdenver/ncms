@@ -30,8 +30,8 @@ class NCMSConfig(BaseSettings):
     bus_surrogate_enabled: bool = True
 
     # LLM-as-Judge
-    llm_model: str = "gpt-4o-mini"
-    llm_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
+    llm_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+    llm_api_base: str | None = "http://spark-ee7d.local:8000/v1"
     llm_judge_enabled: bool = False
 
     # SPLADE
@@ -70,14 +70,14 @@ class NCMSConfig(BaseSettings):
     gliner_threshold: float = 0.3
 
     # Label detection via LLM (for `ncms topics detect`)
-    label_detection_model: str = "gpt-4o-mini"
-    label_detection_api_base: str | None = None
+    label_detection_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+    label_detection_api_base: str | None = "http://spark-ee7d.local:8000/v1"
 
     # Keyword bridge nodes (Phase 3)
     keyword_bridge_enabled: bool = False
     keyword_max_per_memory: int = 8
-    keyword_llm_model: str = "gpt-4o-mini"
-    keyword_llm_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
+    keyword_llm_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+    keyword_llm_api_base: str | None = "http://spark-ee7d.local:8000/v1"
 
     # Consolidation
     consolidation_importance_threshold: float = 50.0
@@ -86,8 +86,8 @@ class NCMSConfig(BaseSettings):
     # Knowledge consolidation (Phase 4)
     consolidation_knowledge_enabled: bool = False
     consolidation_knowledge_min_cluster_size: int = 3
-    consolidation_knowledge_model: str = "gpt-4o-mini"
-    consolidation_knowledge_api_base: str | None = None  # vLLM / OpenAI-compatible endpoint
+    consolidation_knowledge_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+    consolidation_knowledge_api_base: str | None = "http://spark-ee7d.local:8000/v1"
     consolidation_knowledge_max_insights_per_run: int = 5
 
     # Pipeline observability

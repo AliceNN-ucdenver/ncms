@@ -68,9 +68,11 @@ async def extract_keywords(
         )
         if api_base:
             kwargs["api_base"] = api_base
-        # Disable thinking mode for reasoning models (Qwen3, etc.)
+        # Disable thinking mode for reasoning models
         if model.startswith("ollama"):
             kwargs["think"] = False
+        elif any(name in model.lower() for name in ("nemotron", "qwen")):
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
         response = await litellm.acompletion(**kwargs)
 
@@ -85,6 +87,13 @@ async def extract_keywords(
             if raw.endswith("```"):
                 raw = raw[:-3]
             raw = raw.strip()
+
+        # Extract JSON array from reasoning output (safety net)
+        if not raw.startswith("[") and not raw.startswith("{"):
+            start = raw.find("[")
+            end = raw.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                raw = raw[start : end + 1]
 
         keywords = json.loads(raw)
         if not isinstance(keywords, list):

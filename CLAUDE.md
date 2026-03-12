@@ -140,11 +140,11 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval threshold |
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Bus ask timeout |
 | `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge tier |
-| `NCMS_LLM_MODEL` | `gpt-4o-mini` | LLM model for judge |
-| `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for judge |
+| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for judge |
+| `NCMS_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
-| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keywords |
-| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for keywords |
+| `NCMS_KEYWORD_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for keywords |
+| `NCMS_KEYWORD_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
 | `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (required dep) |
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
@@ -154,12 +154,12 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM for insight synthesis |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM for insight synthesis |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for NER (required dep) |
 | `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence for entity extraction |
-| `NCMS_LABEL_DETECTION_MODEL` | `gpt-4o-mini` | LLM model for `ncms topics detect` |
-| `NCMS_LABEL_DETECTION_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint for label detection |
+| `NCMS_LABEL_DETECTION_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for `ncms topics detect` |
+| `NCMS_LABEL_DETECTION_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 
@@ -200,6 +200,39 @@ uv run ncms demo
 Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
 
 **vLLM (production):** Use `openai/` prefix + `api_base` on Linux + NVIDIA GPU.
+
+### DGX Spark (vLLM)
+
+A DGX Spark at `spark-ee7d.local` serves Nemotron 3 Nano via NGC vLLM container:
+
+```bash
+# Deploy on Spark (via Portainer or SSH)
+docker run -d --gpus all --ipc=host --restart unless-stopped \
+  -p 8000:8000 \
+  -v /root/.cache/huggingface:/root/.cache/huggingface \
+  nvcr.io/nvidia/vllm:26.01-py3 \
+  vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --host 0.0.0.0 --port 8000 --trust-remote-code --max-model-len 16384
+```
+
+Enable LLM features via Spark:
+
+```bash
+# Keywords + Judge via DGX Spark
+NCMS_KEYWORD_BRIDGE_ENABLED=true \
+NCMS_KEYWORD_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+NCMS_KEYWORD_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
+NCMS_LLM_JUDGE_ENABLED=true \
+NCMS_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+NCMS_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
+uv run ncms demo
+
+# Benchmarks with LLM configs
+uv run python -m benchmarks.run_ablation --datasets scifact \
+  --llm-model openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+```
+
+**vLLM model prefix:** Use `openai/` prefix with litellm + `api_base` pointing to Spark.
 
 ## Important Patterns
 

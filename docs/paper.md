@@ -173,6 +173,17 @@ Six additive ablation configurations progressively enable pipeline components:
 
 All configurations use deterministic settings (ACT-R noise $\sigma = 0$, fixed random seeds) for reproducibility. Metrics: nDCG@10, MRR@10, Recall@10, Recall@100.
 
+Two additional LLM-powered configurations extend the pipeline:
+
+7. **+ Keyword Bridges** --- LLM-extracted semantic concept nodes added at ingest time, connecting entity subgraphs that share thematic relationships
+8. **+ Keywords + Judge** --- Keyword bridges plus Tier 3 LLM-as-judge reranking
+
+### 4.6 LLM Infrastructure
+
+LLM-powered features (keyword bridge extraction, LLM-as-judge reranking, contradiction detection, knowledge consolidation) are served via NVIDIA Nemotron 3 Nano (30B total parameters, 3B active, MoE with 256 experts) running on an NVIDIA DGX Spark workstation. The model is deployed using the NGC vLLM container (`nvcr.io/nvidia/vllm:26.01-py3`) with BF16 precision, providing an OpenAI-compatible API endpoint. The DGX Spark's 128GB unified memory accommodates the full model (~60GB BF16 weights) with ample headroom for KV cache, delivering sub-second inference latency for keyword extraction --- orders of magnitude faster than CPU-based inference via Ollama on Apple Silicon.
+
+This infrastructure choice reflects NCMS's design philosophy: LLM features are additive enhancements to the core retrieval pipeline, not dependencies. The base pipeline (BM25 + SPLADE + Graph + ACT-R) requires zero LLM calls, while GPU-accelerated LLM inference enables optional features that further improve retrieval quality.
+
 ---
 
 ## 5. Results

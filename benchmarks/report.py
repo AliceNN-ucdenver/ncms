@@ -209,6 +209,9 @@ def save_results(
 ) -> None:
     """Save all results to disk (JSON, markdown tables, chart).
 
+    Merges with existing results so incremental runs (e.g. --datasets nfcorpus)
+    don't overwrite previously computed dataset results.
+
     Args:
         all_results: {dataset_name: {config_name: {metric: value}}}
         output_dir: Directory to write output files.
@@ -216,28 +219,38 @@ def save_results(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Raw JSON results
+    # Merge with existing results (incremental runs don't overwrite other datasets)
     json_path = output_dir / "ablation_results.json"
-    with open(json_path, "w") as f:
-        json.dump(all_results, f, indent=2)
-    logger.info("Raw results saved to %s", json_path)
+    merged_results = {}
+    if json_path.exists():
+        try:
+            with open(json_path) as f:
+                merged_results = json.load(f)
+            logger.info("Loaded existing results for %d datasets", len(merged_results))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Could not load existing results, starting fresh")
+    merged_results.update(all_results)
 
-    # Summary table
-    summary = generate_summary_table(all_results)
+    with open(json_path, "w") as f:
+        json.dump(merged_results, f, indent=2)
+    logger.info("Raw results saved to %s (%d datasets)", json_path, len(merged_results))
+
+    # Summary table (use merged results for complete picture)
+    summary = generate_summary_table(merged_results)
     summary_path = output_dir / "ablation_table.md"
     with open(summary_path, "w") as f:
         f.write("## NCMS Ablation Study Results\n\n")
         f.write(summary)
         f.write("\n\n")
-        f.write(generate_detailed_table(all_results))
+        f.write(generate_detailed_table(merged_results))
         f.write("\n")
     logger.info("Markdown tables saved to %s", summary_path)
 
-    # Chart — place in both results dir and docs/assets
+    # Chart — place in both results dir and docs/assets (merged results)
     chart_path = output_dir / "ablation-results.png"
-    generate_chart(all_results, chart_path)
+    generate_chart(merged_results, chart_path)
 
     # Also copy to docs/assets if it exists
     docs_chart = output_dir.parent.parent / "docs" / "assets" / "ablation-results.png"
     if docs_chart.parent.exists():
-        generate_chart(all_results, docs_chart)
+        generate_chart(merged_results, docs_chart)
