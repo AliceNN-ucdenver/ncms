@@ -66,10 +66,9 @@ src/ncms/
 │   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
-│   ├── llm/judge.py            # Optional LLM-as-judge via litellm
+│   ├── llm/json_utils.py        # Shared LLM JSON output parsing
 │   ├── llm/contradiction_detector.py # LLM contradiction detection at ingest
 │   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (required dependency)
-│   ├── extraction/keyword_extractor.py # LLM keyword bridge extraction
 │   ├── extraction/label_detector.py   # LLM-based domain label detection
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
@@ -93,7 +92,7 @@ src/ncms/
 ## Key Design Decisions
 
 1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE sparse neural retrieval via fastembed (required, disabled by default). Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
-2. **Three-tier retrieval**: BM25 candidates → ACT-R cognitive rescoring → optional LLM-as-judge.
+2. **Two-tier retrieval**: BM25 + SPLADE candidates → ACT-R cognitive rescoring (zero LLM at query time).
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
 5. **AsyncIO in-process bus** — Zero deps, <1ms latency. Protocol interface allows Redis/NATS swap later.
@@ -117,8 +116,6 @@ Models with fixed token windows silently truncate long text. NCMS auto-chunks wh
 
 | LLM Caller | File | Truncation | Worst-Case Tokens |
 |------------|------|------------|-------------------|
-| LLM Judge | `judge.py` | 4,000 chars/candidate × 10 candidates | ~10K tokens |
-| Keyword Extractor | `keyword_extractor.py` | 8,000 chars/doc | ~2K tokens |
 | Contradiction Detector (new) | `contradiction_detector.py` | 8,000 chars | ~2K tokens |
 | Contradiction Detector (existing) | `contradiction_detector.py` | 2,000 chars/memory × 5 | ~2.5K tokens |
 | Consolidation Synthesizer | `synthesizer.py` | 2,000 chars/memory × cluster | ~3K tokens |
@@ -166,12 +163,8 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval threshold |
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Bus ask timeout |
-| `NCMS_LLM_JUDGE_ENABLED` | `false` | **Deprecated** — LLM-as-judge tier (replaced by Dream Cycle) |
-| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for judge/contradiction detection |
+| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for contradiction detection |
 | `NCMS_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
-| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | **Deprecated** — keyword bridges (negative result: destroys retrieval) |
-| `NCMS_KEYWORD_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | **Deprecated** — LLM model for keywords |
-| `NCMS_KEYWORD_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | **Deprecated** — vLLM endpoint for keywords |
 | `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
 | `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (required dep) |
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
@@ -212,12 +205,6 @@ NCMS_CONTRADICTION_DETECTION_ENABLED=true \
 NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
 ```
-
-> **Deprecated LLM features (negative results / superseded by Dream Cycle):**
-> Keyword bridges (`NCMS_KEYWORD_BRIDGE_ENABLED`) and LLM-as-judge (`NCMS_LLM_JUDGE_ENABLED`)
-> are retained in config for backward compatibility but should not be enabled.
-> Keyword bridges destroy retrieval quality (nDCG@10 drops -95%).
-> LLM-as-judge is superseded by Dream Cycle's learned activation scores.
 
 **Ollama model prefix:** Use `ollama_chat/` prefix with litellm (no api_base needed).
 Thinking mode is auto-disabled for `ollama` models to get clean JSON output.

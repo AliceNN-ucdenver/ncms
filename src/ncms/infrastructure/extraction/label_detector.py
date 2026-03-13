@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 
-from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
+from ncms.infrastructure.llm.json_utils import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def detect_labels(
         if not raw:
             return []
 
-        labels = _parse_llm_json(raw)
+        labels = parse_llm_json(raw)
         if not isinstance(labels, list):
             return []
 

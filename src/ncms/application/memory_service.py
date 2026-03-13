@@ -177,37 +177,6 @@ class MemoryService:
             "entities_linked": len(all_entities),
         }, memory_id=memory.id)
 
-        # Extract keyword bridge nodes if enabled
-        keyword_count = 0
-        if self._config.keyword_bridge_enabled:
-            t0 = time.perf_counter()
-            try:
-                from ncms.infrastructure.extraction.keyword_extractor import extract_keywords
-
-                keywords = await extract_keywords(
-                    content,
-                    existing_entities=all_entities,
-                    model=self._config.keyword_llm_model,
-                    max_keywords=self._config.keyword_max_per_memory,
-                    api_base=self._config.keyword_llm_api_base,
-                )
-                keyword_count = len(keywords)
-                for kw in keywords:
-                    kw_entity = await self.add_entity(
-                        name=kw["name"],
-                        entity_type="keyword",
-                    )
-                    await self._store.link_memory_entity(memory.id, kw_entity.id)
-                    self._graph.link_memory_entity(memory.id, kw_entity.id)
-            except Exception:
-                logger.warning(
-                    "Keyword extraction failed, continuing without keywords",
-                    exc_info=True,
-                )
-            _emit_stage("keyword_bridge", (time.perf_counter() - t0) * 1000, {
-                "keyword_count": keyword_count,
-            }, memory_id=memory.id)
-
         # Contradiction detection (uses shared llm_model + llm_api_base)
         contradiction_count = 0
         candidates_checked = 0
@@ -626,15 +595,6 @@ class MemoryService:
         # Sort by combined score (descending) — Tier 2 ranking
         scored.sort(key=lambda s: s.total_activation, reverse=True)
 
-        # Tier 3: Optional LLM-as-judge reranking
-        if self._config.llm_judge_enabled and scored:
-            t0 = time.perf_counter()
-            scored = await self._apply_llm_judge(query, scored)
-            _emit_stage("llm_judge", (time.perf_counter() - t0) * 1000, {
-                "judged_count": min(len(scored), self._config.tier3_judge_top_k),
-                "model": self._config.llm_model,
-            })
-
         results = scored[:limit]
 
         # Pipeline complete
@@ -670,44 +630,6 @@ class MemoryService:
                 ),
             })
         return result
-
-    async def _apply_llm_judge(
-        self, query: str, scored: list[ScoredMemory],
-    ) -> list[ScoredMemory]:
-        """Apply LLM-as-judge reranking to top candidates (Tier 3)."""
-        from ncms.infrastructure.llm.judge import judge_relevance
-
-        # Only judge the top-k candidates to control cost
-        top_k = self._config.tier3_judge_top_k
-        candidates = scored[:top_k]
-        remainder = scored[top_k:]
-
-        judge_results = await judge_relevance(
-            query, candidates, model=self._config.llm_model,
-            api_base=self._config.llm_api_base,
-        )
-
-        # Build lookup of judge scores by memory_id
-        judge_scores = {mid: score for mid, score in judge_results}
-
-        # Blend: combined = activation * 0.4 + judge_relevance * 0.6
-        reranked: list[ScoredMemory] = []
-        for sm in candidates:
-            judge_score = judge_scores.get(sm.memory.id, 0.5)
-            blended = sm.total_activation * 0.4 + judge_score * 0.6
-            reranked.append(
-                ScoredMemory(
-                    memory=sm.memory,
-                    bm25_score=sm.bm25_score,
-                    base_level=sm.base_level,
-                    spreading=sm.spreading,
-                    total_activation=blended,
-                    retrieval_prob=sm.retrieval_prob,
-                )
-            )
-
-        reranked.sort(key=lambda s: s.total_activation, reverse=True)
-        return reranked + remainder
 
     # ── Direct Access ────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ import json
 import logging
 
 from ncms.domain.models import Memory
-from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
+from ncms.infrastructure.llm.json_utils import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def detect_contradictions(
         if not raw:
             return []
 
-        contradictions = _parse_llm_json(raw)
+        contradictions = parse_llm_json(raw)
         if not isinstance(contradictions, list):
             return []
 

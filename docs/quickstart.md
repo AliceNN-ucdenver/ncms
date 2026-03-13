@@ -304,13 +304,8 @@ All settings via environment variables with `NCMS_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NCMS_LLM_JUDGE_ENABLED` | `false` | **Deprecated** — LLM-as-judge reranking (superseded by Dream Cycle) |
-| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM judge/contradiction detection |
+| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for contradiction detection |
 | `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
-| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | **Deprecated** — keyword bridges ([negative result](../README.md#negative-results-keyword-bridges)) |
-| `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | **Deprecated** — max keywords per memory |
-| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | **Deprecated** — LLM model for keyword extraction |
-| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | **Deprecated** — vLLM/OpenAI-compatible endpoint |
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
@@ -364,7 +359,7 @@ vLLM requires Linux + CUDA. Use `api_base` to point at any OpenAI-compatible end
 src/ncms/
   domain/           Pure models, protocols, scoring, entity extraction (zero deps)
   application/      Memory service, bus service, snapshot service, graph service, loader
-  infrastructure/   SQLite, Tantivy, NetworkX, AsyncIO bus, LLM judge
+  infrastructure/   SQLite, Tantivy, NetworkX, AsyncIO bus, LLM utilities
   interfaces/       MCP server, CLI, HTTP dashboard, agent base class, hooks
 ```
 

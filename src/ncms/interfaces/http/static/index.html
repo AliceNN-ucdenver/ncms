@@ -1493,13 +1493,13 @@ const MAX_PIPELINES = 20;
 // Stage order arrays — stages not emitted appear as grey (skipped)
 const STORE_STAGES = [
   'start', 'persist', 'bm25_index', 'splade_index',
-  'entity_extraction', 'graph_linking', 'keyword_bridge',
+  'entity_extraction', 'graph_linking',
   'contradiction', 'complete'
 ];
 const SEARCH_STAGES = [
   'start', 'bm25', 'splade', 'rrf_fusion',
   'entity_extraction', 'graph_expansion', 'actr_scoring',
-  'llm_judge', 'complete'
+  'complete'
 ];
 
 // Human-readable stage labels
@@ -1510,7 +1510,6 @@ const STAGE_LABELS = {
   splade_index: 'SPLADE',
   entity_extraction: 'Entities',
   graph_linking: 'Graph Link',
-  keyword_bridge: 'Keywords',
   contradiction: 'Contradict',
   complete: 'Done',
   bm25: 'BM25',
@@ -1518,7 +1517,6 @@ const STAGE_LABELS = {
   rrf_fusion: 'RRF Fuse',
   graph_expansion: 'Graph Exp.',
   actr_scoring: 'ACT-R',
-  llm_judge: 'LLM Judge',
 };
 
 // ── SSE Connection ───────────────────────────────────────────────────

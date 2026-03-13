@@ -88,8 +88,6 @@ base_level(m) = ln( sum( (time_since_access)^(-decay) ) )
 combined(m)   = bm25 * w_bm25 + splade * w_splade + activation * w_actr
 ```
 
-**Tier 3 &mdash; LLM-as-Judge Reranking** (opt-in). Top-k candidates are sent to an LLM for relevance scoring, blended with activation scores for final ranking.
-
 ### Entity Extraction & Knowledge Enrichment
 
 Entities are automatically extracted at store-time and search-time, feeding the knowledge graph for spreading activation and graph expansion:

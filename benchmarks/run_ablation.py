@@ -4,12 +4,8 @@ Evaluates each pipeline component's contribution using standard BEIR
 IR benchmark datasets. Produces publishable tables and charts.
 
 Usage:
-    # Core pipeline only (no LLM required)
     uv run python -m benchmarks.run_ablation
     uv run python -m benchmarks.run_ablation --datasets scifact
-
-    # Include LLM-powered features (keyword bridges + LLM judge)
-    uv run python -m benchmarks.run_ablation --llm-model ollama_chat/qwen3.5:35b-a3b
 """
 
 from __future__ import annotations
@@ -20,7 +16,7 @@ import logging
 import sys
 import time
 
-from benchmarks.configs import ABLATION_CONFIGS, CORE_CONFIGS
+from benchmarks.configs import ABLATION_CONFIGS
 from benchmarks.datasets import SUPPORTED_DATASETS, load_beir_dataset
 from benchmarks.harness import evaluate_dataset
 from benchmarks.report import save_results
@@ -39,16 +35,6 @@ def parse_args() -> argparse.Namespace:
         help=f"Comma-separated dataset names (default: {','.join(SUPPORTED_DATASETS)})",
     )
     parser.add_argument(
-        "--llm-model",
-        type=str,
-        default=None,
-        help=(
-            "LLM model for keyword bridges and judge "
-            "(e.g. ollama_chat/qwen3.5:35b-a3b). "
-            "If not provided, LLM configs are skipped."
-        ),
-    )
-    parser.add_argument(
         "--output-dir",
         type=str,
         default="benchmarks/results",
@@ -65,20 +51,17 @@ def parse_args() -> argparse.Namespace:
 async def run_ablation(
     dataset_names: list[str],
     output_dir: str,
-    llm_model: str | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """Run the full ablation study.
 
     Args:
         dataset_names: List of BEIR dataset names to evaluate.
         output_dir: Directory to write results.
-        llm_model: LLM model for keyword bridges and judge (optional).
 
     Returns:
         {dataset_name: {config_name: {metric: value}}}
     """
-    # Select configs based on whether LLM is available
-    configs = ABLATION_CONFIGS if llm_model else CORE_CONFIGS
+    configs = ABLATION_CONFIGS
 
     all_results: dict[str, dict[str, dict[str, float]]] = {}
 
@@ -94,7 +77,6 @@ async def run_ablation(
             queries=queries,
             qrels=qrels,
             configs=configs,
-            llm_model=llm_model,
         )
 
         all_results[dataset_name] = dataset_results
@@ -133,19 +115,12 @@ def main() -> None:
             logger.error("Unknown dataset: %s. Supported: %s", name, SUPPORTED_DATASETS)
             sys.exit(1)
 
-    # Determine which configs will run
-    configs = ABLATION_CONFIGS if args.llm_model else CORE_CONFIGS
-
     logger.info("NCMS Retrieval Pipeline Ablation Study")
     logger.info("Datasets: %s", ", ".join(dataset_names))
-    logger.info("Configs: %d ablation variants", len(configs))
-    if args.llm_model:
-        logger.info("LLM model: %s (keyword bridges + judge enabled)", args.llm_model)
-    else:
-        logger.info("LLM model: none (core pipeline only, use --llm-model to enable)")
+    logger.info("Configs: %d ablation variants", len(ABLATION_CONFIGS))
     logger.info("Output: %s", args.output_dir)
 
-    asyncio.run(run_ablation(dataset_names, args.output_dir, args.llm_model))
+    asyncio.run(run_ablation(dataset_names, args.output_dir))
 
 
 if __name__ == "__main__":

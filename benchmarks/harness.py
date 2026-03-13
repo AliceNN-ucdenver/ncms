@@ -2,9 +2,6 @@
 
 Separates ingestion (slow, GLiNER per doc) from search (fast, config-swappable).
 Ingests once per dataset, then runs all ablation configs against the same data.
-
-LLM-powered features (keyword bridges, LLM judge) require a second ingest pass
-with keyword_bridge_enabled=True to populate bridge nodes in the graph.
 """
 
 from __future__ import annotations
@@ -23,7 +20,6 @@ logger = logging.getLogger(__name__)
 async def ingest_corpus(
     corpus: dict[str, dict[str, str]],
     dataset_name: str,
-    llm_model: str | None = None,
 ) -> tuple[object, object, object, object, object, dict[str, str], dict[str, str]]:
     """Ingest a BEIR corpus into NCMS backends (single pass).
 
@@ -34,8 +30,6 @@ async def ingest_corpus(
     Args:
         corpus: {doc_id: {"title": str, "text": str}}
         dataset_name: Name of dataset (for topic seeding).
-        llm_model: Optional LLM model for keyword bridge extraction.
-            If provided, keyword bridges are extracted during ingestion.
 
     Returns:
         Tuple of (store, index, graph, splade_engine, config, doc_to_mem, mem_to_doc)
@@ -66,9 +60,6 @@ async def ingest_corpus(
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
-        # Enable keyword bridges during ingest if LLM model provided
-        keyword_bridge_enabled=bool(llm_model),
-        keyword_llm_model=llm_model or "gpt-4o-mini",
     )
 
     # Seed domain-specific topics
@@ -82,9 +73,6 @@ async def ingest_corpus(
             json.dumps(labels),
         )
         logger.info("Seeded topics for domain '%s': %s", domain, labels)
-
-    if llm_model:
-        logger.info("Keyword bridges enabled with model: %s", llm_model)
 
     # Create MemoryService for ingestion
     from ncms.application.memory_service import MemoryService
@@ -152,7 +140,6 @@ async def run_config_queries(
     queries: dict[str, str],
     mem_to_doc: dict[str, str],
     domain: str,
-    llm_model: str | None = None,
 ) -> dict[str, list[str]]:
     """Run all queries under a specific ablation configuration.
 
@@ -168,7 +155,6 @@ async def run_config_queries(
         queries: {query_id: query_text}
         mem_to_doc: Memory ID -> BEIR doc ID mapping.
         domain: Dataset domain for search filtering.
-        llm_model: LLM model name for judge configs.
 
     Returns:
         {query_id: [doc_id_1, doc_id_2, ...]} ranked by score descending.
@@ -186,9 +172,6 @@ async def run_config_queries(
         scoring_weight_splade=ablation_config.scoring_weight_splade,
         scoring_weight_graph=ablation_config.scoring_weight_graph,
         actr_threshold=ablation_config.actr_threshold,
-        llm_judge_enabled=ablation_config.llm_judge_enabled,
-        llm_model=llm_model or "gpt-4o-mini",
-        keyword_bridge_enabled=False,  # Bridges are ingest-time only
         contradiction_detection_enabled=False,
     )
 
@@ -245,15 +228,10 @@ async def evaluate_dataset(
     queries: dict[str, str],
     qrels: dict[str, dict[str, int]],
     configs: list[AblationConfig],
-    llm_model: str | None = None,
 ) -> dict[str, dict[str, float]]:
     """Run full ablation evaluation on a single dataset.
 
-    Ingests once (or twice if LLM configs present), then runs all configs.
-
-    For LLM configs (keyword bridges, LLM judge):
-    - Keyword bridges require a separate ingest pass with LLM enabled
-    - LLM judge runs at search time against the LLM-ingested data
+    Ingests once, then runs all configs.
 
     Args:
         dataset_name: Dataset name for topic seeding.
@@ -261,7 +239,6 @@ async def evaluate_dataset(
         queries: BEIR queries.
         qrels: BEIR relevance judgments.
         configs: List of ablation configurations to evaluate.
-        llm_model: LLM model for keyword bridges and judge (e.g. ollama_chat/qwen3.5:35b-a3b).
 
     Returns:
         {config_name: {metric_name: value}} for all configs.
@@ -271,28 +248,24 @@ async def evaluate_dataset(
     logger.info("  Corpus: %d docs, Queries: %d", len(corpus), len(queries))
     logger.info("=" * 60)
 
-    # Split configs into core (no LLM) and LLM-powered
-    core_configs = [c for c in configs if not c.requires_llm]
-    llm_configs = [c for c in configs if c.requires_llm]
-
     topic_info = DATASET_TOPICS.get(dataset_name, {})
     domain = topic_info.get("domain", "general") if topic_info else "general"
 
     results: dict[str, dict[str, float]] = {}
 
-    # Phase A: Ingest corpus WITHOUT keyword bridges (for core configs)
-    logger.info("Phase A: Ingesting corpus (core pipeline)...")
+    # Ingest corpus
+    logger.info("Ingesting corpus...")
     store, index, graph, splade, _config, doc_to_mem, mem_to_doc = (
-        await ingest_corpus(corpus, dataset_name, llm_model=None)
+        await ingest_corpus(corpus, dataset_name)
     )
 
     # Only query queries that have relevance judgments (saves ~70% for SciFact)
     eval_queries = {qid: queries[qid] for qid in qrels if qid in queries}
     logger.info("  Evaluation queries: %d (of %d total)", len(eval_queries), len(queries))
 
-    # Phase B: Run core configs against base ingest
-    for config in core_configs:
-        logger.info("Phase B: Running config '%s'...", config.display_name)
+    # Run all configs against the ingested data
+    for config in configs:
+        logger.info("Running config '%s'...", config.display_name)
         t0 = time.perf_counter()
 
         rankings = await run_config_queries(
@@ -323,87 +296,7 @@ async def evaluate_dataset(
             elapsed,
         )
 
-    # Cleanup core backends
+    # Cleanup
     await store.close()
-
-    # Phase C: LLM configs (separate ingest with keyword bridges)
-    if llm_configs and llm_model:
-        from ncms.infrastructure.extraction.keyword_extractor import (
-            get_keyword_stats,
-            reset_keyword_stats,
-        )
-
-        reset_keyword_stats()
-        logger.info("Phase C: Ingesting corpus WITH keyword bridges (%s)...", llm_model)
-        llm_store, llm_index, llm_graph, llm_splade, _config, _d2m, llm_m2d = (
-            await ingest_corpus(corpus, dataset_name, llm_model=llm_model)
-        )
-
-        # Log keyword extraction summary
-        kw_stats = get_keyword_stats()
-        kw_nodes = sum(
-            1 for _, d in llm_graph._graph.nodes(data=True)  # type: ignore[union-attr]
-            if d.get("type") == "keyword"
-        )
-        logger.info(
-            "  Keywords: %d/%d ok, %d empty, %d errors, %d graph nodes",
-            kw_stats["success"], kw_stats["calls"], kw_stats["empty"],
-            kw_stats["errors"], kw_nodes,
-        )
-
-        from ncms.infrastructure.llm.judge import get_judge_stats, reset_judge_stats
-
-        for config in llm_configs:
-            logger.info("Phase C: Running config '%s'...", config.display_name)
-            reset_judge_stats()
-            t0 = time.perf_counter()
-
-            rankings = await run_config_queries(
-                store=llm_store,
-                index=llm_index,
-                graph=llm_graph,
-                splade_engine=llm_splade,
-                ablation_config=config,
-                queries=eval_queries,
-                mem_to_doc=llm_m2d,
-                domain=domain,
-                llm_model=llm_model,
-            )
-
-            metrics = compute_all_metrics(rankings, qrels)
-            elapsed = time.perf_counter() - t0
-
-            results[config.name] = {
-                **metrics,
-                "elapsed_seconds": round(elapsed, 1),
-            }
-
-            # Log results + judge stats if judge was used
-            j_stats = get_judge_stats()
-            judge_info = ""
-            if j_stats["calls"] > 0:
-                avg_t = j_stats["total_time"] / j_stats["calls"] if j_stats["calls"] else 0
-                judge_info = (
-                    f"  judge: {j_stats['success']}/{j_stats['calls']} ok, "
-                    f"{j_stats['errors']} err, {avg_t:.2f}s avg"
-                )
-
-            logger.info(
-                "  %s: nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f  (%.1fs)%s",
-                config.display_name,
-                metrics["nDCG@10"],
-                metrics["MRR@10"],
-                metrics["Recall@100"],
-                elapsed,
-                judge_info,
-            )
-
-        await llm_store.close()
-    elif llm_configs:
-        logger.warning(
-            "Skipping %d LLM configs (no --llm-model provided): %s",
-            len(llm_configs),
-            [c.display_name for c in llm_configs],
-        )
 
     return results

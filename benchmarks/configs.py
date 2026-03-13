@@ -9,11 +9,7 @@ Core pipeline (no LLM required):
 - Graph Expansion (entity-based cross-memory discovery)
 - ACT-R Scoring (cognitive recency/frequency/spreading activation)
 
-LLM-powered opt-in features (require Ollama or API):
-- Keyword Bridges (LLM-extracted semantic bridge nodes for graph connectivity)
-- LLM Judge (Tier 3 LLM reranking for relevance scoring)
-
-Core configs always run. LLM configs run when --llm-model is provided.
+Core configs always run.
 """
 
 from __future__ import annotations
@@ -34,10 +30,6 @@ class AblationConfig:
     scoring_weight_splade: float
     scoring_weight_graph: float  # Entity overlap via spreading activation
     actr_threshold: float  # -999.0 disables retrieval probability filter
-    # LLM-powered features (opt-in)
-    keyword_bridge_enabled: bool = False
-    llm_judge_enabled: bool = False
-    requires_llm: bool = False  # True if config needs an LLM backend
 
 
 # Additive ablation: build up from BM25 baseline
@@ -116,36 +108,4 @@ CORE_CONFIGS: list[AblationConfig] = [
     ),
 ]
 
-# LLM-powered configs: require Ollama or API endpoint
-LLM_CONFIGS: list[AblationConfig] = [
-    AblationConfig(
-        name="full_keywords",
-        display_name="+ Keyword Bridges",
-        use_splade=True,
-        graph_expansion_enabled=True,
-        scoring_weight_bm25=0.6,
-        scoring_weight_actr=0.4,
-        scoring_weight_splade=0.3,
-        scoring_weight_graph=0.3,
-        actr_threshold=-2.0,
-        keyword_bridge_enabled=True,
-        requires_llm=True,
-    ),
-    AblationConfig(
-        name="full_keywords_judge",
-        display_name="+ Keywords + Judge",
-        use_splade=True,
-        graph_expansion_enabled=True,
-        scoring_weight_bm25=0.6,
-        scoring_weight_actr=0.4,
-        scoring_weight_splade=0.3,
-        scoring_weight_graph=0.3,
-        actr_threshold=-2.0,
-        keyword_bridge_enabled=True,
-        llm_judge_enabled=True,
-        requires_llm=True,
-    ),
-]
-
-# All configs (for reference)
-ABLATION_CONFIGS: list[AblationConfig] = CORE_CONFIGS + LLM_CONFIGS
+ABLATION_CONFIGS: list[AblationConfig] = CORE_CONFIGS

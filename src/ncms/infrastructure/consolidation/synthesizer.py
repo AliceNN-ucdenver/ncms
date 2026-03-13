@@ -12,7 +12,7 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from ncms.infrastructure.extraction.keyword_extractor import _parse_llm_json
+from ncms.infrastructure.llm.json_utils import parse_llm_json
 
 if TYPE_CHECKING:
     from ncms.infrastructure.consolidation.clusterer import MemoryCluster
@@ -95,7 +95,7 @@ async def synthesize_insight(
         if not raw:
             return None
 
-        result = _parse_llm_json(raw)
+        result = parse_llm_json(raw)
         if not isinstance(result, dict) or "insight" not in result:
             return None
 

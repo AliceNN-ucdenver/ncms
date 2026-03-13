@@ -29,10 +29,9 @@ class NCMSConfig(BaseSettings):
     bus_ask_timeout_ms: int = 5000
     bus_surrogate_enabled: bool = True
 
-    # LLM-as-Judge
+    # LLM (used by contradiction detection)
     llm_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
     llm_api_base: str | None = "http://spark-ee7d.local:8000/v1"
-    llm_judge_enabled: bool = False
 
     # SPLADE
     splade_enabled: bool = False
@@ -51,7 +50,6 @@ class NCMSConfig(BaseSettings):
     # Retrieval pipeline
     tier1_candidates: int = 50
     tier2_candidates: int = 20
-    tier3_judge_top_k: int = 10
     scoring_weight_bm25: float = 0.6
     scoring_weight_actr: float = 0.4
     scoring_weight_graph: float = 0.0  # Graph-expansion entity overlap (spreading activation)
@@ -72,12 +70,6 @@ class NCMSConfig(BaseSettings):
     # Label detection via LLM (for `ncms topics detect`)
     label_detection_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
     label_detection_api_base: str | None = "http://spark-ee7d.local:8000/v1"
-
-    # Keyword bridge nodes (Phase 3)
-    keyword_bridge_enabled: bool = False
-    keyword_max_per_memory: int = 8
-    keyword_llm_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
-    keyword_llm_api_base: str | None = "http://spark-ee7d.local:8000/v1"
 
     # Consolidation
     consolidation_importance_threshold: float = 50.0

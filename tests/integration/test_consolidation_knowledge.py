@@ -61,7 +61,6 @@ async def _create_services(
     defaults: dict = dict(
         db_path=":memory:",
         actr_noise=0.0,
-        keyword_bridge_enabled=False,  # Disable keyword extraction
         consolidation_knowledge_enabled=True,
         consolidation_knowledge_min_cluster_size=3,
         consolidation_knowledge_model="gpt-4o-mini",
