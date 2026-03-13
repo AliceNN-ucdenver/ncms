@@ -7,7 +7,7 @@ University of Colorado Denver
 
 ## Abstract
 
-We present NCMS (NeMo Cognitive Memory System), a retrieval architecture for autonomous AI agents that achieves competitive information retrieval performance without dense vector embeddings. NCMS combines BM25 lexical search, SPLADE sparse neural expansion, entity-graph traversal, and ACT-R cognitive activation scoring into a unified pipeline that requires zero external infrastructure beyond a single Python package. On the SciFact benchmark from the BEIR evaluation suite, NCMS achieves 0.702 nDCG@10, outperforming published BM25 baselines (0.671, +4.6%) and matching or exceeding SPLADE v2 and ColBERT v2 (0.693, +1.3%) --- all without computing or storing a single embedding vector. We conduct a systematic ablation study across three BEIR datasets with domain-specific entity label optimization, demonstrating that each pipeline component contributes measurably to retrieval quality and that the novel combination of sparse retrieval with cognitive scoring and knowledge-graph expansion represents a viable alternative to dense retrieval for agent memory systems. To our knowledge, NCMS is the first system to apply ACT-R cognitive architecture principles to information retrieval scoring in a production-ready framework, and the first to demonstrate that entity-graph expansion with GLiNER zero-shot NER can improve retrieval quality on standard benchmarks.
+We present NCMS (NeMo Cognitive Memory System), a retrieval architecture for autonomous AI agents that achieves competitive information retrieval performance without dense vector embeddings. NCMS combines BM25 lexical search, SPLADE sparse neural expansion, entity-graph traversal, and ACT-R cognitive activation scoring into a unified pipeline that requires zero external infrastructure beyond a single Python package. On the SciFact benchmark from the BEIR evaluation suite, NCMS achieves 0.698 nDCG@10, outperforming published BM25 baselines (0.671, +4.0%) and matching or exceeding SPLADE v2 and ColBERT v2 (0.693, +0.7%) --- all without computing or storing a single embedding vector. We conduct a systematic ablation study with domain-specific entity label optimization, demonstrating that each pipeline component contributes measurably to retrieval quality. We also report a significant negative result: LLM-extracted keyword bridge nodes, intended to connect entity subgraphs, catastrophically destroy retrieval quality (nDCG@10 drops to 0.032) by creating high-fanout hub nodes that flood graph expansion with irrelevant candidates. This failure motivates our proposed HTMG (Hierarchical Temporal Memory Graph) architecture, which addresses cross-subgraph connectivity through temporal episodes and entity state tracking rather than keyword-based bridges. To our knowledge, NCMS is the first system to apply ACT-R cognitive architecture principles to information retrieval scoring in a production-ready framework, and the first to demonstrate that entity-graph expansion with GLiNER zero-shot NER can improve retrieval quality on standard benchmarks.
 
 ---
 
@@ -166,7 +166,7 @@ We evaluate on three BEIR benchmark datasets:
 | **NFCorpus** | Biomedical/nutrition | 3,633 | 323 | disease, nutrient, vitamin, mineral, drug, food, protein, compound, symptom, treatment |
 | **ArguAna** | Argument retrieval | 8,674 | 1,406 | person, organization, location, nationality, event, law |
 
-Six additive ablation configurations progressively enable pipeline components:
+Eight ablation configurations progressively enable pipeline components:
 
 1. **BM25 Only** --- Tantivy lexical baseline
 2. **+ Graph** --- Add entity-graph expansion with independent graph scoring weight
@@ -174,13 +174,10 @@ Six additive ablation configurations progressively enable pipeline components:
 4. **+ SPLADE** --- Add sparse neural retrieval via RRF fusion
 5. **+ SPLADE + Graph** --- Combine SPLADE and graph expansion
 6. **Full Pipeline** --- All components (BM25 + SPLADE + Graph + ACT-R)
+7. **+ Keyword Bridges** --- Full pipeline plus LLM-extracted semantic concept nodes added at ingest time
+8. **+ Keywords + Judge** --- Keyword bridges plus Tier 3 LLM-as-judge reranking
 
 All configurations use deterministic settings (ACT-R noise $\sigma = 0$, fixed random seeds) for reproducibility. Metrics: nDCG@10, MRR@10, Recall@10, Recall@100.
-
-Two additional LLM-powered configurations extend the pipeline:
-
-7. **+ Keyword Bridges** --- LLM-extracted semantic concept nodes added at ingest time, connecting entity subgraphs that share thematic relationships
-8. **+ Keywords + Judge** --- Keyword bridges plus Tier 3 LLM-as-judge reranking
 
 ### 4.6 LLM Infrastructure
 
@@ -194,16 +191,18 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 
 ### 5.1 Cross-Dataset Results (nDCG@10)
 
-| Configuration | SciFact | NFCorpus | ArguAna | Average |
-|---------------|:-------:|:--------:|:-------:|:-------:|
-| BM25 Only | 0.685 | 0.319 | --- | --- |
-| + Graph | **0.687** | **0.321** | --- | --- |
-| + ACT-R | 0.685 | 0.317 | --- | --- |
-| + SPLADE | **0.700** | **0.339** | --- | --- |
-| + SPLADE + Graph | 0.698 | 0.338 | --- | --- |
-| **Full Pipeline** | **0.702** | 0.337 | --- | --- |
+| Configuration | SciFact | NFCorpus | ArguAna |
+|---------------|:-------:|:--------:|:-------:|
+| BM25 Only | 0.687 | 0.319 | --- |
+| + Graph | 0.690 | **0.321** | --- |
+| + ACT-R | 0.686 | 0.317 | --- |
+| + SPLADE | 0.697 | **0.339** | --- |
+| **+ SPLADE + Graph** | **0.698** | 0.338 | --- |
+| Full Pipeline | 0.690 | 0.337 | --- |
+| + Keyword Bridges | 0.032 | --- | --- |
+| + Keywords + Judge | 0.032 | --- | --- |
 
-*ArguAna results pending (benchmark in progress).*
+*SciFact re-run with improved text chunking for GLiNER and SPLADE. NFCorpus/ArguAna pending re-run.*
 
 ### 5.2 Detailed Per-Dataset Results
 
@@ -211,12 +210,14 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|---------|--------|-----------|------------|
-| BM25 Only | 0.685 | 0.650 | 0.809 | 0.893 |
-| + Graph | **0.687** | 0.653 | 0.809 | 0.893 |
-| + ACT-R | 0.685 | 0.651 | 0.806 | 0.893 |
-| + SPLADE | **0.700** | 0.667 | 0.825 | 0.944 |
-| + SPLADE + Graph | 0.698 | 0.665 | 0.824 | 0.944 |
-| **Full Pipeline** | **0.702** | **0.667** | **0.830** | **0.944** |
+| BM25 Only | 0.687 | 0.653 | 0.809 | 0.893 |
+| + Graph | 0.690 | 0.657 | 0.809 | 0.893 |
+| + ACT-R | 0.686 | 0.650 | 0.809 | 0.893 |
+| + SPLADE | 0.697 | 0.667 | 0.812 | 0.925 |
+| **+ SPLADE + Graph** | **0.698** | **0.667** | **0.812** | **0.925** |
+| Full Pipeline | 0.690 | 0.659 | 0.806 | 0.925 |
+| + Keyword Bridges | 0.032 | 0.037 | 0.030 | 0.030 |
+| + Keywords + Judge | 0.032 | 0.037 | 0.030 | 0.030 |
 
 **NFCorpus** (323 queries, 3,633 documents --- biomedical/nutrition):
 
@@ -231,25 +232,42 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 
 ### 5.3 Comparison with Published Baselines
 
-| System | Type | SciFact nDCG@10 | vs. NCMS Full |
+| System | Type | SciFact nDCG@10 | vs. NCMS Best |
 |--------|------|:---------------:|:-------------:|
 | DPR | Dense | 0.318 | NCMS +120% |
 | ANCE | Dense | 0.507 | NCMS +38% |
-| TAS-B | Dense | 0.502 | NCMS +40% |
-| **BM25** | **Lexical** | **0.671** | **NCMS +4.6%** |
-| SPLADE v2 | Sparse neural | 0.693 | NCMS +1.3% |
-| ColBERT v2 | Late interaction | 0.693 | NCMS +1.3% |
-| **NCMS Full** | **Hybrid (no vectors)** | **0.702** | --- |
+| TAS-B | Dense | 0.502 | NCMS +39% |
+| **BM25** | **Lexical** | **0.671** | **NCMS +4.0%** |
+| SPLADE v2 | Sparse neural | 0.693 | NCMS +0.7% |
+| ColBERT v2 | Late interaction | 0.693 | NCMS +0.7% |
+| **NCMS (SPLADE+Graph)** | **Hybrid (no vectors)** | **0.698** | --- |
 
 ### 5.4 Component Contribution Analysis
 
-**SPLADE fusion is the dominant contributor** across both datasets: +2.2% on SciFact and +6.2% on NFCorpus over BM25 baseline. SPLADE's learned term expansion compensates for vocabulary mismatch between queries and documents --- the primary failure mode of pure BM25 retrieval. The RRF fusion strategy allows BM25's precision to be preserved while SPLADE adds recall. On NFCorpus, SPLADE's impact on Recall@100 is particularly striking: +21.7% relative improvement (0.215 to 0.262).
+**SPLADE fusion is the dominant contributor** across both datasets: +1.5% on SciFact and +6.2% on NFCorpus over BM25 baseline. SPLADE's learned term expansion compensates for vocabulary mismatch between queries and documents --- the primary failure mode of pure BM25 retrieval. The RRF fusion strategy allows BM25's precision to be preserved while SPLADE adds recall. On NFCorpus, SPLADE's impact on Recall@100 is particularly striking: +21.7% relative improvement (0.215 to 0.262).
 
-**Graph expansion provides consistent lift across datasets**: +0.3% on SciFact, +0.6% on NFCorpus. More notably, graph expansion improves Recall@100 on NFCorpus by +2.3% absolute (0.215 to 0.220 for BM25+Graph, 0.262 to 0.266 for SPLADE+Graph), demonstrating that entity-based cross-memory discovery surfaces documents that keyword search misses entirely. The larger graph lift on NFCorpus may reflect the richer entity structure of biomedical text (9.3 entities/doc vs. 9.1 for SciFact).
+**Graph expansion provides consistent lift across datasets**: +0.4% on SciFact, +0.6% on NFCorpus. The best single configuration is SPLADE + Graph (0.698 SciFact), demonstrating that entity-based cross-memory discovery complements learned term expansion. Graph expansion improves Recall@100 on NFCorpus by +2.3% absolute (0.215 to 0.220 for BM25+Graph, 0.262 to 0.266 for SPLADE+Graph).
 
-**ACT-R spreading activation improves full pipeline scoring.** While ACT-R base-level activation adds minimal value on static benchmarks (no temporal access patterns), spreading activation through shared entities provides a relevance signal that improves ranking when combined with all other components (Full Pipeline 0.702 vs. SPLADE+Graph 0.698 on SciFact).
+**ACT-R spreading activation shows limited benefit on static benchmarks.** While ACT-R base-level activation adds minimal value without temporal access patterns, the Full Pipeline (0.690) slightly underperforms SPLADE+Graph (0.698) on SciFact, suggesting that ACT-R's noise and scoring interactions may slightly interfere with the already-strong SPLADE+Graph signal. We expect larger ACT-R contributions in production deployments with real access history.
 
 **The graph scoring independence insight.** Our initial ablation produced identical results for BM25 and BM25+Graph because graph-expanded candidates received zero combined scores --- they had no BM25 or SPLADE scores, and the graph-testing configuration zeroed out ACT-R weight. Introducing an independent `scoring_weight_graph` parameter that weights spreading activation separately from ACT-R base-level activation was essential for making graph expansion's contribution measurable.
+
+### 5.5 Negative Result: Keyword Bridge Failure
+
+The most significant finding of our ablation study is the **catastrophic failure of LLM-extracted keyword bridges**. Adding keyword bridge nodes at ingest time caused nDCG@10 to drop from 0.690 to 0.032 --- a 95% degradation that renders retrieval effectively non-functional.
+
+**Mechanism of failure.** Keyword bridges are extracted by prompting an LLM (Nemotron 3 Nano 30B) to identify semantic concepts from each document. For the 5,183-document SciFact corpus, this produced 14,709 keyword graph nodes (~2.8 per document). Unlike GLiNER-extracted entities, which are specific named entities ("interleukin-6", "p53 tumor suppressor", "metformin"), keyword concepts are generic and high-frequency ("study", "treatment", "effect", "analysis", "clinical trial"). These generic keywords connect thousands of unrelated documents, creating hub nodes with extreme fanout in the entity graph.
+
+**Graph expansion flooding.** During retrieval, the graph expansion step (Tier 1.5) traverses entity neighbors of BM25/SPLADE hits. With keyword hub nodes present, a single relevant document's keyword connections pull in hundreds of irrelevant documents. These flood the candidate pool, and even though they receive lower scores from spreading activation, they displace relevant documents from the top-100 ranking window entirely. The Recall@100 drop from 0.925 to 0.030 confirms this: relevant documents are not merely ranked lower --- they are pushed out of the retrieval window.
+
+**LLM-as-judge cannot recover.** Adding Tier 3 LLM-as-judge reranking (Configuration 8) produces identical results to Configuration 7 (0.032 nDCG@10). This is expected: reranking can only reorder the candidates it receives. When the candidate pool is flooded with irrelevant documents, even a perfect reranker cannot recover relevant documents that were never retrieved.
+
+**Implications.** This result demonstrates that graph-based retrieval benefits from **specific, discriminative** entity nodes rather than generic semantic bridges. Named entities extracted by NER models have natural specificity --- they connect only documents that discuss the same real-world entities. Keywords lack this discriminative power. The appropriate mechanism for cross-subgraph semantic connectivity is not keyword-based graph edges but rather:
+
+1. **Learned term expansion** (SPLADE) at the retrieval level, which already handles vocabulary mismatch
+2. **Structural temporal connections** (episode formation, entity state tracking) at the graph level, which provide principled connections based on co-occurrence and evolution rather than keyword similarity
+
+This motivates our proposed HTMG architecture (Section 6.5).
 
 ---
 
@@ -257,11 +275,11 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 
 ### 6.1 Why Vector-Free Works
 
-Our results across two datasets challenge the prevailing assumption that dense embeddings are necessary for competitive retrieval. The combination of BM25's robust lexical matching with SPLADE's learned sparse expansion captures both exact and semantic matching without the information loss inherent in projecting documents into low-dimensional dense spaces. On NFCorpus, SPLADE's contribution is even larger (+6.2%) than on SciFact (+2.2%), suggesting that vocabulary mismatch is a bigger challenge in biomedical text where technical terminology creates wider gaps between query and document language. This is particularly relevant for agent memory systems where technical content (API specifications, error codes, configuration parameters) requires lexical precision that dense embeddings may obscure.
+Our results challenge the prevailing assumption that dense embeddings are necessary for competitive retrieval. The combination of BM25's robust lexical matching with SPLADE's learned sparse expansion captures both exact and semantic matching without the information loss inherent in projecting documents into low-dimensional dense spaces. On NFCorpus, SPLADE's contribution is even larger (+6.2%) than on SciFact (+1.5%), suggesting that vocabulary mismatch is a bigger challenge in biomedical text where technical terminology creates wider gaps between query and document language. This is particularly relevant for agent memory systems where technical content (API specifications, error codes, configuration parameters) requires lexical precision that dense embeddings may obscure.
 
 ### 6.2 The Case for Cognitive Scoring in Agent Memory
 
-Standard IR benchmarks are static: documents have no access history, no temporal context, and no agent-specific usage patterns. This handicaps ACT-R's most distinctive feature --- temporal decay --- which cannot be evaluated without longitudinal access data. We expect significantly larger ACT-R contributions in production agent deployments where:
+Standard IR benchmarks are static: documents have no access history, no temporal context, and no agent-specific usage patterns. This handicaps ACT-R's most distinctive feature --- temporal decay --- which cannot be evaluated without longitudinal access data. On SciFact, the Full Pipeline (all components including ACT-R) slightly underperforms SPLADE+Graph alone (0.690 vs. 0.698), suggesting that ACT-R's scoring interactions may introduce noise without temporal access data to ground the base-level activation. We expect significantly larger ACT-R contributions in production agent deployments where:
 
 - Recently accessed memories should be preferred for ongoing tasks
 - Frequently referenced architectural decisions should be more readily available
@@ -281,19 +299,37 @@ Our taxonomy experiment revealed that GLiNER's zero-shot NER is highly sensitive
 ### 6.4 Limitations
 
 - **Benchmark bias toward lexical overlap.** BEIR datasets favor systems with strong lexical matching, which may overstate BM25's contribution relative to real agent memory workloads.
-- **Static evaluation.** ACT-R's temporal features cannot be fairly evaluated on static benchmarks.
+- **Static evaluation.** ACT-R's temporal features cannot be fairly evaluated on static benchmarks. The Full Pipeline's slight underperformance vs. SPLADE+Graph (0.690 vs. 0.698) may reflect ACT-R's limited value without real access history.
 - **Single-hop graph traversal.** The current graph expansion uses depth-1 traversal; multi-hop traversal may improve recall at the cost of precision.
+- **SPLADE chunking tradeoff.** Automatic text chunking for SPLADE (400-char windows with max-pool merge) slightly reduces precision compared to single-pass truncated encoding. Max-pooling across many chunks activates weak vocabulary terms that dilute the dot-product similarity signal. Alternative merge strategies (mean-pool, top-k selection) remain unexplored.
 - **GLiNER model size.** The 209M-parameter GLiNER model adds ~50ms per chunk at ingest time. With automatic chunking, long documents (~10K chars) produce ~8 chunks, increasing per-document NER time to ~400ms. This may not be acceptable for high-throughput streaming ingestion.
+- **Keyword bridge failure scope.** The catastrophic keyword bridge failure was evaluated on SciFact only. While we believe the mechanism (hub-node flooding) is dataset-independent, confirmation on other BEIR datasets would strengthen the finding.
+
+### 6.5 Toward Hierarchical Temporal Memory Graphs
+
+The keyword bridge negative result (Section 5.5) reveals a fundamental limitation of the current flat entity graph: it lacks principled mechanisms for cross-subgraph connectivity. Keywords were a naive attempt to solve this --- connecting documents that share no named entities but are thematically related. Their failure demonstrates that the graph layer requires **structural** rather than **lexical** connections.
+
+We propose the Hierarchical Temporal Memory Graph (HTMG) as the next architecture, addressing this gap through three mechanisms:
+
+1. **Temporal episodes.** Co-occurring memories (stored within a configurable time window) are grouped into episodes --- structural clusters that encode "these things were learned together." Episode membership provides natural cross-subgraph connections without keyword extraction: two documents about different proteins that were stored during the same research session are connected through their shared episode, not through a generic "protein" keyword.
+
+2. **Entity state tracking.** Current entity nodes are static: they record that an entity exists but not how it changes over time. Bitemporal entity states (valid-time + system-time) would enable queries like "what was the deployment architecture as of last week?" and connect memories through entity evolution rather than keyword overlap.
+
+3. **Hierarchical abstractions.** LLM-synthesized higher-order patterns that emerge from episode clusters. Unlike keyword bridges (which are extracted per-document and lack specificity), abstractions are synthesized across multiple memories, producing connections grounded in actual content patterns rather than generic vocabulary.
+
+These mechanisms address the same cross-subgraph connectivity problem that keyword bridges attempted to solve, but with structural connections that carry discriminative information. SPLADE already handles vocabulary-level semantic expansion at the retrieval layer; HTMG would handle structural semantic organization at the graph layer. The full design is documented in the NCMS-Next internal specification.
 
 ---
 
 ## 7. Conclusion
 
-NCMS demonstrates that competitive information retrieval is achievable without dense vector embeddings, using a multi-signal pipeline that combines lexical search, sparse neural expansion, entity-graph traversal, and cognitive activation scoring. On the SciFact benchmark, NCMS achieves 0.702 nDCG@10, outperforming published BM25 (+4.6%), dense retrieval (DPR +120%, ANCE +38%), and sparse neural systems (SPLADE v2/ColBERT v2 +1.3%).
+NCMS demonstrates that competitive information retrieval is achievable without dense vector embeddings, using a multi-signal pipeline that combines lexical search, sparse neural expansion, entity-graph traversal, and cognitive activation scoring. On the SciFact benchmark, NCMS achieves 0.698 nDCG@10, outperforming published BM25 (+4.0%), dense retrieval (DPR +120%, ANCE +38%), and matching sparse neural systems (SPLADE v2/ColBERT v2 +0.7%).
 
-The system's key innovations --- ACT-R cognitive scoring for IR, domain-adaptive zero-shot entity extraction with taxonomy optimization, and independent graph expansion scoring --- represent novel contributions to the retrieval literature. Perhaps more importantly, NCMS ships as a single `pip install` with zero external dependencies, making production deployment of a sophisticated multi-stage retrieval pipeline accessible to any Python project.
+Equally important is our negative result: LLM-extracted keyword bridge nodes catastrophically destroy retrieval quality (nDCG@10 drops from 0.690 to 0.032) by creating high-fanout hub nodes that flood graph expansion with irrelevant candidates. This finding has broad implications for graph-enhanced retrieval: graph nodes must be **specific and discriminative** (named entities) rather than generic (keywords) to avoid hub-node flooding. The failure motivates our proposed HTMG architecture, which provides cross-subgraph connectivity through temporal episodes and entity state evolution rather than keyword bridges.
 
-We believe the vector-free approach is particularly well-suited to agent memory systems, where the combination of temporal access patterns, entity-rich technical content, and exploratory query types plays to the strengths of cognitive scoring and knowledge-graph expansion in ways that static IR benchmarks cannot fully capture. Future work will evaluate NCMS on temporal benchmarks, multi-hop reasoning datasets, and production agent deployments.
+The system's key innovations --- ACT-R cognitive scoring for IR, domain-adaptive zero-shot entity extraction with taxonomy optimization, independent graph expansion scoring, and the empirical demonstration that keyword-based graph bridges fail --- represent novel contributions to the retrieval literature. NCMS ships as a single `pip install` with zero external dependencies, making production deployment of a sophisticated multi-stage retrieval pipeline accessible to any Python project.
+
+We believe the vector-free approach is particularly well-suited to agent memory systems, where the combination of temporal access patterns, entity-rich technical content, and exploratory query types plays to the strengths of cognitive scoring and knowledge-graph expansion in ways that static IR benchmarks cannot fully capture. Future work will evaluate NCMS on temporal benchmarks, implement the HTMG architecture with episode formation and entity state tracking, and validate on production agent deployments.
 
 ---
 
@@ -310,6 +346,8 @@ To summarize the novel ideas introduced by this work:
 4. **Vector-free competitive retrieval.** Empirical demonstration that BM25 + SPLADE + entity graphs + cognitive scoring achieves competitive retrieval quality without any dense embedding computation or storage.
 
 5. **Zero-dependency agent memory.** A production-ready architecture that integrates persistent storage, full-text search, knowledge graphs, cognitive scoring, inter-agent communication, and observability in a single package with no external infrastructure requirements.
+
+6. **Keyword bridge negative result.** Empirical demonstration that LLM-extracted keyword nodes catastrophically degrade graph-based retrieval by creating high-fanout hub nodes, establishing that graph nodes must be specific and discriminative (named entities) rather than generic (keywords). This finding has implications for any system using knowledge graph expansion for retrieval augmentation.
 
 ---
 

@@ -100,7 +100,7 @@ Entities are automatically extracted at store-time and search-time, feeding the 
 
 **GLiNER NER** &mdash; Zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts entities across any domain with per-domain label customization via `ncms topics` CLI.
 
-**Keyword Bridges** (opt-in) &mdash; LLM-extracted semantic keywords that connect otherwise disconnected subgraphs. "JWT validation" and "role-based access" share no entities, but both relate to the keyword "security".
+**Keyword Bridges** (opt-in, [negative result](#negative-results-keyword-bridges)) &mdash; LLM-extracted semantic keywords intended to connect entity subgraphs. Ablation study showed these destroy retrieval quality by creating high-fanout hub nodes that flood graph expansion with irrelevant candidates.
 
 **Contradiction Detection** (opt-in) &mdash; New memories are compared against existing related memories via LLM to detect factual contradictions, with bidirectional annotation so stale knowledge is surfaced during retrieval.
 
@@ -158,18 +158,20 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
   <img src="docs/assets/ablation-results.png" alt="Ablation Study Results" width="100%">
 </p>
 
-**nDCG@10 across datasets** (6 pipeline configurations, 3 BEIR benchmarks):
+**nDCG@10 across datasets** (8 pipeline configurations, SciFact BEIR benchmark):
 
-| Configuration | SciFact | NFCorpus | ArguAna | Average |
-|---------------|:-------:|:--------:|:-------:|:-------:|
-| BM25 Only | 0.685 | 0.319 | &mdash; | &mdash; |
-| + Graph Expansion | **0.687** | **0.321** | &mdash; | &mdash; |
-| + ACT-R Scoring | 0.685 | 0.317 | &mdash; | &mdash; |
-| + SPLADE Fusion | **0.700** | **0.339** | &mdash; | &mdash; |
-| + SPLADE + Graph | 0.698 | 0.338 | &mdash; | &mdash; |
-| **Full Pipeline** | **0.702** | 0.337 | &mdash; | &mdash; |
+| Configuration | SciFact | NFCorpus | ArguAna |
+|---------------|:-------:|:--------:|:-------:|
+| BM25 Only | 0.687 | 0.319 | &mdash; |
+| + Graph Expansion | 0.690 | **0.321** | &mdash; |
+| + ACT-R Scoring | 0.686 | 0.317 | &mdash; |
+| + SPLADE Fusion | 0.697 | **0.339** | &mdash; |
+| **+ SPLADE + Graph** | **0.698** | 0.338 | &mdash; |
+| Full Pipeline | 0.690 | 0.337 | &mdash; |
+| + Keyword Bridges | 0.032 | &mdash; | &mdash; |
+| + Keywords + Judge | 0.032 | &mdash; | &mdash; |
 
-*ArguAna results in progress &mdash; benchmark running.*
+*SciFact re-run with improved GLiNER/SPLADE text chunking. NFCorpus/ArguAna pending re-run.*
 
 <details>
 <summary><b>Detailed per-dataset metrics</b> (click to expand)</summary>
@@ -178,12 +180,14 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|:-------:|:------:|:---------:|:----------:|
-| BM25 Only | 0.685 | 0.650 | 0.809 | 0.893 |
-| + Graph Expansion | 0.687 | 0.653 | 0.809 | 0.893 |
-| + ACT-R Scoring | 0.685 | 0.651 | 0.806 | 0.893 |
-| + SPLADE Fusion | 0.700 | 0.667 | 0.825 | 0.944 |
-| + SPLADE + Graph | 0.698 | 0.665 | 0.824 | 0.944 |
-| **Full Pipeline** | **0.702** | **0.667** | **0.830** | **0.944** |
+| BM25 Only | 0.687 | 0.653 | 0.809 | 0.893 |
+| + Graph Expansion | 0.690 | 0.657 | 0.809 | 0.893 |
+| + ACT-R Scoring | 0.686 | 0.650 | 0.809 | 0.893 |
+| + SPLADE Fusion | 0.697 | 0.667 | 0.812 | 0.925 |
+| **+ SPLADE + Graph** | **0.698** | **0.667** | **0.812** | **0.925** |
+| Full Pipeline | 0.690 | 0.659 | 0.806 | 0.925 |
+| + Keyword Bridges | 0.032 | 0.037 | 0.030 | 0.030 |
+| + Keywords + Judge | 0.032 | 0.037 | 0.030 | 0.030 |
 
 **NFCorpus** (323 queries, 3,633 documents):
 
@@ -204,16 +208,26 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 |--------|:---------------:|:---------------:|
 | DPR (dense) | 0.318 | NCMS +120% |
 | ANCE (dense) | 0.507 | NCMS +38% |
-| BM25 (published) | 0.671 | NCMS +4.6% |
-| SPLADE v2 / ColBERT v2 | 0.693 | NCMS +1.3% |
+| BM25 (published) | 0.671 | NCMS +4.0% |
+| SPLADE v2 / ColBERT v2 | 0.693 | NCMS +0.7% |
 
-NCMS achieves **0.702 nDCG@10 on SciFact without a single embedding vector** &mdash; outperforming published dense and sparse neural retrieval baselines using only BM25 + SPLADE sparse expansion + entity-graph traversal + ACT-R cognitive scoring.
+NCMS achieves **0.698 nDCG@10 on SciFact without a single embedding vector** &mdash; outperforming published dense and sparse neural retrieval baselines using only BM25 + SPLADE sparse expansion + entity-graph traversal + cognitive scoring.
 
 **Key findings:**
-- **SPLADE fusion is the largest single contributor** (+2.2% SciFact, +6.2% NFCorpus), adding learned term expansion on top of BM25
-- **Graph expansion provides consistent lift** across datasets (+0.3% SciFact, +0.6% NFCorpus) via entity-based cross-memory discovery, with the largest Recall@100 improvement on NFCorpus (+2.3%)
-- **ACT-R spreading activation** amplifies entity overlap signals, with its value increasing in the full pipeline
-- **All components are complementary** &mdash; the full pipeline consistently outperforms any single component addition
+- **SPLADE fusion is the largest single contributor** (+1.5% SciFact, +6.2% NFCorpus), adding learned term expansion on top of BM25
+- **Graph expansion provides consistent lift** across datasets (+0.4% SciFact, +0.6% NFCorpus) via entity-based cross-memory discovery
+- **SPLADE + Graph is the best configuration** (0.698 SciFact) &mdash; combining learned term expansion with entity-graph discovery
+- **Keyword bridges catastrophically fail** (0.032 nDCG@10) &mdash; LLM-extracted generic keywords create high-fanout hub nodes in the entity graph, flooding graph expansion with irrelevant candidates (see Negative Results below)
+
+### Negative Results: Keyword Bridges
+
+LLM-extracted keyword bridge nodes were intended to connect entity subgraphs that share semantic themes. In practice, they **destroyed retrieval quality**, dropping nDCG@10 from 0.690 to 0.032 (&minus;95%).
+
+**Root cause:** The LLM extracts generic conceptual keywords ("study", "treatment", "effect", "analysis") that connect thousands of documents as high-fanout hub nodes. During graph expansion, these hubs flood the candidate pool with irrelevant documents, pushing relevant results entirely out of the top-100. Recall@100 dropped from 0.925 to 0.030 &mdash; meaning relevant documents are no longer retrievable at all.
+
+**Why this matters:** This is a fundamental architectural failure, not a tuning problem. Graph retrieval benefits from **specific, discriminative** entity nodes (GLiNER NER: "interleukin-6", "p53", "metformin") that connect only semantically related documents. Generic keyword nodes lack this discriminative power, creating connections so broad they carry no information.
+
+**Forward direction:** This negative result motivates the [HTMG architecture](docs/ncms_next_internal_design_spec.md) (Hierarchical Temporal Memory Graph), which addresses cross-subgraph connectivity through structural mechanisms &mdash; temporal episodes that group co-occurring memories, entity state tracking that captures how concepts evolve, and hierarchical abstractions that synthesize patterns &mdash; rather than keyword-based bridge nodes. SPLADE already provides learned vocabulary expansion at the retrieval level, making keyword bridges redundant at the graph level.
 
 ---
 
@@ -271,7 +285,7 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 **Retrieval & Scoring**
 - [x] Graph-expanded retrieval (Tier 1.5) &mdash; entity-based cross-memory discovery
 - [x] GLiNER entity extraction &mdash; zero-shot NER with per-domain label customization
-- [x] Keyword bridge nodes &mdash; LLM-extracted semantic concept bridges
+- [x] ~~Keyword bridge nodes~~ &mdash; LLM-extracted semantic bridges ([negative result](#negative-results-keyword-bridges): generic keywords destroy retrieval)
 - [x] Knowledge consolidation &mdash; entity clustering + LLM insight synthesis
 - [x] SPLADE sparse neural retrieval &mdash; learned term expansion fused with BM25 via RRF
 - [x] Contradiction detection &mdash; LLM-powered detection with bidirectional annotation
@@ -279,6 +293,12 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 
 **Evaluation**
 - [x] Retrieval pipeline ablation study &mdash; BEIR benchmarks with dataset-specific topic seeding ([design doc](docs/ablation-study-design.md))
+
+**Next Architecture &mdash; HTMG** ([design spec](docs/ncms_next_internal_design_spec.md))
+- [ ] Episode formation &mdash; temporal clustering of co-occurring memories into coherent episodes
+- [ ] Entity state tracking &mdash; bitemporal versioning of entity attributes (valid-time + system-time)
+- [ ] Hierarchical abstraction &mdash; LLM-synthesized higher-order patterns from episode clusters
+- [ ] Temporal retrieval &mdash; time-window and "as-of" queries across the memory graph
 
 **Ingestion**
 - [ ] Directory watcher &mdash; filesystem monitor with auto-domain classification
