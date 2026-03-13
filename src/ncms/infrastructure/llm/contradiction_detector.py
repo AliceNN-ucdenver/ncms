@@ -10,11 +10,10 @@ enable via config.contradiction_detection_enabled = True.
 
 from __future__ import annotations
 
-import json
 import logging
 
 from ncms.domain.models import Memory
-from ncms.infrastructure.llm.json_utils import parse_llm_json
+from ncms.infrastructure.llm.caller import call_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -51,41 +50,16 @@ async def detect_contradictions(
         return []
 
     try:
-        import litellm
-
         existing_text = "\n".join(
             f"- [{m.id}]: {m.content[:2000]}" for m in existing_memories
         )
 
-        kwargs: dict = dict(
-            model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": CONTRADICTION_PROMPT.format(
-                        new_content=new_memory.content[:8000],
-                        existing_memories=existing_text,
-                    ),
-                }
-            ],
-            temperature=0.0,
-            max_tokens=500,
+        prompt = CONTRADICTION_PROMPT.format(
+            new_content=new_memory.content[:8000],
+            existing_memories=existing_text,
         )
-        if api_base:
-            kwargs["api_base"] = api_base
-        # Disable thinking mode for reasoning models
-        if model.startswith("ollama"):
-            kwargs["think"] = False
-        elif any(name in model.lower() for name in ("nemotron", "qwen")):
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
-        response = await litellm.acompletion(**kwargs)
-
-        raw = response.choices[0].message.content  # type: ignore[union-attr]
-        if not raw:
-            return []
-
-        contradictions = parse_llm_json(raw)
+        contradictions = await call_llm_json(prompt, model=model, api_base=api_base)
         if not isinstance(contradictions, list):
             return []
 
@@ -110,11 +84,6 @@ async def detect_contradictions(
 
         return results
 
-    except json.JSONDecodeError:
-        logger.warning(
-            "Contradiction detection JSON parse failed, raw=%s", raw[:500], exc_info=True
-        )
-        return []
     except Exception:
         logger.warning(
             "Contradiction detection failed, returning empty list", exc_info=True

@@ -9,10 +9,9 @@ Uses litellm for universal LLM backend support.
 
 from __future__ import annotations
 
-import json
 import logging
 
-from ncms.infrastructure.llm.json_utils import parse_llm_json
+from ncms.infrastructure.llm.caller import call_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -46,39 +45,14 @@ async def detect_labels(
         return []
 
     try:
-        import litellm
-
         samples_text = "\n---\n".join(t[:500] for t in sample_texts[:10])
 
-        kwargs: dict = dict(
-            model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": LABEL_DETECTION_PROMPT.format(
-                        domain=domain,
-                        samples=samples_text,
-                    ),
-                }
-            ],
-            temperature=0.0,
-            max_tokens=300,
+        prompt = LABEL_DETECTION_PROMPT.format(
+            domain=domain,
+            samples=samples_text,
         )
-        if api_base:
-            kwargs["api_base"] = api_base
-        # Disable thinking mode for reasoning models
-        if model.startswith("ollama"):
-            kwargs["think"] = False
-        elif any(name in model.lower() for name in ("nemotron", "qwen")):
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
-        response = await litellm.acompletion(**kwargs)
-
-        raw = response.choices[0].message.content  # type: ignore[union-attr]
-        if not raw:
-            return []
-
-        labels = parse_llm_json(raw)
+        labels = await call_llm_json(prompt, model=model, api_base=api_base, max_tokens=300)
         if not isinstance(labels, list):
             return []
 
@@ -89,9 +63,6 @@ async def detect_labels(
             if isinstance(lbl, str) and 1 <= len(str(lbl).strip()) <= 50
         ][:15]
 
-    except json.JSONDecodeError:
-        logger.warning("Label detection JSON parse failed, raw=%s", raw[:500], exc_info=True)
-        return []
     except Exception:
         logger.warning("Label detection failed, returning empty list", exc_info=True)
         return []

@@ -27,6 +27,7 @@ from ncms.domain.scoring import (
     spreading_activation,
     total_activation,
 )
+from ncms.infrastructure.observability.event_log import NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ class MemoryService:
         self._index = index
         self._graph = graph
         self._config = config or NCMSConfig()
-        # Optional EventLog for dashboard observability (duck-typed to avoid import)
-        self._event_log = event_log
+        # EventLog for dashboard observability (NullEventLog discards events silently)
+        self._event_log = event_log or NullEventLog()
         # Optional SPLADE engine for sparse neural retrieval (duck-typed)
         self._splade = splade
 
@@ -99,12 +100,11 @@ class MemoryService:
             stage: str, duration_ms: float, data: dict | None = None,
             memory_id: str | None = None,
         ) -> None:
-            if self._event_log:
-                self._event_log.pipeline_stage(
-                    pipeline_id=pipeline_id, pipeline_type="store", stage=stage,
-                    duration_ms=duration_ms, data=data,
-                    agent_id=source_agent, memory_id=memory_id,
-                )
+            self._event_log.pipeline_stage(
+                pipeline_id=pipeline_id, pipeline_type="store", stage=stage,
+                duration_ms=duration_ms, data=data,
+                agent_id=source_agent, memory_id=memory_id,
+            )
 
         _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
 
@@ -292,15 +292,14 @@ class MemoryService:
         }, memory_id=memory.id)
 
         logger.info("Stored memory %s: %s", memory.id, content[:80])
-        if self._event_log:
-            self._event_log.memory_stored(
-                memory_id=memory.id,
-                content_preview=content,
-                memory_type=memory_type,
-                domains=memory.domains,
-                entity_count=len(all_entities),
-                agent_id=source_agent,
-            )
+        self._event_log.memory_stored(
+            memory_id=memory.id,
+            content_preview=content,
+            memory_type=memory_type,
+            domains=memory.domains,
+            entity_count=len(all_entities),
+            agent_id=source_agent,
+        )
         return memory
 
     # ── Search ───────────────────────────────────────────────────────────
@@ -319,11 +318,10 @@ class MemoryService:
         def _emit_stage(
             stage: str, duration_ms: float, data: dict | None = None,
         ) -> None:
-            if self._event_log:
-                self._event_log.pipeline_stage(
-                    pipeline_id=pipeline_id, pipeline_type="search", stage=stage,
-                    duration_ms=duration_ms, data=data, agent_id=agent_id,
-                )
+            self._event_log.pipeline_stage(
+                pipeline_id=pipeline_id, pipeline_type="search", stage=stage,
+                duration_ms=duration_ms, data=data, agent_id=agent_id,
+            )
 
         _emit_stage("start", 0.0, {"query": query[:200], "domain": domain, "limit": limit})
 
@@ -606,13 +604,12 @@ class MemoryService:
             "total_duration_ms": round(total_ms, 2),
         })
 
-        if self._event_log:
-            self._event_log.memory_searched(
-                query=query,
-                result_count=len(results),
-                top_score=results[0].total_activation if results else None,
-                agent_id=agent_id,
-            )
+        self._event_log.memory_searched(
+            query=query,
+            result_count=len(results),
+            top_score=results[0].total_activation if results else None,
+            agent_id=agent_id,
+        )
         return results
 
     async def _load_candidate_previews(

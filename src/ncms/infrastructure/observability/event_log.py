@@ -37,6 +37,23 @@ class DashboardEvent:
         return f"id: {self.id}\nevent: {self.type}\ndata: {payload}\n\n"
 
 
+class NullEventLog:
+    """No-op event log that silently discards all events.
+
+    Drop-in replacement for :class:`EventLog` when dashboard observability
+    is not needed.  Eliminates ``if self._event_log:`` null checks in
+    application services — callers can always call methods unconditionally.
+    """
+
+    def __getattr__(self, name: str) -> object:
+        """Return a no-op callable for any method."""
+        return _noop
+
+
+def _noop(*args: object, **kwargs: object) -> None:
+    """Shared no-op function for NullEventLog method calls."""
+
+
 class EventLog:
     """Ring buffer event log with async subscriber support.
 

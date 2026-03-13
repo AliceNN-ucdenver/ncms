@@ -38,7 +38,7 @@ uv run mypy src/                 # Type check
 uv sync --group bench                                         # Install benchmark deps
 uv run python -m benchmarks.run_ablation                      # Full ablation (~2h)
 uv run python -m benchmarks.run_ablation --datasets scifact   # Single dataset (~30min)
-uv run python -m benchmarks.run_ablation --llm-model ollama_chat/qwen3.5:35b-a3b  # + LLM configs
+uv run python -m benchmarks.run_ablation --datasets scifact nfcorpus  # Multiple datasets
 uv run ruff check benchmarks/                                 # Lint benchmark code
 ```
 
@@ -66,13 +66,15 @@ src/ncms/
 │   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
-│   ├── llm/json_utils.py        # Shared LLM JSON output parsing
+│   ├── llm/caller.py            # Shared LLM calling utility (litellm + thinking mode)
+│   ├── llm/json_utils.py        # Shared LLM JSON output parsing + repair
 │   ├── llm/contradiction_detector.py # LLM contradiction detection at ingest
+│   ├── text/chunking.py         # Sentence-boundary text chunking (shared by GLiNER + SPLADE)
 │   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (required dependency)
 │   ├── extraction/label_detector.py   # LLM-based domain label detection
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
-│   └── observability/event_log.py # Ring buffer event log + SSE subscriber support
+│   └── observability/event_log.py # Ring buffer event log + NullEventLog + SSE subscribers
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
 │   ├── mcp/tools.py            # 10 MCP tools
@@ -86,7 +88,7 @@ src/ncms/
 │   └── agent/base.py           # KnowledgeAgent ABC (start/sleep/wake/shutdown)
 └── demo/             # Interactive demo
     ├── run_demo.py              # 6-phase demo orchestrator (Rich terminal output)
-    └── agents/                  # api_agent.py, frontend_agent.py, database_agent.py
+    └── agents/                  # base_demo.py + api_agent.py, frontend_agent.py, database_agent.py
 ```
 
 ## Key Design Decisions

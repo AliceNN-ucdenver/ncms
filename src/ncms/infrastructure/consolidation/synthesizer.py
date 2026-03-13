@@ -8,11 +8,10 @@ Disabled by default; enable via config.consolidation_knowledge_enabled = True.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING
 
-from ncms.infrastructure.llm.json_utils import parse_llm_json
+from ncms.infrastructure.llm.caller import call_llm_json
 
 if TYPE_CHECKING:
     from ncms.infrastructure.consolidation.clusterer import MemoryCluster
@@ -56,8 +55,6 @@ async def synthesize_insight(
         return None
 
     try:
-        import litellm
-
         # Format memories for the prompt (truncate each to 2000 chars)
         memories_text = "\n".join(
             f"- [{m.id[:8]}] ({', '.join(m.domains) or 'general'}): {m.content[:2000]}"
@@ -66,36 +63,13 @@ async def synthesize_insight(
         shared_text = ", ".join(sorted(cluster.shared_entity_ids)[:15]) or "none"
         domains_text = ", ".join(sorted(cluster.domains)) or "general"
 
-        kwargs: dict = dict(
-            model=model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": CONSOLIDATION_PROMPT.format(
-                        memories=memories_text,
-                        shared_entities=shared_text,
-                        domains=domains_text,
-                    ),
-                }
-            ],
-            temperature=0.0,
-            max_tokens=500,
+        prompt = CONSOLIDATION_PROMPT.format(
+            memories=memories_text,
+            shared_entities=shared_text,
+            domains=domains_text,
         )
-        if api_base:
-            kwargs["api_base"] = api_base
-        # Disable thinking mode for reasoning models
-        if model.startswith("ollama"):
-            kwargs["think"] = False
-        elif any(name in model.lower() for name in ("nemotron", "qwen")):
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
-        response = await litellm.acompletion(**kwargs)
-
-        raw = response.choices[0].message.content  # type: ignore[union-attr]
-        if not raw:
-            return None
-
-        result = parse_llm_json(raw)
+        result = await call_llm_json(prompt, model=model, api_base=api_base)
         if not isinstance(result, dict) or "insight" not in result:
             return None
 
@@ -107,9 +81,6 @@ async def synthesize_insight(
             "key_entities": list(result.get("key_entities", [])),
         }
 
-    except json.JSONDecodeError:
-        logger.warning("Insight synthesis JSON parse failed, raw=%s", raw[:500], exc_info=True)
-        return None
     except Exception:
         logger.warning("Insight synthesis failed, returning None", exc_info=True)
         return None

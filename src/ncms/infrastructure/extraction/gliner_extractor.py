@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 
 from ncms.domain.entity_extraction import MAX_ENTITIES, UNIVERSAL_LABELS
+from ncms.infrastructure.text.chunking import chunk_text
 
 logger = logging.getLogger(__name__)
 
@@ -28,51 +29,6 @@ _model_name: str | None = None
 # and label encoding.
 _CHUNK_MAX_CHARS: int = 1200
 _CHUNK_OVERLAP: int = 100
-
-# Sentence-ending delimiters ordered by preference (longest context first)
-_SENTENCE_SEPS: tuple[str, ...] = (". ", ".\n", "? ", "! ", "\n\n", "\n")
-
-
-def _chunk_text(
-    text: str,
-    max_chars: int = _CHUNK_MAX_CHARS,
-    overlap: int = _CHUNK_OVERLAP,
-) -> list[str]:
-    """Split *text* into chunks that fit GLiNER's 384-token window.
-
-    Splitting happens at sentence boundaries when possible, falling back to
-    word boundaries and finally hard character cuts.  An *overlap* of
-    characters between consecutive chunks ensures entities near boundaries
-    are not missed.
-    """
-    if len(text) <= max_chars:
-        return [text]
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = start + max_chars
-        if end >= len(text):
-            chunks.append(text[start:])
-            break
-
-        # Find last sentence boundary before max_chars
-        boundary = -1
-        for sep in _SENTENCE_SEPS:
-            pos = text.rfind(sep, start, end)
-            if pos > boundary:
-                boundary = pos + len(sep)
-
-        if boundary <= start:
-            # No sentence boundary — fall back to word boundary
-            boundary = text.rfind(" ", start, end)
-            if boundary <= start:
-                boundary = end  # Last resort: hard cut
-
-        chunks.append(text[start:boundary])
-        start = max(start + 1, boundary - overlap)
-
-    return chunks
 
 
 def _get_model(model_name: str, cache_dir: str | None = None) -> object:
@@ -134,7 +90,7 @@ def extract_entities_gliner(
     extraction_labels = labels or UNIVERSAL_LABELS
 
     # Chunk long text so each piece fits GLiNER's 384-token window
-    chunks = _chunk_text(text)
+    chunks = chunk_text(text, max_chars=_CHUNK_MAX_CHARS, overlap=_CHUNK_OVERLAP)
 
     # Dedup by lowercase name across all chunks, first occurrence wins
     seen: set[str] = set()

@@ -19,6 +19,7 @@ from ncms.domain.models import (
     SubscriptionFilter,
 )
 from ncms.domain.protocols import KnowledgeBusTransport
+from ncms.infrastructure.observability.event_log import NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class BusService:
         self._bus = bus
         self._snapshot = snapshot_service
         self._surrogate_enabled = surrogate_enabled
-        self._event_log = event_log
+        self._event_log = event_log or NullEventLog()
 
     @property
     def bus(self) -> KnowledgeBusTransport:
@@ -126,14 +127,13 @@ class BusService:
                             ask.ask_id,
                             agent.agent_id,
                         )
-                        if self._event_log:
-                            self._event_log.bus_surrogate(
-                                ask_id=ask.ask_id,
-                                from_agent=agent.agent_id,
-                                confidence=response.confidence,
-                                snapshot_age_seconds=response.snapshot_age_seconds,
-                                answer=response.knowledge.content,
-                            )
+                        self._event_log.bus_surrogate(
+                            ask_id=ask.ask_id,
+                            from_agent=agent.agent_id,
+                            confidence=response.confidence,
+                            snapshot_age_seconds=response.snapshot_age_seconds,
+                            answer=response.knowledge.content,
+                        )
                         return response
                     tried_agents.add(agent.agent_id)
 
@@ -154,14 +154,13 @@ class BusService:
                         ask.ask_id,
                         snapshot.agent_id,
                     )
-                    if self._event_log:
-                        self._event_log.bus_surrogate(
-                            ask_id=ask.ask_id,
-                            from_agent=snapshot.agent_id,
-                            confidence=response.confidence,
-                            snapshot_age_seconds=response.snapshot_age_seconds,
-                            answer=response.knowledge.content,
-                        )
+                    self._event_log.bus_surrogate(
+                        ask_id=ask.ask_id,
+                        from_agent=snapshot.agent_id,
+                        confidence=response.confidence,
+                        snapshot_age_seconds=response.snapshot_age_seconds,
+                        answer=response.knowledge.content,
+                    )
                     return response
                 tried_agents.add(snapshot.agent_id)
 

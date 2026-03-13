@@ -18,6 +18,7 @@ import logging
 from dataclasses import dataclass, field
 
 from ncms.domain.models import Memory
+from ncms.infrastructure.text.chunking import chunk_text
 
 logger = logging.getLogger(__name__)
 
@@ -25,46 +26,6 @@ logger = logging.getLogger(__name__)
 # character budget is ~400 chars, leaving headroom for special tokens.
 _SPLADE_CHUNK_MAX_CHARS: int = 400
 _SPLADE_CHUNK_OVERLAP: int = 50
-
-# Sentence-ending delimiters ordered by preference
-_SENTENCE_SEPS: tuple[str, ...] = (". ", ".\n", "? ", "! ", "\n\n", "\n")
-
-
-def _chunk_text(
-    text: str,
-    max_chars: int = _SPLADE_CHUNK_MAX_CHARS,
-    overlap: int = _SPLADE_CHUNK_OVERLAP,
-) -> list[str]:
-    """Split *text* into chunks that fit SPLADE's 128-token window.
-
-    Uses the same sentence-boundary strategy as GLiNER chunking.
-    """
-    if len(text) <= max_chars:
-        return [text]
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = start + max_chars
-        if end >= len(text):
-            chunks.append(text[start:])
-            break
-
-        boundary = -1
-        for sep in _SENTENCE_SEPS:
-            pos = text.rfind(sep, start, end)
-            if pos > boundary:
-                boundary = pos + len(sep)
-
-        if boundary <= start:
-            boundary = text.rfind(" ", start, end)
-            if boundary <= start:
-                boundary = end
-
-        chunks.append(text[start:boundary])
-        start = max(start + 1, boundary - overlap)
-
-    return chunks
 
 
 @dataclass
@@ -108,7 +69,7 @@ class SpladeEngine:
 
     def _embed_chunked(self, text: str) -> SparseVector:
         """Encode text with chunking, merging via max-pool per vocab index."""
-        chunks = _chunk_text(text)
+        chunks = chunk_text(text, max_chars=_SPLADE_CHUNK_MAX_CHARS, overlap=_SPLADE_CHUNK_OVERLAP)
 
         if len(chunks) == 1:
             embeddings = list(self._model.embed(chunks, batch_size=1))  # type: ignore[union-attr]
