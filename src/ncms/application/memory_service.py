@@ -19,6 +19,7 @@ from ncms.domain.models import (
     Relationship,
     ScoredMemory,
 )
+from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
@@ -26,9 +27,6 @@ from ncms.domain.scoring import (
     spreading_activation,
     total_activation,
 )
-from ncms.infrastructure.graph.networkx_store import NetworkXGraph
-from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
-from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +36,9 @@ class MemoryService:
 
     def __init__(
         self,
-        store: SQLiteStore,
-        index: TantivyEngine,
-        graph: NetworkXGraph,
+        store: MemoryStore,
+        index: IndexEngine,
+        graph: GraphEngine,
         config: NCMSConfig | None = None,
         event_log: object | None = None,
         splade: object | None = None,
@@ -55,11 +53,11 @@ class MemoryService:
         self._splade = splade
 
     @property
-    def store(self) -> SQLiteStore:
+    def store(self) -> MemoryStore:
         return self._store
 
     @property
-    def graph(self) -> NetworkXGraph:
+    def graph(self) -> GraphEngine:
         return self._graph
 
     async def _get_cached_labels(self, domains: list[str]) -> dict[str, list[str]]:
@@ -792,8 +790,7 @@ class MemoryService:
     # ── Stats ────────────────────────────────────────────────────────────
 
     async def memory_count(self) -> int:
-        memories = await self._store.list_memories(limit=100000)
-        return len(memories)
+        return await self._store.count_memories()
 
     def entity_count(self) -> int:
         return self._graph.entity_count()

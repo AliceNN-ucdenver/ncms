@@ -166,12 +166,12 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval threshold |
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Bus ask timeout |
-| `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge tier |
-| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for judge |
+| `NCMS_LLM_JUDGE_ENABLED` | `false` | **Deprecated** — LLM-as-judge tier (replaced by Dream Cycle) |
+| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for judge/contradiction detection |
 | `NCMS_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
-| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
-| `NCMS_KEYWORD_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for keywords |
-| `NCMS_KEYWORD_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | **Deprecated** — keyword bridges (negative result: destroys retrieval) |
+| `NCMS_KEYWORD_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | **Deprecated** — LLM model for keywords |
+| `NCMS_KEYWORD_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | **Deprecated** — vLLM endpoint for keywords |
 | `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
 | `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (required dep) |
 | `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
@@ -207,21 +207,17 @@ NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true \
 NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
 
-# Keywords
-NCMS_KEYWORD_BRIDGE_ENABLED=true \
-NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
-uv run ncms demo
-
 # Contradiction Detection
 NCMS_CONTRADICTION_DETECTION_ENABLED=true \
 NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
 uv run ncms demo
-
-# LLM Judge (Tier 3)
-NCMS_LLM_JUDGE_ENABLED=true \
-NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
-uv run ncms demo
 ```
+
+> **Deprecated LLM features (negative results / superseded by Dream Cycle):**
+> Keyword bridges (`NCMS_KEYWORD_BRIDGE_ENABLED`) and LLM-as-judge (`NCMS_LLM_JUDGE_ENABLED`)
+> are retained in config for backward compatibility but should not be enabled.
+> Keyword bridges destroy retrieval quality (nDCG@10 drops -95%).
+> LLM-as-judge is superseded by Dream Cycle's learned activation scores.
 
 **Ollama model prefix:** Use `ollama_chat/` prefix with litellm (no api_base needed).
 Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
@@ -245,11 +241,11 @@ docker run -d --gpus all --ipc=host --restart unless-stopped \
 Enable LLM features via Spark:
 
 ```bash
-# Keywords + Judge via DGX Spark
-NCMS_KEYWORD_BRIDGE_ENABLED=true \
-NCMS_KEYWORD_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
-NCMS_KEYWORD_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
-NCMS_LLM_JUDGE_ENABLED=true \
+# Consolidation + Contradiction Detection via DGX Spark
+NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true \
+NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE=http://spark-ee7d.local:8000/v1 \
+NCMS_CONTRADICTION_DETECTION_ENABLED=true \
 NCMS_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
 NCMS_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
 uv run ncms demo

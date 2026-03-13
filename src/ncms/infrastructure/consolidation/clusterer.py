@@ -12,7 +12,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from ncms.domain.models import Memory
-from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+from ncms.domain.protocols import GraphEngine
 
 
 @dataclass
@@ -26,7 +26,7 @@ class MemoryCluster:
 
 def find_entity_clusters(
     memories: list[Memory],
-    graph: NetworkXGraph,
+    graph: GraphEngine,
     min_cluster_size: int = 3,
 ) -> list[MemoryCluster]:
     """Group memories by entity co-occurrence in the knowledge graph.

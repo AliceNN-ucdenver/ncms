@@ -304,13 +304,13 @@ All settings via environment variables with `NCMS_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NCMS_LLM_JUDGE_ENABLED` | `false` | Enable LLM-as-judge reranking |
-| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM-as-judge |
+| `NCMS_LLM_JUDGE_ENABLED` | `false` | **Deprecated** — LLM-as-judge reranking (superseded by Dream Cycle) |
+| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for LLM judge/contradiction detection |
 | `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
-| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | Enable LLM keyword bridge nodes |
-| `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | Max keywords per memory |
-| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | LLM model for keyword extraction |
-| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_KEYWORD_BRIDGE_ENABLED` | `false` | **Deprecated** — keyword bridges ([negative result](../README.md#negative-results-keyword-bridges)) |
+| `NCMS_KEYWORD_MAX_PER_MEMORY` | `8` | **Deprecated** — max keywords per memory |
+| `NCMS_KEYWORD_LLM_MODEL` | `gpt-4o-mini` | **Deprecated** — LLM model for keyword extraction |
+| `NCMS_KEYWORD_LLM_API_BASE` | *(none)* | **Deprecated** — vLLM/OpenAI-compatible endpoint |
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
@@ -335,7 +335,6 @@ ollama pull qwen3.5:35b-a3b    # 35B MoE, 3B active — runs on 32GB+ Mac
 
 ```bash
 export NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
-export NCMS_KEYWORD_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b
 export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=ollama_chat/qwen3.5:35b-a3b
 ```
 
@@ -351,8 +350,6 @@ vllm serve meta-llama/Llama-3.2-3B-Instruct --port 8000
 ```bash
 export NCMS_LLM_API_BASE=http://localhost:8000/v1
 export NCMS_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
-export NCMS_KEYWORD_LLM_API_BASE=http://localhost:8000/v1
-export NCMS_KEYWORD_LLM_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
 export NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE=http://localhost:8000/v1
 export NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=openai/meta-llama/Llama-3.2-3B-Instruct
 ```

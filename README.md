@@ -266,7 +266,7 @@ uv run ncms load file.md --domains arch  # Matrix-style knowledge download
 
 ## GPU-Accelerated LLM Inference
 
-NCMS LLM features (keyword bridges, LLM-as-judge, contradiction detection, knowledge consolidation) can be accelerated with an [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) running [vLLM](https://docs.vllm.ai/) via the [NGC vLLM container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm).
+NCMS LLM features (contradiction detection, knowledge consolidation) can be accelerated with an [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) running [vLLM](https://docs.vllm.ai/) via the [NGC vLLM container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm).
 
 **Deploy Nemotron on DGX Spark:**
 
@@ -285,16 +285,17 @@ docker run -d --gpus all --ipc=host --restart unless-stopped \
 **Point NCMS at the Spark:**
 
 ```bash
-# All LLM features via DGX Spark
+# Contradiction detection + knowledge consolidation via DGX Spark
+NCMS_CONTRADICTION_DETECTION_ENABLED=true \
 NCMS_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
 NCMS_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
-NCMS_KEYWORD_BRIDGE_ENABLED=true \
-NCMS_KEYWORD_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
-NCMS_KEYWORD_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
+NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true \
+NCMS_CONSOLIDATION_KNOWLEDGE_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE=http://spark-ee7d.local:8000/v1 \
 uv run ncms serve
 ```
 
-The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128GB unified memory with room to spare, delivering sub-second keyword extraction &mdash; orders of magnitude faster than CPU-based inference.
+The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128GB unified memory with room to spare, delivering sub-second LLM inference &mdash; orders of magnitude faster than CPU-based inference.
 
 ## Roadmap
 
@@ -331,7 +332,7 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 - [ ] NeMo Agent Toolkit `MemoryEditor`/`MemoryManager` adapter
 
 **Infrastructure**
-- [x] DGX Spark + vLLM serving &mdash; GPU-accelerated LLM inference for keyword bridges, judge, and consolidation
+- [x] DGX Spark + vLLM serving &mdash; GPU-accelerated LLM inference for contradiction detection and consolidation
 - [ ] Neo4j / FalkorDB graph backend for production-scale knowledge graphs
 - [ ] Docker container with Helm charts (NIM-compatible packaging)
 

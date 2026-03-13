@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from ncms.domain.models import Entity
-from ncms.infrastructure.graph.networkx_store import NetworkXGraph
-from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from ncms.domain.protocols import GraphEngine, MemoryStore
 
 
 class GraphService:
     """Higher-level operations on the knowledge graph."""
 
-    def __init__(self, store: SQLiteStore, graph: NetworkXGraph):
+    def __init__(self, store: MemoryStore, graph: GraphEngine):
         self._store = store
         self._graph = graph
 

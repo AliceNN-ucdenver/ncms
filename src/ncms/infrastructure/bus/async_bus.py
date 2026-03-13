@@ -150,7 +150,7 @@ class AsyncKnowledgeBus:
 
     # ── Ask Handling ─────────────────────────────────────────────────────
 
-    def set_ask_handler(self, agent_id: str, handler: AskHandler) -> None:  # type: ignore[override]
+    def set_ask_handler(self, agent_id: str, handler: AskHandler) -> None:
         self._ask_handlers[agent_id] = handler
 
     async def ask(self, ask: KnowledgeAsk) -> str:

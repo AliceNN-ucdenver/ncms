@@ -12,10 +12,8 @@ from datetime import UTC, datetime
 
 from ncms.config import NCMSConfig
 from ncms.domain.models import AccessRecord, Memory
+from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import base_level_activation
-from ncms.infrastructure.graph.networkx_store import NetworkXGraph
-from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
-from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +23,9 @@ class ConsolidationService:
 
     def __init__(
         self,
-        store: SQLiteStore,
-        index: TantivyEngine | None = None,
-        graph: NetworkXGraph | None = None,
+        store: MemoryStore,
+        index: IndexEngine | None = None,
+        graph: GraphEngine | None = None,
         config: NCMSConfig | None = None,
     ):
         self._store = store

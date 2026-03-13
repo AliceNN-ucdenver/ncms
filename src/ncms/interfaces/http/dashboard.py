@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -22,7 +22,9 @@ from starlette.routing import Route
 
 from ncms.application.bus_service import BusService
 from ncms.application.memory_service import MemoryService
+from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.observability.event_log import EventLog
+from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,7 @@ def create_dashboard_app(
         if not entity:
             return JSONResponse({"error": "Entity not found"}, status_code=404)
 
-        graph = memory_service.graph
+        graph = cast(NetworkXGraph, memory_service.graph)
 
         # Connected memories (via graph._entity_memories)
         mem_ids = graph._entity_memories.get(entity_id, set())
@@ -164,7 +166,7 @@ def create_dashboard_app(
 
     async def api_graph(request: Request) -> JSONResponse:
         """Return graph data for D3 force-directed visualization."""
-        graph = memory_service.graph
+        graph = cast(NetworkXGraph, memory_service.graph)
         nodes: list[dict[str, Any]] = []
         links: list[dict[str, Any]] = []
 
@@ -259,7 +261,7 @@ def create_dashboard_app(
 
         from ncms.domain.entity_extraction import UNIVERSAL_LABELS
 
-        store = memory_service._store
+        store = cast(SQLiteStore, memory_service._store)
         # Query all entity_labels:* keys from consolidation_state
         rows = await store.db.execute_fetchall(
             "SELECT key, value FROM consolidation_state"

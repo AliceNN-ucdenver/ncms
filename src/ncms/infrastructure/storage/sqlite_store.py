@@ -125,6 +125,11 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [self._row_to_memory(r) for r in rows]
 
+    async def count_memories(self) -> int:
+        cursor = await self.db.execute("SELECT COUNT(*) FROM memories")
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
     # ── Access Log ───────────────────────────────────────────────────────
 
     async def log_access(self, record: AccessRecord) -> None:
@@ -283,6 +288,17 @@ class SQLiteStore:
     async def delete_snapshot(self, agent_id: str) -> None:
         await self.db.execute("DELETE FROM snapshots WHERE agent_id = ?", (agent_id,))
         await self.db.commit()
+
+    async def get_snapshots_by_domain(self, domain: str) -> list[KnowledgeSnapshot]:
+        """Find snapshots whose domains list contains the given domain."""
+        cursor = await self.db.execute(
+            """SELECT * FROM snapshots
+               WHERE domains LIKE ?
+               ORDER BY timestamp DESC""",
+            (f'%"{domain}"%',),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_snapshot(row) for row in rows]
 
     # ── Consolidation State ──────────────────────────────────────────────
 

@@ -16,7 +16,7 @@ from ncms.domain.models import (
     KnowledgeSnapshot,
     SnapshotEntry,
 )
-from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from ncms.domain.protocols import MemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def _normalize_terms(text: str) -> set[str]:
 class SnapshotService:
     """Manages Knowledge Snapshots for surrogate response."""
 
-    def __init__(self, store: SQLiteStore, max_entries: int = 50, ttl_hours: int = 168):
+    def __init__(self, store: MemoryStore, max_entries: int = 50, ttl_hours: int = 168):
         self._store = store
         self._max_entries = max_entries
         self._ttl_hours = ttl_hours
@@ -160,6 +160,10 @@ class SnapshotService:
             if age_seconds > 3600
             else None,
         )
+
+    async def get_snapshots_by_domain(self, domain: str) -> list[KnowledgeSnapshot]:
+        """Find snapshots whose domains include the given domain."""
+        return await self._store.get_snapshots_by_domain(domain)
 
     async def delete_snapshot(self, agent_id: str) -> None:
         await self._store.delete_snapshot(agent_id)

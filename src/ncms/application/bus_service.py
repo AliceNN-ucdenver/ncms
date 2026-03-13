@@ -18,7 +18,7 @@ from ncms.domain.models import (
     KnowledgeResponse,
     SubscriptionFilter,
 )
-from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
+from ncms.domain.protocols import KnowledgeBusTransport
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class BusService:
 
     def __init__(
         self,
-        bus: AsyncKnowledgeBus,
+        bus: KnowledgeBusTransport,
         snapshot_service: SnapshotService,
         surrogate_enabled: bool = True,
         event_log: object | None = None,
@@ -39,7 +39,7 @@ class BusService:
         self._event_log = event_log
 
     @property
-    def bus(self) -> AsyncKnowledgeBus:
+    def bus(self) -> KnowledgeBusTransport:
         return self._bus
 
     # ── Registration ─────────────────────────────────────────────────────
@@ -139,9 +139,31 @@ class BusService:
 
         # Also check snapshots for agents that have fully deregistered
         # (their snapshots persist in storage even after deregistration)
-        for _domain in ask.domains:
-            # We can't enumerate all snapshots by domain easily, so skip for now
-            pass
+        for domain in ask.domains:
+            snapshots = await self._snapshot.get_snapshots_by_domain(domain)
+            for snapshot in snapshots:
+                if snapshot.agent_id in tried_agents:
+                    continue
+                response = await self._snapshot.surrogate_respond(
+                    snapshot.agent_id, ask.question, ask.domains
+                )
+                if response:
+                    response.ask_id = ask.ask_id
+                    logger.info(
+                        "Surrogate response for ask %s from deregistered %s snapshot",
+                        ask.ask_id,
+                        snapshot.agent_id,
+                    )
+                    if self._event_log:
+                        self._event_log.bus_surrogate(
+                            ask_id=ask.ask_id,
+                            from_agent=snapshot.agent_id,
+                            confidence=response.confidence,
+                            snapshot_age_seconds=response.snapshot_age_seconds,
+                            answer=response.knowledge.content,
+                        )
+                    return response
+                tried_agents.add(snapshot.agent_id)
 
         return None
 
