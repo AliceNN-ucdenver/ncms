@@ -11,7 +11,7 @@ NeMo Cognitive Memory System (NCMS) — a Python library providing persistent co
 - **Build backend**: `uv_build` (declared in pyproject.toml)
 - **Linting**: `ruff` (line-length 100, target py312)
 - **Testing**: `pytest` + `pytest-asyncio` (asyncio_mode = "auto")
-- **Type checking**: `mypy` (strict mode)
+- **Type checking**: `mypy` (`mypy_path = src`, `explicit_package_bases = true` — fixes duplicate module resolution)
 
 ## Commands
 
@@ -47,21 +47,22 @@ uv run ruff check benchmarks/                                 # Lint benchmark c
 ```
 src/ncms/
 ├── domain/           # Pure models, protocols, scoring — ZERO infrastructure deps
-│   ├── models.py     # All Pydantic models (Memory, KnowledgeAsk, KnowledgeResponse, etc.)
-│   ├── protocols.py  # Protocol interfaces (MemoryStore, IndexEngine, GraphEngine, etc.)
-│   ├── scoring.py    # ACT-R activation math (pure functions, no I/O)
+│   ├── models.py     # All Pydantic models (Memory, MemoryNode, GraphEdge, EphemeralEntry, etc.)
+│   ├── protocols.py  # Protocol interfaces (MemoryStore, MemoryNodeStore, IndexEngine, etc.)
+│   ├── scoring.py    # ACT-R activation math + admission scoring (pure functions, no I/O)
 │   ├── entity_extraction.py # Entity label constants + label resolution (domain-agnostic)
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
+│   ├── admission_service.py     # Admission scoring: 8-feature extraction + routing (Phase 1)
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
 │   ├── consolidation_service.py # Decay pass + knowledge consolidation
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
-│   ├── storage/sqlite_store.py  # aiosqlite — 7 tables, WAL mode, parameterized SQL
-│   ├── storage/migrations.py    # DDL for schema creation and versioning
+│   ├── storage/sqlite_store.py  # aiosqlite — 10 tables, WAL mode, parameterized SQL
+│   ├── storage/migrations.py    # DDL for schema creation and versioning (V1 base + V2 HTMG)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
 │   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
@@ -98,10 +99,11 @@ src/ncms/
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
 5. **AsyncIO in-process bus** — Zero deps, <1ms latency. Protocol interface allows Redis/NATS swap later.
-6. **Raw SQL via aiosqlite** — 7 tables don't need an ORM. WAL mode for concurrent reads.
+6. **Raw SQL via aiosqlite** — 10 tables don't need an ORM. WAL mode for concurrent reads.
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
+10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming content to discard/ephemeral/atomic/entity-state/episode destinations. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -129,14 +131,15 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 ## Data Flow
 
-1. **Store**: Content → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph)
+1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph)
 2. **Search**: Query → BM25 candidates → SPLADE fusion → graph expansion → ACT-R + graph scoring → ranked results
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
 
-## Database Schema (7 tables)
+## Database Schema (10 tables)
 
+**V1 (base):**
 - `memories` — Core knowledge storage
 - `entities` — Knowledge graph nodes
 - `relationships` — Knowledge graph edges
@@ -144,6 +147,11 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 - `access_log` — Access history for ACT-R base-level computation
 - `snapshots` — Agent knowledge snapshots (JSON entries)
 - `consolidation_state` — Key-value state for maintenance tasks
+
+**V2 (Phase 1 — HTMG + Admission):**
+- `memory_nodes` — Typed HTMG nodes (atomic, entity_state, episode, abstract)
+- `graph_edges` — Typed directed edges in the HTMG
+- `ephemeral_cache` — Short-lived entries below atomic admission threshold
 
 ## Testing Conventions
 
@@ -182,6 +190,9 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence for entity extraction |
 | `NCMS_LABEL_DETECTION_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for `ncms topics detect` |
 | `NCMS_LABEL_DETECTION_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
+| `NCMS_ADMISSION_ENABLED` | `false` | Enable admission scoring for incoming memories (Phase 1) |
+| `NCMS_ADMISSION_NOVELTY_SEARCH_LIMIT` | `3` | BM25 candidates for novelty/redundancy scoring |
+| `NCMS_ADMISSION_EPHEMERAL_TTL_SECONDS` | `3600` | TTL for ephemeral cache entries (1 hour) |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

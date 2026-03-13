@@ -231,6 +231,26 @@ class EventLog:
             data=event_data,
         ))
 
+    def admission_scored(
+        self,
+        memory_id: str | None,
+        score: float,
+        route: str,
+        features: dict[str, Any],
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an admission scoring event for dashboard observability."""
+        self.emit(DashboardEvent(
+            type="admission.scored",
+            agent_id=agent_id,
+            data={
+                "memory_id": memory_id,
+                "score": round(score, 3),
+                "route": route,
+                "features": {k: round(v, 3) for k, v in features.items()},
+            },
+        ))
+
     def memory_searched(
         self,
         query: str,

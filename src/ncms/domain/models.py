@@ -7,6 +7,7 @@ This module has zero infrastructure dependencies.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -19,6 +20,43 @@ def _utcnow() -> datetime:
 
 def _uuid() -> str:
     return str(uuid4())
+
+
+# ---------------------------------------------------------------------------
+# HTMG Node & Edge Types (Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class NodeType(StrEnum):
+    """Type discriminator for memory_nodes table."""
+
+    ATOMIC = "atomic"
+    ENTITY_STATE = "entity_state"
+    EPISODE = "episode"
+    ABSTRACT = "abstract"
+
+
+class EdgeType(StrEnum):
+    """Typed edge categories for graph_edges table."""
+
+    # Membership / hierarchy
+    BELONGS_TO_EPISODE = "belongs_to_episode"
+    ABSTRACTS = "abstracts"
+    DERIVED_FROM = "derived_from"
+    SUMMARIZES = "summarizes"
+    # Semantic / support
+    MENTIONS_ENTITY = "mentions_entity"
+    RELATED_TO = "related_to"
+    SUPPORTS = "supports"
+    REFINES = "refines"
+    # Truth maintenance
+    SUPERSEDES = "supersedes"
+    SUPERSEDED_BY = "superseded_by"
+    CONFLICTS_WITH = "conflicts_with"
+    CURRENT_STATE_OF = "current_state_of"
+    # Temporal / causal
+    PRECEDES = "precedes"
+    CAUSED_BY = "caused_by"
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +226,55 @@ class AccessRecord(BaseModel):
     accessed_at: datetime = Field(default_factory=_utcnow)
     accessing_agent: str | None = None
     query_context: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# HTMG Typed Nodes (Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class MemoryNode(BaseModel):
+    """A typed node in the HTMG hierarchy.
+
+    Parallels the existing Memory model but adds node_type discriminator,
+    parent linkage, and temporal fields for future state reconciliation.
+    """
+
+    id: str = Field(default_factory=_uuid)
+    memory_id: str  # FK to memories.id (the canonical Memory record)
+    node_type: NodeType
+    parent_id: str | None = None  # Episode or abstract parent
+    importance: float = 5.0
+    is_current: bool = True  # For entity states: current or superseded
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class GraphEdge(BaseModel):
+    """A typed directed edge in the HTMG graph."""
+
+    id: str = Field(default_factory=_uuid)
+    source_id: str  # memory_node or entity ID
+    target_id: str  # memory_node or entity ID
+    edge_type: EdgeType
+    weight: float = 1.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class EphemeralEntry(BaseModel):
+    """A short-lived cache entry for low-admission-score content."""
+
+    id: str = Field(default_factory=_uuid)
+    content: str
+    source_agent: str | None = None
+    domains: list[str] = Field(default_factory=list)
+    admission_score: float = 0.0
+    ttl_seconds: int = 3600  # 1 hour default
+    created_at: datetime = Field(default_factory=_utcnow)
+    expires_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------

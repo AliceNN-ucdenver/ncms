@@ -43,6 +43,7 @@ class MemoryService:
         config: NCMSConfig | None = None,
         event_log: object | None = None,
         splade: object | None = None,
+        admission: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -52,6 +53,8 @@ class MemoryService:
         self._event_log = event_log or NullEventLog()
         # Optional SPLADE engine for sparse neural retrieval (duck-typed)
         self._splade = splade
+        # Optional AdmissionService for Phase 1 admission scoring (duck-typed)
+        self._admission = admission
 
     @property
     def store(self) -> MemoryStore:
@@ -107,6 +110,101 @@ class MemoryService:
             )
 
         _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
+
+        # ── Admission scoring (Phase 1, optional) ────────────────────────
+        admission_route: str | None = None
+        if self._admission is not None and self._config.admission_enabled:
+            t0 = time.perf_counter()
+            try:
+                from dataclasses import asdict as _asdict
+
+                from ncms.domain.models import EphemeralEntry, MemoryNode, NodeType
+                from ncms.domain.scoring import route_memory, score_admission
+
+                features = await self._admission.compute_features(
+                    content, domains=domains, source_agent=source_agent,
+                )
+                admission_score = score_admission(features)
+                admission_route = route_memory(features, admission_score)
+
+                feature_dict = _asdict(features)
+                _emit_stage("admission", (time.perf_counter() - t0) * 1000, {
+                    "score": round(admission_score, 3),
+                    "route": admission_route,
+                    "features": {k: round(v, 3) for k, v in feature_dict.items()},
+                })
+                self._event_log.admission_scored(
+                    memory_id=None, score=admission_score, route=admission_route,
+                    features=feature_dict, agent_id=source_agent,
+                )
+
+                if admission_route == "discard":
+                    logger.info(
+                        "Admission: discarding content (score=%.3f)", admission_score,
+                    )
+                    _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
+                        "result": "discarded", "admission_score": round(admission_score, 3),
+                    })
+                    # Return a Memory object but don't persist it
+                    return Memory(
+                        content=content, type=memory_type,
+                        domains=domains or [], tags=tags or [],
+                        source_agent=source_agent, project=project,
+                        structured={"admission": {"score": admission_score, "route": "discard"}},
+                    )
+
+                if admission_route == "ephemeral_cache":
+                    from datetime import UTC, datetime, timedelta
+
+                    ttl = self._config.admission_ephemeral_ttl_seconds
+                    now = datetime.now(UTC)
+                    entry = EphemeralEntry(
+                        content=content,
+                        source_agent=source_agent,
+                        domains=domains or [],
+                        admission_score=admission_score,
+                        ttl_seconds=ttl,
+                        created_at=now,
+                        expires_at=now + timedelta(seconds=ttl),
+                    )
+                    await self._store.save_ephemeral(entry)
+                    logger.info(
+                        "Admission: ephemeral cache (score=%.3f, ttl=%ds)",
+                        admission_score, ttl,
+                    )
+                    _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
+                        "result": "ephemeral",
+                        "admission_score": round(admission_score, 3),
+                        "ephemeral_id": entry.id,
+                    })
+                    return Memory(
+                        content=content, type=memory_type,
+                        domains=domains or [], tags=tags or [],
+                        source_agent=source_agent, project=project,
+                        structured={
+                            "admission": {
+                                "score": admission_score,
+                                "route": "ephemeral_cache",
+                                "ephemeral_id": entry.id,
+                            },
+                        },
+                    )
+
+                # For atomic/entity_state/episode: attach features as structured metadata
+                if structured is None:
+                    structured = {}
+                structured["admission"] = {
+                    "score": round(admission_score, 3),
+                    "route": admission_route,
+                    **{k: round(v, 3) for k, v in feature_dict.items()},
+                }
+
+            except Exception:
+                logger.warning(
+                    "Admission scoring failed, proceeding without admission",
+                    exc_info=True,
+                )
+                _emit_stage("admission_error", (time.perf_counter() - t0) * 1000)
 
         memory = Memory(
             content=content,
@@ -290,6 +388,32 @@ class MemoryService:
             "entity_count": len(all_entities),
             "total_duration_ms": round(total_ms, 2),
         }, memory_id=memory.id)
+
+        # Write MemoryNode in parallel (Phase 1 — admission-routed records)
+        if admission_route in ("atomic_memory", "entity_state_update", "episode_fragment"):
+            try:
+                from ncms.domain.models import MemoryNode, NodeType
+
+                node_type_map = {
+                    "atomic_memory": NodeType.ATOMIC,
+                    "entity_state_update": NodeType.ENTITY_STATE,
+                    "episode_fragment": NodeType.ATOMIC,  # Episodes created in Phase 2
+                }
+                node = MemoryNode(
+                    memory_id=memory.id,
+                    node_type=node_type_map[admission_route],
+                    importance=memory.importance,
+                )
+                await self._store.save_memory_node(node)
+                _emit_stage("memory_node", 0.0, {
+                    "node_id": node.id,
+                    "node_type": node.node_type.value,
+                }, memory_id=memory.id)
+            except Exception:
+                logger.warning(
+                    "MemoryNode creation failed for %s, continuing", memory.id,
+                    exc_info=True,
+                )
 
         logger.info("Stored memory %s: %s", memory.id, content[:80])
         self._event_log.memory_stored(

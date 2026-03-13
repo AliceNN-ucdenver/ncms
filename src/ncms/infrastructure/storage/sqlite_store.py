@@ -14,9 +14,14 @@ import aiosqlite
 
 from ncms.domain.models import (
     AccessRecord,
+    EdgeType,
     Entity,
+    EphemeralEntry,
+    GraphEdge,
     KnowledgeSnapshot,
     Memory,
+    MemoryNode,
+    NodeType,
     Relationship,
     SnapshotEntry,
 )
@@ -323,6 +328,137 @@ class SQLiteStore:
         )
         await self.db.commit()
 
+    # ── Memory Nodes (Phase 1 — HTMG) ──────────────────────────────────
+
+    async def save_memory_node(self, node: MemoryNode) -> None:
+        await self.db.execute(
+            """INSERT OR REPLACE INTO memory_nodes
+               (id, memory_id, node_type, parent_id, importance, is_current,
+                valid_from, valid_to, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                node.id,
+                node.memory_id,
+                node.node_type.value,
+                node.parent_id,
+                node.importance,
+                1 if node.is_current else 0,
+                node.valid_from.isoformat() if node.valid_from else None,
+                node.valid_to.isoformat() if node.valid_to else None,
+                json.dumps(node.metadata),
+                node.created_at.isoformat(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_memory_node(self, node_id: str) -> MemoryNode | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM memory_nodes WHERE id = ?", (node_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return self._row_to_memory_node(row)
+
+    async def get_memory_nodes_by_type(self, node_type: str) -> list[MemoryNode]:
+        cursor = await self.db.execute(
+            "SELECT * FROM memory_nodes WHERE node_type = ? ORDER BY created_at DESC",
+            (node_type,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def get_memory_nodes_for_memory(self, memory_id: str) -> list[MemoryNode]:
+        cursor = await self.db.execute(
+            "SELECT * FROM memory_nodes WHERE memory_id = ? ORDER BY created_at DESC",
+            (memory_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    # ── Graph Edges (Phase 1 — HTMG) ────────────────────────────────────
+
+    async def save_graph_edge(self, edge: GraphEdge) -> None:
+        await self.db.execute(
+            """INSERT OR REPLACE INTO graph_edges
+               (id, source_id, target_id, edge_type, weight, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                edge.id,
+                edge.source_id,
+                edge.target_id,
+                edge.edge_type.value,
+                edge.weight,
+                json.dumps(edge.metadata),
+                edge.created_at.isoformat(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_graph_edges(
+        self, source_id: str, edge_type: str | None = None
+    ) -> list[GraphEdge]:
+        if edge_type:
+            cursor = await self.db.execute(
+                """SELECT * FROM graph_edges
+                   WHERE source_id = ? AND edge_type = ?
+                   ORDER BY created_at DESC""",
+                (source_id, edge_type),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT * FROM graph_edges WHERE source_id = ? ORDER BY created_at DESC",
+                (source_id,),
+            )
+        rows = await cursor.fetchall()
+        return [self._row_to_graph_edge(r) for r in rows]
+
+    # ── Ephemeral Cache (Phase 1 — Admission Routing) ────────────────────
+
+    async def save_ephemeral(self, entry: EphemeralEntry) -> None:
+        expires_at = entry.expires_at or entry.created_at
+        await self.db.execute(
+            """INSERT OR REPLACE INTO ephemeral_cache
+               (id, content, source_agent, domains, admission_score,
+                ttl_seconds, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                entry.id,
+                entry.content,
+                entry.source_agent,
+                json.dumps(entry.domains),
+                entry.admission_score,
+                entry.ttl_seconds,
+                entry.created_at.isoformat(),
+                expires_at.isoformat(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_ephemeral(self, entry_id: str) -> EphemeralEntry | None:
+        cursor = await self.db.execute(
+            "SELECT * FROM ephemeral_cache WHERE id = ?", (entry_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return self._row_to_ephemeral(row)
+
+    async def expire_ephemeral(self) -> int:
+        """Delete expired ephemeral entries. Returns count deleted."""
+        now = _now_iso()
+        cursor = await self.db.execute(
+            "SELECT COUNT(*) FROM ephemeral_cache WHERE expires_at <= ?", (now,)
+        )
+        count_row = await cursor.fetchone()
+        count = count_row[0] if count_row else 0
+        if count > 0:
+            await self.db.execute(
+                "DELETE FROM ephemeral_cache WHERE expires_at <= ?", (now,)
+            )
+            await self.db.commit()
+        return count
+
     # ── Row Converters ───────────────────────────────────────────────────
 
     @staticmethod
@@ -385,4 +521,48 @@ class SQLiteStore:
             is_incremental=bool(row["is_incremental"]),
             supersedes=row["supersedes"],
             ttl_hours=row["ttl_hours"],
+        )
+
+    @staticmethod
+    def _row_to_memory_node(row: aiosqlite.Row) -> MemoryNode:
+        return MemoryNode(
+            id=row["id"],
+            memory_id=row["memory_id"],
+            node_type=NodeType(row["node_type"]),
+            parent_id=row["parent_id"],
+            importance=row["importance"],
+            is_current=bool(row["is_current"]),
+            valid_from=(
+                datetime.fromisoformat(row["valid_from"]) if row["valid_from"] else None
+            ),
+            valid_to=(
+                datetime.fromisoformat(row["valid_to"]) if row["valid_to"] else None
+            ),
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    @staticmethod
+    def _row_to_graph_edge(row: aiosqlite.Row) -> GraphEdge:
+        return GraphEdge(
+            id=row["id"],
+            source_id=row["source_id"],
+            target_id=row["target_id"],
+            edge_type=EdgeType(row["edge_type"]),
+            weight=row["weight"],
+            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    @staticmethod
+    def _row_to_ephemeral(row: aiosqlite.Row) -> EphemeralEntry:
+        return EphemeralEntry(
+            id=row["id"],
+            content=row["content"],
+            source_agent=row["source_agent"],
+            domains=json.loads(row["domains"]),
+            admission_score=row["admission_score"],
+            ttl_seconds=row["ttl_seconds"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+            expires_at=datetime.fromisoformat(row["expires_at"]),
         )

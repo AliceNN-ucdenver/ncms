@@ -1,8 +1,10 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-CREATE_TABLES = """
+# ── V1: Original schema ──────────────────────────────────────────────────
+
+V1_TABLES = """
 -- Core memory records
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
@@ -91,6 +93,57 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
+# ── V2: HTMG typed nodes + admission routing (Phase 1) ──────────────────
+
+V2_TABLES = """
+-- Typed HTMG nodes linked to canonical memories
+CREATE TABLE IF NOT EXISTS memory_nodes (
+    id TEXT PRIMARY KEY,
+    memory_id TEXT NOT NULL REFERENCES memories(id),
+    node_type TEXT NOT NULL,
+    parent_id TEXT,
+    importance REAL NOT NULL DEFAULT 5.0,
+    is_current INTEGER NOT NULL DEFAULT 1,
+    valid_from TEXT,
+    valid_to TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mnodes_memory ON memory_nodes(memory_id);
+CREATE INDEX IF NOT EXISTS idx_mnodes_type ON memory_nodes(node_type);
+CREATE INDEX IF NOT EXISTS idx_mnodes_parent ON memory_nodes(parent_id);
+
+-- Typed directed edges in the HTMG
+CREATE TABLE IF NOT EXISTS graph_edges (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gedges_source ON graph_edges(source_id);
+CREATE INDEX IF NOT EXISTS idx_gedges_target ON graph_edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_gedges_type ON graph_edges(edge_type);
+
+-- Ephemeral cache: short-lived entries below atomic threshold
+CREATE TABLE IF NOT EXISTS ephemeral_cache (
+    id TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    source_agent TEXT,
+    domains TEXT NOT NULL DEFAULT '[]',
+    admission_score REAL NOT NULL DEFAULT 0.0,
+    ttl_seconds INTEGER NOT NULL DEFAULT 3600,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ephemeral_expires ON ephemeral_cache(expires_at);
+"""
+
+# Backward compat alias used by older code paths
+CREATE_TABLES = V1_TABLES
+
 
 async def run_migrations(db: object) -> None:
     """Run schema migrations on the given aiosqlite connection."""
@@ -106,10 +159,19 @@ async def run_migrations(db: object) -> None:
     row = await cursor.fetchone()
     current_version = row[0] if row and row[0] else 0
 
-    if current_version < SCHEMA_VERSION:
-        await db.executescript(CREATE_TABLES)
+    if current_version < 1:
+        await db.executescript(V1_TABLES)
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (SCHEMA_VERSION,),
+            (1,),
+        )
+        await db.commit()
+        current_version = 1
+
+    if current_version < 2:
+        await db.executescript(V2_TABLES)
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (2,),
         )
         await db.commit()

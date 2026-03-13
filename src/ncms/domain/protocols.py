@@ -13,11 +13,14 @@ from ncms.domain.models import (
     AccessRecord,
     AgentInfo,
     Entity,
+    EphemeralEntry,
+    GraphEdge,
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgeResponse,
     KnowledgeSnapshot,
     Memory,
+    MemoryNode,
     Relationship,
     SubscriptionFilter,
 )
@@ -55,10 +58,44 @@ class ConsolidationStore(Protocol):
     async def delete_consolidation_value(self, key: str) -> None: ...
 
 
+class MemoryNodeStore(Protocol):
+    """HTMG typed node storage (Phase 1)."""
+
+    async def save_memory_node(self, node: MemoryNode) -> None: ...
+    async def get_memory_node(self, node_id: str) -> MemoryNode | None: ...
+    async def get_memory_nodes_by_type(self, node_type: str) -> list[MemoryNode]: ...
+    async def get_memory_nodes_for_memory(self, memory_id: str) -> list[MemoryNode]: ...
+
+
+class GraphEdgeStore(Protocol):
+    """HTMG typed edge storage (Phase 1)."""
+
+    async def save_graph_edge(self, edge: GraphEdge) -> None: ...
+    async def get_graph_edges(
+        self, source_id: str, edge_type: str | None = None
+    ) -> list[GraphEdge]: ...
+
+
+class EphemeralStore(Protocol):
+    """Short-lived cache for low-admission-score content (Phase 1)."""
+
+    async def save_ephemeral(self, entry: EphemeralEntry) -> None: ...
+    async def get_ephemeral(self, entry_id: str) -> EphemeralEntry | None: ...
+    async def expire_ephemeral(self) -> int: ...
+
+
 # ── Composite Storage Protocol ────────────────────────────────────────────
 
 
-class MemoryStore(EntityStore, SnapshotStore, ConsolidationStore, Protocol):
+class MemoryStore(
+    EntityStore,
+    SnapshotStore,
+    ConsolidationStore,
+    MemoryNodeStore,
+    GraphEdgeStore,
+    EphemeralStore,
+    Protocol,
+):
     """Persistent storage for memory records.
 
     Composes EntityStore, SnapshotStore, and ConsolidationStore with

@@ -82,6 +82,11 @@ class NCMSConfig(BaseSettings):
     consolidation_knowledge_api_base: str | None = "http://spark-ee7d.local:8000/v1"
     consolidation_knowledge_max_insights_per_run: int = 5
 
+    # Admission scoring (Phase 1)
+    admission_enabled: bool = False
+    admission_novelty_search_limit: int = 3
+    admission_ephemeral_ttl_seconds: int = 3600
+
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
 

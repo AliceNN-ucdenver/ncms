@@ -1,19 +1,23 @@
-"""ACT-R inspired activation scoring for memory retrieval.
+"""ACT-R inspired activation scoring and admission scoring for memory retrieval.
 
 Pure mathematical functions with no I/O dependencies.
-Based on Anderson (2007) "How Can the Human Mind Occur in the Physical Universe?"
 
-Activation formula:
+ACT-R activation (Anderson 2007):
     A_i = B_i + S_i + noise
     B_i = ln(sum_j(t_j^(-d)))           base-level learning
     S_i = sum_k(W_k * S_ki)             spreading activation
     P_i = 1 / (1 + exp(-A_i / tau))     retrieval probability
+
+Admission scoring (NCMS-Next §8):
+    AdmissionScore = weighted sum of 8 feature dimensions
+    Route = threshold-based policy over features + score
 """
 
 from __future__ import annotations
 
 import math
 import random
+from dataclasses import dataclass
 
 
 def base_level_activation(
@@ -129,3 +133,79 @@ def retrieval_probability(activation: float, threshold: float = -2.0, tau: float
     # Clamp to prevent overflow
     x = max(-500, min(500, x))
     return 1.0 / (1.0 + math.exp(-x))
+
+
+# ---------------------------------------------------------------------------
+# Admission Scoring (Phase 1 — NCMS-Next §8)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class AdmissionFeatures:
+    """Feature vector for memory admission scoring.
+
+    Each feature is a normalized float in [0, 1].
+    """
+
+    novelty: float = 0.0
+    utility: float = 0.0
+    reliability: float = 0.0
+    temporal_salience: float = 0.0
+    persistence: float = 0.0
+    redundancy: float = 0.0
+    episode_affinity: float = 0.0
+    state_change_signal: float = 0.0
+
+
+# Weights from NCMS-Next design spec §8.3
+ADMISSION_WEIGHTS: dict[str, float] = {
+    "novelty": 0.20,
+    "utility": 0.18,
+    "reliability": 0.12,
+    "temporal_salience": 0.12,
+    "persistence": 0.15,
+    "redundancy": -0.15,  # negative — penalizes redundancy
+    "episode_affinity": 0.04,
+    "state_change_signal": 0.14,
+}
+
+
+def score_admission(f: AdmissionFeatures) -> float:
+    """Compute weighted admission score from feature vector.
+
+    Returns a float in approximately [0, 1].  Higher = more worthy of storage.
+    The formula directly implements NCMS-Next §8.3.
+    """
+    return (
+        0.20 * f.novelty
+        + 0.18 * f.utility
+        + 0.12 * f.reliability
+        + 0.12 * f.temporal_salience
+        + 0.15 * f.persistence
+        - 0.15 * f.redundancy
+        + 0.04 * f.episode_affinity
+        + 0.14 * f.state_change_signal
+    )
+
+
+def route_memory(f: AdmissionFeatures, score: float) -> str:
+    """Determine storage route from features and admission score.
+
+    Returns one of:
+        ``"discard"``            — score too low, not worth keeping
+        ``"ephemeral_cache"``    — useful but low persistence, TTL-based
+        ``"atomic_memory"``      — standard persistent memory
+        ``"entity_state_update"``— state change for a tracked entity
+        ``"episode_fragment"``   — fragment belonging to an open episode
+
+    Routing policy from NCMS-Next §8.4.
+    """
+    if score < 0.25 and f.persistence < 0.20 and f.state_change_signal < 0.20:
+        return "discard"
+    if f.state_change_signal >= 0.50:
+        return "entity_state_update"
+    if f.episode_affinity >= 0.55:
+        return "episode_fragment"
+    if 0.25 <= score < 0.45:
+        return "ephemeral_cache"
+    return "atomic_memory"

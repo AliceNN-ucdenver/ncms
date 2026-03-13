@@ -70,6 +70,10 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",

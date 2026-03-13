@@ -933,12 +933,12 @@ Each phase is independently testable, deployable, and measurable. Phases build o
 | 0.8 | **Verify all existing tests pass** — Full regression run | All test files | `uv run pytest tests/ -v` — zero failures |
 
 **Phase 0 exit criteria:**
-- [ ] All application services use Protocol types, not concrete implementations
-- [ ] `memory_count()` uses SQL COUNT
-- [ ] `MemoryStore` protocol split into cohesive sub-protocols
-- [ ] Surrogate discovery works for deregistered agents
-- [ ] `uv run mypy src/` and `uv run pytest tests/` both pass
-- [ ] Zero functional changes — all existing behavior preserved
+- [x] All application services use Protocol types, not concrete implementations
+- [x] `memory_count()` uses SQL COUNT
+- [x] `MemoryStore` protocol split into cohesive sub-protocols
+- [x] Surrogate discovery works for deregistered agents
+- [x] `uv run mypy src/` and `uv run pytest tests/` both pass
+- [x] Zero functional changes — all existing behavior preserved
 
 ---
 

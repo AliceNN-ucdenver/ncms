@@ -5,11 +5,12 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from ncms.config import NCMSConfig
+from ncms.application.admission_service import AdmissionService
 from ncms.application.bus_service import BusService
 from ncms.application.consolidation_service import ConsolidationService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
+from ncms.config import NCMSConfig
 from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
@@ -61,6 +62,11 @@ async def bus():
 @pytest_asyncio.fixture
 async def consolidation_service(store, index, graph, config):
     return ConsolidationService(store=store, index=index, graph=graph, config=config)
+
+
+@pytest_asyncio.fixture
+async def admission_service(store, index, graph, config):
+    return AdmissionService(store=store, index=index, graph=graph, config=config)
 
 
 @pytest_asyncio.fixture
