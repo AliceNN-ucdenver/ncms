@@ -497,11 +497,13 @@ For each candidate memory `m`, compute normalized scores in `[0,1]`.
 - Overlap with current entity state assertions
 - Overlap with existing consolidated abstractions
 
-### Episode Affinity — episode membership signals
-- Same entities/artifacts as active episode
-- Same workflow/thread/issue ID
-- Temporal proximity to open episode
-- Sequence/causal markers
+### Episode Affinity — episode membership signals (lightweight heuristic for admission)
+- Structured anchor detection (issue IDs, PR numbers, incident markers) — bonus signal
+- Causal cue words (caused, triggered, resolved, etc.)
+- Change/incident markers (deploy, release, outage, etc.)
+- Capitalized named entity proxy (entity density heuristic)
+
+Note: Full episode matching uses the hybrid linker (Phase 3) with BM25/SPLADE candidate generation and 7 weighted signals, running post-admission for all stored content when `episodes_enabled=True`.
 
 ### State Change Signal — entity state mutation signals
 - Same entity + same state key + different value
@@ -606,46 +608,63 @@ Replace narrow contradiction detection with a truth-maintenance subsystem. When 
 
 ---
 
-# 10. Episode Formation
+# 10. Episode Formation — Hybrid Episode Linker
 
 ## 10.1 Purpose
 
-Group traces and state transitions into bounded events or workflow arcs for coherent event-level recall.
+An episode is a lightweight, evolving memory container that groups new fragments into the same ongoing thread using a small set of complementary signals. Works across all content domains (software tickets, scientific papers, general prose) without requiring LLM at runtime.
 
-## 10.2 Episode anchors
+## 10.2 Episode profiles
 
-An episode begins with an **anchor** — a strong signal of a bounded event:
+Each episode maintains a compact profile as its backing Memory content, built from members:
+- Entity names from all members (via GLiNER)
+- Domain tags
+- Structured anchors when present (JIRA-123, etc.)
 
-- Explicit issue/ticket/PR ID
-- Release ID or version bump
-- Incident marker (outage, error spike, rollback)
-- Migration marker
-- Significant state transition for a tracked entity
+Example profile: `"auth-service, PostgreSQL, JWT, deployment | domains: api | anchors: JIRA-100"`
 
-## 10.3 Episode assignment rules (conservative v1)
+This backing Memory is indexed in both Tantivy (BM25) and SPLADE, making episodes searchable via existing infrastructure. When a new member joins, the profile is enriched and re-indexed.
 
-A candidate joins an existing episode when it has:
-- **At least one anchor match** (shared workflow ID, shared entity+artifact, linked state transition)
-- **Plus at least two supporting signals** (temporal proximity, participant overlap, same source thread, causal cue words, retrieval neighborhood overlap)
+## 10.3 Candidate generation
 
-A candidate starts a new episode when it has an anchor but no matching open episode.
+BM25 and SPLADE search the fragment content against episode profiles. Additionally, any open episode with entity overlap is added as a candidate. Union of all three sources = candidate set.
 
-## 10.4 Episode closure
+## 10.4 Multi-signal scoring
+
+Each candidate episode is scored using 7 weighted signals:
+
+| Signal | Weight | Role |
+|--------|--------|------|
+| BM25 score | 0.20 | Lexical overlap with episode profile (normalized via sigmoid) |
+| SPLADE score | 0.20 | Semantic overlap (0 if disabled, weight redistributed) |
+| Entity overlap | 0.25 | `\|shared\| / min(\|frag\|, \|ep\|)` — topic structure from GLiNER |
+| Domain overlap | 0.15 | Same knowledge domain |
+| Temporal proximity | 0.10 | Linear decay within window (1.0 at same time → 0.0 at edge) |
+| Source agent | 0.05 | 1.0 if same producing agent, 0.0 otherwise |
+| Structured anchor | 0.05 | 1.0 if same anchor ID in both, 0.0 otherwise |
+
+When SPLADE is disabled, its weight is redistributed proportionally to other signals.
+
+## 10.5 Decision rules
+
+- Best score ≥ threshold (0.30) → assign to that episode, update profile
+- No match + fragment has ≥ min_entities (2) → create new episode
+- Otherwise → no episode (fragment stays unattached)
+
+Structured anchors (JIRA-123, PR-456, INCIDENT-789) are detected via regex as a bonus signal, not as a gate. Entity-based matching is the primary mechanism.
+
+## 10.6 Episode closure
 
 Close an episode when:
-- Explicit resolution marker appears
+- Explicit resolution marker appears in fragment text
 - No new member arrives within window `T_close` (configurable, default 24h)
-- A new episode supersedes it
-- A release/migration/incident is marked complete
 
-## 10.5 Episode lifecycle
+## 10.7 Episode lifecycle
 
 ```
-[*] → Open → Open (add fragment/state)
-Open → Consolidating (threshold met or closure signal)
-Consolidating → Closed (summary created)
-Closed → Reopened (new linked fragment arrives)
-Closed → Superseded (replaced by higher-level or merged episode)
+[*] → Open → Open (add fragment, enrich profile)
+Open → Closed (resolution marker or stale timeout)
+Closed → Reopened (future: new linked fragment arrives)
 ```
 
 ---
@@ -1075,84 +1094,153 @@ Each phase is independently testable, deployable, and measurable. Phases build o
 
 ---
 
-## Phase 3: Episode Formation
+## Phase 3: Episode Formation — Hybrid Episode Linker
 
-**Goal:** Automatically group related traces and state transitions into bounded event arcs.
+**Goal:** Automatically group related fragments into bounded episodes using incremental multi-signal matching. Works across all content domains (software, scientific, general prose) without requiring LLM at runtime.
 
 **Research question addressed:** Does episodic grouping improve event reconstruction queries?
 
-### Phase 3A: Episode Builder (estimated: 4-5 days)
+**Approach:** Each episode maintains a compact profile (entities + domains + anchors) indexed in both BM25 (Tantivy) and SPLADE. New fragments are scored against candidate episodes using 7 weighted signals. Weights auto-redistribute when SPLADE is disabled.
 
-| # | Task | Files | Verification |
-|---|------|-------|--------------|
-| 3.A.1 | Create `application/episode_service.py` with `EpisodeService` class | New file | Constructor takes `MemoryStore`, `GraphEngine` |
-| 3.A.2 | Implement anchor detection — identify episode-starting signals (issue IDs, incident markers, release markers) | `application/episode_service.py` | Unit test: "INCIDENT-234: API outage" → anchor detected; "general observation" → no anchor |
-| 3.A.3 | Implement `_compute_episode_affinity()` — score candidate against open episodes | `application/episode_service.py` | Unit test: same entities + temporal proximity → high affinity |
-| 3.A.4 | Implement `assign_episode()` — assign to existing or create new | `application/episode_service.py` | Unit test: matching open episode → assign; anchor + support signals → new episode |
-| 3.A.5 | Implement `_check_supporting_signals()` — temporal proximity, participant overlap, source thread, causal cues | `application/episode_service.py` | Unit test: candidate with 2+ support signals → assignable |
-| 3.A.6 | Implement `close_episode()` — closure heuristics (resolution marker, timeout, supersession) | `application/episode_service.py` | Unit test: episode with no new members after T_close → closed |
-| 3.A.7 | Store episodes in `memory_nodes` table with `node_type='episode'` | `application/episode_service.py` | Episodes persisted with member lists |
-| 3.A.8 | Create `BELONGS_TO_EPISODE` edges in graph when fragments assigned | `application/episode_service.py` | Graph traversal from episode returns all member nodes |
+### Episode Linking Flow
 
-**Phase 3A verification:** `uv run pytest tests/unit/application/test_episode_service.py` — episode creation, assignment, and closure all pass.
+```
+Fragment arrives (entities already extracted by GLiNER)
+    │
+    ├─ 1. CANDIDATE GENERATION (cheap, parallel)
+    │     ├─ BM25 search fragment content → filter to episode memory IDs
+    │     ├─ SPLADE search fragment content → filter to episode memory IDs (if enabled)
+    │     └─ Entity overlap scan against open episodes
+    │
+    ├─ 2. MULTI-SIGNAL SCORING (per candidate)
+    │     ├─ BM25 score (normalized via sigmoid)
+    │     ├─ SPLADE score (normalized, 0 if disabled)
+    │     ├─ Entity overlap coefficient: |shared| / min(|frag|, |ep|)
+    │     ├─ Domain overlap coefficient
+    │     ├─ Temporal proximity (linear decay within window)
+    │     ├─ Source agent match (1.0 or 0.0)
+    │     └─ Structured anchor match (bonus, 1.0 if same ID)
+    │
+    └─ 3. DECISION
+          ├─ Best score ≥ threshold → assign to that episode, update profile
+          ├─ No match + ≥ min_entities → create new episode
+          └─ Otherwise → no episode (fragment stays unattached)
+```
 
-### Phase 3B: Episode Integration (estimated: 3-4 days)
+### Signal Weights
 
-| # | Task | Files | Verification |
-|---|------|-------|--------------|
-| 3.B.1 | Wire episode assignment into admission routing — `episode_fragment` route calls `EpisodeService` | `application/memory_service.py` | Fragments auto-assigned to episodes during ingest |
-| 3.B.2 | Add periodic episode closure check (background task) | `application/episode_service.py` | Open episodes older than T_close auto-closed |
-| 3.B.3 | Index episode title + summary in Tantivy for searchability | `application/memory_service.py` | Episodes appear in BM25 search results |
-| 3.B.4 | Add episode expansion in retrieval — when episode matched, also return member fragments | `application/memory_service.py` | "What happened during the API outage?" returns episode + all related fragments |
-| 3.B.5 | Add `EpisodeCompleteness` scoring factor — episodes with more members score higher for reconstruction queries | `domain/scoring.py` | Multi-member episodes ranked above single fragments |
-| 3.B.6 | Add `NCMS_EPISODES_ENABLED` config toggle | `config.py` | Default false; existing behavior preserved |
-| 3.B.7 | Add episode events to observability log | `infrastructure/observability/event_log.py` | Dashboard shows episode creation/assignment/closure |
-| 3.B.8 | Run event reconstruction test: store 10 traces for an incident → query "what happened" → measure completeness | Custom test | Episode returns ≥80% of related traces |
+| Signal | Weight (with SPLADE) | Weight (without SPLADE) | Role |
+|--------|---------------------|------------------------|------|
+| BM25 score | 0.20 | 0.25 | Lexical overlap with episode profile |
+| SPLADE score | 0.20 | — | Semantic overlap with episode profile |
+| Entity overlap | 0.25 | 0.3125 | Topic structure from GLiNER |
+| Domain overlap | 0.15 | 0.1875 | Same knowledge domain |
+| Temporal proximity | 0.10 | 0.125 | Recent activity |
+| Source agent | 0.05 | 0.0625 | Same producing agent |
+| Structured anchor | 0.05 | 0.0625 | Bonus for explicit IDs |
+
+### Phase 3A: Hybrid Episode Linker (implemented)
+
+| # | Task | Files | Status |
+|---|------|-------|--------|
+| 3.A.1 | `EpisodeService` with BM25/SPLADE candidate generation | `application/episode_service.py` | Done |
+| 3.A.2 | Weighted multi-signal scoring (7 signals, auto-redistribution) | `application/episode_service.py` | Done |
+| 3.A.3 | Episode profile enrichment on member join (re-index in BM25/SPLADE) | `application/episode_service.py` | Done |
+| 3.A.4 | Structured anchor detection as bonus signal (not gate) | `application/episode_service.py` | Done |
+| 3.A.5 | `EpisodeMeta.topic_entities` for entity-based episode tracking | `domain/models.py` | Done |
+| 3.A.6 | Episode closure (stale timeout + resolution markers) | `application/episode_service.py` | Done |
+| 3.A.7 | Episode config: weights, thresholds, candidate limits | `config.py` | Done |
+| 3.A.8 | `BELONGS_TO_EPISODE` graph edges on assignment | `application/episode_service.py` | Done |
+
+**Phase 3A verification:** `uv run pytest tests/unit/application/test_episode_service.py -v` — 29 tests pass (entity overlap, BM25 candidates, scoring, profile enrichment, closure, meta round-trip).
+
+### Phase 3B: Episode Integration (implemented)
+
+| # | Task | Files | Status |
+|---|------|-------|--------|
+| 3.B.1 | Decouple episode formation from admission routing (runs for all stored content) | `application/memory_service.py` | Done |
+| 3.B.2 | Domain-agnostic admission heuristics (no regex gate) | `application/admission_service.py` | Done |
+| 3.B.3 | Episode profile indexed in Tantivy (BM25-searchable) | `application/episode_service.py` | Done |
+| 3.B.4 | SPLADE integration for candidate generation + profile indexing | `application/episode_service.py` | Done |
+| 3.B.5 | `NCMS_EPISODES_ENABLED` config toggle (default false) | `config.py` | Done |
+| 3.B.6 | Episode events in observability log with match_score | `infrastructure/observability/event_log.py` | Done |
+| 3.B.7 | Pass `splade` to EpisodeService in composition roots | `interfaces/mcp/server.py`, `interfaces/http/dashboard.py` | Done |
+| 3.B.8 | Cross-domain integration tests (scientific, ticket, prose, isolation) | `tests/integration/test_episode_pipeline.py` | Done |
 
 **Phase 3 exit criteria:**
-- [ ] Episodes auto-created from anchored events
-- [ ] Fragments correctly assigned to matching episodes
-- [ ] Episode closure works with timeout and explicit resolution
-- [ ] Event reconstruction queries return episode + members
-- [ ] BEIR ablation shows no regression
+- [x] Episodes auto-created from entity clusters (no regex dependency)
+- [x] Fragments correctly assigned via weighted multi-signal scoring
+- [x] Episode closure works with timeout and explicit resolution markers
+- [x] Episode profiles searchable via BM25
+- [x] Cross-domain: scientific, ticket, and prose fragments form correct episodes
+- [x] Different entity clusters create separate episodes
+- [ ] Event reconstruction queries return episode + members (Phase 4+)
+- [ ] BEIR ablation shows no regression (Phase 7)
 
 ---
 
-## Phase 4: Intent-Aware Retrieval
+## Phase 4: Intent-Aware Retrieval ✅
 
-**Goal:** Classify query intent and route to appropriate node types for more precise retrieval.
+**Goal:** Classify query intent and boost appropriate node types for more precise retrieval.
 
-**Research question addressed:** Does intent-aware routing outperform uniform scoring?
+**Research question addressed:** Does intent-aware scoring outperform uniform scoring?
 
-### Phase 4A: Intent Classifier (estimated: 2-3 days)
+**Approach:** BM25 exemplar index in infrastructure layer (`infrastructure/indexing/exemplar_intent_index.py`). ~70 exemplar queries indexed in a small in-memory Tantivy index. At query time, user's query is matched against exemplars via BM25; scores aggregated per intent class, highest wins. Keyword fallback classifier (`domain/intent.py:classify_intent`) used when index unavailable. 7 intent classes, each mapping to preferred node types. Additive hierarchy bonus (not hard filter). Two-toggle safety: classification enabled separately from scoring weight. Batch node preload eliminates N+1 queries. Supplementary candidates injected from specialized stores based on intent. IntentClassifier protocol in domain layer allows swapping implementations.
 
-| # | Task | Files | Verification |
-|---|------|-------|--------------|
-| 4.A.1 | Create `application/intent_classifier.py` with heuristic rule-based classifier | New file | 7 intent classes classified from query text |
-| 4.A.2 | Implement keyword pattern matching for each intent class | `application/intent_classifier.py` | Unit tests: 20+ queries → correct intent classification |
-| 4.A.3 | Add intent confidence score (how strongly the patterns match) | `application/intent_classifier.py` | Low-confidence intents fall back to `fact_lookup` |
-| 4.A.4 | Add `NCMS_INTENT_CLASSIFICATION_ENABLED` config toggle | `config.py` | Default false; fallback to existing uniform retrieval |
+### Phase 4A: Intent Classifier
 
-**Phase 4A verification:** `uv run pytest tests/unit/application/test_intent_classifier.py` — ≥85% accuracy on hand-crafted test queries.
+| # | Task | Files | Status |
+|---|------|-------|--------|
+| 4.A.1 | Create `domain/intent.py` with `QueryIntent` enum (7 classes) + `IntentResult` dataclass | `domain/intent.py` | ✅ Done |
+| 4.A.2 | Implement keyword pattern matching as fallback classifier | `domain/intent.py` | ✅ Done |
+| 4.A.3 | Add `INTENT_EXEMPLARS` — 10-15 example queries per intent class (BM25 training data) | `domain/intent.py` | ✅ Done |
+| 4.A.4 | Create `ExemplarIntentIndex` — in-memory Tantivy BM25 index of exemplars | `infrastructure/indexing/exemplar_intent_index.py` | ✅ Done |
+| 4.A.5 | Add `IntentClassifier` protocol + wire into MemoryService | `domain/protocols.py`, `application/memory_service.py` | ✅ Done |
+| 4.A.6 | Add 5 config params and wire exemplar index in composition root | `config.py`, `interfaces/mcp/server.py` | ✅ Done |
 
-### Phase 4B: Type-Filtered Retrieval (estimated: 3-4 days)
+**Phase 4A verification:** `uv run pytest tests/unit/domain/test_intent.py tests/unit/infrastructure/test_exemplar_intent_index.py` — 60 tests, 100% pass. Covers BM25 exemplar classification, keyword fallback, paraphrase handling, all 7 intent classes, confidence levels, exemplar data quality.
 
-| # | Task | Files | Verification |
-|---|------|-------|--------------|
-| 4.B.1 | Implement retrieval routing — each intent class specifies which node types to search | `application/memory_service.py` | `current_state_lookup` only searches `EntityState` with `is_current=true` |
-| 4.B.2 | Implement `HierarchyMatch` scoring factor — bonus when result node_type matches intent expectation | `domain/scoring.py` | Entity states score higher for state queries; episodes score higher for event queries |
-| 4.B.3 | Implement temporal filter integration — `historical_lookup` applies valid-time filter | `application/memory_service.py` | Historical queries only return temporally valid results |
-| 4.B.4 | Implement change detection retrieval — follow `SUPERSEDES` chains for entity | `application/memory_service.py` | "What changed" returns ordered supersession chain |
-| 4.B.5 | Update `ScoredMemory` result type with `node_type`, `intent`, and hierarchy metadata | `domain/models.py` | Results include type information for downstream consumers |
-| 4.B.6 | Run BEIR ablation: B3 vs B4 (with intent classification) | Benchmark scripts | Measure per-intent-class retrieval quality |
+### Phase 4B: Type-Boosted Retrieval
+
+| # | Task | Files | Status |
+|---|------|-------|--------|
+| 4.B.1 | Implement `hierarchy_match_bonus()` — additive bonus when candidate node type matches intent targets | `domain/scoring.py` | ✅ Done |
+| 4.B.2 | Extend `ScoredMemory` with `node_types`, `intent`, `hierarchy_bonus` fields | `domain/models.py` | ✅ Done |
+| 4.B.3 | Add batch node preload — single SQL query for all candidate memory IDs | `domain/protocols.py`, `infrastructure/storage/sqlite_store.py` | ✅ Done |
+| 4.B.4 | Integrate intent classification into search pipeline (before BM25 stage) | `application/memory_service.py` | ✅ Done |
+| 4.B.5 | Implement `_intent_supplement()` — inject candidates from entity states, episode members, state history based on intent | `application/memory_service.py` | ✅ Done |
+| 4.B.6 | Add hierarchy bonus to scoring loop with configurable weight (`scoring_weight_hierarchy`) | `application/memory_service.py` | ✅ Done |
+| 4.B.7 | Expose `node_types`, `intent`, `hierarchy_bonus` in MCP search_memory tool | `interfaces/mcp/tools.py` | ✅ Done |
 
 **Phase 4 exit criteria:**
-- [ ] Intent classifier achieves ≥85% accuracy on test set
-- [ ] Type-filtered retrieval correctly narrows candidate space
-- [ ] State queries return current entity states
-- [ ] Historical queries apply temporal filtering
-- [ ] Change detection follows supersession chains
-- [ ] BEIR ablation shows improvement on appropriate query types
+- [x] BM25 exemplar index classifies 7 intent classes (~70 exemplar queries)
+- [x] Keyword fallback classifier retained for when no index available
+- [x] IntentClassifier protocol enables swapping implementations
+- [x] Hierarchy bonus boosts matching node types without filtering others
+- [x] Two-toggle safety: classification and scoring weight independently configurable
+- [x] Batch node preload eliminates N+1 queries
+- [x] Supplementary candidates injected for state/episode/change/historical intents
+- [x] 98 new tests (35 keyword + 25 exemplar + 7 scoring + 5 batch query + 9 integration + 9 intent LLM + 8 episode LLM)
+- [ ] BEIR ablation: B3 vs B4 (pending ablation run)
+
+### LLM Fallback for Tuning (Phase 3 + Phase 4)
+
+Both the episode linker (Phase 3) and intent classifier (Phase 4) support optional LLM fallback for edge cases where heuristic scoring produces low-confidence results. The LLM answers serve dual purpose: immediate classification/linking and training data for tuning BM25 exemplars and episode weights.
+
+**Intent LLM fallback** (`NCMS_INTENT_LLM_FALLBACK_ENABLED`):
+- Triggered when BM25 exemplar confidence < `intent_confidence_threshold` (0.6)
+- Calls LLM with query + 7 intent definitions → returns intent + confidence
+- On failure → gracefully degrades to `fact_lookup`
+- Emits `intent_miss` event with query text for exemplar tuning
+- Implementation: `infrastructure/llm/intent_classifier_llm.py`
+
+**Episode LLM fallback** (`NCMS_EPISODE_LLM_FALLBACK_ENABLED`):
+- Triggered when no episode scores above `episode_match_threshold` (0.30)
+- Calls LLM with fragment + top-5 episode summaries → returns episode matches
+- On failure → gracefully degrades (creates new episode or returns None)
+- Implementation: `infrastructure/llm/episode_linker_llm.py`
+
+**Shared properties:** Non-fatal (try/catch all), feature-flagged off by default, uses shared `llm_model` + `llm_api_base` config, follows contradiction detector pattern.
 
 ---
 

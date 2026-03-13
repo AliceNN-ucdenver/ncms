@@ -297,6 +297,25 @@ await store.set_consolidation_value(
 - Each configuration requires a fresh service instance (configs affect ingest too)
 - Track wall-clock time per stage via pipeline debug events
 
+### Episode Formation Logging
+
+When `episodes_enabled=True`, the benchmark harness must capture episode formation data for each test run so we can analyze grouping quality independently of retrieval metrics:
+
+- **Per-run episode snapshot**: After corpus ingestion, dump all episodes with their member fragment IDs, topic entities, anchor type/ID, member count, and status (open/closed)
+- **Per-fragment assignment log**: For each ingested document, record whether it was assigned to an episode, which episode, the match score, and the signal breakdown (BM25, SPLADE, entity overlap, domain, temporal, agent, anchor)
+- **Episode quality metrics**: Track episode count, avg members/episode, entity coverage (% of corpus entities appearing in at least one episode), and orphan rate (% of fragments with no episode)
+- **Cross-config comparison**: Episode formation depends on entity extraction (GLiNER labels), so episode stats should be recorded per ablation config to detect how pipeline changes affect grouping
+- **Output format**: Append episode stats to the per-run results JSON alongside retrieval metrics, enabling joint analysis of "did better episodes lead to better retrieval?"
+
+### LLM Fallback Miss Tracking
+
+When LLM fallback is enabled (`NCMS_INTENT_LLM_FALLBACK_ENABLED=true`, `NCMS_EPISODE_LLM_FALLBACK_ENABLED=true`), the pipeline emits miss events that serve as training data for tuning:
+
+- **Intent misses** (`intent_miss` events): Query text + BM25 confidence + LLM-classified intent. Use these to add new exemplar queries to `INTENT_EXEMPLARS` for intents with low BM25 recall.
+- **Episode misses**: Fragments that LLM linked to episodes but BM25/entity scoring missed. Use these to tune episode signal weights or add anchor patterns.
+- **Capture format**: Each miss event includes the query/fragment text, the heuristic scores, and the LLM answer. Aggregate across ablation runs to identify systematic gaps in BM25 exemplar coverage or episode scoring.
+- **Feedback loop**: After each ablation cycle, review miss logs → add exemplars or adjust weights → re-run → measure improvement. Over time the LLM fallback fires less frequently as BM25 coverage improves.
+
 ### Reporting
 
 For each dataset, produce:

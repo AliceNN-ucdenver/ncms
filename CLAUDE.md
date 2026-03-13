@@ -50,12 +50,14 @@ src/ncms/
 │   ├── models.py     # All Pydantic models (Memory, MemoryNode, GraphEdge, RelationType, ScoredMemory, etc.)
 │   ├── protocols.py  # Protocol interfaces (MemoryStore, MemoryNodeStore + temporal queries, etc.)
 │   ├── scoring.py    # ACT-R activation + admission scoring + reconciliation penalties (pure fns)
+│   ├── intent.py     # Intent taxonomy, exemplar queries, keyword fallback classifier (Phase 4)
 │   ├── entity_extraction.py # Entity label constants + label resolution (domain-agnostic)
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
 │   ├── admission_service.py     # Admission scoring: 8-feature extraction + routing (Phase 1)
 │   ├── reconciliation_service.py # State reconciliation: classify + apply (supports/refines/supersedes/conflicts)
+│   ├── episode_service.py       # Hybrid episode linker: BM25/SPLADE/entity scoring (Phase 3)
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
@@ -66,11 +68,14 @@ src/ncms/
 │   ├── storage/migrations.py    # DDL for schema creation and versioning (V1 base + V2 HTMG + V3 bitemporal)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
 │   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
+│   ├── indexing/exemplar_intent_index.py # BM25 exemplar intent classifier (Phase 4)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
 │   ├── llm/caller.py            # Shared LLM calling utility (litellm + thinking mode)
 │   ├── llm/json_utils.py        # Shared LLM JSON output parsing + repair
 │   ├── llm/contradiction_detector.py # LLM contradiction detection at ingest
+│   ├── llm/intent_classifier_llm.py  # LLM intent classification fallback (Phase 4)
+│   ├── llm/episode_linker_llm.py     # LLM episode linking fallback (Phase 3)
 │   ├── text/chunking.py         # Sentence-boundary text chunking (shared by GLiNER + SPLADE)
 │   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (required dependency)
 │   ├── extraction/label_detector.py   # LLM-based domain label detection
@@ -104,8 +109,10 @@ src/ncms/
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
+10. **Hybrid episode linker** — Episodes group related fragments via incremental multi-signal matching (no LLM). Each episode maintains a compact profile (entities + domains + anchors) indexed in BM25/SPLADE. New fragments scored against candidates using 7 weighted signals: BM25 lexical match, SPLADE semantic match, entity overlap coefficient, domain overlap, temporal proximity, source agent, and structured anchor bonus. Weights auto-redistribute when SPLADE is disabled.
 10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming content to discard/ephemeral/atomic/entity-state/episode destinations. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
 11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
+12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -133,8 +140,8 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 ## Data Flow
 
-1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → [reconcile entity states]
-2. **Search**: Query → BM25 candidates → SPLADE fusion → graph expansion → ACT-R + graph scoring [− supersession/conflict penalty] → ranked results
+1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode]
+2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → ACT-R + graph scoring [+ hierarchy bonus − supersession/conflict penalty] → ranked results
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
@@ -202,6 +209,26 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_RECONCILIATION_IMPORTANCE_BOOST` | `0.5` | Importance boost for SUPPORTS relations |
 | `NCMS_RECONCILIATION_SUPERSESSION_PENALTY` | `0.3` | ACT-R mismatch penalty for superseded states |
 | `NCMS_RECONCILIATION_CONFLICT_PENALTY` | `0.15` | ACT-R mismatch penalty for conflicted states |
+| `NCMS_EPISODES_ENABLED` | `false` | Enable hybrid episode linker (Phase 3) |
+| `NCMS_EPISODE_WINDOW_MINUTES` | `1440` | Temporal proximity window for episode signals (24h) |
+| `NCMS_EPISODE_CLOSE_MINUTES` | `1440` | Auto-close episodes with no activity past this (24h) |
+| `NCMS_EPISODE_MATCH_THRESHOLD` | `0.30` | Weighted score threshold for joining an episode |
+| `NCMS_EPISODE_CREATE_MIN_ENTITIES` | `2` | Min entities to create a new episode |
+| `NCMS_EPISODE_CANDIDATE_LIMIT` | `10` | BM25/SPLADE candidate limit per search |
+| `NCMS_EPISODE_WEIGHT_BM25` | `0.20` | BM25 lexical match weight |
+| `NCMS_EPISODE_WEIGHT_SPLADE` | `0.20` | SPLADE semantic match weight (redistributed when disabled) |
+| `NCMS_EPISODE_WEIGHT_ENTITY_OVERLAP` | `0.25` | Entity overlap coefficient weight |
+| `NCMS_EPISODE_WEIGHT_DOMAIN` | `0.15` | Domain overlap weight |
+| `NCMS_EPISODE_WEIGHT_TEMPORAL` | `0.10` | Temporal proximity weight |
+| `NCMS_EPISODE_WEIGHT_AGENT` | `0.05` | Source agent match weight |
+| `NCMS_EPISODE_WEIGHT_ANCHOR` | `0.05` | Structured anchor match weight |
+| `NCMS_INTENT_CLASSIFICATION_ENABLED` | `false` | Enable heuristic query intent classification (Phase 4) |
+| `NCMS_INTENT_CONFIDENCE_THRESHOLD` | `0.6` | Minimum confidence to apply classified intent (falls back to fact_lookup) |
+| `NCMS_INTENT_HIERARCHY_BONUS` | `0.5` | Raw bonus value for node type match before weight |
+| `NCMS_SCORING_WEIGHT_HIERARCHY` | `0.0` | Additive weight for hierarchy bonus (0 = no effect) |
+| `NCMS_INTENT_SUPPLEMENT_MAX` | `20` | Max supplementary candidates from intent-specific stores |
+| `NCMS_INTENT_LLM_FALLBACK_ENABLED` | `false` | LLM fallback when BM25 exemplar confidence low |
+| `NCMS_EPISODE_LLM_FALLBACK_ENABLED` | `false` | LLM fallback when no episode matches heuristic scoring |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

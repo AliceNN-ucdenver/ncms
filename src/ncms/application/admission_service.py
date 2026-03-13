@@ -205,10 +205,50 @@ class AdmissionService:
             score += 0.25
         return _clamp(score)
 
-    def _compute_episode_affinity(self) -> float:
-        """Episode affinity — stub for Phase 1 (no episodes exist yet)."""
-        # In Phase 2+, this will check for open episodes with overlapping entities
-        return 0.0
+    @staticmethod
+    def _compute_episode_affinity(text_lower: str, text: str) -> float:
+        """Episode affinity from content characteristics (domain-agnostic).
+
+        Uses lightweight heuristics: structured anchors, causal cues,
+        change/incident markers, and entity density proxy.
+        Does NOT hard-gate episode formation — episode matching happens
+        post-admission using extracted entities + BM25/SPLADE search.
+        """
+        score = 0.0
+
+        # Structured anchors (bonus, not required)
+        from ncms.application.episode_service import EpisodeService
+
+        anchor = EpisodeService.detect_anchor(text)
+        if anchor is not None:
+            _anchor_type, anchor_id = anchor
+            score += 0.35 if anchor_id else 0.25
+
+        # Causal cue words (content likely belongs to a narrative arc)
+        for cue in ("because", "therefore", "as a result", "due to",
+                     "caused by", "led to", "in response to", "following up"):
+            if cue in text_lower:
+                score += 0.15
+                break
+
+        # Change/incident markers (content describes evolving situations)
+        _change_incident = {
+            "changed", "updated", "deployed", "fixed", "failed",
+            "migrated", "incident", "outage", "rollback",
+        }
+        for marker in _change_incident:
+            if marker in text_lower:
+                score += 0.15
+                break
+
+        # Entity density proxy: capitalized multi-word sequences
+        named_entities = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text)
+        if len(named_entities) >= 2:
+            score += 0.20
+        elif len(named_entities) >= 1:
+            score += 0.10
+
+        return _clamp(score)
 
     # ── Orchestrator ──────────────────────────────────────────────────────
 
@@ -243,7 +283,7 @@ class AdmissionService:
             temporal_salience=self._compute_temporal_salience(text_lower, content),
             persistence=self._compute_persistence(text_lower),
             redundancy=self._compute_redundancy(bm25_results),
-            episode_affinity=self._compute_episode_affinity(),
+            episode_affinity=self._compute_episode_affinity(text_lower, content),
             state_change_signal=self._compute_state_change_signal(text_lower),
         )
 

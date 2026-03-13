@@ -356,6 +356,16 @@ async def run_dashboard(
         event_log=event_log,
     )
 
+    # SPLADE sparse neural retrieval (disabled by default)
+    splade = None
+    if config.splade_enabled:
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+        splade = SpladeEngine(
+            model_name=config.splade_model,
+            cache_dir=config.model_cache_dir,
+        )
+
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
     if config.reconciliation_enabled:
@@ -365,9 +375,20 @@ async def run_dashboard(
             store=store, config=config, event_log=event_log,
         )
 
+    # Episode formation (Phase 3, disabled by default)
+    episode = None
+    if config.episodes_enabled:
+        from ncms.application.episode_service import EpisodeService
+
+        episode = EpisodeService(
+            store=store, index=index, config=config,
+            event_log=event_log, splade=splade,
+        )
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         event_log=event_log, reconciliation=reconciliation,
+        episode=episode,
     )
     snapshot_svc = SnapshotService(
         store=store,

@@ -269,6 +269,62 @@ class EventLog:
             },
         ))
 
+    def episode_created(
+        self,
+        episode_id: str,
+        title: str,
+        anchor_type: str,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an episode creation event."""
+        self.emit(DashboardEvent(
+            type="episode.created",
+            agent_id=agent_id,
+            data={
+                "episode_id": episode_id,
+                "title": title[:200],
+                "anchor_type": anchor_type,
+            },
+        ))
+
+    def episode_assigned(
+        self,
+        episode_id: str,
+        fragment_id: str,
+        signals_count: int,
+        match_score: float = 0.0,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an episode fragment assignment event."""
+        self.emit(DashboardEvent(
+            type="episode.assigned",
+            agent_id=agent_id,
+            data={
+                "episode_id": episode_id,
+                "fragment_id": fragment_id,
+                "signals_count": signals_count,
+                "match_score": round(match_score, 3),
+            },
+        ))
+
+    def episode_closed(
+        self,
+        episode_id: str,
+        reason: str,
+        member_count: int,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an episode closure event."""
+        self.emit(DashboardEvent(
+            type="episode.closed",
+            agent_id=agent_id,
+            data={
+                "episode_id": episode_id,
+                "reason": reason,
+                "member_count": member_count,
+            },
+        ))
+
     def memory_searched(
         self,
         query: str,

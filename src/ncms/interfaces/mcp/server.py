@@ -60,10 +60,32 @@ async def create_ncms_services(
         reconciliation = ReconciliationService(store=store, config=config)
         logger.info("Reconciliation service enabled")
 
+    # Episode formation (Phase 3, disabled by default)
+    episode = None
+    if config.episodes_enabled:
+        from ncms.application.episode_service import EpisodeService
+
+        episode = EpisodeService(
+            store=store, index=index, config=config, splade=splade,
+        )
+        logger.info("Episode formation enabled")
+
+    # Intent classifier (Phase 4, uses BM25 exemplar index when enabled)
+    intent_classifier = None
+    if config.intent_classification_enabled:
+        from ncms.infrastructure.indexing.exemplar_intent_index import (
+            ExemplarIntentIndex,
+        )
+
+        intent_classifier = ExemplarIntentIndex()
+        logger.info("BM25 exemplar intent classifier enabled")
+
     # Application services
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         splade=splade, reconciliation=reconciliation,
+        episode=episode,
+        intent_classifier=intent_classifier,
     )
     snapshot_svc = SnapshotService(
         store=store,

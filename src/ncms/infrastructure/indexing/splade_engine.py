@@ -143,6 +143,68 @@ class SpladeEngine:
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:limit]
 
+    def get_vector(self, memory_id: str) -> SparseVector | None:
+        """Return the stored sparse vector for a memory, or None."""
+        return self._vectors.get(memory_id)
+
+    @staticmethod
+    def cosine_similarity(a: SparseVector, b: SparseVector) -> float:
+        """Cosine similarity between two sparse vectors.
+
+        Returns 0.0 if either vector is empty or norms are zero.
+        """
+        if not a.indices or not b.indices:
+            return 0.0
+
+        # Build index → value map for the smaller vector (optimization)
+        a_map = dict(zip(a.indices, a.values, strict=True))
+        b_map = dict(zip(b.indices, b.values, strict=True))
+
+        # Dot product — only overlapping indices contribute
+        dot = 0.0
+        for idx, val in a_map.items():
+            if idx in b_map:
+                dot += val * b_map[idx]
+
+        if dot <= 0.0:
+            return 0.0
+
+        # L2 norms
+        norm_a = sum(v * v for v in a.values) ** 0.5
+        norm_b = sum(v * v for v in b.values) ** 0.5
+
+        if norm_a <= 0.0 or norm_b <= 0.0:
+            return 0.0
+
+        return dot / (norm_a * norm_b)
+
+    @staticmethod
+    def max_pool_vectors(vectors: list[SparseVector]) -> SparseVector:
+        """Max-pool multiple sparse vectors into a centroid.
+
+        Takes the maximum weight per vocabulary index across all vectors.
+        Same strategy as chunk merging in ``_embed_chunked()``.
+        """
+        if not vectors:
+            return SparseVector()
+        if len(vectors) == 1:
+            return vectors[0]
+
+        merged: dict[int, float] = {}
+        for sv in vectors:
+            for idx, val in zip(sv.indices, sv.values, strict=True):
+                if idx not in merged or val > merged[idx]:
+                    merged[idx] = val
+
+        if not merged:
+            return SparseVector()
+
+        sorted_items = sorted(merged.items())
+        return SparseVector(
+            indices=[i for i, _ in sorted_items],
+            values=[v for _, v in sorted_items],
+        )
+
     @property
     def vector_count(self) -> int:
         """Number of stored sparse vectors."""

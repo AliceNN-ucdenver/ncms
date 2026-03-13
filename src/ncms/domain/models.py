@@ -343,6 +343,55 @@ class ReconciliationResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Episode Formation (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class EpisodeStatus(StrEnum):
+    """Lifecycle state for episode nodes."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class EpisodeMeta(BaseModel):
+    """Validated accessor for episode metadata stored in MemoryNode.metadata.
+
+    This is NOT a persistence model — it's a typed projection of the metadata dict.
+    Use it to validate/extract episode fields from MemoryNode.metadata.
+    """
+
+    episode_title: str
+    status: EpisodeStatus = EpisodeStatus.OPEN
+    anchor_type: str  # "entity_cluster", "structured:issue_id", "structured:release", etc.
+    anchor_id: str | None = None  # topic key or structured ID (e.g., "JIRA-123")
+    member_count: int = 0
+    topic_entities: list[str] = Field(default_factory=list)  # entity names defining topic
+    closed_reason: str | None = None
+
+    @classmethod
+    def from_node(cls, node: MemoryNode) -> EpisodeMeta | None:
+        """Extract EpisodeMeta from a MemoryNode's metadata dict.
+
+        Returns None if the node's metadata lacks required fields.
+        """
+        meta = node.metadata
+        title = meta.get("episode_title")
+        anchor_type = meta.get("anchor_type")
+        if not title or not anchor_type:
+            return None
+        return cls(
+            episode_title=str(title),
+            status=EpisodeStatus(meta.get("status", "open")),
+            anchor_type=str(anchor_type),
+            anchor_id=meta.get("anchor_id"),
+            member_count=int(meta.get("member_count", 0)),
+            topic_entities=meta.get("topic_entities", []),
+            closed_reason=meta.get("closed_reason"),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Knowledge Snapshots
 # ---------------------------------------------------------------------------
 
@@ -389,6 +438,10 @@ class ScoredMemory(BaseModel):
     is_superseded: bool = False
     has_conflicts: bool = False
     superseded_by: str | None = None
+    # Phase 4: intent-aware retrieval annotations
+    node_types: list[str] = Field(default_factory=list)
+    intent: str | None = None
+    hierarchy_bonus: float = 0.0
 
 
 # ---------------------------------------------------------------------------

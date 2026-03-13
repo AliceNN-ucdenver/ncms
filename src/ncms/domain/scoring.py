@@ -161,6 +161,39 @@ def conflict_annotation_penalty(has_conflicts: bool, penalty: float = 0.15) -> f
 
 
 # ---------------------------------------------------------------------------
+# Intent-Aware Retrieval Bonus (Phase 4 — NCMS-Next §13)
+# ---------------------------------------------------------------------------
+
+
+def hierarchy_match_bonus(
+    candidate_node_types: list[str],
+    target_node_types: tuple[str, ...],
+    bonus: float = 0.5,
+) -> float:
+    """Return a scoring bonus when a candidate's node types match intent targets.
+
+    If any of the candidate's node types appear in the intent's target list,
+    the full bonus is applied.  This boosts results of the "right" type for
+    the classified intent without penalising unmatched types.
+
+    Args:
+        candidate_node_types: NodeType values for the candidate memory's nodes.
+        target_node_types: NodeType values the classified intent targets.
+        bonus: Maximum bonus value (default 0.5).
+
+    Returns:
+        The bonus if there is a match, 0.0 otherwise.
+    """
+    if not candidate_node_types or not target_node_types:
+        return 0.0
+    target_set = set(target_node_types)
+    for nt in candidate_node_types:
+        if nt in target_set:
+            return bonus
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
 # Admission Scoring (Phase 1 — NCMS-Next §8)
 # ---------------------------------------------------------------------------
 

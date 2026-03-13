@@ -7,7 +7,10 @@ Using typing.Protocol keeps the domain layer free of infrastructure dependencies
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from ncms.domain.intent import IntentResult
 
 from ncms.domain.models import (
     AccessRecord,
@@ -86,6 +89,15 @@ class MemoryNodeStore(Protocol):
     async def get_state_history(
         self, entity_id: str, state_key: str,
     ) -> list[MemoryNode]: ...
+    # Phase 4: Batch node lookup for intent-aware retrieval
+    async def get_memory_nodes_for_memories(
+        self, memory_ids: list[str],
+    ) -> dict[str, list[MemoryNode]]: ...
+    # Phase 3: Episode queries
+    async def get_open_episodes(self) -> list[MemoryNode]: ...
+    async def get_episode_members(
+        self, episode_id: str,
+    ) -> list[MemoryNode]: ...
 
 
 class GraphEdgeStore(Protocol):
@@ -152,6 +164,16 @@ class IndexEngine(Protocol):
     def index_memory(self, memory: Memory) -> None: ...
     def search(self, query: str, limit: int = 50) -> list[tuple[str, float]]: ...
     def remove(self, memory_id: str) -> None: ...
+
+
+class IntentClassifier(Protocol):
+    """Classifies a search query into one of 7 intent classes.
+
+    The primary implementation uses a BM25 exemplar index.  The domain-layer
+    ``classify_intent()`` function serves as a keyword-based fallback.
+    """
+
+    def classify(self, query: str) -> IntentResult: ...
 
 
 class GraphEngine(Protocol):

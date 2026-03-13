@@ -62,6 +62,9 @@ def register_tools(
                 "is_superseded": r.is_superseded,
                 "has_conflicts": r.has_conflicts,
                 "superseded_by": r.superseded_by,
+                "node_types": r.node_types,
+                "intent": r.intent,
+                "hierarchy_bonus": round(r.hierarchy_bonus, 4),
                 "source_agent": r.memory.source_agent,
                 "created_at": r.memory.created_at.isoformat(),
             }

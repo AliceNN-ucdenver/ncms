@@ -93,6 +93,33 @@ class NCMSConfig(BaseSettings):
     reconciliation_supersession_penalty: float = 0.3
     reconciliation_conflict_penalty: float = 0.15
 
+    # Episode formation (Phase 3)
+    episodes_enabled: bool = False
+    episode_window_minutes: int = 1440   # T_window for temporal proximity signal
+    episode_close_minutes: int = 1440    # T_close for auto-closure
+    episode_min_supporting_signals: int = 2  # Legacy: kept for backward compat
+    episode_match_threshold: float = 0.30  # Weighted score threshold for joining
+    episode_create_min_entities: int = 2   # Min entities to create new episode
+    episode_candidate_limit: int = 10      # BM25/SPLADE candidate limit
+    episode_weight_bm25: float = 0.20
+    episode_weight_splade: float = 0.20    # Redistributed when SPLADE disabled
+    episode_weight_entity_overlap: float = 0.25
+    episode_weight_domain: float = 0.15
+    episode_weight_temporal: float = 0.10
+    episode_weight_agent: float = 0.05
+    episode_weight_anchor: float = 0.05
+
+    # Intent-aware retrieval (Phase 4)
+    intent_classification_enabled: bool = False
+    intent_confidence_threshold: float = 0.6   # Below → fall back to fact_lookup
+    intent_hierarchy_bonus: float = 0.5        # Raw bonus before weight
+    scoring_weight_hierarchy: float = 0.0      # Additive weight (0 = no effect)
+    intent_supplement_max: int = 20            # Max supplementary candidates per intent
+    intent_llm_fallback_enabled: bool = False  # LLM fallback when BM25 confidence low
+
+    # Episode LLM fallback (Phase 3 tuning)
+    episode_llm_fallback_enabled: bool = False  # LLM fallback when no episode matches
+
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
 

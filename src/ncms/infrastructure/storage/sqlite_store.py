@@ -378,6 +378,29 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [self._row_to_memory_node(r) for r in rows]
 
+    async def get_memory_nodes_for_memories(
+        self, memory_ids: list[str],
+    ) -> dict[str, list[MemoryNode]]:
+        """Batch-load memory nodes for multiple memory IDs in a single query.
+
+        Returns a dict mapping memory_id → list[MemoryNode].
+        Memory IDs with no nodes are omitted from the result.
+        """
+        if not memory_ids:
+            return {}
+        placeholders = ",".join("?" for _ in memory_ids)
+        cursor = await self.db.execute(
+            f"SELECT * FROM memory_nodes WHERE memory_id IN ({placeholders})"  # noqa: S608
+            " ORDER BY memory_id, created_at DESC",
+            tuple(memory_ids),
+        )
+        rows = await cursor.fetchall()
+        result: dict[str, list[MemoryNode]] = {}
+        for row in rows:
+            node = self._row_to_memory_node(row)
+            result.setdefault(node.memory_id, []).append(node)
+        return result
+
     # ── Entity State Queries (Phase 2A) ──────────────────────────────────
 
     async def get_current_entity_states(
@@ -503,6 +526,31 @@ class SQLiteStore:
                  AND json_extract(metadata, '$.state_key') = ?
                ORDER BY created_at ASC""",
             (NodeType.ENTITY_STATE.value, entity_id, state_key),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    # ── Episode Queries (Phase 3) ─────────────────────────────────────
+
+    async def get_open_episodes(self) -> list[MemoryNode]:
+        """Get all open episode nodes."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.status') = ?
+               ORDER BY created_at DESC""",
+            (NodeType.EPISODE.value, "open"),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def get_episode_members(self, episode_id: str) -> list[MemoryNode]:
+        """Get all fragment nodes belonging to an episode via parent_id."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE parent_id = ?
+               ORDER BY created_at ASC""",
+            (episode_id,),
         )
         rows = await cursor.fetchall()
         return [self._row_to_memory_node(r) for r in rows]

@@ -12,6 +12,7 @@ import uuid
 
 from ncms.config import NCMSConfig
 from ncms.domain.entity_extraction import resolve_labels
+from ncms.domain.intent import IntentResult, QueryIntent, classify_intent
 from ncms.domain.models import (
     AccessRecord,
     Entity,
@@ -24,6 +25,7 @@ from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
     conflict_annotation_penalty,
+    hierarchy_match_bonus,
     retrieval_probability,
     spreading_activation,
     supersession_penalty,
@@ -47,6 +49,8 @@ class MemoryService:
         splade: object | None = None,
         admission: object | None = None,
         reconciliation: object | None = None,
+        episode: object | None = None,
+        intent_classifier: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -60,6 +64,10 @@ class MemoryService:
         self._admission = admission
         # Optional ReconciliationService for Phase 2 state reconciliation (duck-typed)
         self._reconciliation = reconciliation
+        # Optional EpisodeService for Phase 3 episode formation (duck-typed)
+        self._episode = episode
+        # Optional BM25 exemplar intent classifier (Phase 4, duck-typed)
+        self._intent_classifier = intent_classifier
 
     @property
     def store(self) -> MemoryStore:
@@ -324,12 +332,14 @@ class MemoryService:
         }, memory_id=memory.id)
 
         t0 = time.perf_counter()
+        linked_entity_ids: list[str] = []  # Collect for episode formation
         for e_data in all_entities:
             entity = await self.add_entity(
                 name=e_data["name"],
                 entity_type=e_data.get("type", "concept"),
                 attributes=e_data.get("attributes", {}),
             )
+            linked_entity_ids.append(entity.id)
             await self._store.link_memory_entity(memory.id, entity.id)
             self._graph.link_memory_entity(memory.id, entity.id)
         _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
@@ -450,15 +460,19 @@ class MemoryService:
             "total_duration_ms": round(total_ms, 2),
         }, memory_id=memory.id)
 
-        # Write MemoryNode in parallel (Phase 1 — admission-routed records)
-        if admission_route in ("atomic_memory", "entity_state_update", "episode_fragment"):
+        # Write MemoryNode (Phase 1 — admission-routed, or Phase 3 — episodes enabled)
+        _should_create_node = (
+            admission_route in ("atomic_memory", "entity_state_update", "episode_fragment")
+            or (self._config.episodes_enabled and self._episode is not None)
+        )
+        if _should_create_node:
             try:
                 from ncms.domain.models import MemoryNode, NodeType
 
                 node_type_map = {
                     "atomic_memory": NodeType.ATOMIC,
                     "entity_state_update": NodeType.ENTITY_STATE,
-                    "episode_fragment": NodeType.ATOMIC,  # Episodes created in Phase 2
+                    "episode_fragment": NodeType.ATOMIC,
                 }
 
                 # Build metadata for entity_state_update nodes (Phase 2A)
@@ -468,9 +482,14 @@ class MemoryService:
                         content, all_entities,
                     )
 
+                # Determine node type (default ATOMIC when no admission route)
+                node_type = node_type_map.get(
+                    admission_route or "", NodeType.ATOMIC,
+                )
+
                 node = MemoryNode(
                     memory_id=memory.id,
-                    node_type=node_type_map[admission_route],
+                    node_type=node_type,
                     importance=memory.importance,
                     metadata=node_metadata,
                 )
@@ -517,6 +536,51 @@ class MemoryService:
                             memory_id=memory.id,
                         )
 
+                # Phase 3: Episode formation
+                if (
+                    self._episode is not None
+                    and self._config.episodes_enabled
+                ):
+                    t0_ep = time.perf_counter()
+                    try:
+                        episode_node = await self._episode.assign_or_create(  # type: ignore[attr-defined]
+                            fragment_node=node,
+                            fragment_memory=memory,
+                            entity_ids=linked_entity_ids,
+                        )
+                        ep_data: dict = {
+                            "node_id": node.id,
+                            "episode_id": (
+                                episode_node.id if episode_node else None
+                            ),
+                            "action": (
+                                "created" if episode_node else "none"
+                            ),
+                        }
+                        _emit_stage(
+                            "episode_formation",
+                            (time.perf_counter() - t0_ep) * 1000,
+                            ep_data,
+                            memory_id=memory.id,
+                        )
+
+                        # Check for resolution closure
+                        if episode_node is not None:
+                            await self._episode.check_resolution_closure(  # type: ignore[attr-defined]
+                                content, episode_node,
+                            )
+                    except Exception:
+                        logger.warning(
+                            "Episode formation failed for node %s, continuing",
+                            node.id,
+                            exc_info=True,
+                        )
+                        _emit_stage(
+                            "episode_formation_error",
+                            (time.perf_counter() - t0_ep) * 1000,
+                            memory_id=memory.id,
+                        )
+
             except Exception:
                 logger.warning(
                     "MemoryNode creation failed for %s, continuing", memory.id,
@@ -556,6 +620,59 @@ class MemoryService:
             )
 
         _emit_stage("start", 0.0, {"query": query[:200], "domain": domain, "limit": limit})
+
+        # Phase 4: Intent classification (BM25 exemplar index → keyword fallback)
+        intent_result: IntentResult | None = None
+        if self._config.intent_classification_enabled:
+            t0 = time.perf_counter()
+            if self._intent_classifier is not None:
+                intent_result = self._intent_classifier.classify(query)  # type: ignore[union-attr]
+            else:
+                intent_result = classify_intent(query)
+            # Fall back to fact_lookup if confidence below threshold
+            llm_fallback_used = False
+            if intent_result.confidence < self._config.intent_confidence_threshold:
+                # Optional LLM fallback for low-confidence classifications
+                if self._config.intent_llm_fallback_enabled:
+                    from ncms.infrastructure.llm.intent_classifier_llm import (
+                        classify_intent_with_llm,
+                    )
+
+                    llm_result = await classify_intent_with_llm(
+                        query,
+                        model=self._config.llm_model,
+                        api_base=self._config.llm_api_base,
+                    )
+                    if llm_result is not None:
+                        intent_result = llm_result
+                        llm_fallback_used = True
+                    else:
+                        # LLM failed — log the miss for exemplar tuning
+                        _emit_stage("intent_llm_miss", 0, {
+                            "query": query[:200],
+                            "bm25_intent": intent_result.intent.value,
+                            "bm25_confidence": round(intent_result.confidence, 3),
+                        })
+
+                # Still below threshold after LLM → default to fact_lookup
+                if intent_result.confidence < self._config.intent_confidence_threshold:
+                    _emit_stage("intent_miss", 0, {
+                        "query": query[:200],
+                        "best_intent": intent_result.intent.value,
+                        "best_confidence": round(intent_result.confidence, 3),
+                        "llm_attempted": llm_fallback_used,
+                    })
+                    intent_result = IntentResult(
+                        intent=QueryIntent.FACT_LOOKUP,
+                        confidence=1.0,
+                        target_node_types=("atomic", "entity_state"),
+                    )
+            _emit_stage("intent_classification", (time.perf_counter() - t0) * 1000, {
+                "intent": intent_result.intent.value,
+                "confidence": round(intent_result.confidence, 3),
+                "target_node_types": list(intent_result.target_node_types),
+                "llm_fallback": llm_fallback_used,
+            })
 
         # Tier 1: BM25 candidate retrieval via Tantivy
         t0 = time.perf_counter()
@@ -708,6 +825,41 @@ class MemoryService:
                 graph_exp_data,
             )
 
+        # Phase 4: Batch-load memory nodes for intent scoring + reconciliation
+        nodes_by_memory: dict[str, list] = {}
+        if self._config.intent_classification_enabled or self._config.reconciliation_enabled:
+            t0_nodes = time.perf_counter()
+            candidate_memory_ids = [mid for mid, _ in all_candidates]
+            nodes_by_memory = await self._store.get_memory_nodes_for_memories(
+                candidate_memory_ids,
+            )
+            _emit_stage("node_preload", (time.perf_counter() - t0_nodes) * 1000, {
+                "candidate_count": len(candidate_memory_ids),
+                "nodes_loaded": sum(len(v) for v in nodes_by_memory.values()),
+            })
+
+        # Phase 4: Inject supplementary candidates based on intent
+        if intent_result and intent_result.intent != QueryIntent.FACT_LOOKUP:
+            t0_supp = time.perf_counter()
+            supplement_ids = await self._intent_supplement(
+                intent_result, context_entity_ids, fused_ids,
+            )
+            for sid in supplement_ids:
+                if sid not in fused_ids:
+                    all_candidates.append((sid, 0.0))
+                    fused_ids.add(sid)
+            # Preload nodes for supplement candidates too
+            if supplement_ids:
+                supp_nodes = await self._store.get_memory_nodes_for_memories(
+                    list(supplement_ids),
+                )
+                nodes_by_memory.update(supp_nodes)
+            _emit_stage("intent_supplement", (time.perf_counter() - t0_supp) * 1000, {
+                "intent": intent_result.intent.value,
+                "supplement_count": len(supplement_ids),
+                "total_candidates": len(all_candidates),
+            })
+
         # Load full memory objects and compute activation scores
         t0 = time.perf_counter()
         scored: list[ScoredMemory] = []
@@ -739,16 +891,19 @@ class MemoryService:
 
             noise = activation_noise(sigma=self._config.actr_noise)
 
+            # Load memory nodes (batch-preloaded or per-candidate fallback)
+            nodes = nodes_by_memory.get(memory_id, [])
+            candidate_node_types = [mn.node_type.value for mn in nodes]
+
             # Phase 2C: reconciliation penalties for superseded / conflicted states
             mem_is_superseded = False
             mem_has_conflicts = False
             mem_superseded_by: str | None = None
             penalty = 0.0
-            if self._config.reconciliation_enabled:
+            if self._config.reconciliation_enabled and nodes:
                 try:
                     from ncms.domain.models import EdgeType
 
-                    nodes = await self._store.get_memory_nodes_for_memory(memory_id)
                     for mn in nodes:
                         if not mn.is_current:
                             mem_is_superseded = True
@@ -775,22 +930,33 @@ class MemoryService:
                         memory_id, exc_info=True,
                     )
 
+            # Phase 4: Hierarchy match bonus
+            h_bonus = 0.0
+            if intent_result and candidate_node_types:
+                h_bonus = hierarchy_match_bonus(
+                    candidate_node_types,
+                    intent_result.target_node_types,
+                    bonus=self._config.intent_hierarchy_bonus,
+                )
+
             act = total_activation(bl, spread, noise, mismatch_penalty=penalty)
 
             # Look up per-source scores
             bm25_score = bm25_scores.get(memory_id, 0.0)
             splade_score_val = splade_scores.get(memory_id, 0.0)
 
-            # Combine BM25, SPLADE, activation, and graph scoring
+            # Combine BM25, SPLADE, activation, graph, and hierarchy scoring
             w_bm25 = self._config.scoring_weight_bm25
             w_actr = self._config.scoring_weight_actr
             w_splade = self._config.scoring_weight_splade
             w_graph = self._config.scoring_weight_graph
+            w_hierarchy = self._config.scoring_weight_hierarchy
             combined = (
                 bm25_score * w_bm25
                 + act * w_actr
                 + splade_score_val * w_splade
                 + spread * w_graph  # Entity overlap signal (independent of ACT-R weight)
+                + h_bonus * w_hierarchy
             )
 
             # Compute retrieval probability for threshold filtering
@@ -821,6 +987,9 @@ class MemoryService:
                     is_superseded=mem_is_superseded,
                     has_conflicts=mem_has_conflicts,
                     superseded_by=mem_superseded_by,
+                    node_types=candidate_node_types,
+                    intent=intent_result.intent.value if intent_result else None,
+                    hierarchy_bonus=h_bonus,
                 )
             )
 
@@ -899,6 +1068,64 @@ class MemoryService:
                 ),
             })
         return result
+
+    # ── Intent Supplementary Candidates ──────────────────────────────────
+
+    async def _intent_supplement(
+        self,
+        intent: IntentResult,
+        context_entity_ids: list[str],
+        already_seen: set[str],
+    ) -> set[str]:
+        """Generate supplementary candidate memory IDs for specialised intents.
+
+        Returns memory_ids not already in the candidate set.
+        """
+        supplement: set[str] = set()
+        max_supp = self._config.intent_supplement_max
+
+        if intent.intent == QueryIntent.CURRENT_STATE_LOOKUP:
+            for eid in context_entity_ids:
+                states = await self._store.get_entity_states_by_entity(eid)
+                for s in states:
+                    if s.is_current and s.memory_id not in already_seen:
+                        supplement.add(s.memory_id)
+                        if len(supplement) >= max_supp:
+                            return supplement
+
+        elif intent.intent == QueryIntent.CHANGE_DETECTION:
+            for eid in context_entity_ids:
+                states = await self._store.get_entity_states_by_entity(eid)
+                for s in states:
+                    if s.memory_id not in already_seen:
+                        supplement.add(s.memory_id)
+                        if len(supplement) >= max_supp:
+                            return supplement
+
+        elif intent.intent == QueryIntent.EVENT_RECONSTRUCTION:
+            episodes = await self._store.get_open_episodes()
+            for ep in episodes[:5]:  # Cap episode lookups
+                members = await self._store.get_episode_members(ep.id)
+                for m in members:
+                    if m.memory_id not in already_seen:
+                        supplement.add(m.memory_id)
+                        if len(supplement) >= max_supp:
+                            return supplement
+
+        elif intent.intent == QueryIntent.HISTORICAL_LOOKUP:
+            from datetime import UTC, datetime, timedelta
+
+            cutoff = (datetime.now(UTC) - timedelta(days=90)).isoformat()
+            changes = await self._store.get_state_changes_since(cutoff)
+            for c in changes:
+                if c.memory_id not in already_seen:
+                    supplement.add(c.memory_id)
+                    if len(supplement) >= max_supp:
+                        return supplement
+
+        # pattern_lookup and strategic_reflection: no supplement until Phase 5
+
+        return supplement
 
     # ── Direct Access ────────────────────────────────────────────────────
 
