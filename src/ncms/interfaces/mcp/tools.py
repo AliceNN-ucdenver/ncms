@@ -27,6 +27,7 @@ def register_tools(
     memory_svc: MemoryService,
     bus_svc: BusService,
     snapshot_svc: SnapshotService,
+    consolidation_svc: object | None = None,
 ) -> None:
     """Register all NCMS MCP tools on the given server."""
 
@@ -374,3 +375,19 @@ def register_tools(
             "chunks_total": stats.chunks_total,
             "errors": stats.errors,
         }
+
+    if consolidation_svc is not None:
+
+        @mcp.tool()
+        async def run_consolidation() -> dict[str, Any]:
+            """Run a full consolidation pass.
+
+            Executes all consolidation subtasks in sequence:
+            decay scoring, knowledge synthesis, episode summaries,
+            state trajectories, and pattern detection.
+
+            Returns:
+                Counts per subtask (decay, knowledge, episodes,
+                trajectories, patterns, refresh).
+            """
+            return await consolidation_svc.run_consolidation_pass()  # type: ignore[union-attr]

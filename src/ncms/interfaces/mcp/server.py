@@ -80,6 +80,14 @@ async def create_ncms_services(
         intent_classifier = ExemplarIntentIndex()
         logger.info("BM25 exemplar intent classifier enabled")
 
+    # Consolidation service (Phase 5 hierarchical consolidation)
+    from ncms.application.consolidation_service import ConsolidationService
+
+    consolidation_svc = ConsolidationService(
+        store=store, index=index, graph=graph, config=config,
+        splade=splade,
+    )
+
     # Application services
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
@@ -102,20 +110,21 @@ async def create_ncms_services(
     graph_svc = GraphService(store=store, graph=graph)
     await graph_svc.rebuild_from_store()
 
-    return memory_svc, bus_svc, snapshot_svc
+    return memory_svc, bus_svc, snapshot_svc, consolidation_svc
 
 
 def create_mcp_server(
     memory_svc: MemoryService,
     bus_svc: BusService,
     snapshot_svc: SnapshotService,
+    consolidation_svc: object | None = None,
 ) -> FastMCP:
     """Create a FastMCP server with all NCMS tools and resources registered."""
     mcp = FastMCP(
         name="ncms",
     )
 
-    register_tools(mcp, memory_svc, bus_svc, snapshot_svc)
+    register_tools(mcp, memory_svc, bus_svc, snapshot_svc, consolidation_svc)
     register_resources(mcp, memory_svc, bus_svc, snapshot_svc)
 
     return mcp
@@ -123,6 +132,6 @@ def create_mcp_server(
 
 async def run_server(config: NCMSConfig | None = None) -> None:
     """Create and run the NCMS MCP server."""
-    memory_svc, bus_svc, snapshot_svc = await create_ncms_services(config)
-    mcp = create_mcp_server(memory_svc, bus_svc, snapshot_svc)
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc = await create_ncms_services(config)
+    mcp = create_mcp_server(memory_svc, bus_svc, snapshot_svc, consolidation_svc)
     await mcp.run_stdio_async()

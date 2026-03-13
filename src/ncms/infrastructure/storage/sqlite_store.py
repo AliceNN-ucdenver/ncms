@@ -555,6 +555,53 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [self._row_to_memory_node(r) for r in rows]
 
+    # ── Phase 5: Consolidation Queries ─────────────────────────────────
+
+    async def get_closed_unsummarized_episodes(self) -> list[MemoryNode]:
+        """Get closed episodes that have not been summarized yet."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.status') = ?
+                 AND json_extract(metadata, '$.summarized') IS NULL
+               ORDER BY created_at DESC""",
+            (NodeType.EPISODE.value, "closed"),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def get_entities_with_state_count(
+        self, min_count: int,
+    ) -> list[tuple[str, int]]:
+        """Get entity IDs with at least min_count state transitions."""
+        cursor = await self.db.execute(
+            """SELECT json_extract(metadata, '$.entity_id') AS eid,
+                      COUNT(*) AS cnt
+               FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.entity_id') IS NOT NULL
+               GROUP BY eid
+               HAVING cnt >= ?
+               ORDER BY cnt DESC""",
+            (NodeType.ENTITY_STATE.value, min_count),
+        )
+        rows = await cursor.fetchall()
+        return [(row[0], row[1]) for row in rows]
+
+    async def get_abstract_nodes_by_type(
+        self, abstract_type: str,
+    ) -> list[MemoryNode]:
+        """Get abstract memory nodes filtered by abstract_type metadata."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.abstract_type') = ?
+               ORDER BY created_at DESC""",
+            (NodeType.ABSTRACT.value, abstract_type),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
     # ── Graph Edges (Phase 1 — HTMG) ────────────────────────────────────
 
     async def save_graph_edge(self, edge: GraphEdge) -> None:

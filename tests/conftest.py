@@ -8,8 +8,8 @@ import pytest_asyncio
 from ncms.application.admission_service import AdmissionService
 from ncms.application.bus_service import BusService
 from ncms.application.consolidation_service import ConsolidationService
-from ncms.application.memory_service import MemoryService
 from ncms.application.episode_service import EpisodeService
+from ncms.application.memory_service import MemoryService
 from ncms.application.reconciliation_service import ReconciliationService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.config import NCMSConfig

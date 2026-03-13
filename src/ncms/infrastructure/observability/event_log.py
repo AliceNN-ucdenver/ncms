@@ -325,6 +325,32 @@ class EventLog:
             },
         ))
 
+    def consolidation_abstract_created(
+        self,
+        abstract_type: str,
+        node_id: str,
+        source_count: int,
+    ) -> None:
+        """Emit an event when a consolidation abstract is created."""
+        self.emit(DashboardEvent(
+            type="consolidation.abstract_created",
+            data={
+                "abstract_type": abstract_type,
+                "node_id": node_id,
+                "source_count": source_count,
+            },
+        ))
+
+    def consolidation_pass_complete(
+        self,
+        results: dict[str, int],
+    ) -> None:
+        """Emit a summary event when a consolidation pass finishes."""
+        self.emit(DashboardEvent(
+            type="consolidation.pass_complete",
+            data=results,
+        ))
+
     def memory_searched(
         self,
         query: str,

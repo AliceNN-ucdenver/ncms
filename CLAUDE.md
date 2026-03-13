@@ -61,7 +61,7 @@ src/ncms/
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
-│   ├── consolidation_service.py # Decay pass + knowledge consolidation
+│   ├── consolidation_service.py # Decay pass + knowledge consolidation + hierarchical abstraction (Phase 5)
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 10 tables, WAL mode, parameterized SQL
@@ -81,10 +81,11 @@ src/ncms/
 │   ├── extraction/label_detector.py   # LLM-based domain label detection
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
+│   ├── consolidation/abstract_synthesizer.py # LLM episode/trajectory/pattern synthesis (Phase 5)
 │   └── observability/event_log.py # Ring buffer event log + NullEventLog + SSE subscribers
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
-│   ├── mcp/tools.py            # 10 MCP tools
+│   ├── mcp/tools.py            # 11 MCP tools (+ run_consolidation)
 │   ├── mcp/resources.py        # 4 MCP resources (ncms://...)
 │   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST)
 │   ├── http/demo_runner.py     # Dashboard demo scenario runner
@@ -113,6 +114,7 @@ src/ncms/
 10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming content to discard/ephemeral/atomic/entity-state/episode destinations. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
 11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
 12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
+13. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -133,6 +135,9 @@ Models with fixed token windows silently truncate long text. NCMS auto-chunks wh
 | Contradiction Detector (existing) | `contradiction_detector.py` | 2,000 chars/memory × 5 | ~2.5K tokens |
 | Consolidation Synthesizer | `synthesizer.py` | 2,000 chars/memory × cluster | ~3K tokens |
 | Label Detector | `label_detector.py` | 500 chars/sample × 10 | ~1.5K tokens |
+| Abstract Synthesizer (episode) | `abstract_synthesizer.py` | 2,000 chars/member × 20 | ~10K tokens |
+| Abstract Synthesizer (trajectory) | `abstract_synthesizer.py` | 500 chars/state × 20 | ~2.5K tokens |
+| Abstract Synthesizer (pattern) | `abstract_synthesizer.py` | 1,000 chars/summary × 10 | ~2.5K tokens |
 
 ### Display-Only Truncation (no data loss, cosmetic)
 
@@ -229,6 +234,15 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_INTENT_SUPPLEMENT_MAX` | `20` | Max supplementary candidates from intent-specific stores |
 | `NCMS_INTENT_LLM_FALLBACK_ENABLED` | `false` | LLM fallback when BM25 exemplar confidence low |
 | `NCMS_EPISODE_LLM_FALLBACK_ENABLED` | `false` | LLM fallback when no episode matches heuristic scoring |
+| `NCMS_EPISODE_CONSOLIDATION_ENABLED` | `false` | Enable episode summary generation (Phase 5A) |
+| `NCMS_TRAJECTORY_CONSOLIDATION_ENABLED` | `false` | Enable state trajectory narratives (Phase 5B) |
+| `NCMS_PATTERN_CONSOLIDATION_ENABLED` | `false` | Enable recurring pattern detection (Phase 5C) |
+| `NCMS_TRAJECTORY_MIN_TRANSITIONS` | `3` | Min state transitions for trajectory generation |
+| `NCMS_PATTERN_MIN_EPISODES` | `3` | Min episodes for pattern cluster |
+| `NCMS_PATTERN_ENTITY_OVERLAP_THRESHOLD` | `0.3` | Jaccard threshold for episode clustering |
+| `NCMS_PATTERN_STABILITY_THRESHOLD` | `0.7` | Promote to strategic_insight above this |
+| `NCMS_ABSTRACT_REFRESH_DAYS` | `7` | Staleness window for re-synthesis |
+| `NCMS_CONSOLIDATION_MAX_ABSTRACTS_PER_RUN` | `10` | Cap abstracts per consolidation pass |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

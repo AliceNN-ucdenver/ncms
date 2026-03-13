@@ -120,6 +120,17 @@ class NCMSConfig(BaseSettings):
     # Episode LLM fallback (Phase 3 tuning)
     episode_llm_fallback_enabled: bool = False  # LLM fallback when no episode matches
 
+    # Hierarchical consolidation (Phase 5)
+    episode_consolidation_enabled: bool = False      # 5A: Episode summary generation
+    trajectory_consolidation_enabled: bool = False   # 5B: State trajectory narratives
+    pattern_consolidation_enabled: bool = False      # 5C: Recurring pattern detection
+    trajectory_min_transitions: int = 3              # Min state transitions for trajectory
+    pattern_min_episodes: int = 3                    # Min episodes for pattern cluster
+    pattern_entity_overlap_threshold: float = 0.3    # Jaccard threshold for clustering
+    pattern_stability_threshold: float = 0.7         # Promote to strategic_insight above this
+    abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
+    consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
+
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
 

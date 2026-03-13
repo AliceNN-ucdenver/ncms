@@ -98,6 +98,14 @@ class MemoryNodeStore(Protocol):
     async def get_episode_members(
         self, episode_id: str,
     ) -> list[MemoryNode]: ...
+    # Phase 5: Consolidation queries
+    async def get_closed_unsummarized_episodes(self) -> list[MemoryNode]: ...
+    async def get_entities_with_state_count(
+        self, min_count: int,
+    ) -> list[tuple[str, int]]: ...
+    async def get_abstract_nodes_by_type(
+        self, abstract_type: str,
+    ) -> list[MemoryNode]: ...
 
 
 class GraphEdgeStore(Protocol):
