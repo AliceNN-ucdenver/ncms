@@ -232,18 +232,18 @@ LLM-extracted keyword bridge nodes were intended to connect entity subgraphs tha
 ### Research Direction: Project Oracle
 
 <p align="center">
-  <img src="docs/assets/project-oracle.svg" alt="Project Oracle — Sleep Consolidation Architecture" width="100%">
+  <img src="docs/assets/project-oracle.svg" alt="Project Oracle — Dream Cycle Architecture" width="100%">
 </p>
 
 The keyword bridge failure and ACT-R underperformance on static benchmarks point to a deeper insight: **ACT-R's spreading activation has the right mechanism but no learned weights.** The `association_strengths` parameter in `spreading_activation()` exists but is always `None` &mdash; every entity pair contributes equally, regardless of actual co-relevance.
 
 **Project Oracle** is a non-LLM offline consolidation system that teaches ACT-R through its own mechanism:
 
-- **Sleep Rehearsal** &mdash; Nightly pass injects synthetic access records for high-importance memories showing decay, boosting their base-level activation `B_i = ln(sum(t^-d))` without changing the formula
+- **Dream Rehearsal** &mdash; Nightly pass injects synthetic access records for high-importance memories showing decay, boosting their base-level activation `B_i = ln(sum(t^-d))` without changing the formula
 - **Association Learning** &mdash; Computes PMI (pointwise mutual information) from entity co-access patterns in `search_log`, populating the `association_strengths` parameter so spreading activation uses learned weights instead of uniform 1.0
 - **Importance Drift** &mdash; Adjusts `memory.importance` based on 30-day access trends, letting frequently-accessed memories rise and neglected ones gracefully decay
 
-This eliminates the need for LLM keyword bridges (replaced by learned PMI weights) and LLM-as-judge reranking (replaced by sleep-tuned activation scores), keeping the entire retrieval pipeline LLM-free at query time. See the [design spec](docs/ncms_next_internal_design_spec.md#phase-8-project-oracle--sleep-consolidation) for the full implementation plan.
+This eliminates the need for LLM keyword bridges (replaced by learned PMI weights) and LLM-as-judge reranking (replaced by dream-tuned activation scores), keeping the entire retrieval pipeline LLM-free at query time. See the [design spec](docs/ncms_next_internal_design_spec.md#phase-8-project-oracle--dream-cycle) for the full implementation plan.
 
 ---
 
@@ -316,9 +316,9 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 - [ ] Hierarchical abstraction &mdash; LLM-synthesized higher-order patterns from episode clusters
 - [ ] Temporal retrieval &mdash; time-window and "as-of" queries across the memory graph
 
-**Project Oracle &mdash; Sleep Consolidation** ([design spec](docs/ncms_next_internal_design_spec.md#phase-8-project-oracle--sleep-consolidation))
+**Project Oracle &mdash; Dream Cycle** ([design spec](docs/ncms_next_internal_design_spec.md#phase-8-project-oracle--dream-cycle))
 - [ ] Search logging &mdash; `search_log` table tracking queries, candidates, and user selections
-- [ ] Sleep rehearsal &mdash; nightly synthetic access injection for important-but-decaying memories
+- [ ] Dream rehearsal &mdash; nightly synthetic access injection for important-but-decaying memories
 - [ ] Association learning &mdash; PMI-based entity co-access weights populating `spreading_activation()`
 - [ ] Importance drift &mdash; 30-day access trend analysis adjusting memory importance scores
 - [ ] Oracle ablation &mdash; before/after benchmarking on temporal retrieval tasks

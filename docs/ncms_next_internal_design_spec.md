@@ -1259,7 +1259,7 @@ Each phase is independently testable, deployable, and measurable. Phases build o
 
 ---
 
-# 16B. Phase 8 — Project Oracle: Sleep Consolidation & Adaptive Scoring
+# 16B. Phase 8 — Project Oracle: Dream Cycle & Adaptive Scoring
 
 **Codename:** Project Oracle
 **Goal:** Replace LLM-as-judge reranking and LLM keyword bridges with a zero-LLM offline consolidation process that teaches ACT-R to produce better rankings through access pattern analysis and learned association strengths. This eliminates query-time LLM cost while producing compounding improvements.
@@ -1268,15 +1268,15 @@ Each phase is independently testable, deployable, and measurable. Phases build o
 1. **Keyword bridges catastrophically fail** (nDCG@10 drops 95%) — generic LLM-extracted keywords flood graph expansion
 2. **ACT-R underperforms on static benchmarks** (Full Pipeline 0.690 vs SPLADE+Graph 0.698) — uniform association strengths and no real access history handicap cognitive scoring
 
-Project Oracle addresses both by teaching ACT-R through its own mechanism: access patterns and association weights. Like sleep consolidation in cognitive science, an offline nightly process replays, rehearses, and reorganizes memory traces — no LLM required for the core loop.
+Project Oracle addresses both by teaching ACT-R through its own mechanism: access patterns and association weights. Like dream consolidation in cognitive science, an offline nightly process replays, rehearses, and reorganizes memory traces — no LLM required for the core loop.
 
 ### Cognitive Science Basis
 
-In ACT-R theory, sleep consolidation is modeled as offline rehearsal — the hippocampus replays important memory traces during slow-wave sleep, which effectively adds new access events and strengthens inter-chunk associations. Anderson (2007) shows that spaced rehearsal (distributed practice) produces optimal long-term retention. Project Oracle implements this directly:
+In ACT-R theory, dream consolidation is modeled as offline rehearsal — the hippocampus replays important memory traces during slow-wave sleep, which effectively adds new access events and strengthens inter-chunk associations. Anderson (2007) shows that spaced rehearsal (distributed practice) produces optimal long-term retention. Project Oracle implements this directly:
 
-- **Slow-wave rehearsal** → synthetic access injection for decaying-but-important memories
-- **REM association** → PMI-based entity association strength learning from co-access patterns
-- **Memory triage** → importance score adjustment based on access trend analysis
+- **Dream rehearsal** → synthetic access injection for decaying-but-important memories
+- **Dream association** → PMI-based entity association strength learning from co-access patterns
+- **Dream triage** → importance score adjustment based on access trend analysis
 
 ### Phase 8A: Search Logging & Data Collection (estimated: 2-3 days)
 
@@ -1288,33 +1288,33 @@ In ACT-R theory, sleep consolidation is modeled as offline rehearsal — the hip
 | 8.A.4 | Add `association_strengths` table: `(entity_id_1, entity_id_2, strength, updated_at)` | `migrations.py` | Persisted association weights |
 | 8.A.5 | Wire `association_strengths` loading into `memory_service.search()` → `spreading_activation()` | `memory_service.py` | Non-None strengths passed when table populated |
 
-### Phase 8B: Sleep Rearranger — Non-LLM (estimated: 3-4 days)
+### Phase 8B: Dream Cycle — Non-LLM (estimated: 3-4 days)
 
 | # | Task | Files | Verification |
 |---|------|-------|--------------|
-| 8.B.1 | Implement `run_sleep_rehearsal()`: inject synthetic accesses for high-count + stale memories | `consolidation_service.py` | Decayed important memories get activation boost; recently-active memories untouched |
+| 8.B.1 | Implement `run_dream_rehearsal()`: inject synthetic accesses for high-count + stale memories | `consolidation_service.py` | Decayed important memories get activation boost; recently-active memories untouched |
 | 8.B.2 | Implement `learn_association_strengths()`: compute PMI from co-access entity pairs | `consolidation_service.py` | association_strengths table populated; frequently co-accessed entity pairs have positive PMI |
 | 8.B.3 | Implement `adjust_importance_drift()`: raise importance for increasing-access memories, lower for declining | `consolidation_service.py` | importance field updated based on 30-day access trend |
-| 8.B.4 | Add `run_sleep_consolidation()` orchestrator that runs all three passes in sequence | `consolidation_service.py` | Single entry point; idempotent; logs stats |
-| 8.B.5 | Add config flags: `NCMS_SLEEP_CONSOLIDATION_ENABLED`, `NCMS_SLEEP_REHEARSAL_STALENESS_DAYS`, `NCMS_SLEEP_MIN_ACCESS_COUNT` | `config.py` | Feature flag controls; defaults disabled |
+| 8.B.4 | Add `run_dream_cycle()` orchestrator that runs all three passes in sequence | `consolidation_service.py` | Single entry point; idempotent; logs stats |
+| 8.B.5 | Add config flags: `NCMS_DREAM_CYCLE_ENABLED`, `NCMS_DREAM_REHEARSAL_STALENESS_DAYS`, `NCMS_DREAM_MIN_ACCESS_COUNT` | `config.py` | Feature flag controls; defaults disabled |
 | 8.B.6 | Unit tests: synthetic access injection, PMI computation, importance drift, edge cases (empty access log, single memory) | `tests/unit/` | All pass; deterministic with fixed timestamps |
-| 8.B.7 | Integration test: full sleep cycle on a populated memory store; verify activation scores improve for rehearsed memories | `tests/integration/` | Before/after activation comparison |
+| 8.B.7 | Integration test: full dream cycle on a populated memory store; verify activation scores improve for rehearsed memories | `tests/integration/` | Before/after activation comparison |
 
 ### Phase 8C: Evaluation & Ablation (estimated: 2-3 days)
 
 | # | Task | Files | Verification |
 |---|------|-------|--------------|
 | 8.C.1 | Create temporal benchmark: SciFact with synthetic access patterns (simulate 30 days of agent usage) | `benchmarks/` | Reproducible access pattern generation |
-| 8.C.2 | Run ablation: SPLADE+Graph baseline → +Sleep Rehearsal → +Association Learning → +Importance Drift | `benchmarks/` | Each component measured independently |
-| 8.C.3 | Compare vs. LLM-as-judge: Sleep-consolidated ACT-R vs. Tier 3 judge on same queries | `benchmarks/` | Quantify quality gap (if any) vs. cost savings |
-| 8.C.4 | Measure compounding effect: run sleep consolidation for 1, 7, 30 simulated nights | `benchmarks/` | Retrieval quality improves with more consolidation cycles |
+| 8.C.2 | Run ablation: SPLADE+Graph baseline → +Dream Rehearsal → +Association Learning → +Importance Drift | `benchmarks/` | Each component measured independently |
+| 8.C.3 | Compare vs. LLM-as-judge: Dream-consolidated ACT-R vs. Tier 3 judge on same queries | `benchmarks/` | Quantify quality gap (if any) vs. cost savings |
+| 8.C.4 | Measure compounding effect: run dream cycle for 1, 7, 30 simulated nights | `benchmarks/` | Retrieval quality improves with more dream cycles |
 | 8.C.5 | Update paper Section 6.5 and README with Project Oracle results | `docs/paper.md`, `README.md` | Results documented |
 
 **Phase 8 exit criteria:**
-- [ ] Sleep consolidation runs without LLM calls
+- [ ] Dream cycle runs without LLM calls
 - [ ] Association strengths populated from co-access patterns
-- [ ] ACT-R scoring improves with sleep consolidation (measured on temporal benchmark)
-- [ ] Compounding improvement demonstrated over multiple consolidation cycles
+- [ ] ACT-R scoring improves with dream cycle (measured on temporal benchmark)
+- [ ] Compounding improvement demonstrated over multiple dream cycles
 - [ ] All features toggleable via config flags
 - [ ] Zero query-time latency impact (all work is offline)
 
@@ -1331,9 +1331,9 @@ In ACT-R theory, sleep consolidation is modeled as offline rehearsal — the hip
 | Over-aggressive admission filtering | Start with low admission threshold (0.25); measure recall impact |
 | Retrieval preferring abstracts over needed atomic evidence | HierarchyMatch should boost, not replace; intent classification routes to right level |
 | LLM consolidation quality | All LLM features degrade gracefully; heuristic fallbacks for all consolidation levels |
-| Sleep rehearsal over-boosting | Cap synthetic accesses per cycle (max 1 per memory per night); decay naturally dampens over time |
+| Dream rehearsal over-boosting | Cap synthetic accesses per cycle (max 1 per memory per night); decay naturally dampens over time |
 | Association strength drift | Recompute PMI from 30-day rolling window; strengths auto-correct as access patterns change |
-| Cold-start memories invisible to rearranger | New memories get initial access at ingest (already implemented); optional LLM tier for semantic review |
+| Cold-start memories invisible to dream cycle | New memories get initial access at ingest (already implemented); optional LLM tier for semantic review |
 
 ---
 
@@ -1421,7 +1421,7 @@ The first release is successful if it:
 | **5** | Hierarchical Consolidation | | 8–11 days | Four levels of abstraction from atomic to strategic |
 | **6** | MCP + Dashboard + Demo | | 6–8 days | Full tooling and visualization |
 | **7** | Tuning + Evaluation | | 5–7 days | Comprehensive ablation and documented results |
-| **8** | Sleep Consolidation & Adaptive Scoring | **Project Oracle** | 7–10 days | Non-LLM offline learning that teaches ACT-R via access patterns |
+| **8** | Dream Cycle & Adaptive Scoring | **Project Oracle** | 7–10 days | Non-LLM offline learning that teaches ACT-R via access patterns |
 | **Total** | | | **58–79 days** | Complete HTMG system with adaptive scoring and ablation-validated results |
 
 Each phase is independently testable, deployable, and measurable. Phases can be paused between without loss of progress.
