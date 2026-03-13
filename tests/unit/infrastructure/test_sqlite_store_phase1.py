@@ -32,10 +32,10 @@ async def memory(store: SQLiteStore) -> Memory:
 
 
 class TestV2Migration:
-    async def test_schema_version_is_2(self, store: SQLiteStore):
+    async def test_schema_version_is_at_least_2(self, store: SQLiteStore):
         cursor = await store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
-        assert row[0] == 2
+        assert row[0] >= 2
 
     async def test_memory_nodes_table_exists(self, store: SQLiteStore):
         cursor = await store.db.execute(

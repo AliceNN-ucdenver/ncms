@@ -47,14 +47,15 @@ uv run ruff check benchmarks/                                 # Lint benchmark c
 ```
 src/ncms/
 ├── domain/           # Pure models, protocols, scoring — ZERO infrastructure deps
-│   ├── models.py     # All Pydantic models (Memory, MemoryNode, GraphEdge, EphemeralEntry, etc.)
-│   ├── protocols.py  # Protocol interfaces (MemoryStore, MemoryNodeStore, IndexEngine, etc.)
-│   ├── scoring.py    # ACT-R activation math + admission scoring (pure functions, no I/O)
+│   ├── models.py     # All Pydantic models (Memory, MemoryNode, GraphEdge, RelationType, ScoredMemory, etc.)
+│   ├── protocols.py  # Protocol interfaces (MemoryStore, MemoryNodeStore + temporal queries, etc.)
+│   ├── scoring.py    # ACT-R activation + admission scoring + reconciliation penalties (pure fns)
 │   ├── entity_extraction.py # Entity label constants + label resolution (domain-agnostic)
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
 │   ├── admission_service.py     # Admission scoring: 8-feature extraction + routing (Phase 1)
+│   ├── reconciliation_service.py # State reconciliation: classify + apply (supports/refines/supersedes/conflicts)
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
@@ -62,7 +63,7 @@ src/ncms/
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 10 tables, WAL mode, parameterized SQL
-│   ├── storage/migrations.py    # DDL for schema creation and versioning (V1 base + V2 HTMG)
+│   ├── storage/migrations.py    # DDL for schema creation and versioning (V1 base + V2 HTMG + V3 bitemporal)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
 │   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
@@ -104,6 +105,7 @@ src/ncms/
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming content to discard/ephemeral/atomic/entity-state/episode destinations. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
+11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -131,8 +133,8 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 ## Data Flow
 
-1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph)
-2. **Search**: Query → BM25 candidates → SPLADE fusion → graph expansion → ACT-R + graph scoring → ranked results
+1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → [reconcile entity states]
+2. **Search**: Query → BM25 candidates → SPLADE fusion → graph expansion → ACT-R + graph scoring [− supersession/conflict penalty] → ranked results
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
@@ -152,6 +154,9 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 - `memory_nodes` — Typed HTMG nodes (atomic, entity_state, episode, abstract)
 - `graph_edges` — Typed directed edges in the HTMG
 - `ephemeral_cache` — Short-lived entries below atomic admission threshold
+
+**V3 (Phase 2 — Bitemporal):**
+- `memory_nodes` + `observed_at` (when source says event happened) + `ingested_at` (when NCMS stored it)
 
 ## Testing Conventions
 
@@ -193,6 +198,10 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_ADMISSION_ENABLED` | `false` | Enable admission scoring for incoming memories (Phase 1) |
 | `NCMS_ADMISSION_NOVELTY_SEARCH_LIMIT` | `3` | BM25 candidates for novelty/redundancy scoring |
 | `NCMS_ADMISSION_EPHEMERAL_TTL_SECONDS` | `3600` | TTL for ephemeral cache entries (1 hour) |
+| `NCMS_RECONCILIATION_ENABLED` | `false` | Enable state reconciliation (Phase 2, requires admission) |
+| `NCMS_RECONCILIATION_IMPORTANCE_BOOST` | `0.5` | Importance boost for SUPPORTS relations |
+| `NCMS_RECONCILIATION_SUPERSESSION_PENALTY` | `0.3` | ACT-R mismatch penalty for superseded states |
+| `NCMS_RECONCILIATION_CONFLICT_PENALTY` | `0.15` | ACT-R mismatch penalty for conflicted states |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

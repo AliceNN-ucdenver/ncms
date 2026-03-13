@@ -23,8 +23,10 @@ from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
+    conflict_annotation_penalty,
     retrieval_probability,
     spreading_activation,
+    supersession_penalty,
     total_activation,
 )
 from ncms.infrastructure.observability.event_log import NullEventLog
@@ -44,6 +46,7 @@ class MemoryService:
         event_log: object | None = None,
         splade: object | None = None,
         admission: object | None = None,
+        reconciliation: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -55,6 +58,8 @@ class MemoryService:
         self._splade = splade
         # Optional AdmissionService for Phase 1 admission scoring (duck-typed)
         self._admission = admission
+        # Optional ReconciliationService for Phase 2 state reconciliation (duck-typed)
+        self._reconciliation = reconciliation
 
     @property
     def store(self) -> MemoryStore:
@@ -79,6 +84,62 @@ class MemoryService:
                 except Exception:
                     pass
         return cached
+
+    # ── Entity State Extraction (Phase 2A) ───────────────────────────────
+
+    @staticmethod
+    def _extract_entity_state_meta(
+        content: str, entities: list[dict],
+    ) -> dict:
+        """Extract entity state metadata from content and extracted entities.
+
+        Heuristic: parse "entity: key = value" or "entity key is value" patterns
+        from content. Falls back to using the first extracted entity as entity_id
+        and the content as state_value with a generic state_key.
+
+        Returns a dict suitable for MemoryNode.metadata with entity_id, state_key,
+        state_value, and optionally state_scope.
+        """
+        import re
+
+        # Try structured pattern: "EntityName: key = value"
+        # e.g. "auth-service: status = deployed"
+        pattern = re.compile(
+            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
+            re.MULTILINE,
+        )
+        match = pattern.search(content)
+        if match:
+            return {
+                "entity_id": match.group(1).strip(),
+                "state_key": match.group(2).strip(),
+                "state_value": match.group(3).strip(),
+            }
+
+        # Try "EntityName key is/are/was/were value" pattern
+        # e.g. "auth-service status is deployed"
+        pattern2 = re.compile(
+            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
+            r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        match2 = pattern2.search(content)
+        if match2:
+            return {
+                "entity_id": match2.group(1).strip(),
+                "state_key": match2.group(2).strip(),
+                "state_value": match2.group(3).strip(),
+            }
+
+        # Fallback: use first entity as entity_id, content as value
+        if entities:
+            return {
+                "entity_id": entities[0]["name"],
+                "state_key": "state",
+                "state_value": content[:500].strip(),
+            }
+
+        return {}
 
     # ── Store ────────────────────────────────────────────────────────────
 
@@ -399,16 +460,63 @@ class MemoryService:
                     "entity_state_update": NodeType.ENTITY_STATE,
                     "episode_fragment": NodeType.ATOMIC,  # Episodes created in Phase 2
                 }
+
+                # Build metadata for entity_state_update nodes (Phase 2A)
+                node_metadata: dict = {}
+                if admission_route == "entity_state_update":
+                    node_metadata = self._extract_entity_state_meta(
+                        content, all_entities,
+                    )
+
                 node = MemoryNode(
                     memory_id=memory.id,
                     node_type=node_type_map[admission_route],
                     importance=memory.importance,
+                    metadata=node_metadata,
                 )
                 await self._store.save_memory_node(node)
                 _emit_stage("memory_node", 0.0, {
                     "node_id": node.id,
                     "node_type": node.node_type.value,
+                    "has_entity_state": bool(node_metadata.get("entity_id")),
                 }, memory_id=memory.id)
+
+                # Phase 2A: Reconcile entity state against existing states
+                if (
+                    admission_route == "entity_state_update"
+                    and self._reconciliation is not None
+                    and self._config.reconciliation_enabled
+                    and node_metadata.get("entity_id")
+                ):
+                    t0_recon = time.perf_counter()
+                    try:
+                        results = await self._reconciliation.reconcile(node)  # type: ignore[attr-defined]
+                        recon_data: dict = {
+                            "node_id": node.id,
+                            "results_count": len(results),
+                            "relations": [
+                                {"relation": r.relation, "existing": r.existing_node_id}
+                                for r in results
+                            ],
+                        }
+                        _emit_stage(
+                            "reconciliation",
+                            (time.perf_counter() - t0_recon) * 1000,
+                            recon_data,
+                            memory_id=memory.id,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Reconciliation failed for node %s, continuing",
+                            node.id,
+                            exc_info=True,
+                        )
+                        _emit_stage(
+                            "reconciliation_error",
+                            (time.perf_counter() - t0_recon) * 1000,
+                            memory_id=memory.id,
+                        )
+
             except Exception:
                 logger.warning(
                     "MemoryNode creation failed for %s, continuing", memory.id,
@@ -630,7 +738,44 @@ class MemoryService:
             )
 
             noise = activation_noise(sigma=self._config.actr_noise)
-            act = total_activation(bl, spread, noise)
+
+            # Phase 2C: reconciliation penalties for superseded / conflicted states
+            mem_is_superseded = False
+            mem_has_conflicts = False
+            mem_superseded_by: str | None = None
+            penalty = 0.0
+            if self._config.reconciliation_enabled:
+                try:
+                    from ncms.domain.models import EdgeType
+
+                    nodes = await self._store.get_memory_nodes_for_memory(memory_id)
+                    for mn in nodes:
+                        if not mn.is_current:
+                            mem_is_superseded = True
+                            mem_superseded_by = mn.metadata.get("superseded_by")
+                        # Check for conflict edges
+                        conflict_edges = await self._store.get_graph_edges(
+                            mn.id, EdgeType.CONFLICTS_WITH,
+                        )
+                        if conflict_edges:
+                            mem_has_conflicts = True
+                    penalty = (
+                        supersession_penalty(
+                            mem_is_superseded,
+                            self._config.reconciliation_supersession_penalty,
+                        )
+                        + conflict_annotation_penalty(
+                            mem_has_conflicts,
+                            self._config.reconciliation_conflict_penalty,
+                        )
+                    )
+                except Exception:
+                    logger.debug(
+                        "Reconciliation penalty lookup failed for %s",
+                        memory_id, exc_info=True,
+                    )
+
+            act = total_activation(bl, spread, noise, mismatch_penalty=penalty)
 
             # Look up per-source scores
             bm25_score = bm25_scores.get(memory_id, 0.0)
@@ -673,6 +818,9 @@ class MemoryService:
                     spreading=spread,
                     total_activation=combined,
                     retrieval_prob=ret_prob,
+                    is_superseded=mem_is_superseded,
+                    has_conflicts=mem_has_conflicts,
+                    superseded_by=mem_superseded_by,
                 )
             )
 

@@ -334,8 +334,8 @@ class SQLiteStore:
         await self.db.execute(
             """INSERT OR REPLACE INTO memory_nodes
                (id, memory_id, node_type, parent_id, importance, is_current,
-                valid_from, valid_to, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                valid_from, valid_to, observed_at, ingested_at, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 node.id,
                 node.memory_id,
@@ -345,6 +345,8 @@ class SQLiteStore:
                 1 if node.is_current else 0,
                 node.valid_from.isoformat() if node.valid_from else None,
                 node.valid_to.isoformat() if node.valid_to else None,
+                node.observed_at.isoformat() if node.observed_at else None,
+                node.ingested_at.isoformat(),
                 json.dumps(node.metadata),
                 node.created_at.isoformat(),
             ),
@@ -372,6 +374,135 @@ class SQLiteStore:
         cursor = await self.db.execute(
             "SELECT * FROM memory_nodes WHERE memory_id = ? ORDER BY created_at DESC",
             (memory_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    # ── Entity State Queries (Phase 2A) ──────────────────────────────────
+
+    async def get_current_entity_states(
+        self, entity_id: str, state_key: str,
+    ) -> list[MemoryNode]:
+        """Find current entity state nodes for a given entity_id + state_key."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND is_current = 1
+                 AND json_extract(metadata, '$.entity_id') = ?
+                 AND json_extract(metadata, '$.state_key') = ?
+               ORDER BY created_at DESC""",
+            (NodeType.ENTITY_STATE.value, entity_id, state_key),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def get_entity_states_by_entity(
+        self, entity_id: str,
+    ) -> list[MemoryNode]:
+        """Find all entity state nodes (current and superseded) for an entity."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.entity_id') = ?
+               ORDER BY created_at DESC""",
+            (NodeType.ENTITY_STATE.value, entity_id),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def update_memory_node(self, node: MemoryNode) -> None:
+        """Update an existing memory node (INSERT OR REPLACE)."""
+        await self.save_memory_node(node)
+
+    # ── Temporal Queries (Phase 2B) ──────────────────────────────────────
+
+    async def get_current_state(
+        self, entity_id: str, state_key: str,
+    ) -> MemoryNode | None:
+        """Get the single current state for an entity+key (most recent if multiple)."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND is_current = 1
+                 AND json_extract(metadata, '$.entity_id') = ?
+                 AND json_extract(metadata, '$.state_key') = ?
+               ORDER BY created_at DESC
+               LIMIT 1""",
+            (NodeType.ENTITY_STATE.value, entity_id, state_key),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_memory_node(row) if row else None
+
+    async def get_state_at_time(
+        self, entity_id: str, state_key: str, timestamp: str,
+    ) -> MemoryNode | None:
+        """Get the entity state that was valid at a specific point in time.
+
+        Finds the node where valid_from <= timestamp and
+        (valid_to IS NULL OR valid_to > timestamp).
+        Falls back to the most recent created_at <= timestamp if no
+        valid_from is set.
+        """
+        # Prefer nodes with explicit valid_from
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.entity_id') = ?
+                 AND json_extract(metadata, '$.state_key') = ?
+                 AND valid_from IS NOT NULL
+                 AND valid_from <= ?
+                 AND (valid_to IS NULL OR valid_to > ?)
+               ORDER BY valid_from DESC
+               LIMIT 1""",
+            (
+                NodeType.ENTITY_STATE.value,
+                entity_id, state_key,
+                timestamp, timestamp,
+            ),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return self._row_to_memory_node(row)
+
+        # Fallback: use created_at
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.entity_id') = ?
+                 AND json_extract(metadata, '$.state_key') = ?
+                 AND created_at <= ?
+               ORDER BY created_at DESC
+               LIMIT 1""",
+            (NodeType.ENTITY_STATE.value, entity_id, state_key, timestamp),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_memory_node(row) if row else None
+
+    async def get_state_changes_since(
+        self, timestamp: str,
+    ) -> list[MemoryNode]:
+        """Get all entity state changes since a given timestamp."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND created_at > ?
+               ORDER BY created_at ASC""",
+            (NodeType.ENTITY_STATE.value, timestamp),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_memory_node(r) for r in rows]
+
+    async def get_state_history(
+        self, entity_id: str, state_key: str,
+    ) -> list[MemoryNode]:
+        """Get full history of an entity+key (current + superseded, chronological)."""
+        cursor = await self.db.execute(
+            """SELECT * FROM memory_nodes
+               WHERE node_type = ?
+                 AND json_extract(metadata, '$.entity_id') = ?
+                 AND json_extract(metadata, '$.state_key') = ?
+               ORDER BY created_at ASC""",
+            (NodeType.ENTITY_STATE.value, entity_id, state_key),
         )
         rows = await cursor.fetchall()
         return [self._row_to_memory_node(r) for r in rows]
@@ -525,6 +656,11 @@ class SQLiteStore:
 
     @staticmethod
     def _row_to_memory_node(row: aiosqlite.Row) -> MemoryNode:
+        # Graceful fallback for pre-V3 rows (observed_at/ingested_at may be missing)
+        row_keys = row.keys() if hasattr(row, "keys") else []
+        observed_at_raw = row["observed_at"] if "observed_at" in row_keys else None
+        ingested_at_raw = row["ingested_at"] if "ingested_at" in row_keys else None
+
         return MemoryNode(
             id=row["id"],
             memory_id=row["memory_id"],
@@ -537,6 +673,14 @@ class SQLiteStore:
             ),
             valid_to=(
                 datetime.fromisoformat(row["valid_to"]) if row["valid_to"] else None
+            ),
+            observed_at=(
+                datetime.fromisoformat(observed_at_raw) if observed_at_raw else None
+            ),
+            ingested_at=(
+                datetime.fromisoformat(ingested_at_raw)
+                if ingested_at_raw
+                else datetime.fromisoformat(row["created_at"])
             ),
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
             created_at=datetime.fromisoformat(row["created_at"]),

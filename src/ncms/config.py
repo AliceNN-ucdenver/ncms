@@ -87,6 +87,12 @@ class NCMSConfig(BaseSettings):
     admission_novelty_search_limit: int = 3
     admission_ephemeral_ttl_seconds: int = 3600
 
+    # State reconciliation (Phase 2)
+    reconciliation_enabled: bool = False
+    reconciliation_importance_boost: float = 0.5
+    reconciliation_supersession_penalty: float = 0.3
+    reconciliation_conflict_penalty: float = 0.15
+
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
 

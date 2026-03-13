@@ -136,6 +136,31 @@ def retrieval_probability(activation: float, threshold: float = -2.0, tau: float
 
 
 # ---------------------------------------------------------------------------
+# State Reconciliation Penalties (Phase 2C — NCMS-Next §9.4)
+# ---------------------------------------------------------------------------
+
+
+def supersession_penalty(is_superseded: bool, penalty: float = 0.3) -> float:
+    """Return mismatch penalty for superseded memories.
+
+    Superseded memories (is_current=False with a SUPERSEDED_BY edge)
+    receive a fixed penalty that reduces their total activation score,
+    making current information rank higher than stale facts.
+    """
+    return penalty if is_superseded else 0.0
+
+
+def conflict_annotation_penalty(has_conflicts: bool, penalty: float = 0.15) -> float:
+    """Return mismatch penalty for memories with unresolved conflicts.
+
+    Memories with CONFLICTS_WITH edges receive a smaller penalty
+    to signal reduced trustworthiness while keeping them visible
+    for human review.
+    """
+    return penalty if has_conflicts else 0.0
+
+
+# ---------------------------------------------------------------------------
 # Admission Scoring (Phase 1 — NCMS-Next §8)
 # ---------------------------------------------------------------------------
 

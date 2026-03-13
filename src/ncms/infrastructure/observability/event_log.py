@@ -251,6 +251,24 @@ class EventLog:
             },
         ))
 
+    def reconciliation_applied(
+        self,
+        new_node_id: str,
+        existing_node_id: str,
+        relation: str,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit a reconciliation event when entity states are classified."""
+        self.emit(DashboardEvent(
+            type="reconciliation.applied",
+            agent_id=agent_id,
+            data={
+                "new_node_id": new_node_id,
+                "existing_node_id": existing_node_id,
+                "relation": relation,
+            },
+        ))
+
     def memory_searched(
         self,
         query: str,

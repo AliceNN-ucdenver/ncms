@@ -356,9 +356,18 @@ async def run_dashboard(
         event_log=event_log,
     )
 
+    # Reconciliation service (Phase 2, disabled by default)
+    reconciliation = None
+    if config.reconciliation_enabled:
+        from ncms.application.reconciliation_service import ReconciliationService
+
+        reconciliation = ReconciliationService(
+            store=store, config=config, event_log=event_log,
+        )
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
-        event_log=event_log,
+        event_log=event_log, reconciliation=reconciliation,
     )
     snapshot_svc = SnapshotService(
         store=store,

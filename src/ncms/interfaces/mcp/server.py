@@ -52,9 +52,18 @@ async def create_ncms_services(
         )
         logger.info("SPLADE engine enabled with model: %s", config.splade_model)
 
+    # Reconciliation service (Phase 2, disabled by default)
+    reconciliation = None
+    if config.reconciliation_enabled:
+        from ncms.application.reconciliation_service import ReconciliationService
+
+        reconciliation = ReconciliationService(store=store, config=config)
+        logger.info("Reconciliation service enabled")
+
     # Application services
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store, index=index, graph=graph, config=config,
+        splade=splade, reconciliation=reconciliation,
     )
     snapshot_svc = SnapshotService(
         store=store,

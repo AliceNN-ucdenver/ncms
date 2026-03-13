@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -173,5 +173,21 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (2,),
+        )
+        await db.commit()
+        current_version = 2
+
+    if current_version < 3:
+        # V3: Bitemporal columns for state reconciliation (Phase 2B)
+        # Nullable columns — existing rows get NULL (safe)
+        await db.execute(
+            "ALTER TABLE memory_nodes ADD COLUMN observed_at TEXT"
+        )
+        await db.execute(
+            "ALTER TABLE memory_nodes ADD COLUMN ingested_at TEXT"
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (3,),
         )
         await db.commit()

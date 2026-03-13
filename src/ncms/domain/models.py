@@ -237,7 +237,12 @@ class MemoryNode(BaseModel):
     """A typed node in the HTMG hierarchy.
 
     Parallels the existing Memory model but adds node_type discriminator,
-    parent linkage, and temporal fields for future state reconciliation.
+    parent linkage, and temporal fields for state reconciliation.
+
+    Bitemporal fields (Phase 2B):
+    - valid_from / valid_to: real-world validity interval
+    - observed_at: when the source says the event happened
+    - ingested_at: when NCMS stored this node
     """
 
     id: str = Field(default_factory=_uuid)
@@ -248,6 +253,8 @@ class MemoryNode(BaseModel):
     is_current: bool = True  # For entity states: current or superseded
     valid_from: datetime | None = None
     valid_to: datetime | None = None
+    observed_at: datetime | None = None  # When the source says event happened
+    ingested_at: datetime = Field(default_factory=_utcnow)  # When NCMS stored it
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=_utcnow)
 
@@ -275,6 +282,64 @@ class EphemeralEntry(BaseModel):
     ttl_seconds: int = 3600  # 1 hour default
     created_at: datetime = Field(default_factory=_utcnow)
     expires_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# State Reconciliation (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class RelationType(StrEnum):
+    """Relation classification for state reconciliation."""
+
+    SUPPORTS = "supports"
+    REFINES = "refines"
+    SUPERSEDES = "supersedes"
+    CONFLICTS = "conflicts"
+    UNRELATED = "unrelated"
+
+
+class EntityStateMeta(BaseModel):
+    """Validated accessor for entity-state metadata stored in MemoryNode.metadata.
+
+    This is NOT a persistence model — it's a typed projection of the metadata dict.
+    Use it to validate/extract entity state fields from MemoryNode.metadata.
+    """
+
+    entity_id: str
+    state_key: str
+    state_value: str
+    state_scope: str | None = None
+    revision_reason: str | None = None
+
+    @classmethod
+    def from_node(cls, node: MemoryNode) -> EntityStateMeta | None:
+        """Extract EntityStateMeta from a MemoryNode's metadata dict.
+
+        Returns None if the node's metadata lacks required fields.
+        """
+        meta = node.metadata
+        entity_id = meta.get("entity_id")
+        state_key = meta.get("state_key")
+        state_value = meta.get("state_value")
+        if not entity_id or not state_key or state_value is None:
+            return None
+        return cls(
+            entity_id=str(entity_id),
+            state_key=str(state_key),
+            state_value=str(state_value),
+            state_scope=meta.get("state_scope"),
+            revision_reason=meta.get("revision_reason"),
+        )
+
+
+class ReconciliationResult(BaseModel):
+    """Result of classifying the relation between a new state and an existing state."""
+
+    relation: RelationType
+    existing_node_id: str | None = None
+    confidence: float = 1.0
+    reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +385,10 @@ class ScoredMemory(BaseModel):
     spreading: float = 0.0
     total_activation: float = 0.0
     retrieval_prob: float = 1.0
+    # Phase 2C: reconciliation annotations
+    is_superseded: bool = False
+    has_conflicts: bool = False
+    superseded_by: str | None = None
 
 
 # ---------------------------------------------------------------------------

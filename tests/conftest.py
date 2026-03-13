@@ -9,6 +9,7 @@ from ncms.application.admission_service import AdmissionService
 from ncms.application.bus_service import BusService
 from ncms.application.consolidation_service import ConsolidationService
 from ncms.application.memory_service import MemoryService
+from ncms.application.reconciliation_service import ReconciliationService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.config import NCMSConfig
 from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
@@ -67,6 +68,11 @@ async def consolidation_service(store, index, graph, config):
 @pytest_asyncio.fixture
 async def admission_service(store, index, graph, config):
     return AdmissionService(store=store, index=index, graph=graph, config=config)
+
+
+@pytest_asyncio.fixture
+async def reconciliation_service(store, config):
+    return ReconciliationService(store=store, config=config)
 
 
 @pytest_asyncio.fixture

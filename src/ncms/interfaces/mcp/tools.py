@@ -59,6 +59,9 @@ def register_tools(
                 "base_level_activation": round(r.base_level, 4),
                 "spreading_activation": round(r.spreading, 4),
                 "total_activation": round(r.total_activation, 4),
+                "is_superseded": r.is_superseded,
+                "has_conflicts": r.has_conflicts,
+                "superseded_by": r.superseded_by,
                 "source_agent": r.memory.source_agent,
                 "created_at": r.memory.created_at.isoformat(),
             }
