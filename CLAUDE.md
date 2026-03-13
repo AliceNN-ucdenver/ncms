@@ -28,6 +28,11 @@ uv run ncms topics set <domain> <labels...>  # Set entity labels for a domain
 uv run ncms topics list [domain] # Show cached entity labels
 uv run ncms topics detect <domain> <paths...>  # Auto-detect labels via LLM
 uv run ncms topics clear <domain>  # Clear cached labels for a domain
+uv run ncms state get <entity_id> [--key KEY]  # Show current entity state
+uv run ncms state history <entity_id> [--key KEY]  # Show state transitions
+uv run ncms state list            # List entities with state nodes
+uv run ncms episodes list [--closed]  # List open/closed episodes
+uv run ncms episodes show <id>    # Show episode with member fragments
 uv run pytest tests/ -v          # Run all tests
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
@@ -85,12 +90,12 @@ src/ncms/
 │   └── observability/event_log.py # Ring buffer event log + NullEventLog + SSE subscribers
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
-│   ├── mcp/tools.py            # 11 MCP tools (+ run_consolidation)
-│   ├── mcp/resources.py        # 4 MCP resources (ncms://...)
-│   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST)
+│   ├── mcp/tools.py            # 14 MCP tools (+ run_consolidation)
+│   ├── mcp/resources.py        # 5 MCP resources (ncms://...)
+│   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST + entity/episode APIs)
 │   ├── http/demo_runner.py     # Dashboard demo scenario runner
 │   ├── http/static/index.html  # SPA frontend (D3 graph, SSE event feed)
-│   ├── cli/main.py             # Click CLI: ncms serve|demo|dashboard|info|load|topics
+│   ├── cli/main.py             # Click CLI: ncms serve|demo|dashboard|info|load|topics|state|episodes
 │   ├── cli/commit_hook.py      # ncms-commit-hook for Claude Code/Copilot
 │   ├── cli/context_loader.py   # ncms-context-loader for session start
 │   └── agent/base.py           # KnowledgeAgent ABC (start/sleep/wake/shutdown)

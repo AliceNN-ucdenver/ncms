@@ -469,5 +469,279 @@ def topics_clear(domain: str, db: str | None) -> None:
     asyncio.run(_clear())
 
 
+@cli.group()
+def state() -> None:
+    """Query entity states and history (Phase 2 reconciliation).
+
+    View current entity states and their temporal transition history.
+    Requires NCMS_RECONCILIATION_ENABLED=true for data to exist.
+    """
+    pass
+
+
+@state.command("get")
+@click.argument("entity_id")
+@click.option("--key", default="state", help="State facet key (default: state)")
+@click.option("--db", default=None, help="Database path")
+def state_get(entity_id: str, key: str, db: str | None) -> None:
+    """Show current state of an entity.
+
+    Examples:
+        ncms state get auth-service
+        ncms state get user-table --key schema_version
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _get() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            node = await store.get_current_state(entity_id, key)
+            if node is None:
+                console.print(
+                    f"[yellow]No current state for entity '{entity_id}' "
+                    f"key '{key}'.[/]"
+                )
+                return
+            val = node.metadata.get("state_value", node.content or "")
+            label = node.metadata.get("state_label", "")
+            console.print(f"[bold]Entity:[/] {entity_id}")
+            console.print(f"[bold]Key:[/]    {key}")
+            console.print(f"[bold]Value:[/]  {val}")
+            if label:
+                console.print(f"[bold]Label:[/]  {label}")
+            ts = node.created_at.isoformat() if node.created_at else "?"
+            console.print(f"[bold]Since:[/]  {ts}")
+        finally:
+            await store.close()
+
+    asyncio.run(_get())
+
+
+@state.command("history")
+@click.argument("entity_id")
+@click.option("--key", default="state", help="State facet key (default: state)")
+@click.option("--db", default=None, help="Database path")
+def state_history(entity_id: str, key: str, db: str | None) -> None:
+    """Show state transition history for an entity.
+
+    Examples:
+        ncms state history auth-service
+        ncms state history user-table --key schema_version
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _history() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            nodes = await store.get_state_history(entity_id, key)
+            if not nodes:
+                console.print(
+                    f"[yellow]No state history for entity '{entity_id}' "
+                    f"key '{key}'.[/]"
+                )
+                return
+
+            table = Table(title=f"State History: {entity_id} / {key}")
+            table.add_column("Created", style="dim")
+            table.add_column("Value")
+            table.add_column("Current", justify="center")
+            for n in nodes:
+                val = n.metadata.get("state_value", n.content or "")
+                ts = n.created_at.isoformat() if n.created_at else "?"
+                cur = "[green]yes[/]" if n.is_current else "[dim]no[/]"
+                table.add_row(ts, str(val)[:100], cur)
+            console.print(table)
+        finally:
+            await store.close()
+
+    asyncio.run(_history())
+
+
+@state.command("list")
+@click.option("--db", default=None, help="Database path")
+def state_list(db: str | None) -> None:
+    """List entities that have state nodes.
+
+    Examples:
+        ncms state list
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _list() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.domain.models import NodeType
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            nodes = await store.get_memory_nodes_by_type(
+                NodeType.ENTITY_STATE.value,
+            )
+            if not nodes:
+                console.print("[yellow]No entity state nodes found.[/]")
+                return
+
+            # Group by entity_id
+            entities: dict[str, int] = {}
+            for n in nodes:
+                eid = n.metadata.get("entity_id", "unknown")
+                entities[eid] = entities.get(eid, 0) + 1
+
+            table = Table(title="Entities with State Nodes")
+            table.add_column("Entity ID", style="cyan")
+            table.add_column("State Count", justify="right")
+            for eid, count in sorted(entities.items(), key=lambda x: -x[1]):
+                table.add_row(eid, str(count))
+            console.print(table)
+        finally:
+            await store.close()
+
+    asyncio.run(_list())
+
+
+@cli.group()
+def episodes() -> None:
+    """Query episode formation data (Phase 3).
+
+    View open/closed episodes and their member fragments.
+    Requires NCMS_EPISODES_ENABLED=true for data to exist.
+    """
+    pass
+
+
+@episodes.command("list")
+@click.option("--closed", is_flag=True, help="Include closed episodes")
+@click.option("--db", default=None, help="Database path")
+def episodes_list(closed: bool, db: str | None) -> None:
+    """List episodes.
+
+    Examples:
+        ncms episodes list
+        ncms episodes list --closed
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _list() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.domain.models import NodeType
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            if closed:
+                all_episodes = await store.get_memory_nodes_by_type(
+                    NodeType.EPISODE.value,
+                )
+            else:
+                all_episodes = await store.get_open_episodes()
+
+            if not all_episodes:
+                console.print("[yellow]No episodes found.[/]")
+                return
+
+            table = Table(title="Episodes")
+            table.add_column("Episode ID", style="cyan", max_width=24)
+            table.add_column("Title")
+            table.add_column("Status")
+            table.add_column("Members", justify="right")
+            table.add_column("Created")
+
+            for ep in all_episodes:
+                members = await store.get_episode_members(ep.id)
+                status = ep.metadata.get("status", "unknown")
+                title = ep.metadata.get("episode_title", "")[:40]
+                ts = ep.created_at.isoformat() if ep.created_at else "?"
+                style = "green" if status == "open" else "dim"
+                table.add_row(
+                    ep.id[:24], title, f"[{style}]{status}[/]",
+                    str(len(members)), ts,
+                )
+            console.print(table)
+        finally:
+            await store.close()
+
+    asyncio.run(_list())
+
+
+@episodes.command("show")
+@click.argument("episode_id")
+@click.option("--db", default=None, help="Database path")
+def episodes_show(episode_id: str, db: str | None) -> None:
+    """Show an episode with its member fragments.
+
+    Examples:
+        ncms episodes show ep-abc123
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _show() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            node = await store.get_memory_node(episode_id)
+            if not node:
+                console.print(f"[red]Episode not found: {episode_id}[/]")
+                return
+
+            status = node.metadata.get("status", "unknown")
+            title = node.metadata.get("episode_title", "")
+            console.print(f"[bold]Episode:[/] {node.id}")
+            console.print(f"[bold]Title:[/]   {title}")
+            console.print(f"[bold]Status:[/]  {status}")
+
+            members = await store.get_episode_members(episode_id)
+            console.print(f"[bold]Members:[/] {len(members)}\n")
+            for m in members:
+                mem = await store.get_memory(m.memory_id)
+                content = (mem.content[:200] if mem else "(no content)").replace("\n", " ")
+                ts = m.created_at.isoformat() if m.created_at else "?"
+                console.print(f"  [{ts}] {content}")
+        finally:
+            await store.close()
+
+    asyncio.run(_show())
+
+
 if __name__ == "__main__":
     cli()

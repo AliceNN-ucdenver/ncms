@@ -606,6 +606,7 @@ class MemoryService:
         domain: str | None = None,
         limit: int = 10,
         agent_id: str | None = None,
+        intent_override: str | None = None,
     ) -> list[ScoredMemory]:
         """Execute the full retrieval pipeline: BM25 -> ACT-R rescoring."""
         pipeline_id = uuid.uuid4().hex[:12]
@@ -623,7 +624,28 @@ class MemoryService:
 
         # Phase 4: Intent classification (BM25 exemplar index → keyword fallback)
         intent_result: IntentResult | None = None
-        if self._config.intent_classification_enabled:
+
+        # Phase 6: Explicit intent override bypasses classifier entirely
+        if intent_override is not None:
+            from ncms.domain.intent import INTENT_TARGETS
+
+            try:
+                qi = QueryIntent(intent_override)
+            except ValueError:
+                valid = [e.value for e in QueryIntent]
+                raise ValueError(  # noqa: B904
+                    f"Invalid intent '{intent_override}'. "
+                    f"Valid intents: {valid}"
+                )
+            intent_result = IntentResult(
+                intent=qi,
+                confidence=1.0,
+                target_node_types=INTENT_TARGETS.get(qi, ("atomic",)),
+            )
+            _emit_stage("intent_override", 0.0, {
+                "intent": qi.value, "source": "user_override",
+            })
+        elif self._config.intent_classification_enabled:
             t0 = time.perf_counter()
             if self._intent_classifier is not None:
                 intent_result = self._intent_classifier.classify(query)  # type: ignore[union-attr]

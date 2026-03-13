@@ -282,6 +282,86 @@ def create_dashboard_app(
             "universal_labels": UNIVERSAL_LABELS,
         })
 
+    # ── Phase 6: HTMG Endpoints ─────────────────────────────────────────
+
+    async def api_episodes(request: Request) -> JSONResponse:
+        """Return list of episodes with member counts."""
+        from ncms.domain.models import NodeType
+
+        store = cast(SQLiteStore, memory_service._store)
+        all_episodes = await store.get_memory_nodes_by_type(NodeType.EPISODE.value)
+
+        result = []
+        for ep in all_episodes:
+            members = await store.get_episode_members(ep.id)
+            result.append({
+                "episode_id": ep.id,
+                "memory_id": ep.memory_id,
+                "status": ep.metadata.get("status", "unknown"),
+                "title": ep.metadata.get("episode_title", ""),
+                "member_count": len(members),
+                "created_at": ep.created_at.isoformat() if ep.created_at else None,
+                "closed_at": ep.metadata.get("closed_at"),
+            })
+        return JSONResponse(result)
+
+    async def api_episode_detail(request: Request) -> JSONResponse:
+        """Return episode detail with members."""
+        episode_id = request.path_params["episode_id"]
+        store = cast(SQLiteStore, memory_service._store)
+
+        episode = await store.get_memory_node(episode_id)
+        if not episode:
+            return JSONResponse({"error": "Episode not found"}, status_code=404)
+
+        members = await store.get_episode_members(episode_id)
+        member_details = []
+        for m in members:
+            mem = await memory_service.get_memory(m.memory_id)
+            member_details.append({
+                "node_id": m.id,
+                "memory_id": m.memory_id,
+                "node_type": m.node_type,
+                "content": mem.content[:200] if mem else None,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            })
+
+        return JSONResponse({
+            "episode_id": episode.id,
+            "status": episode.metadata.get("status", "unknown"),
+            "title": episode.metadata.get("episode_title", ""),
+            "metadata": episode.metadata,
+            "member_count": len(member_details),
+            "members": member_details,
+        })
+
+    async def api_entity_states(request: Request) -> JSONResponse:
+        """Return current states for an entity."""
+        entity_id = request.path_params["entity_id"]
+        store = cast(SQLiteStore, memory_service._store)
+
+        states = await store.get_entity_states_by_entity(entity_id)
+        current = [s for s in states if s.is_current]
+        return JSONResponse({
+            "entity_id": entity_id,
+            "current_states": [s.model_dump(mode="json") for s in current],
+            "total_states": len(states),
+        })
+
+    async def api_entity_state_history(request: Request) -> JSONResponse:
+        """Return state history for an entity."""
+        entity_id = request.path_params["entity_id"]
+        state_key = request.query_params.get("key", "state")
+        store = cast(SQLiteStore, memory_service._store)
+
+        history = await store.get_state_history(entity_id, state_key)
+        return JSONResponse({
+            "entity_id": entity_id,
+            "state_key": state_key,
+            "count": len(history),
+            "states": [n.model_dump(mode="json") for n in history],
+        })
+
     async def api_events(request: Request) -> JSONResponse:
         """Return recent events as JSON (non-streaming)."""
         from dataclasses import asdict
@@ -312,6 +392,10 @@ def create_dashboard_app(
         Route("/api/memories", api_memories),
         Route("/api/topics", api_topics),
         Route("/api/stats", api_stats),
+        Route("/api/episodes", api_episodes),
+        Route("/api/episodes/{episode_id}", api_episode_detail),
+        Route("/api/entity-states/{entity_id}", api_entity_states),
+        Route("/api/entity-states/{entity_id}/history", api_entity_state_history),
     ]
 
     return Starlette(routes=routes)

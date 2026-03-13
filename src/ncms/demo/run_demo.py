@@ -421,6 +421,37 @@ Deployment: Vercel with edge functions for SSR.
 
     console.print(results_table)
 
+    # ── Phase 6: Intent-Aware Search (if enabled) ─────────────────────
+    if config.intent_classification_enabled:
+        header("Phase 6: Intent-Aware Search")
+
+        step('Searching with intent override: current_state_lookup')
+        intent_results = await memory_svc.search(
+            "What is the current auth token format?",
+            intent_override="current_state_lookup",
+            limit=3,
+        )
+        for ir in intent_results:
+            result(
+                f"  [{ir.intent}] {ir.memory.content[:60]}... "
+                f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
+            )
+
+        step('Searching with intent override: event_reconstruction')
+        intent_results2 = await memory_svc.search(
+            "What happened with the users table schema change?",
+            intent_override="event_reconstruction",
+            limit=3,
+        )
+        for ir in intent_results2:
+            result(
+                f"  [{ir.intent}] {ir.memory.content[:60]}... "
+                f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
+            )
+    else:
+        header("Phase 6: Intent-Aware Search [dim](skipped — not enabled)[/]")
+        step("Set NCMS_INTENT_CLASSIFICATION_ENABLED=true to enable")
+
     # ── Summary ──────────────────────────────────────────────────────
     header("Demo Summary")
 

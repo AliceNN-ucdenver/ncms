@@ -36,6 +36,7 @@ def register_tools(
         query: str,
         domain: str | None = None,
         limit: int = 10,
+        intent: str | None = None,
     ) -> list[dict[str, Any]]:
         """Search cognitive memory with BM25 + ACT-R scoring pipeline.
 
@@ -43,11 +44,16 @@ def register_tools(
             query: Natural language search query.
             domain: Optional domain filter (e.g., "api", "frontend").
             limit: Maximum results to return.
+            intent: Optional intent override (fact_lookup, current_state_lookup,
+                historical_lookup, event_reconstruction, change_detection,
+                pattern_lookup, strategic_reflection). Bypasses auto-classification.
 
         Returns:
             List of scored memories with activation components.
         """
-        results = await memory_svc.search(query, domain=domain, limit=limit)
+        results = await memory_svc.search(
+            query, domain=domain, limit=limit, intent_override=intent,
+        )
         return [
             {
                 "memory_id": r.memory.id,
@@ -81,6 +87,7 @@ def register_tools(
         project: str | None = None,
         structured: dict[str, Any] | None = None,
         importance: float = 5.0,
+        show_admission: bool = False,
     ) -> dict[str, Any]:
         """Store a new memory with automatic entity extraction and indexing.
 
@@ -92,6 +99,7 @@ def register_tools(
             project: Project/repo context.
             structured: Optional structured data (OpenAPI spec, JSON schema).
             importance: Importance score (1-10).
+            show_admission: If True, include admission scoring details in response.
 
         Returns:
             The stored memory with its generated ID.
@@ -105,12 +113,15 @@ def register_tools(
             structured=structured,
             importance=importance,
         )
-        return {
+        result: dict[str, Any] = {
             "memory_id": memory.id,
             "content": memory.content,
             "domains": memory.domains,
             "created_at": memory.created_at.isoformat(),
         }
+        if show_admission:
+            result["admission"] = (memory.structured or {}).get("admission")
+        return result
 
     @mcp.tool()
     async def ask_knowledge(
@@ -374,6 +385,142 @@ def register_tools(
             "memories_created": stats.memories_created,
             "chunks_total": stats.chunks_total,
             "errors": stats.errors,
+        }
+
+    # ── Phase 6: HTMG exposure tools ─────────────────────────────────────
+
+    @mcp.tool()
+    async def get_current_state(
+        entity_id: str,
+        state_key: str = "state",
+    ) -> dict[str, Any]:
+        """Look up the current state of an entity.
+
+        Args:
+            entity_id: The entity whose state to look up.
+            state_key: The state facet key (default: "state").
+
+        Returns:
+            The current state node, or an error if not found or feature disabled.
+        """
+        if not memory_svc._config.reconciliation_enabled:
+            return {
+                "error": "State reconciliation not enabled "
+                "(set NCMS_RECONCILIATION_ENABLED=true)",
+            }
+        node = await memory_svc.store.get_current_state(entity_id, state_key)
+        if node is None:
+            return {"found": False, "entity_id": entity_id, "state_key": state_key}
+        return {"found": True, "node": node.model_dump(mode="json")}
+
+    @mcp.tool()
+    async def get_state_history(
+        entity_id: str,
+        state_key: str = "state",
+    ) -> dict[str, Any]:
+        """Retrieve the temporal chain of state transitions for an entity.
+
+        Args:
+            entity_id: The entity whose state history to retrieve.
+            state_key: The state facet key (default: "state").
+
+        Returns:
+            Ordered list of state nodes from oldest to newest.
+        """
+        if not memory_svc._config.reconciliation_enabled:
+            return {
+                "error": "State reconciliation not enabled "
+                "(set NCMS_RECONCILIATION_ENABLED=true)",
+            }
+        nodes = await memory_svc.store.get_state_history(entity_id, state_key)
+        return {
+            "entity_id": entity_id,
+            "state_key": state_key,
+            "count": len(nodes),
+            "states": [n.model_dump(mode="json") for n in nodes],
+        }
+
+    @mcp.tool()
+    async def list_episodes(
+        include_closed: bool = False,
+    ) -> dict[str, Any]:
+        """List open (and optionally closed) episodes.
+
+        Args:
+            include_closed: If True, include closed episodes as well.
+
+        Returns:
+            List of episodes with metadata and member counts.
+        """
+        if not memory_svc._config.episodes_enabled:
+            return {
+                "error": "Episode formation not enabled "
+                "(set NCMS_EPISODES_ENABLED=true)",
+            }
+        from ncms.domain.models import NodeType
+
+        episodes = list(await memory_svc.store.get_open_episodes())
+        if include_closed:
+            all_episode_nodes = await memory_svc.store.get_memory_nodes_by_type(
+                NodeType.EPISODE.value,
+            )
+            seen = {ep.id for ep in episodes}
+            for node in all_episode_nodes:
+                if node.id not in seen:
+                    episodes.append(node)
+
+        result = []
+        for ep in episodes:
+            members = await memory_svc.store.get_episode_members(ep.id)
+            result.append({
+                "episode_id": ep.id,
+                "memory_id": ep.memory_id,
+                "status": ep.metadata.get("status", "unknown"),
+                "title": ep.metadata.get("episode_title", ""),
+                "member_count": len(members),
+                "created_at": ep.created_at.isoformat() if ep.created_at else None,
+                "closed_at": ep.metadata.get("closed_at"),
+            })
+        return {"count": len(result), "episodes": result}
+
+    @mcp.tool()
+    async def get_episode(episode_id: str) -> dict[str, Any]:
+        """Retrieve an episode with all its member fragments.
+
+        Args:
+            episode_id: The episode node ID.
+
+        Returns:
+            Episode metadata and member fragment contents.
+        """
+        if not memory_svc._config.episodes_enabled:
+            return {
+                "error": "Episode formation not enabled "
+                "(set NCMS_EPISODES_ENABLED=true)",
+            }
+        episode_node = await memory_svc.store.get_memory_node(episode_id)
+        if episode_node is None:
+            return {"error": f"Episode not found: {episode_id}"}
+
+        members = await memory_svc.store.get_episode_members(episode_id)
+        member_details = []
+        for m in members:
+            mem = await memory_svc.get_memory(m.memory_id)
+            member_details.append({
+                "node_id": m.id,
+                "memory_id": m.memory_id,
+                "node_type": m.node_type,
+                "content": mem.content[:500] if mem else None,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            })
+
+        return {
+            "episode_id": episode_node.id,
+            "status": episode_node.metadata.get("status", "unknown"),
+            "title": episode_node.metadata.get("episode_title", ""),
+            "member_count": len(member_details),
+            "members": member_details,
+            "metadata": episode_node.metadata,
         }
 
     if consolidation_svc is not None:

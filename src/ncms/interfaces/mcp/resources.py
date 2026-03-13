@@ -57,6 +57,40 @@ def register_resources(
         lines.append(f"\nTotal: {total} entities, {memory_svc.relationship_count()} relationships")
         return "\n".join(lines)
 
+    @mcp.resource("ncms://entities/{entity_id}/state")
+    async def entity_state(entity_id: str) -> str:
+        """Current state and recent history for an entity."""
+        entity = await memory_svc.store.get_entity(entity_id)
+        name = entity.name if entity else entity_id
+
+        states = await memory_svc.store.get_entity_states_by_entity(entity_id)
+        if not states:
+            return f"# Entity State: {name}\n\nNo state nodes found for entity `{entity_id}`."
+
+        current = [s for s in states if s.is_current]
+        historical = [s for s in states if not s.is_current]
+
+        lines = [f"# Entity State: {name}\n"]
+
+        if current:
+            lines.append("## Current State\n")
+            for s in current:
+                key = s.metadata.get("state_key", "state")
+                val = s.metadata.get("state_value", s.content or "")
+                lines.append(f"- **{key}**: {val}")
+        else:
+            lines.append("*No current state.*\n")
+
+        if historical:
+            lines.append("\n## History\n")
+            for s in historical:
+                key = s.metadata.get("state_key", "state")
+                val = s.metadata.get("state_value", s.content or "")
+                ts = s.created_at.isoformat() if s.created_at else "?"
+                lines.append(f"- [{ts}] **{key}**: {val} *(superseded)*")
+
+        return "\n".join(lines)
+
     @mcp.resource("ncms://status")
     async def system_status() -> str:
         """NCMS system status overview."""

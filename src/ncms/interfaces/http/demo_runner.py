@@ -171,6 +171,23 @@ async def run_demo_loop(
     )
     await asyncio.sleep(STEP_DELAY * 2)
 
+    # ── Phase 8: Intent-Aware Search ──────────────────────────────────────
+
+    if memory_svc._config.intent_classification_enabled:
+        logger.info("Phase 8: Intent-aware search demo")
+        # Current state lookup
+        await memory_svc.search(
+            "What is the current auth token format?",
+            intent_override="current_state_lookup",
+        )
+        await asyncio.sleep(STEP_DELAY)
+        # Event reconstruction
+        await memory_svc.search(
+            "What happened with the users table schema change?",
+            intent_override="event_reconstruction",
+        )
+        await asyncio.sleep(STEP_DELAY)
+
     # ── Cleanup ───────────────────────────────────────────────────────────
 
     await api_agent.shutdown()
