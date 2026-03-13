@@ -1056,11 +1056,22 @@ Each phase is independently testable, deployable, and measurable. Phases build o
 | 2.C.6 | Run BEIR ablation: B1 vs B2 (admission + reconciliation) | Benchmark scripts | Measure stale-fact leakage reduction |
 
 **Phase 2 exit criteria:**
-- [ ] Entity state supersession chain works end-to-end
-- [ ] Bitemporal queries return correct results at any point in time
-- [ ] Superseded states penalized in retrieval ranking
-- [ ] Conflict detection replaces simple contradiction detection
-- [ ] BEIR ablation shows no regression, ideally reduced stale recall
+- [x] Entity state supersession chain works end-to-end
+- [x] Bitemporal queries return correct results at any point in time
+- [x] Superseded states penalized in retrieval ranking
+- [x] Conflict detection replaces simple contradiction detection
+- [ ] BEIR ablation shows no regression, ideally reduced stale recall (deferred — requires benchmark run)
+
+**Phase 2 completed:** 2026-03-13 (commit `ceb0637`). Implementation notes:
+- ReconciliationService with 5 heuristic classifiers (supports/refines/supersedes/conflicts/unrelated) using entity_id + state_key + state_value + state_scope comparison — pure heuristic, no LLM
+- Entity state metadata stored in MemoryNode.metadata dict with json_extract() queries; EntityStateMeta Pydantic helper for typed extraction
+- Bidirectional typed edges: SUPERSEDES/SUPERSEDED_BY for supersession chains, CONFLICTS_WITH for parallel truths (different scopes)
+- Schema V3 adds bitemporal columns (observed_at, ingested_at) via ALTER TABLE; 4 temporal query methods (current state, state at time, changes since, full history)
+- Supersession penalty (0.3) and conflict annotation penalty (0.15) feed into ACT-R mismatch_penalty parameter; ScoredMemory annotated with is_superseded, has_conflicts, superseded_by
+- MCP search_memory tool includes supersession/conflict annotations in results
+- Feature-flagged: NCMS_RECONCILIATION_ENABLED=false default, requires admission to be on (reconciliation fires only for entity_state_update routed content)
+- 85 new tests (487 total), zero new mypy errors
+- Remaining: BEIR ablation comparison (B1 vs B2) deferred to benchmark pass
 
 ---
 
