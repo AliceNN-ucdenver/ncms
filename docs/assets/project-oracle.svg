@@ -1,0 +1,274 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 820" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="oracleGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="htmgGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+    <linearGradient id="sleepGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="searchGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="actrGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ec4899"/>
+      <stop offset="100%" stop-color="#f43f5e"/>
+    </linearGradient>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrowWhite" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrowGold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrowPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f472b6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="820" rx="12" fill="#0f172a"/>
+
+  <!-- Title -->
+  <text x="480" y="38" text-anchor="middle" fill="#e2e8f0" font-size="24" font-weight="700" letter-spacing="1.5">PROJECT ORACLE</text>
+  <text x="480" y="58" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="500">NCMS-Next: Hierarchical Temporal Memory Graph + Adaptive Cognitive Scoring</text>
+  <text x="480" y="76" text-anchor="middle" fill="#64748b" font-size="11">Self-improving retrieval without LLM judges or keyword bridges</text>
+
+  <!-- ═══════════ LEFT SIDE: HTMG Memory Hierarchy ═══════════ -->
+
+  <!-- HTMG Header -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="100" width="420" height="36" rx="10" fill="url(#htmgGrad)"/>
+    <text x="250" y="124" text-anchor="middle" fill="white" font-size="15" font-weight="700">HTMG Memory Hierarchy</text>
+  </g>
+
+  <!-- Level 4: Abstract Memory -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="148" width="420" height="75" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/>
+    <rect x="50" y="155" width="10" height="60" rx="5" fill="#a855f7" opacity="0.6"/>
+    <text x="80" y="172" fill="#c4b5fd" font-size="13" font-weight="700">L4  Abstract Memory</text>
+    <text x="80" y="190" fill="#94a3b8" font-size="10">Recurring patterns, strategic insights, state trajectories</text>
+    <text x="80" y="206" fill="#94a3b8" font-size="10">LLM-synthesized from episode clusters (offline consolidation)</text>
+    <rect x="340" y="158" width="110" height="20" rx="10" fill="#a855f7" opacity="0.2" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="395" y="172" text-anchor="middle" fill="#c4b5fd" font-size="9">Phase 5</text>
+  </g>
+
+  <!-- Level 3: Episode -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="233" width="420" height="75" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
+    <rect x="50" y="240" width="10" height="60" rx="5" fill="#6366f1" opacity="0.6"/>
+    <text x="80" y="257" fill="#a5b4fc" font-size="13" font-weight="700">L3  Episode</text>
+    <text x="80" y="275" fill="#94a3b8" font-size="10">Bounded event arcs: incidents, workflows, change sequences</text>
+    <text x="80" y="291" fill="#94a3b8" font-size="10">Temporal co-occurrence clustering (replaces keyword bridges)</text>
+    <rect x="340" y="243" width="110" height="20" rx="10" fill="#6366f1" opacity="0.2" stroke="#6366f1" stroke-width="0.5"/>
+    <text x="395" y="257" text-anchor="middle" fill="#a5b4fc" font-size="9">Phase 3</text>
+  </g>
+
+  <!-- Level 2: Entity State -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="318" width="420" height="75" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
+    <rect x="50" y="325" width="10" height="60" rx="5" fill="#0ea5e9" opacity="0.6"/>
+    <text x="80" y="342" fill="#7dd3fc" font-size="13" font-weight="700">L2  Entity State</text>
+    <text x="80" y="360" fill="#94a3b8" font-size="10">Bitemporal assertions: valid-time + system-time versioning</text>
+    <text x="80" y="376" fill="#94a3b8" font-size="10">"What was X as of last week?" — supersession + reconciliation</text>
+    <rect x="340" y="328" width="110" height="20" rx="10" fill="#0ea5e9" opacity="0.2" stroke="#0ea5e9" stroke-width="0.5"/>
+    <text x="395" y="342" text-anchor="middle" fill="#7dd3fc" font-size="9">Phase 2</text>
+  </g>
+
+  <!-- Level 1: Atomic Memory -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="403" width="420" height="75" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+    <rect x="50" y="410" width="10" height="60" rx="5" fill="#10b981" opacity="0.6"/>
+    <text x="80" y="427" fill="#6ee7b7" font-size="13" font-weight="700">L1  Atomic Memory</text>
+    <text x="80" y="445" fill="#94a3b8" font-size="10">Individual facts, observations, claims, decisions</text>
+    <text x="80" y="461" fill="#94a3b8" font-size="10">BM25 + SPLADE + GLiNER NER + admission scoring</text>
+    <rect x="340" y="413" width="110" height="20" rx="10" fill="#10b981" opacity="0.2" stroke="#10b981" stroke-width="0.5"/>
+    <text x="395" y="427" text-anchor="middle" fill="#6ee7b7" font-size="9">Phase 1</text>
+  </g>
+
+  <!-- Hierarchy arrows -->
+  <path d="M 250 223 L 250 233" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+  <path d="M 250 308 L 250 318" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+  <path d="M 250 393 L 250 403" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+
+  <!-- ═══════════ RIGHT SIDE: Project Oracle Sleep Cycle ═══════════ -->
+
+  <!-- Oracle Header -->
+  <g filter="url(#shadow)">
+    <rect x="500" y="100" width="420" height="36" rx="10" fill="url(#sleepGrad)"/>
+    <text x="710" y="124" text-anchor="middle" fill="white" font-size="15" font-weight="700">Project Oracle — Sleep Consolidation</text>
+  </g>
+
+  <!-- Moon icon area -->
+  <g transform="translate(520, 150)">
+    <!-- Moon crescent -->
+    <circle cx="30" cy="25" r="18" fill="#0ea5e9" opacity="0.15"/>
+    <circle cx="38" cy="20" r="14" fill="#0f172a"/>
+    <!-- Stars -->
+    <circle cx="60" cy="15" r="2" fill="#fbbf24" opacity="0.6"/>
+    <circle cx="75" cy="28" r="1.5" fill="#fbbf24" opacity="0.4"/>
+    <circle cx="55" cy="35" r="1" fill="#fbbf24" opacity="0.5"/>
+  </g>
+
+  <!-- Sleep Pass 1: Rehearsal -->
+  <g filter="url(#shadow)">
+    <rect x="500" y="148" width="420" height="92" rx="10" fill="#1e293b" stroke="#22d3ee" stroke-width="1.5"/>
+    <rect x="510" y="156" width="6" height="76" rx="3" fill="#22d3ee" opacity="0.5"/>
+
+    <text x="610" y="172" fill="#67e8f9" font-size="13" font-weight="700">Sleep Rehearsal</text>
+    <text x="610" y="188" fill="#94a3b8" font-size="10">Replay important-but-decaying memories</text>
+
+    <!-- Formula -->
+    <rect x="530" y="197" width="370" height="34" rx="6" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+    <text x="545" y="212" fill="#67e8f9" font-size="10" font-family="monospace">access_count &gt;= 5 AND last_access &gt; 7 days</text>
+    <text x="545" y="225" fill="#94a3b8" font-size="9" font-family="monospace">→ inject synthetic access → B_i = ln(Σ t_j^(-d)) ↑</text>
+  </g>
+
+  <!-- Sleep Pass 2: Association Learning -->
+  <g filter="url(#shadow)">
+    <rect x="500" y="252" width="420" height="92" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+    <rect x="510" y="260" width="6" height="76" rx="3" fill="#a78bfa" opacity="0.5"/>
+
+    <text x="610" y="276" fill="#c4b5fd" font-size="13" font-weight="700">Association Learning</text>
+    <text x="610" y="292" fill="#94a3b8" font-size="10">Learn entity-pair weights from co-access patterns</text>
+
+    <!-- Formula -->
+    <rect x="530" y="301" width="370" height="34" rx="6" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+    <text x="545" y="316" fill="#c4b5fd" font-size="10" font-family="monospace">PMI(e1,e2) = log(P(co-access) / P(e1)·P(e2))</text>
+    <text x="545" y="329" fill="#94a3b8" font-size="9" font-family="monospace">→ association_strengths dict → S_i = Σ W_k · S_ki ↑</text>
+  </g>
+
+  <!-- Sleep Pass 3: Importance Drift -->
+  <g filter="url(#shadow)">
+    <rect x="500" y="356" width="420" height="92" rx="10" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+    <rect x="510" y="364" width="6" height="76" rx="3" fill="#f472b6" opacity="0.5"/>
+
+    <text x="610" y="380" fill="#f9a8d4" font-size="13" font-weight="700">Importance Drift</text>
+    <text x="610" y="396" fill="#94a3b8" font-size="10">Adjust importance from 30-day access trends</text>
+
+    <!-- Formula -->
+    <rect x="530" y="405" width="370" height="34" rx="6" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+    <text x="545" y="420" fill="#f9a8d4" font-size="10" font-family="monospace">trend = access_rate(last_7d) / access_rate(prev_23d)</text>
+    <text x="545" y="433" fill="#94a3b8" font-size="9" font-family="monospace">→ memory.importance *= trend_factor</text>
+  </g>
+
+  <!-- ═══════════ BOTTOM: Query-Time Pipeline ═══════════ -->
+
+  <!-- Divider line -->
+  <line x1="40" y1="500" x2="920" y2="500" stroke="#334155" stroke-width="1" stroke-dasharray="6,4"/>
+  <rect x="380" y="490" width="200" height="20" rx="10" fill="#0f172a"/>
+  <text x="480" y="504" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">QUERY TIME (zero LLM cost)</text>
+
+  <!-- Search pipeline -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="525" width="880" height="55" rx="10" fill="url(#searchGrad)" opacity="0.9"/>
+    <text x="480" y="549" text-anchor="middle" fill="white" font-size="14" font-weight="700">Multi-Signal Retrieval Pipeline</text>
+    <text x="480" y="568" text-anchor="middle" fill="white" font-size="10" opacity="0.8">BM25 (Tantivy) + SPLADE (fastembed) + Graph Expansion (NetworkX) + ACT-R (learned associations)</text>
+  </g>
+
+  <!-- Pipeline components -->
+  <g filter="url(#shadow)">
+    <!-- BM25 -->
+    <rect x="40" y="595" width="190" height="65" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1"/>
+    <text x="135" y="618" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="600">BM25 + SPLADE</text>
+    <text x="135" y="636" text-anchor="middle" fill="#94a3b8" font-size="9">Lexical + learned expansion</text>
+    <text x="135" y="650" text-anchor="middle" fill="#94a3b8" font-size="9">nDCG@10: 0.697 baseline</text>
+  </g>
+
+  <path d="M 230 627 L 260 627" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+
+  <g filter="url(#shadow)">
+    <!-- Graph Expansion -->
+    <rect x="265" y="595" width="190" height="65" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1"/>
+    <text x="360" y="618" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="600">Graph Expansion</text>
+    <text x="360" y="636" text-anchor="middle" fill="#94a3b8" font-size="9">Entity traversal (GLiNER NER)</text>
+    <text x="360" y="650" text-anchor="middle" fill="#94a3b8" font-size="9">+0.4% nDCG lift</text>
+  </g>
+
+  <path d="M 455 627 L 485 627" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+
+  <g filter="url(#shadow)">
+    <!-- ACT-R with Oracle -->
+    <rect x="490" y="595" width="220" height="65" rx="8" fill="#1e293b" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="600" y="618" text-anchor="middle" fill="#f9a8d4" font-size="12" font-weight="700">ACT-R + Oracle Weights</text>
+    <text x="600" y="636" text-anchor="middle" fill="#94a3b8" font-size="9">Learned associations + rehearsed base-level</text>
+    <text x="600" y="650" text-anchor="middle" fill="#f472b6" font-size="9" font-weight="600">Compounding improvement nightly</text>
+  </g>
+
+  <path d="M 710 627 L 740 627" stroke="#94a3b8" stroke-width="1.5" fill="none" marker-end="url(#arrowWhite)"/>
+
+  <g filter="url(#shadow)">
+    <!-- Results -->
+    <rect x="745" y="595" width="175" height="65" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="832" y="618" text-anchor="middle" fill="#fbbf24" font-size="12" font-weight="600">Ranked Results</text>
+    <text x="832" y="636" text-anchor="middle" fill="#94a3b8" font-size="9">Intent-aware filtering</text>
+    <text x="832" y="650" text-anchor="middle" fill="#94a3b8" font-size="9">Zero LLM calls at query time</text>
+  </g>
+
+  <!-- ═══════════ Sleep cycle feedback arrows ═══════════ -->
+
+  <!-- Arrow from search results back up to sleep cycle -->
+  <path d="M 920 575 L 940 575 L 940 180 L 920 180" stroke="#22d3ee" stroke-width="2" stroke-dasharray="6,3" fill="none" marker-end="url(#arrowCyan)" opacity="0.5"/>
+  <text x="945" y="380" fill="#22d3ee" font-size="9" font-weight="500" transform="rotate(90 945 380)" opacity="0.6">access_log feeds nightly</text>
+
+  <!-- Arrow from Oracle down to ACT-R -->
+  <path d="M 600 448 L 600 470 L 600 595" stroke="#f472b6" stroke-width="2" stroke-dasharray="6,3" fill="none" marker-end="url(#arrowPink)" opacity="0.5"/>
+  <text x="615" y="480" fill="#f472b6" font-size="9" font-weight="500" opacity="0.6">teaches ACT-R</text>
+
+  <!-- ═══════════ BOTTOM: What was eliminated ═══════════ -->
+
+  <g filter="url(#shadow)">
+    <rect x="40" y="685" width="420" height="55" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="1" stroke-dasharray="4,2" opacity="0.7"/>
+    <text x="250" y="708" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">Eliminated by Project Oracle</text>
+    <line x1="60" y1="723" x2="90" y2="723" stroke="#ef4444" stroke-width="2"/>
+    <text x="96" y="727" fill="#94a3b8" font-size="10">LLM Keyword Bridges (nDCG -95%)</text>
+    <line x1="270" y1="723" x2="300" y2="723" stroke="#ef4444" stroke-width="2"/>
+    <text x="306" y="727" fill="#94a3b8" font-size="10">LLM-as-Judge reranking</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="500" y="685" width="420" height="55" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="1" opacity="0.7"/>
+    <text x="710" y="708" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Replaced With</text>
+    <circle cx="525" cy="724" r="4" fill="#22d3ee"/>
+    <text x="535" y="728" fill="#94a3b8" font-size="10">PMI association weights</text>
+    <circle cx="700" cy="724" r="4" fill="#a78bfa"/>
+    <text x="710" y="728" fill="#94a3b8" font-size="10">Sleep rehearsal</text>
+    <circle cx="840" cy="724" r="4" fill="#f472b6"/>
+    <text x="850" y="728" fill="#94a3b8" font-size="10">Episodes</text>
+  </g>
+
+  <!-- ═══════════ Legend ═══════════ -->
+  <g transform="translate(40, 768)">
+    <rect x="0" y="0" width="880" height="38" rx="8" fill="#1e293b" opacity="0.5"/>
+    <rect x="20" y="12" width="12" height="12" rx="3" fill="#22d3ee" opacity="0.5"/>
+    <text x="38" y="23" fill="#94a3b8" font-size="10">Offline (nightly)</text>
+
+    <rect x="140" y="12" width="12" height="12" rx="3" fill="#10b981" opacity="0.5"/>
+    <text x="158" y="23" fill="#94a3b8" font-size="10">Query-time</text>
+
+    <rect x="240" y="12" width="12" height="12" rx="3" fill="#f472b6" opacity="0.5"/>
+    <text x="258" y="23" fill="#94a3b8" font-size="10">Learned (compounding)</text>
+
+    <rect x="390" y="12" width="12" height="12" rx="3" fill="#ef4444" opacity="0.3"/>
+    <text x="408" y="23" fill="#94a3b8" font-size="10">Eliminated</text>
+
+    <text x="540" y="23" fill="#64748b" font-size="10">9 phases  |  130+ tasks  |  58-79 days  |  Zero query-time LLM</text>
+  </g>
+
+  <text x="920" y="800" text-anchor="end" fill="#475569" font-size="9">ncms-next / project oracle</text>
+</svg>
