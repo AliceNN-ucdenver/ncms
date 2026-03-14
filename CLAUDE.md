@@ -39,7 +39,7 @@ uv run pytest tests/integration/ # Integration tests only
 uv run ruff check src/           # Lint
 uv run mypy src/                 # Type check
 
-# Benchmarks (ablation study)
+# Benchmarks (retrieval ablation study)
 uv sync --group bench                                         # Install benchmark deps
 ./benchmarks/run.sh                                           # Sequential (all datasets)
 ./benchmarks/run.sh scifact                                   # Single dataset
@@ -48,6 +48,18 @@ uv sync --group bench                                         # Install benchmar
 ./benchmarks/run_parallel.sh scifact nfcorpus arguana -v      # With debug logging
 tail -f benchmarks/results/ablation_latest.log                # Monitor sequential run
 tail -f benchmarks/results/*/ablation_latest.log              # Monitor parallel runs
+
+# Benchmarks (dream cycle / consolidation experiment — requires LLM endpoint)
+./benchmarks/run_dream.sh                                     # Sequential (all datasets)
+./benchmarks/run_dream.sh scifact                             # Single dataset
+./benchmarks/run_dream_parallel.sh                            # All 3 datasets in parallel
+./benchmarks/run_dream_parallel.sh scifact nfcorpus           # Specific datasets
+./benchmarks/run_dream_test13.sh                              # Smoke test (13 docs, ~2-3min)
+tail -f benchmarks/results/dream/dream_latest.log             # Monitor sequential
+tail -f benchmarks/results/dream/*/dream_latest.log           # Monitor parallel
+# Override LLM (default: DGX Spark Nemotron):
+LLM_MODEL=ollama_chat/qwen3.5:35b-a3b LLM_API_BASE="" ./benchmarks/run_dream.sh scifact
+
 uv run ruff check benchmarks/                                 # Lint benchmark code
 ```
 

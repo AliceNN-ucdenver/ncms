@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# NCMS Parallel Ablation Study Runner
+# NCMS Parallel Dream Cycle Experiment Runner
 #
 # Launches one process per dataset, each with its own:
 #   - In-memory database (completely independent)
@@ -8,35 +8,22 @@
 #   - Results JSON and markdown table
 #
 # Usage:
-#   ./benchmarks/run_parallel.sh                           # All 3 datasets in parallel
-#   ./benchmarks/run_parallel.sh scifact nfcorpus          # Specific datasets
-#   ./benchmarks/run_parallel.sh scifact nfcorpus arguana --verbose
+#   ./benchmarks/run_dream_parallel.sh                          # All 3 datasets
+#   ./benchmarks/run_dream_parallel.sh scifact nfcorpus         # Specific datasets
+#   ./benchmarks/run_dream_parallel.sh scifact --verbose
 #
-# Output structure:
-#   benchmarks/results/
-#     scifact/
-#       ablation_2026-03-14_140532.log        # Full log for this dataset
-#       ablation_latest.log -> ...            # Symlink to latest
-#       ablation_results.json                 # Results for this dataset
-#       ablation_table.md                     # Markdown table
-#     nfcorpus/
-#       ...
-#     arguana/
-#       ...
-#     parallel_2026-03-14_140532.log          # Combined summary log
+# LLM Override:
+#   LLM_MODEL=ollama_chat/qwen3.5:35b-a3b LLM_API_BASE="" ./benchmarks/run_dream_parallel.sh
 #
 # Monitor all running datasets:
-#   tail -f benchmarks/results/*/ablation_latest.log
-#
-# Monitor a specific dataset:
-#   tail -f benchmarks/results/scifact/ablation_latest.log
+#   tail -f benchmarks/results/dream/*/dream_latest.log
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-RESULTS_DIR="$SCRIPT_DIR/results"
+RESULTS_DIR="$SCRIPT_DIR/results/dream"
 
 # ── Colors ─────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -61,7 +48,6 @@ for arg in "$@"; do
             EXTRA_ARGS="$EXTRA_ARGS --verbose"
             ;;
         *)
-            # Check if it's a valid dataset name
             found=false
             for valid in "${ALL_DATASETS[@]}"; do
                 if [ "$arg" = "$valid" ]; then
@@ -84,6 +70,10 @@ if [ ${#DATASETS[@]} -eq 0 ]; then
     DATASETS=("${ALL_DATASETS[@]}")
 fi
 
+# LLM configuration (env vars with defaults)
+LLM_MODEL="${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+LLM_API_BASE="${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+
 # ── Pre-flight checks ─────────────────────────────────────────────────
 cd "$PROJECT_ROOT"
 
@@ -95,6 +85,17 @@ fi
 if ! uv run python -c "import benchmarks" 2>/dev/null; then
     info "Installing benchmark dependencies..."
     uv sync --group bench
+fi
+
+# Check LLM connectivity
+if [ -n "$LLM_API_BASE" ]; then
+    info "Checking LLM connectivity at $LLM_API_BASE ..."
+    if curl -sf "$LLM_API_BASE/models" > /dev/null 2>&1; then
+        info "  LLM endpoint is reachable"
+    else
+        warn "  LLM endpoint not reachable at $LLM_API_BASE"
+        warn "  Consolidation LLM calls may fail — continuing anyway"
+    fi
 fi
 
 # ── Environment ────────────────────────────────────────────────────────
@@ -112,32 +113,35 @@ done
 # ── Banner ─────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}${CYAN}║     NCMS Parallel Ablation Study                        ║${NC}"
-echo -e "${BOLD}${CYAN}║     One process per dataset, fully independent          ║${NC}"
+echo -e "${BOLD}${CYAN}║  NCMS Parallel Dream Cycle Experiment                   ║${NC}"
+echo -e "${BOLD}${CYAN}║  One process per dataset, fully independent             ║${NC}"
 echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 info "Timestamp : $TIMESTAMP"
 info "Git SHA   : $GIT_SHA"
 info "Datasets  : ${DATASETS[*]} (${#DATASETS[@]} parallel processes)"
+info "LLM Model : $LLM_MODEL"
+info "LLM API   : $LLM_API_BASE"
 info "Results   : $RESULTS_DIR/<dataset>/"
 info "Summary   : $SUMMARY_LOG"
 echo ""
-info "Monitor all:  tail -f $RESULTS_DIR/*/ablation_latest.log"
+info "Monitor all:  tail -f $RESULTS_DIR/*/dream_latest.log"
 echo ""
 
 # Write summary log header
 {
-    echo "NCMS Parallel Ablation Study"
-    echo "============================"
+    echo "NCMS Parallel Dream Cycle Experiment"
+    echo "====================================="
     echo "Start     : $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "Git SHA   : $GIT_SHA"
+    echo "LLM Model : $LLM_MODEL"
     echo "Datasets  : ${DATASETS[*]}"
     echo "Processes : ${#DATASETS[@]}"
     echo ""
 } > "$SUMMARY_LOG"
 
 # ── Launch parallel processes ──────────────────────────────────────────
-# Use parallel arrays instead of associative arrays (Bash 3.2 compat)
+# Use parallel arrays (Bash 3.2 compat — no declare -A)
 PIDS=()
 PID_NAMES=()
 
@@ -148,9 +152,11 @@ for ds in "${DATASETS[@]}"; do
 
     info "Launching $ds (output: $DS_DIR/)"
 
-    uv run python -m benchmarks.run_ablation \
+    uv run python -m benchmarks.run_dream \
         --datasets "$ds" \
         --output-dir "$DS_DIR" \
+        --llm-model "$LLM_MODEL" \
+        --llm-api-base "$LLM_API_BASE" \
         $EXTRA_ARGS &
 
     pid=$!
@@ -206,11 +212,11 @@ echo ""
 
 if [ $FAILURES -eq 0 ]; then
     echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}${GREEN}║     All ${#DATASETS[@]} datasets completed successfully              ║${NC}"
+    echo -e "${BOLD}${GREEN}║  All ${#DATASETS[@]} datasets completed successfully              ║${NC}"
     echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 else
     echo -e "${BOLD}${RED}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BOLD}${RED}║     $FAILURES of ${#DATASETS[@]} datasets failed                           ║${NC}"
+    echo -e "${BOLD}${RED}║  $FAILURES of ${#DATASETS[@]} datasets failed                           ║${NC}"
     echo -e "${BOLD}${RED}╚══════════════════════════════════════════════════════════╝${NC}"
 fi
 echo ""
@@ -221,9 +227,9 @@ info "Per-dataset results:"
 for ds in "${DATASETS[@]}"; do
     DS_DIR="$RESULTS_DIR/$ds"
     echo -e "  ${CYAN}$ds${NC}"
-    echo "    Log     : $DS_DIR/ablation_latest.log"
-    echo "    Results : $DS_DIR/ablation_results.json"
-    echo "    Table   : $DS_DIR/ablation_table.md"
+    echo "    Log     : $DS_DIR/dream_latest.log"
+    echo "    Results : $DS_DIR/dream_results.json"
+    echo "    Table   : $DS_DIR/dream_table.md"
 done
 echo ""
 

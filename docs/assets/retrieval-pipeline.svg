@@ -141,10 +141,10 @@
     <text x="700" y="153" fill="#94a3b8" font-size="9">Spreading activation (PMI)</text>
     <text x="700" y="168" fill="#94a3b8" font-size="9">Hierarchy bonus</text>
 
-    <!-- Right column: penalties -->
-    <text x="855" y="138" fill="#fca5a5" font-size="9">- Supersession penalty</text>
-    <text x="855" y="153" fill="#fca5a5" font-size="9">- Conflict penalty</text>
-    <text x="855" y="168" fill="#86efac" font-size="9">+ Intent type match</text>
+    <!-- Right column: penalties (right-aligned to stay inside box) -->
+    <text x="930" y="138" text-anchor="end" fill="#fca5a5" font-size="9">Supersession penalty</text>
+    <text x="930" y="153" text-anchor="end" fill="#fca5a5" font-size="9">Conflict penalty</text>
+    <text x="930" y="168" text-anchor="end" fill="#86efac" font-size="9">+ Intent type match</text>
 
     <!-- Formula -->
     <rect x="685" y="182" width="245" height="28" rx="6" fill="#1a1a2e" stroke="#f59e0b" stroke-width="0.5" opacity="0.6"/>
