@@ -41,9 +41,13 @@ uv run mypy src/                 # Type check
 
 # Benchmarks (ablation study)
 uv sync --group bench                                         # Install benchmark deps
-uv run python -m benchmarks.run_ablation                      # Full ablation (~2h)
-uv run python -m benchmarks.run_ablation --datasets scifact   # Single dataset (~30min)
-uv run python -m benchmarks.run_ablation --datasets scifact nfcorpus  # Multiple datasets
+./benchmarks/run.sh                                           # Sequential (all datasets)
+./benchmarks/run.sh scifact                                   # Single dataset
+./benchmarks/run_parallel.sh                                  # All 3 datasets in parallel
+./benchmarks/run_parallel.sh scifact nfcorpus                 # Specific datasets in parallel
+./benchmarks/run_parallel.sh scifact nfcorpus arguana -v      # With debug logging
+tail -f benchmarks/results/ablation_latest.log                # Monitor sequential run
+tail -f benchmarks/results/*/ablation_latest.log              # Monitor parallel runs
 uv run ruff check benchmarks/                                 # Lint benchmark code
 ```
 
