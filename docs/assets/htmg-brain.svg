@@ -2,37 +2,34 @@
   <defs>
     <!-- Background radial glow -->
     <radialGradient id="bgGlow" cx="50%" cy="40%" r="60%">
-      <stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.5"/>
-      <stop offset="60%" stop-color="#0f172a" stop-opacity="0.85"/>
+      <stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#0f172a" stop-opacity="0.7"/>
       <stop offset="100%" stop-color="#0f172a"/>
     </radialGradient>
 
-    <!-- Circuit trace pattern -->
-    <pattern id="circuitGrid" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
-      <!-- Horizontal traces -->
-      <line x1="0" y1="15" x2="60" y2="15" stroke="#1e293b" stroke-width="0.5" opacity="0.6"/>
-      <line x1="0" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="0.5" opacity="0.6"/>
-      <!-- Vertical traces -->
-      <line x1="15" y1="0" x2="15" y2="60" stroke="#1e293b" stroke-width="0.5" opacity="0.6"/>
-      <line x1="45" y1="0" x2="45" y2="60" stroke="#1e293b" stroke-width="0.5" opacity="0.6"/>
-      <!-- Junction dots -->
-      <circle cx="15" cy="15" r="1.5" fill="#334155" opacity="0.7"/>
-      <circle cx="45" cy="15" r="1.5" fill="#334155" opacity="0.7"/>
-      <circle cx="15" cy="45" r="1.5" fill="#334155" opacity="0.7"/>
-      <circle cx="45" cy="45" r="1.5" fill="#334155" opacity="0.7"/>
+    <!-- Circuit trace pattern (much more visible) -->
+    <pattern id="circuitGrid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <!-- Grid lines -->
+      <line x1="0" y1="12" x2="48" y2="12" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="0" y1="36" x2="48" y2="36" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="12" y1="0" x2="12" y2="48" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="36" y1="0" x2="36" y2="48" stroke="#1e3a5f" stroke-width="0.6"/>
+      <!-- Right-angle trace segments -->
+      <path d="M 12 12 L 24 12 L 24 24" stroke="#264a6e" stroke-width="0.8" fill="none"/>
+      <path d="M 36 36 L 24 36 L 24 24" stroke="#264a6e" stroke-width="0.8" fill="none"/>
+      <!-- Junction dots (brighter) -->
+      <circle cx="12" cy="12" r="2" fill="#3b6b8a" opacity="0.9"/>
+      <circle cx="36" cy="12" r="1.5" fill="#2d5575" opacity="0.7"/>
+      <circle cx="12" cy="36" r="1.5" fill="#2d5575" opacity="0.7"/>
+      <circle cx="36" cy="36" r="2" fill="#3b6b8a" opacity="0.9"/>
+      <circle cx="24" cy="24" r="1" fill="#4a7fa0" opacity="0.6"/>
     </pattern>
 
-    <!-- Organic circuit traces (larger scale, curved) -->
-    <pattern id="circuitCurves" x="0" y="0" width="120" height="120" patternUnits="userSpaceOnUse">
-      <!-- Curved trace segments -->
-      <path d="M 0 30 Q 30 30 30 60 Q 30 90 60 90" stroke="#1e293b" stroke-width="0.6" fill="none" opacity="0.5"/>
-      <path d="M 60 0 Q 60 30 90 30 Q 120 30 120 60" stroke="#1e293b" stroke-width="0.6" fill="none" opacity="0.5"/>
-      <path d="M 90 120 Q 90 90 120 90" stroke="#1e293b" stroke-width="0.6" fill="none" opacity="0.4"/>
-      <!-- Via holes -->
-      <circle cx="30" cy="30" r="2" fill="none" stroke="#334155" stroke-width="0.5" opacity="0.5"/>
-      <circle cx="90" cy="90" r="2" fill="none" stroke="#334155" stroke-width="0.5" opacity="0.5"/>
-      <circle cx="60" cy="60" r="1" fill="#334155" opacity="0.4"/>
-    </pattern>
+    <!-- Glowing energy trace filter -->
+    <filter id="traceGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
 
     <!-- Node glow filters -->
     <filter id="glowGreen" x="-100%" y="-100%" width="300%" height="300%">
@@ -65,42 +62,128 @@
   </defs>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- BACKGROUND: Dark base + circuit board pattern + radial glow          -->
+  <!-- BACKGROUND: Dark base + visible circuit board + energy traces        -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
-  <rect width="960" height="780" fill="#0f172a"/>
-  <!-- Circuit board grid -->
-  <rect width="960" height="780" fill="url(#circuitGrid)"/>
-  <!-- Organic curved traces overlaid -->
-  <rect width="960" height="780" fill="url(#circuitCurves)"/>
-  <!-- Center glow on top of circuit -->
+  <rect width="960" height="780" fill="#0a1628"/>
+  <!-- Circuit board grid pattern -->
+  <rect width="960" height="780" fill="url(#circuitGrid)" opacity="0.7"/>
+  <!-- Center glow over circuit -->
   <rect width="960" height="780" fill="url(#bgGlow)"/>
 
-  <!-- Extra circuit accent traces (hand-drawn feel, unique paths) -->
-  <g stroke="#334155" fill="none" opacity="0.35">
-    <!-- Left brain hemisphere traces -->
-    <path d="M 80 200 Q 120 180, 160 220 Q 180 250, 160 290" stroke-width="0.8"/>
-    <path d="M 60 350 Q 100 330, 140 370 Q 160 390, 140 420" stroke-width="0.7"/>
-    <path d="M 100 450 Q 130 430, 160 460 Q 180 480, 160 510" stroke-width="0.6"/>
-    <!-- Right brain hemisphere traces -->
-    <path d="M 880 200 Q 840 180, 800 220 Q 780 250, 800 290" stroke-width="0.8"/>
-    <path d="M 900 380 Q 860 360, 820 390" stroke-width="0.7"/>
-    <path d="M 860 470 Q 830 450, 800 480 Q 780 500, 800 530" stroke-width="0.6"/>
-    <!-- Top connecting arcs -->
-    <path d="M 300 70 Q 480 50, 660 70" stroke-width="0.7"/>
-    <!-- Bottom connecting arcs -->
-    <path d="M 200 620 Q 480 640, 760 620" stroke-width="0.6"/>
+  <!-- Major circuit traces (visible structural backbone) -->
+  <g stroke="#1e3a5f" fill="none" stroke-width="1.2" opacity="0.7">
+    <!-- Vertical backbone (spine of the brain) -->
+    <line x1="480" y1="65" x2="480" y2="650"/>
+    <!-- Horizontal cross-bars at each level -->
+    <line x1="180" y1="130" x2="780" y2="130"/>
+    <line x1="200" y1="270" x2="760" y2="270"/>
+    <line x1="190" y1="405" x2="770" y2="405"/>
+    <line x1="195" y1="530" x2="765" y2="530"/>
   </g>
-  <!-- Circuit junction dots along accent traces -->
-  <g fill="#475569" opacity="0.4">
-    <circle cx="160" cy="220" r="2"/>
-    <circle cx="140" cy="370" r="2"/>
-    <circle cx="160" cy="460" r="2"/>
-    <circle cx="800" cy="220" r="2"/>
-    <circle cx="820" cy="390" r="2"/>
-    <circle cx="800" cy="480" r="2"/>
-    <circle cx="480" cy="52" r="2"/>
-    <circle cx="480" cy="638" r="2"/>
+
+  <!-- Right-angle trace branches from backbone -->
+  <g stroke="#264a6e" fill="none" stroke-width="0.9" opacity="0.6">
+    <!-- Left hemisphere branches -->
+    <path d="M 180 130 L 180 200 L 140 200"/>
+    <path d="M 200 270 L 200 340 L 155 340"/>
+    <path d="M 190 405 L 190 460 L 150 460"/>
+    <path d="M 195 530 L 195 580 L 160 580"/>
+    <!-- Right hemisphere branches -->
+    <path d="M 780 130 L 780 200 L 820 200"/>
+    <path d="M 760 270 L 760 340 L 805 340"/>
+    <path d="M 770 405 L 770 460 L 810 460"/>
+    <path d="M 765 530 L 765 580 L 800 580"/>
+    <!-- Diagonal branches -->
+    <path d="M 350 130 L 300 180"/>
+    <path d="M 610 130 L 660 180"/>
+    <path d="M 340 405 L 290 455"/>
+    <path d="M 620 405 L 670 455"/>
+    <!-- Curved organic branches -->
+    <path d="M 140 200 Q 120 250, 140 300 Q 155 330, 155 340"/>
+    <path d="M 820 200 Q 840 250, 820 300 Q 805 330, 805 340"/>
+    <path d="M 150 460 Q 130 500, 160 580"/>
+    <path d="M 810 460 Q 830 500, 800 580"/>
+  </g>
+
+  <!-- Circuit junction nodes (bright dots at intersections) -->
+  <g fill="#3b6b8a" opacity="0.8">
+    <!-- Backbone intersections -->
+    <circle cx="480" cy="130" r="3"/>
+    <circle cx="480" cy="270" r="3"/>
+    <circle cx="480" cy="405" r="3"/>
+    <circle cx="480" cy="530" r="3"/>
+    <!-- Left branch junctions -->
+    <circle cx="180" cy="130" r="2.5"/>
+    <circle cx="180" cy="200" r="2"/>
+    <circle cx="140" cy="200" r="2"/>
+    <circle cx="200" cy="270" r="2.5"/>
+    <circle cx="200" cy="340" r="2"/>
+    <circle cx="155" cy="340" r="2"/>
+    <circle cx="190" cy="405" r="2.5"/>
+    <circle cx="190" cy="460" r="2"/>
+    <circle cx="150" cy="460" r="2"/>
+    <circle cx="195" cy="530" r="2.5"/>
+    <circle cx="160" cy="580" r="2"/>
+    <!-- Right branch junctions -->
+    <circle cx="780" cy="130" r="2.5"/>
+    <circle cx="780" cy="200" r="2"/>
+    <circle cx="820" cy="200" r="2"/>
+    <circle cx="760" cy="270" r="2.5"/>
+    <circle cx="760" cy="340" r="2"/>
+    <circle cx="805" cy="340" r="2"/>
+    <circle cx="770" cy="405" r="2.5"/>
+    <circle cx="810" cy="460" r="2"/>
+    <circle cx="765" cy="530" r="2.5"/>
+    <circle cx="800" cy="580" r="2"/>
+    <!-- Diagonal junctions -->
+    <circle cx="300" cy="180" r="1.5"/>
+    <circle cx="660" cy="180" r="1.5"/>
+    <circle cx="290" cy="455" r="1.5"/>
+    <circle cx="670" cy="455" r="1.5"/>
+  </g>
+
+  <!-- Energy traces: faint colored pulses flowing along circuit paths -->
+  <g filter="url(#traceGlow)" opacity="0.3">
+    <!-- Purple energy (dream consolidation path) -->
+    <path d="M 160 580 Q 155 500, 155 460 Q 150 400, 155 340 Q 150 280, 140 200 Q 135 160, 180 130"
+          stroke="#a855f7" stroke-width="1.5" fill="none" stroke-dasharray="6,8"/>
+    <!-- Green energy (retrieval path) -->
+    <path d="M 780 130 Q 790 180, 820 200 Q 840 250, 820 300 Q 805 340, 805 340 Q 810 400, 810 460 Q 830 500, 800 580"
+          stroke="#10b981" stroke-width="1.5" fill="none" stroke-dasharray="6,8"/>
+    <!-- Cyan energy (horizontal data flow) -->
+    <path d="M 180 405 L 480 405 L 770 405"
+          stroke="#06b6d4" stroke-width="1" fill="none" stroke-dasharray="4,10"/>
+    <path d="M 200 270 L 480 270 L 760 270"
+          stroke="#6366f1" stroke-width="1" fill="none" stroke-dasharray="4,10"/>
+  </g>
+
+  <!-- IC chip outlines (subtle component shapes) -->
+  <g stroke="#2d5575" fill="none" stroke-width="0.7" opacity="0.4">
+    <!-- Chip at top-left -->
+    <rect x="90" y="115" width="30" height="20" rx="2"/>
+    <line x1="90" y1="122" x2="82" y2="122"/>
+    <line x1="90" y1="128" x2="82" y2="128"/>
+    <line x1="120" y1="122" x2="128" y2="122"/>
+    <line x1="120" y1="128" x2="128" y2="128"/>
+    <!-- Chip at top-right -->
+    <rect x="840" y="115" width="30" height="20" rx="2"/>
+    <line x1="840" y1="122" x2="832" y2="122"/>
+    <line x1="840" y1="128" x2="832" y2="128"/>
+    <line x1="870" y1="122" x2="878" y2="122"/>
+    <line x1="870" y1="128" x2="878" y2="128"/>
+    <!-- Chip at bottom-left -->
+    <rect x="95" y="520" width="30" height="20" rx="2"/>
+    <line x1="95" y1="527" x2="87" y2="527"/>
+    <line x1="95" y1="533" x2="87" y2="533"/>
+    <line x1="125" y1="527" x2="133" y2="527"/>
+    <line x1="125" y1="533" x2="133" y2="533"/>
+    <!-- Chip at bottom-right -->
+    <rect x="835" y="520" width="30" height="20" rx="2"/>
+    <line x1="835" y1="527" x2="827" y2="527"/>
+    <line x1="835" y1="533" x2="827" y2="533"/>
+    <line x1="865" y1="527" x2="873" y2="527"/>
+    <line x1="865" y1="533" x2="873" y2="533"/>
   </g>
 
   <!-- Title -->
@@ -139,7 +222,7 @@
   <line x1="500" y1="128" x2="470" y2="245" stroke="#a855f7" stroke-width="1" opacity="0.25" stroke-dasharray="4,3"/>
   <line x1="610" y1="149" x2="630" y2="248" stroke="#a855f7" stroke-width="1" opacity="0.25" stroke-dasharray="4,3"/>
 
-  <!-- SUMMARIZES label on connections -->
+  <!-- SUMMARIZES label -->
   <text x="405" y="200" text-anchor="middle" fill="#a855f7" font-size="8" opacity="0.6" transform="rotate(-33 405 200)">SUMMARIZES</text>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
@@ -201,7 +284,6 @@
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
   <g filter="url(#glowCyan)">
-    <!-- Entity state nodes with double-ring (bitemporal indicator) -->
     <circle cx="250" cy="410" r="8" fill="#0ea5e9" opacity="0.8"/>
     <circle cx="250" cy="410" r="11" fill="none" stroke="#0ea5e9" stroke-width="0.8" opacity="0.4"/>
 
@@ -250,7 +332,7 @@
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
   <g filter="url(#glowGreen)">
-    <!-- Dense field of small atomic fact nodes (row 1) -->
+    <!-- Row 1 -->
     <circle cx="215" cy="520" r="4" fill="#10b981" opacity="0.7"/>
     <circle cx="242" cy="514" r="3.5" fill="#10b981" opacity="0.65"/>
     <circle cx="265" cy="524" r="4" fill="#6ee7b7" opacity="0.6"/>
@@ -274,7 +356,7 @@
     <circle cx="715" cy="517" r="4" fill="#6ee7b7" opacity="0.6"/>
     <circle cx="740" cy="525" r="3.5" fill="#10b981" opacity="0.7"/>
 
-    <!-- Second row -->
+    <!-- Row 2 -->
     <circle cx="230" cy="542" r="3.5" fill="#10b981" opacity="0.55"/>
     <circle cx="258" cy="548" r="4" fill="#10b981" opacity="0.6"/>
     <circle cx="285" cy="540" r="3.5" fill="#6ee7b7" opacity="0.5"/>
@@ -295,7 +377,7 @@
     <circle cx="735" cy="541" r="4" fill="#6ee7b7" opacity="0.5"/>
   </g>
 
-  <!-- L1 inter-node connections (light mesh) -->
+  <!-- L1 inter-node mesh -->
   <g stroke="#10b981" stroke-width="0.5" opacity="0.2">
     <line x1="215" y1="520" x2="242" y2="514"/>
     <line x1="242" y1="514" x2="265" y2="524"/>
@@ -337,9 +419,9 @@
         stroke="#a855f7" stroke-width="2.5" fill="none" opacity="0.5" stroke-dasharray="8,4"
         marker-end="url(#arrowUp)"/>
 
-  <!-- Moon icon for dream -->
+  <!-- Moon icon -->
   <circle cx="128" cy="310" r="13" fill="none" stroke="#a855f7" stroke-width="1.5" opacity="0.5"/>
-  <circle cx="123" cy="306" r="10" fill="#0f172a"/>
+  <circle cx="123" cy="306" r="10" fill="#0a1628"/>
   <circle cx="139" cy="301" r="2" fill="#a855f7" opacity="0.4"/>
   <circle cx="133" cy="318" r="1.5" fill="#a855f7" opacity="0.3"/>
 
@@ -360,55 +442,51 @@
   <text x="865" y="280" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="600" transform="rotate(80 865 280)">ACT-R Retrieval</text>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- ENRICHMENT LABELS (positioned clearly at each level boundary)        -->
+  <!-- ENRICHMENT LABELS                                                     -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
-  <!-- Admission Scoring — between input and L1, left side -->
-  <rect x="180" y="600" width="155" height="24" rx="12" fill="#1e293b" stroke="#f97316" stroke-width="1.2"/>
-  <text x="257" y="616" text-anchor="middle" fill="#fb923c" font-size="10" font-weight="600">&#x25B7; Admission Scoring</text>
+  <!-- Admission Scoring -->
+  <rect x="180" y="608" width="155" height="24" rx="12" fill="#1e293b" stroke="#f97316" stroke-width="1.2"/>
+  <text x="257" y="624" text-anchor="middle" fill="#fb923c" font-size="10" font-weight="600">&#x25B7; Admission Scoring</text>
 
-  <!-- State Reconciliation — at L2 level, left side -->
+  <!-- State Reconciliation -->
   <rect x="180" y="470" width="170" height="24" rx="12" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.2"/>
   <text x="265" y="486" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">&#x25B7; State Reconciliation</text>
 
-  <!-- Episode Linking — between L2 and L3, right side -->
+  <!-- Episode Linking -->
   <rect x="635" y="332" width="145" height="24" rx="12" fill="#1e293b" stroke="#6366f1" stroke-width="1.2"/>
   <text x="707" y="348" text-anchor="middle" fill="#818cf8" font-size="10" font-weight="600">&#x25B7; Episode Linking</text>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- DREAM CYCLE CALLOUT — right panel                                    -->
+  <!-- DREAM CYCLE CALLOUT                                                   -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
   <rect x="760" y="420" width="180" height="165" rx="12" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5" opacity="0.9" filter="url(#softShadow)"/>
   <rect x="760" y="420" width="180" height="30" rx="12" fill="#06b6d4" opacity="0.2"/>
   <rect x="760" y="442" width="180" height="8" fill="#06b6d4" opacity="0.2"/>
 
-  <!-- Moon + title -->
   <text x="785" y="442" fill="#67e8f9" font-size="16">&#9789;</text>
   <text x="805" y="442" fill="#e2e8f0" font-size="13" font-weight="600">Dream Cycle</text>
 
-  <!-- Rehearsal -->
   <text x="780" y="472" fill="#67e8f9" font-size="13">&#8635;</text>
   <text x="800" y="472" fill="#e2e8f0" font-size="11" font-weight="500">Rehearsal</text>
   <text x="800" y="487" fill="#a1a1aa" font-size="9">Replay important memories</text>
 
-  <!-- PMI Learning -->
   <text x="780" y="510" fill="#67e8f9" font-size="13">&#8652;</text>
   <text x="800" y="510" fill="#e2e8f0" font-size="11" font-weight="500">PMI Learning</text>
   <text x="800" y="525" fill="#a1a1aa" font-size="9">Entity co-access weights</text>
 
-  <!-- Importance Drift -->
   <text x="780" y="548" fill="#67e8f9" font-size="13">&#8599;</text>
   <text x="800" y="548" fill="#e2e8f0" font-size="11" font-weight="500">Importance Drift</text>
   <text x="800" y="563" fill="#a1a1aa" font-size="9">Access trend adjustment</text>
 
   <text x="850" y="580" text-anchor="middle" fill="#64748b" font-size="8">Non-LLM  &#183;  runs offline</text>
 
-  <!-- Dashed connection from dream panel to consolidation pathway -->
+  <!-- Connection from dream panel to pathway -->
   <line x1="760" y1="505" x2="165" y2="340" stroke="#06b6d4" stroke-width="1" opacity="0.25" stroke-dasharray="4,4"/>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- BOTTOM: Feature summary bar (well below L1 with clear separation)    -->
+  <!-- BOTTOM: Feature summary bar                                          -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
 
   <rect x="30" y="670" width="900" height="90" rx="12" fill="#1e293b" stroke="#334155" stroke-width="0.8" opacity="0.85"/>
@@ -419,7 +497,6 @@
   <text x="70" y="728" fill="#a1a1aa" font-size="10">8-feature admission gate</text>
   <text x="70" y="743" fill="#a1a1aa" font-size="10">Bitemporal state tracking</text>
 
-  <!-- Divider -->
   <line x1="280" y1="682" x2="280" y2="752" stroke="#334155" stroke-width="0.8"/>
 
   <!-- Column 2: Dream Time -->
@@ -428,7 +505,6 @@
   <text x="310" y="728" fill="#a1a1aa" font-size="10">PMI association learning</text>
   <text x="310" y="743" fill="#a1a1aa" font-size="10">Hierarchical consolidation</text>
 
-  <!-- Divider -->
   <line x1="520" y1="682" x2="520" y2="752" stroke="#334155" stroke-width="0.8"/>
 
   <!-- Column 3: Query Time -->
