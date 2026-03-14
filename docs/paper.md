@@ -7,11 +7,11 @@ University of Colorado Denver
 
 ## Abstract
 
-We present NCMS (NeMo Cognitive Memory System), a retrieval architecture for autonomous AI agents that achieves competitive information retrieval performance without dense vector embeddings. NCMS combines BM25 lexical search, SPLADE sparse neural expansion, entity-graph traversal, and ACT-R cognitive activation scoring into a unified pipeline that requires zero external infrastructure beyond a single Python package. On the SciFact benchmark from the BEIR evaluation suite, NCMS achieves 0.7053 nDCG@10 after systematic weight tuning (108 configurations), outperforming published BM25 baselines (0.671, +5.1%) and exceeding SPLADE v2 and ColBERT v2 (0.693, +1.8%) --- all without computing or storing a single embedding vector.
+We present NCMS (NeMo Cognitive Memory System), a retrieval architecture for autonomous AI agents that achieves competitive information retrieval performance without dense vector embeddings. NCMS combines BM25 lexical search, SPLADE sparse neural expansion, entity-graph traversal, and ACT-R cognitive activation scoring into a unified pipeline that requires zero external infrastructure beyond a single Python package. On the SciFact benchmark from the BEIR evaluation suite, NCMS achieves 0.7053 nDCG@10 after systematic weight tuning (108 configurations), outperforming published BM25 baselines (0.671, +5.1%) and exceeding SPLADE v2 and ColBERT v2 (0.693, +1.8%), all without computing or storing a single embedding vector.
 
 We conduct a systematic ablation study with domain-specific entity label optimization, demonstrating that each pipeline component contributes measurably to retrieval quality. We report a significant negative result: LLM-extracted keyword bridge nodes catastrophically destroy retrieval quality (nDCG@10 drops from 0.690 to 0.032) by creating high-fanout hub nodes that flood graph expansion. This failure motivates our Hierarchical Temporal Memory Graph (HTMG) architecture, which replaces keyword-based bridges with structural mechanisms: typed memory nodes (atomic facts, entity states, temporal episodes, synthesized abstractions), bitemporal state reconciliation, and a 7-signal hybrid episode linker.
 
-Building on the HTMG, we introduce *dream cycles* --- a non-LLM offline consolidation system inspired by biological sleep consolidation. Dream rehearsal injects synthetic access records for high-value memories, PMI-based association learning populates spreading activation weights from search co-occurrence data, and importance drift adjusts memory salience based on access trends. This addresses a key finding from our ablation: ACT-R's temporal decay mechanism provides no signal on static benchmarks (where all documents share identical access history), but dream cycles create the differential access patterns that make cognitive scoring meaningful.
+Building on the HTMG, we introduce *dream cycles*, a non-LLM offline consolidation system inspired by biological sleep consolidation. Dream rehearsal injects synthetic access records for high-value memories, PMI-based association learning populates spreading activation weights from search co-occurrence data, and importance drift adjusts memory salience based on access trends. This addresses a key finding from our ablation: ACT-R's temporal decay mechanism provides no signal on static benchmarks (where all documents share identical access history), but dream cycles create the differential access patterns that make cognitive scoring meaningful.
 
 The system is validated by 719 tests across 8 implementation phases, with comprehensive weight tuning across retrieval ranking, admission routing, and state reconciliation. To our knowledge, NCMS is the first system to apply ACT-R cognitive architecture principles to information retrieval scoring, the first to implement learned association strengths via PMI for spreading activation, and the first to demonstrate biologically-inspired sleep consolidation in an agent memory system.
 
@@ -19,30 +19,30 @@ The system is validated by 719 tests across 8 implementation phases, with compre
 
 ## 1. Introduction
 
-Modern AI agents face a fundamental memory problem: they forget everything between sessions. Each conversation starts from zero, requiring users to re-explain context, re-share decisions, and re-establish architectural understanding. While retrieval-augmented generation (RAG) has emerged as the dominant paradigm for grounding large language models in external knowledge, current RAG implementations overwhelmingly rely on dense vector embeddings and external vector databases --- introducing significant infrastructure complexity, embedding quality dependencies, and information loss through dimensionality reduction.
+Modern AI agents face a fundamental memory problem: they forget everything between sessions. Each conversation starts from zero, requiring users to re-explain context, re-share decisions, and re-establish architectural understanding. While retrieval-augmented generation (RAG) has emerged as the dominant paradigm for grounding large language models in external knowledge, current RAG implementations overwhelmingly rely on dense vector embeddings and external vector databases, introducing significant infrastructure complexity, embedding quality dependencies, and information loss through dimensionality reduction.
 
-We argue that dense embeddings are not the only viable retrieval mechanism for agent memory systems, and that the unique requirements of agent memory --- persistent storage, temporal access patterns, multi-agent knowledge sharing, and exploratory queries --- are better served by a multi-signal retrieval pipeline that combines the precision of lexical search with the semantic expansion of sparse neural models and the cognitive plausibility of human memory modeling. For many domains, specific knowledge is what matters --- an agent debugging a Redis cluster needs to find the exact configuration parameter, not the nearest neighbor in embedding space.
+We argue that dense embeddings are not the only viable retrieval mechanism for agent memory systems, and that the unique requirements of agent memory (persistent storage, temporal access patterns, multi-agent knowledge sharing, and exploratory queries) are better served by a multi-signal retrieval pipeline that combines the precision of lexical search with the semantic expansion of sparse neural models and the cognitive plausibility of human memory modeling. For many domains, specific knowledge is what matters. An agent debugging a Redis cluster needs to find the exact configuration parameter, not the nearest neighbor in embedding space.
 
 NCMS addresses four limitations of current approaches:
 
-1. **Infrastructure complexity.** Production RAG systems require vector databases (Pinecone, Weaviate, Chroma), embedding model serving, and often separate graph databases for relationship tracking. NCMS requires only `pip install ncms` --- all components run in-process with zero external dependencies.
+1. **Infrastructure complexity.** Production RAG systems require vector databases (Pinecone, Weaviate, Chroma), embedding model serving, and often separate graph databases for relationship tracking. NCMS requires only `pip install ncms`; all components run in-process with zero external dependencies.
 
 2. **Embedding information loss.** Dense vectors compress document semantics into fixed-dimensional representations, losing precise lexical signals that are critical for technical memory (API specifications, error codes, configuration parameters). NCMS preserves exact lexical matching via BM25 while adding semantic expansion through SPLADE sparse neural retrieval.
 
 3. **Lack of cognitive modeling.** Existing memory systems treat all stored knowledge equally, regardless of access recency, frequency, or contextual relevance. NCMS applies ACT-R cognitive architecture principles to model memory activation decay and spreading activation through entity relationships, producing retrieval rankings that reflect how human memory prioritizes information.
 
-4. **Flat memory without structure.** Existing agent memory systems store all knowledge at the same level --- a configuration change, a deployment incident, and a strategic architectural decision are all treated as equivalent chunks. NCMS organizes memory into a Hierarchical Temporal Memory Graph (HTMG) with typed nodes (atomic facts, entity states, temporal episodes, synthesized abstractions), enabling queries like "what changed?" to target entity states while "what patterns emerged?" targets abstractions.
+4. **Flat memory without structure.** Existing agent memory systems store all knowledge at the same level, where a configuration change, a deployment incident, and a strategic architectural decision are all treated as equivalent chunks. NCMS instead organizes memory into a Hierarchical Temporal Memory Graph (HTMG) with typed nodes (atomic facts, entity states, temporal episodes, synthesized abstractions), enabling queries like "what changed?" to target entity states while "what patterns emerged?" targets abstractions.
 
 The path to HTMG was motivated by a significant negative result: LLM-extracted keyword bridge nodes, intended to connect entity subgraphs that share no named entities, catastrophically destroyed retrieval quality (nDCG@10: 0.690 → 0.032). The hub-node flooding mechanism revealed that cross-subgraph connectivity requires *structural* connections (temporal co-occurrence, entity state evolution, episode membership) rather than *lexical* bridges. This failure directly shaped the HTMG architecture and subsequently the dream cycle design.
 
-A second key finding --- that ACT-R's temporal decay provides zero signal on static IR benchmarks --- led to dream cycles: an offline consolidation system inspired by biological sleep consolidation (McClelland et al., 1995). During "sleep," the system rehearses important memories (creating differential access patterns), learns entity association strengths from search co-occurrence data via pointwise mutual information (PMI), and adjusts memory importance based on access trends. This makes ACT-R's `B_i = ln(sum(t^-d))` meaningful by ensuring different memories have different access histories, without changing the underlying cognitive formula.
+A second key finding (that ACT-R's temporal decay provides zero signal on static IR benchmarks) led to dream cycles: an offline consolidation system inspired by biological sleep consolidation (McClelland et al., 1995). During "sleep," the system rehearses important memories (creating differential access patterns), learns entity association strengths from search co-occurrence data via pointwise mutual information (PMI), and adjusts memory importance based on access trends. This makes ACT-R's `B_i = ln(sum(t^-d))` meaningful by ensuring different memories have different access histories, without changing the underlying cognitive formula.
 
 ### Contributions
 
 - A vector-free retrieval pipeline that achieves 0.7053 nDCG@10 on SciFact after systematic weight tuning, exceeding published dense and sparse neural retrieval baselines
 - The first application of ACT-R cognitive scoring to information retrieval, with empirical evaluation on BEIR datasets
 - A Hierarchical Temporal Memory Graph (HTMG) with typed memory nodes, bitemporal entity state tracking, and 7-signal hybrid episode formation
-- Dream cycles: non-LLM offline consolidation with rehearsal selection, PMI-based association learning for spreading activation, and importance drift --- inspired by complementary learning systems theory
+- Dream cycles: non-LLM offline consolidation with rehearsal selection, PMI-based association learning for spreading activation, and importance drift, inspired by complementary learning systems theory
 - Comprehensive weight tuning across retrieval ranking (108 configs), admission routing (486 configs), and reconciliation penalties (16 configs)
 - A domain-adaptive entity extraction methodology using GLiNER zero-shot NER with systematic label taxonomy optimization
 - An embedded inter-agent Knowledge Bus with snapshot-based surrogate responses, enabling agents to share knowledge and answer questions even while offline
@@ -60,7 +60,7 @@ The BEIR benchmark (Thakur et al., 2021) revealed a critical weakness: dense ret
 
 ### 2.2 Sparse Neural Retrieval
 
-SPLADE (Formal et al., 2021) bridges lexical and neural retrieval by learning sparse term expansions over the BERT vocabulary. Given a query "API specification," SPLADE's learned weights also activate terms like "endpoint," "schema," and "contract" --- expanding recall without abandoning the interpretability and efficiency of inverted index lookup. SPLADE v2 achieves competitive performance with dense retrievers on BEIR while maintaining the efficiency advantages of sparse representations.
+SPLADE (Formal et al., 2021) bridges lexical and neural retrieval by learning sparse term expansions over the BERT vocabulary. Given a query "API specification," SPLADE's learned weights also activate terms like "endpoint," "schema," and "contract," expanding recall without abandoning the interpretability and efficiency of inverted index lookup. SPLADE v2 achieves competitive performance with dense retrievers on BEIR while maintaining the efficiency advantages of sparse representations.
 
 NCMS integrates SPLADE as a complementary signal fused with BM25 via Reciprocal Rank Fusion (RRF), leveraging both exact lexical matching and learned term expansion without requiring dense vector storage.
 
@@ -68,7 +68,7 @@ NCMS integrates SPLADE as a complementary signal fused with BM25 via Reciprocal 
 
 Graph-based retrieval augments keyword or vector search with structured entity relationships. KGQA systems (Saxena et al., 2020) traverse knowledge graphs to answer multi-hop questions, while entity-linked retrieval (Wu et al., 2020) uses entity mentions to bridge lexically dissimilar but semantically related documents. Recent work on GraphRAG (Edge et al., 2024) constructs community-level summaries from document graphs for global question answering.
 
-NCMS takes a lightweight approach: entities extracted by GLiNER (Zaratiana et al., 2024) zero-shot NER at ingest time are stored in a NetworkX directed graph. At search time, entities from BM25/SPLADE hits are expanded through graph traversal to discover related documents that lexical search missed --- a form of query-time entity expansion that requires no pre-constructed knowledge base.
+NCMS takes a lightweight approach: entities extracted by GLiNER (Zaratiana et al., 2024) zero-shot NER at ingest time are stored in a NetworkX directed graph. At search time, entities from BM25/SPLADE hits are expanded through graph traversal to discover related documents that lexical search missed, a form of query-time entity expansion that requires no pre-constructed knowledge base.
 
 ### 2.4 Cognitive Architectures and Memory Models
 
@@ -96,9 +96,9 @@ NCMS's dream cycle implements a symbolic analog of CLS: dream rehearsal selects 
 
 ### 2.7 Temporal Memory and Episode Formation
 
-Tulving's distinction between episodic and semantic memory (Tulving, 1972) --- memories of specific events versus general knowledge --- has shaped both cognitive science and AI memory system design. The temporal context model (Howard & Kahana, 2002) formalizes how temporal proximity influences memory association: items experienced close together in time become linked, enabling recall of one to facilitate recall of the other.
+Tulving's distinction between episodic and semantic memory (Tulving, 1972), contrasting memories of specific events with general knowledge, has shaped both cognitive science and AI memory system design. The temporal context model (Howard & Kahana, 2002) formalizes how temporal proximity influences memory association: items experienced close together in time become linked, enabling recall of one to facilitate recall of the other.
 
-In AI systems, episode formation is typically handled by fixed time windows or explicit user annotation. NCMS implements a hybrid episode linker that goes beyond temporal proximity, using 7 weighted signals (BM25 lexical match, SPLADE semantic match, entity overlap, domain overlap, temporal proximity, source agent, structured anchors) to determine episode membership --- a multi-signal approach that captures both content similarity and contextual co-occurrence.
+In AI systems, episode formation is typically handled by fixed time windows or explicit user annotation. NCMS implements a hybrid episode linker that goes beyond temporal proximity, using 7 weighted signals (BM25 lexical match, SPLADE semantic match, entity overlap, domain overlap, temporal proximity, source agent, structured anchors) to determine episode membership, a multi-signal approach that captures both content similarity and contextual co-occurrence.
 
 ### 2.8 Summary: Prior Work and Gaps Addressed
 
@@ -124,13 +124,13 @@ Despite significant advances in neural information retrieval, several gaps remai
 
 2. **Cognitive scoring for IR.** While ACT-R has a 40-year research history in cognitive science, its activation equations have never been applied to information retrieval scoring. The temporal decay and spreading activation mechanisms in ACT-R are natural fits for agent memory systems where access patterns carry important information about knowledge relevance.
 
-3. **Domain-adaptive entity extraction.** Zero-shot NER models like GLiNER offer entity extraction without domain-specific training, but their sensitivity to label taxonomy choice has not been systematically studied in the context of retrieval augmentation. We show that label selection is a critical parameter --- abstract labels produce zero entities while domain-specific concrete labels produce 6--9 entities per document.
+3. **Domain-adaptive entity extraction.** Zero-shot NER models like GLiNER offer entity extraction without domain-specific training, but their sensitivity to label taxonomy choice has not been systematically studied in the context of retrieval augmentation. We show that label selection is a critical parameter: abstract labels produce zero entities while domain-specific concrete labels produce 6--9 entities per document.
 
 4. **Integrated agent memory architecture.** Existing systems treat retrieval, knowledge graphs, and cognitive modeling as separate concerns. NCMS integrates these into a single pipeline where each component reinforces the others: entity extraction feeds the knowledge graph, the graph enables spreading activation, and spreading activation improves retrieval scoring.
 
-5. **Memory hierarchy and temporal structure.** Current agent memory systems use flat storage where all knowledge is treated equally. Cognitive science distinguishes between episodic memory (specific events), semantic memory (general facts), and procedural knowledge (skills) --- each with different access patterns and decay characteristics. NCMS's HTMG introduces a typed hierarchy (atomic, entity_state, episode, abstract) that mirrors these distinctions.
+5. **Memory hierarchy and temporal structure.** Current agent memory systems use flat storage where all knowledge is treated equally. Cognitive science distinguishes between episodic memory (specific events), semantic memory (general facts), and procedural knowledge (skills), each with different access patterns and decay characteristics. NCMS's HTMG introduces a typed hierarchy (atomic, entity_state, episode, abstract) that mirrors these distinctions.
 
-6. **Offline learning without LLM inference.** Existing consolidation approaches rely on LLM calls for knowledge synthesis. NCMS's dream cycle demonstrates that meaningful memory consolidation --- rehearsal selection, association learning, importance adjustment --- can be achieved through purely computational methods (PageRank, PMI, access rate analysis) without any language model inference.
+6. **Offline learning without LLM inference.** Existing consolidation approaches rely on LLM calls for knowledge synthesis. NCMS's dream cycle demonstrates that meaningful memory consolidation (rehearsal selection, association learning, importance adjustment) can be achieved through purely computational methods (PageRank, PMI, access rate analysis) without any language model inference.
 
 ---
 
@@ -162,7 +162,7 @@ We adapt the ACT-R base-level learning equation for memory activation:
 
 $$B_i = \ln\left(\sum_{j=1}^{n} t_j^{-d}\right)$$
 
-where $B_i$ is the base-level activation of memory $i$, representing how readily retrievable the memory is based on its access history. The variable $t_j$ denotes the elapsed time (in seconds) since the $j$-th access of memory $i$, and $n$ is the total number of times the memory has been accessed. The decay parameter $d = 0.5$ controls how quickly the contribution of each access fades over time --- higher values produce steeper decay. This captures the empirical power law of practice from cognitive science: recently and frequently accessed memories are more readily retrievable, with each additional access providing diminishing marginal benefit to activation strength.
+where $B_i$ is the base-level activation of memory $i$, representing how readily retrievable the memory is based on its access history. The variable $t_j$ denotes the elapsed time (in seconds) since the $j$-th access of memory $i$, and $n$ is the total number of times the memory has been accessed. The decay parameter $d = 0.5$ controls how quickly the contribution of each access fades over time, where higher values produce steeper decay. This captures the empirical power law of practice from cognitive science: recently and frequently accessed memories are more readily retrievable, with each additional access providing diminishing marginal benefit to activation strength.
 
 Spreading activation is computed from entity overlap between the query context and the candidate memory:
 
@@ -243,7 +243,7 @@ Superseded and conflicted states receive ACT-R mismatch penalties ($P_{\text{sup
 
 **Episode Formation.** A hybrid episode linker scores each incoming fragment against candidate episodes using 7 weighted signals:
 
-$$\text{episode\_score}(f, e) = \sum_{s \in S} w_s \cdot \text{signal}_s(f, e)$$
+$$\mathrm{episode{\_}score}(f, e) = \sum_{s \in S} w_s \cdot \mathrm{signal}_s(f, e)$$
 
 where the signals $S$ and default weights $w_s$ are: BM25 lexical match (0.20), SPLADE semantic match (0.20), entity overlap coefficient (0.25), domain overlap (0.15), temporal proximity (0.10), source agent match (0.05), and structured anchor bonus (0.05). Fragments join the highest-scoring episode above threshold (0.30), or create a new episode if they have sufficient entities (≥2) and no match exists. Episodes auto-close after 24 hours of inactivity.
 
@@ -253,7 +253,7 @@ Dream cycles implement three offline consolidation passes inspired by biological
 
 **Dream Rehearsal.** Memories eligible for rehearsal (access count ≥ 3) are scored by a 5-signal weighted selector:
 
-$$\text{rehearsal\_score}(m) = 0.40 \cdot \hat{c}(m) + 0.30 \cdot \hat{s}(m) + 0.20 \cdot \hat{i}(m) + 0.05 \cdot \hat{a}(m) + 0.05 \cdot \hat{r}(m)$$
+$$\mathrm{rehearsal{\_}score}(m) = 0.40 \cdot \hat{c}(m) + 0.30 \cdot \hat{s}(m) + 0.20 \cdot \hat{i}(m) + 0.05 \cdot \hat{a}(m) + 0.05 \cdot \hat{r}(m)$$
 
 where each signal is rank-normalized to $[0, 1]$: $\hat{c}(m)$ is the entity-graph PageRank centrality of entities linked to memory $m$, $\hat{s}(m)$ is staleness (days since last access, higher = more stale = higher priority), $\hat{i}(m)$ is the memory's importance score, $\hat{a}(m)$ is the total access count, and $\hat{r}(m)$ is inverse recency (time since last access). The top fraction (default 10%) of eligible memories receive synthetic access records with `accessing_agent="dream_rehearsal"`, boosting their base-level activation $B_i = \ln(\sum t_j^{-d})$ without changing the formula.
 
@@ -261,7 +261,7 @@ where each signal is rank-normalized to $[0, 1]$: $\hat{c}(m)$ is the entity-gra
 
 $$\text{PMI}(a, b) = \log \frac{P(a, b)}{P(a) \cdot P(b)}$$
 
-where $P(a, b)$ is the probability that entities $a$ and $b$ co-occur in the same search result set, and $P(a)$ and $P(b)$ are the marginal probabilities of each entity appearing in any search result. PMI values are clamped to $[0, 10]$ and normalized to $[0, 1]$ to serve as association strength weights $\alpha_{ki}$ in the spreading activation formula (Section 4.2). This replaces uniform entity weights with data-driven connections learned from actual query patterns --- the same goal that keyword bridges attempted but achieved through statistical co-occurrence rather than LLM-extracted generics.
+where $P(a, b)$ is the probability that entities $a$ and $b$ co-occur in the same search result set, and $P(a)$ and $P(b)$ are the marginal probabilities of each entity appearing in any search result. PMI values are clamped to $[0, 10]$ and normalized to $[0, 1]$ to serve as association strength weights $\alpha_{ki}$ in the spreading activation formula (Section 4.2). This replaces uniform entity weights with data-driven connections learned from actual query patterns, the same goal that keyword bridges attempted but achieved through statistical co-occurrence rather than LLM-extracted generics.
 
 **Importance Drift.** For each memory with sufficient access history, the system compares the access rate in the recent half of a configurable window (default 14 days) against the older half:
 
@@ -281,20 +281,20 @@ We evaluate on three BEIR benchmark datasets:
 
 Eight ablation configurations progressively enable pipeline components:
 
-1. **BM25 Only** --- Tantivy lexical baseline
-2. **+ Graph** --- Add entity-graph expansion with independent graph scoring weight
-3. **+ ACT-R** --- Add cognitive scoring (base-level + spreading activation)
-4. **+ SPLADE** --- Add sparse neural retrieval via RRF fusion
-5. **+ SPLADE + Graph** --- Combine SPLADE and graph expansion
-6. **Full Pipeline** --- All components (BM25 + SPLADE + Graph + ACT-R)
-7. **+ Keyword Bridges** --- Full pipeline plus LLM-extracted semantic concept nodes added at ingest time
-8. **+ Keywords + Judge** --- Keyword bridges plus Tier 3 LLM-as-judge reranking
+1. **BM25 Only**: Tantivy lexical baseline
+2. **+ Graph**: Add entity-graph expansion with independent graph scoring weight
+3. **+ ACT-R**: Add cognitive scoring (base-level + spreading activation)
+4. **+ SPLADE**: Add sparse neural retrieval via RRF fusion
+5. **+ SPLADE + Graph**: Combine SPLADE and graph expansion
+6. **Full Pipeline**: All components (BM25 + SPLADE + Graph + ACT-R)
+7. **+ Keyword Bridges**: Full pipeline plus LLM-extracted semantic concept nodes added at ingest time
+8. **+ Keywords + Judge**: Keyword bridges plus Tier 3 LLM-as-judge reranking
 
 All configurations use deterministic settings (ACT-R noise $\sigma = 0$, fixed random seeds) for reproducibility. Metrics: nDCG@10, MRR@10, Recall@10, Recall@100.
 
 ### 4.9 LLM Infrastructure
 
-LLM-powered features (keyword bridge extraction, LLM-as-judge reranking, contradiction detection, knowledge consolidation) are served via NVIDIA Nemotron 3 Nano (30B total parameters, 3B active, MoE with 256 experts) running on an NVIDIA DGX Spark workstation. The model is deployed using the NGC vLLM container (`nvcr.io/nvidia/vllm:26.01-py3`) with BF16 precision, providing an OpenAI-compatible API endpoint. The DGX Spark's 128GB unified memory accommodates the full model (~60GB BF16 weights) with ample headroom for KV cache, delivering sub-second inference latency for keyword extraction --- orders of magnitude faster than CPU-based inference via Ollama on Apple Silicon.
+LLM-powered features (keyword bridge extraction, LLM-as-judge reranking, contradiction detection, knowledge consolidation) are served via NVIDIA Nemotron 3 Nano (30B total parameters, 3B active, MoE with 256 experts) running on an NVIDIA DGX Spark workstation. The model is deployed using the NGC vLLM container (`nvcr.io/nvidia/vllm:26.01-py3`) with BF16 precision, providing an OpenAI-compatible API endpoint. The DGX Spark's 128GB unified memory accommodates the full model (~60GB BF16 weights) with ample headroom for KV cache, delivering sub-second inference latency for keyword extraction, orders of magnitude faster than CPU-based inference via Ollama on Apple Silicon.
 
 This infrastructure choice reflects NCMS's design philosophy: LLM features are additive enhancements to the core retrieval pipeline, not dependencies. The base pipeline (BM25 + SPLADE + Graph + ACT-R) requires zero LLM calls, while GPU-accelerated LLM inference enables optional features that further improve retrieval quality.
 
@@ -306,20 +306,20 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 
 | Configuration | SciFact | NFCorpus | ArguAna |
 |---------------|:-------:|:--------:|:-------:|
-| BM25 Only | 0.687 | 0.319 | --- |
-| + Graph | 0.690 | **0.321** | --- |
-| + ACT-R | 0.686 | 0.317 | --- |
-| + SPLADE | 0.697 | **0.339** | --- |
-| **+ SPLADE + Graph** | **0.698** | 0.338 | --- |
-| Full Pipeline | 0.690 | 0.337 | --- |
-| + Keyword Bridges | 0.032 | --- | --- |
-| + Keywords + Judge | 0.032 | --- | --- |
+| BM25 Only | 0.687 | 0.319 | -|
+| + Graph | 0.690 | **0.321** | -|
+| + ACT-R | 0.686 | 0.317 | -|
+| + SPLADE | 0.697 | **0.339** | -|
+| **+ SPLADE + Graph** | **0.698** | 0.338 | -|
+| Full Pipeline | 0.690 | 0.337 | -|
+| + Keyword Bridges | 0.032 | -| -|
+| + Keywords + Judge | 0.032 | -| -|
 
-*SciFact re-run with improved text chunking for GLiNER and SPLADE. NFCorpus/ArguAna pending re-run.*
+*SciFact re-run with improved text chunking for GLiNER and SPLADE. NFCorpus results from initial run (pre-chunking improvements). ArguAna and updated NFCorpus ablation with improved chunking pending.*
 
 ### 5.2 Detailed Per-Dataset Results
 
-**SciFact** (300 queries, 5,183 documents --- science fact verification):
+**SciFact** (300 queries, 5,183 documents, science fact verification):
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|---------|--------|-----------|------------|
@@ -332,16 +332,16 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 | + Keyword Bridges | 0.032 | 0.037 | 0.030 | 0.030 |
 | + Keywords + Judge | 0.032 | 0.037 | 0.030 | 0.030 |
 
-**NFCorpus** (323 queries, 3,633 documents --- biomedical/nutrition):
+**NFCorpus** (323 queries, 3,633 documents, biomedical/nutrition):
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|---------|--------|-----------|------------|
-| BM25 Only | 0.319 | 0.524 | --- | 0.215 |
-| + Graph | **0.321** | 0.524 | --- | **0.220** |
-| + ACT-R | 0.317 | 0.523 | --- | 0.215 |
-| + SPLADE | **0.339** | **0.553** | --- | 0.262 |
-| + SPLADE + Graph | 0.338 | 0.552 | --- | **0.266** |
-| Full Pipeline | 0.337 | 0.547 | --- | **0.266** |
+| BM25 Only | 0.319 | 0.524 | -| 0.215 |
+| + Graph | **0.321** | 0.524 | -| **0.220** |
+| + ACT-R | 0.317 | 0.523 | -| 0.215 |
+| + SPLADE | **0.339** | **0.553** | -| 0.262 |
+| + SPLADE + Graph | 0.338 | 0.552 | -| **0.266** |
+| Full Pipeline | 0.337 | 0.547 | -| **0.266** |
 
 ### 5.3 Comparison with Published Baselines
 
@@ -353,7 +353,7 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 | **BM25** | **Lexical** | **0.671** | **NCMS +4.0%** |
 | SPLADE v2 | Sparse neural | 0.693 | NCMS +0.7% |
 | ColBERT v2 | Late interaction | 0.693 | NCMS +0.7% |
-| **NCMS (SPLADE+Graph)** | **Hybrid (no vectors)** | **0.698** | --- |
+| **NCMS (SPLADE+Graph)** | **Hybrid (no vectors)** | **0.698** | -|
 
 ### 5.4 Weight Tuning Results
 
@@ -366,7 +366,7 @@ This infrastructure choice reflects NCMS's design philosophy: LLM features are a
 | Recall@10 | 0.8124 | **0.8194** | +0.9% |
 | Recall@100 | 0.9253 | 0.9253 | 0.0% |
 
-Best weights: BM25 = 0.7, ACT-R = **0.0**, SPLADE = 0.2, Graph = 0.3, Hierarchy = 0.0. The critical finding is that **ACT-R weight = 0 is optimal on static benchmarks.** On BEIR datasets, every document has exactly one access at the same time, so $B_i = \ln(t^{-d})$ produces identical scores for all candidates. This is not a failure of the ACT-R mechanism but a limitation of static evaluation --- ACT-R was designed for systems with real temporal access patterns, which dream cycles (Section 4.7) create.
+Best weights: BM25 = 0.7, ACT-R = **0.0**, SPLADE = 0.2, Graph = 0.3, Hierarchy = 0.0. The critical finding is that **ACT-R weight = 0 is optimal on static benchmarks.** On BEIR datasets, every document has exactly one access at the same time, so $B_i = \ln(t^{-d})$ produces identical scores for all candidates. This is not a failure of the ACT-R mechanism but a limitation of static evaluation. ACT-R was designed for systems with real temporal access patterns, which dream cycles (Section 4.7) create.
 
 **Admission Routing Grid Search.** We evaluated 486 configurations of feature weights and routing thresholds against 44 labeled examples spanning 5 routing destinations. Best accuracy: **65.9%** (29/44).
 
@@ -396,25 +396,25 @@ Search median latency *improves* with the full pipeline because better candidate
 
 ### 5.5 Component Contribution Analysis
 
-**SPLADE fusion is the dominant contributor** across both datasets: +1.5% on SciFact and +6.2% on NFCorpus over BM25 baseline. SPLADE's learned term expansion compensates for vocabulary mismatch between queries and documents --- the primary failure mode of pure BM25 retrieval. The RRF fusion strategy allows BM25's precision to be preserved while SPLADE adds recall. On NFCorpus, SPLADE's impact on Recall@100 is particularly striking: +21.7% relative improvement (0.215 to 0.262).
+**SPLADE fusion is the dominant contributor** across both datasets: +1.5% on SciFact and +6.2% on NFCorpus over BM25 baseline. SPLADE's learned term expansion compensates for vocabulary mismatch between queries and documents, the primary failure mode of pure BM25 retrieval. The RRF fusion strategy allows BM25's precision to be preserved while SPLADE adds recall. On NFCorpus, SPLADE's impact on Recall@100 is particularly striking: +21.7% relative improvement (0.215 to 0.262).
 
 **Graph expansion provides consistent lift across datasets**: +0.4% on SciFact, +0.6% on NFCorpus. The best single configuration is SPLADE + Graph (0.698 SciFact), demonstrating that entity-based cross-memory discovery complements learned term expansion. Graph expansion improves Recall@100 on NFCorpus by +2.3% absolute (0.215 to 0.220 for BM25+Graph, 0.262 to 0.266 for SPLADE+Graph).
 
 **ACT-R spreading activation shows limited benefit on static benchmarks.** While ACT-R base-level activation adds minimal value without temporal access patterns, the Full Pipeline (0.690) slightly underperforms SPLADE+Graph (0.698) on SciFact, suggesting that ACT-R's noise and scoring interactions may slightly interfere with the already-strong SPLADE+Graph signal. We expect larger ACT-R contributions in production deployments with real access history.
 
-**The graph scoring independence insight.** Our initial ablation produced identical results for BM25 and BM25+Graph because graph-expanded candidates received zero combined scores --- they had no BM25 or SPLADE scores, and the graph-testing configuration zeroed out ACT-R weight. Introducing an independent `scoring_weight_graph` parameter that weights spreading activation separately from ACT-R base-level activation was essential for making graph expansion's contribution measurable.
+**The graph scoring independence insight.** Our initial ablation produced identical results for BM25 and BM25+Graph because graph-expanded candidates received zero combined scores because they had no BM25 or SPLADE scores, and the graph-testing configuration zeroed out ACT-R weight. Introducing an independent `scoring_weight_graph` parameter that weights spreading activation separately from ACT-R base-level activation was essential for making graph expansion's contribution measurable.
 
 ### 5.6 Negative Result: Keyword Bridge Failure
 
-The most significant finding of our ablation study is the **catastrophic failure of LLM-extracted keyword bridges**. Adding keyword bridge nodes at ingest time caused nDCG@10 to drop from 0.690 to 0.032 --- a 95% degradation that renders retrieval effectively non-functional.
+The most significant finding of our ablation study is the **catastrophic failure of LLM-extracted keyword bridges**. Adding keyword bridge nodes at ingest time caused nDCG@10 to drop from 0.690 to 0.032, a 95% degradation that renders retrieval effectively non-functional.
 
 **Mechanism of failure.** Keyword bridges are extracted by prompting an LLM (Nemotron 3 Nano 30B) to identify semantic concepts from each document. For the 5,183-document SciFact corpus, this produced 14,709 keyword graph nodes (~2.8 per document). Unlike GLiNER-extracted entities, which are specific named entities ("interleukin-6", "p53 tumor suppressor", "metformin"), keyword concepts are generic and high-frequency ("study", "treatment", "effect", "analysis", "clinical trial"). These generic keywords connect thousands of unrelated documents, creating hub nodes with extreme fanout in the entity graph.
 
-**Graph expansion flooding.** During retrieval, the graph expansion step (Tier 1.5) traverses entity neighbors of BM25/SPLADE hits. With keyword hub nodes present, a single relevant document's keyword connections pull in hundreds of irrelevant documents. These flood the candidate pool, and even though they receive lower scores from spreading activation, they displace relevant documents from the top-100 ranking window entirely. The Recall@100 drop from 0.925 to 0.030 confirms this: relevant documents are not merely ranked lower --- they are pushed out of the retrieval window.
+**Graph expansion flooding.** During retrieval, the graph expansion step (Tier 1.5) traverses entity neighbors of BM25/SPLADE hits. With keyword hub nodes present, a single relevant document's keyword connections pull in hundreds of irrelevant documents. These flood the candidate pool, and even though they receive lower scores from spreading activation, they displace relevant documents from the top-100 ranking window entirely. The Recall@100 drop from 0.925 to 0.030 confirms this: relevant documents are not merely ranked lower; they are pushed out of the retrieval window.
 
 **LLM-as-judge cannot recover.** Adding Tier 3 LLM-as-judge reranking (Configuration 8) produces identical results to Configuration 7 (0.032 nDCG@10). This is expected: reranking can only reorder the candidates it receives. When the candidate pool is flooded with irrelevant documents, even a perfect reranker cannot recover relevant documents that were never retrieved.
 
-**Implications.** This result demonstrates that graph-based retrieval benefits from **specific, discriminative** entity nodes rather than generic semantic bridges. Named entities extracted by NER models have natural specificity --- they connect only documents that discuss the same real-world entities. Keywords lack this discriminative power. The appropriate mechanism for cross-subgraph semantic connectivity is not keyword-based graph edges but rather:
+**Implications.** This result demonstrates that graph-based retrieval benefits from **specific, discriminative** entity nodes rather than generic semantic bridges. Named entities extracted by NER models have natural specificity, connecting only documents that discuss the same real-world entities. Keywords lack this discriminative power. The appropriate mechanism for cross-subgraph semantic connectivity is not keyword-based graph edges but rather:
 
 1. **Learned term expansion** (SPLADE) at the retrieval level, which already handles vocabulary mismatch
 2. **Structural temporal connections** (episode formation, entity state tracking) at the graph level, which provide principled connections based on co-occurrence and evolution rather than keyword similarity
@@ -431,7 +431,7 @@ Our results challenge the prevailing assumption that dense embeddings are necess
 
 ### 6.2 The Case for Cognitive Scoring in Agent Memory
 
-Standard IR benchmarks are static: documents have no access history, no temporal context, and no agent-specific usage patterns. This handicaps ACT-R's most distinctive feature --- temporal decay --- which cannot be evaluated without longitudinal access data. On SciFact, the Full Pipeline (all components including ACT-R) slightly underperforms SPLADE+Graph alone (0.690 vs. 0.698), suggesting that ACT-R's scoring interactions may introduce noise without temporal access data to ground the base-level activation. We expect significantly larger ACT-R contributions in production agent deployments where:
+Standard IR benchmarks are static: documents have no access history, no temporal context, and no agent-specific usage patterns. This handicaps ACT-R's most distinctive feature, temporal decay, which cannot be evaluated without longitudinal access data. On SciFact, the Full Pipeline (all components including ACT-R) slightly underperforms SPLADE+Graph alone (0.690 vs. 0.698), suggesting that ACT-R's scoring interactions may introduce noise without temporal access data to ground the base-level activation. We expect significantly larger ACT-R contributions in production agent deployments where:
 
 - Recently accessed memories should be preferred for ongoing tasks
 - Frequently referenced architectural decisions should be more readily available
@@ -441,7 +441,7 @@ Future work will evaluate ACT-R on temporal benchmarks (LoCoMo, FiFA) and synthe
 
 ### 6.3 Entity Label Selection as a Critical Hyperparameter
 
-Our taxonomy experiment revealed that GLiNER's zero-shot NER is highly sensitive to label choice --- a finding with broad implications for any system using zero-shot entity extraction. The difference between abstract labels (0 entities/doc) and optimized concrete labels (9.1 entities/doc) is the difference between a knowledge graph that enables retrieval and one that is empty. We recommend that practitioners:
+Our taxonomy experiment revealed that GLiNER's zero-shot NER is highly sensitive to label choice, a finding with broad implications for any system using zero-shot entity extraction. The difference between abstract labels (0 entities/doc) and optimized concrete labels (9.1 entities/doc) is the difference between a knowledge graph that enables retrieval and one that is empty. We recommend that practitioners:
 
 1. Start with domain-specific concrete noun labels
 2. Test synonym variants (e.g., `medication` vs. `drug`)
@@ -452,11 +452,11 @@ Our taxonomy experiment revealed that GLiNER's zero-shot NER is highly sensitive
 
 A distinctive feature of NCMS is its embedded Knowledge Bus, which enables agents to share knowledge without explicit coordination. Three mechanisms support this:
 
-1. **Domain-routed ask/respond.** Any agent can query any domain; the bus routes questions to registered experts. This enables emergent knowledge transfer --- a frontend agent asking about database performance gets answers from the database agent without knowing it exists.
+1. **Domain-routed ask/respond.** Any agent can query any domain; the bus routes questions to registered experts. This enables emergent knowledge transfer; a frontend agent asking about database performance gets answers from the database agent without knowing it exists.
 
 2. **Announcement broadcasting.** Breaking changes, deployments, and incidents propagate instantly to subscribed agents. The bus matches announcements against subscription filters by domain, severity, and tags.
 
-3. **Snapshot surrogates.** When agents go offline (sleep), they publish knowledge snapshots. Other agents can still query them --- keyword matching against snapshot entries provides "warm" responses discounted by 0.8× confidence. This means a team of agents retains collective knowledge even when individual members are unavailable. The agent lifecycle (`start → work → sleep → wake → shutdown`) ensures knowledge persists across sessions.
+3. **Snapshot surrogates.** When agents go offline (sleep), they publish knowledge snapshots. Other agents can still query them, and keyword matching against snapshot entries provides "warm" responses discounted by 0.8× confidence. This means a team of agents retains collective knowledge even when individual members are unavailable. The agent lifecycle (`start → work → sleep → wake → shutdown`) ensures knowledge persists across sessions.
 
 ### 6.5 Limitations
 
@@ -471,7 +471,7 @@ A distinctive feature of NCMS is its embedded Knowledge Bus, which enables agent
 
 ### 6.6 Hierarchical Temporal Memory Graph (Implemented)
 
-The keyword bridge negative result (Section 5.6) reveals a fundamental limitation of the flat entity graph: it lacks principled mechanisms for cross-subgraph connectivity. Keywords were a naive attempt to solve this --- connecting documents that share no named entities but are thematically related. Their failure demonstrated that the graph layer requires **structural** rather than **lexical** connections.
+The keyword bridge negative result (Section 5.6) reveals a fundamental limitation of the flat entity graph: it lacks principled mechanisms for cross-subgraph connectivity. Keywords were a naive attempt to solve this by connecting documents that share no named entities but are thematically related. Their failure demonstrated that the graph layer requires **structural** rather than **lexical** connections.
 
 NCMS implements the Hierarchical Temporal Memory Graph (HTMG), addressing this gap through three mechanisms:
 
@@ -485,9 +485,9 @@ These mechanisms address the same cross-subgraph connectivity problem that keywo
 
 ### 6.7 Dream Cycles and the Rehabilitation of ACT-R
 
-The Phase 7 weight tuning result --- that ACT-R weight = 0 is optimal on static benchmarks --- initially appeared to invalidate cognitive scoring for IR. However, this finding is expected: on BEIR datasets, every document has exactly one access at the same time, so the base-level activation $B_i = \ln(t^{-d})$ produces identical scores for all candidates, contributing only noise.
+The Phase 7 weight tuning result (that ACT-R weight = 0 is optimal on static benchmarks) initially appeared to invalidate cognitive scoring for IR. However, this finding is expected: on BEIR datasets, every document has exactly one access at the same time, so the base-level activation $B_i = \ln(t^{-d})$ produces identical scores for all candidates, contributing only noise.
 
-Dream cycles (Section 4.7) address this by creating the differential access patterns that ACT-R requires. After dream rehearsal, high-value memories have more synthetic access records and therefore higher base-level activations. After association learning, entity connections carry learned PMI weights rather than uniform 1.0. After importance drift, frequently-accessed memories have higher importance scores. These three passes transform ACT-R from a uniform-noise contributor into a discriminative scoring signal --- without changing any of the underlying cognitive formulas.
+Dream cycles (Section 4.7) address this by creating the differential access patterns that ACT-R requires. After dream rehearsal, high-value memories have more synthetic access records and therefore higher base-level activations. After association learning, entity connections carry learned PMI weights rather than uniform 1.0. After importance drift, frequently-accessed memories have higher importance scores. These three passes transform ACT-R from a uniform-noise contributor into a discriminative scoring signal, all without changing any of the underlying cognitive formulas.
 
 This approach mirrors biological sleep consolidation: the brain doesn't change its retrieval mechanism during sleep, it changes the *strength* of stored memories through selective replay. NCMS's dream cycle does the same for computational memory.
 
@@ -497,13 +497,13 @@ This approach mirrors biological sleep consolidation: the brain doesn't change i
 
 NCMS demonstrates that competitive information retrieval is achievable without dense vector embeddings, using a multi-signal pipeline that combines lexical search, sparse neural expansion, entity-graph traversal, and cognitive activation scoring. On the SciFact benchmark, NCMS achieves 0.7053 nDCG@10 after systematic weight tuning, outperforming published BM25 (+5.1%), dense retrieval (DPR +122%, ANCE +39%), and exceeding sparse neural systems (SPLADE v2/ColBERT v2 +1.8%).
 
-The research arc tells a coherent story. The initial ablation established component contributions: SPLADE fusion provides the largest lift, graph expansion adds consistent value, and ACT-R underperforms on static benchmarks. The catastrophic failure of keyword bridges (nDCG@10: 0.690 → 0.032) revealed that cross-subgraph connectivity requires structural rather than lexical connections. This motivated the HTMG architecture --- typed memory nodes, bitemporal entity state tracking, 7-signal hybrid episode formation, and hierarchical abstraction synthesis --- which provides principled structural connections where keyword bridges failed.
+The research arc tells a coherent story. The initial ablation established component contributions: SPLADE fusion provides the largest lift, graph expansion adds consistent value, and ACT-R underperforms on static benchmarks. The catastrophic failure of keyword bridges (nDCG@10: 0.690 → 0.032) revealed that cross-subgraph connectivity requires structural rather than lexical connections. This motivated the HTMG architecture (typed memory nodes, bitemporal entity state tracking, 7-signal hybrid episode formation, and hierarchical abstraction synthesis), which provides principled structural connections where keyword bridges failed.
 
 The weight tuning revelation that ACT-R weight = 0 is optimal on static benchmarks (because all documents share identical access history) led to the final piece: dream cycles inspired by biological sleep consolidation. Dream rehearsal creates differential access patterns, PMI association learning provides data-driven entity weights for spreading activation, and importance drift adjusts memory salience from usage trends. Together, these three non-LLM passes transform ACT-R from a uniform-noise contributor into a potentially discriminative scoring signal.
 
-The system represents an 8-phase architecture validated by 719 tests, with comprehensive tuning across retrieval ranking (108 configurations), admission routing (486 configurations), and reconciliation penalties (16 configurations). It ships as a single `pip install` with zero external dependencies, 12 SQLite tables, and a real-time observability dashboard --- making production deployment of a sophisticated cognitive memory system accessible to any Python project.
+The system represents an 8-phase architecture validated by 719 tests, with comprehensive tuning across retrieval ranking (108 configurations), admission routing (486 configurations), and reconciliation penalties (16 configurations). It ships as a single `pip install` with zero external dependencies, 12 SQLite tables, and a real-time observability dashboard, making production deployment of a sophisticated cognitive memory system accessible to any Python project.
 
-Three key innovations distinguish NCMS: (1) the first application of ACT-R cognitive scoring to information retrieval, with dream cycles that create the temporal context ACT-R requires; (2) an embedded Knowledge Bus with snapshot surrogates that enables agents to share knowledge and answer questions even while offline; and (3) the empirical demonstration that graph-based retrieval requires specific, discriminative nodes (named entities) rather than generic bridges (keywords) --- a finding with broad implications for any system using knowledge graph expansion.
+Three key innovations distinguish NCMS: (1) the first application of ACT-R cognitive scoring to information retrieval, with dream cycles that create the temporal context ACT-R requires; (2) an embedded Knowledge Bus with snapshot surrogates that enables agents to share knowledge and answer questions even while offline; and (3) the empirical demonstration that graph-based retrieval requires specific, discriminative nodes (named entities) rather than generic bridges (keywords), a finding with broad implications for any system using knowledge graph expansion.
 
 Future work will evaluate dream-cycle-enhanced ACT-R on temporal benchmarks (LoCoMo, FiFA), assess the impact of PMI-learned association strengths on spreading activation quality, and validate the complete system on production multi-agent deployments where longitudinal access patterns provide the temporal context that static IR benchmarks cannot.
 
@@ -531,7 +531,7 @@ To summarize the novel ideas introduced by this work:
 
 9. **Keyword bridge negative result.** Empirical demonstration that LLM-extracted keyword nodes catastrophically degrade graph-based retrieval (nDCG@10: 0.690 → 0.032) by creating high-fanout hub nodes. This finding has implications for any system using knowledge graph expansion: graph nodes must be specific and discriminative (named entities) rather than generic (keywords).
 
-10. **Inter-agent knowledge sharing.** An embedded Knowledge Bus with domain-routed communication and snapshot-based surrogate responses, enabling agents to share knowledge and answer questions even while offline --- without external message brokers or coordination infrastructure.
+10. **Inter-agent knowledge sharing.** An embedded Knowledge Bus with domain-routed communication and snapshot-based surrogate responses, enabling agents to share knowledge and answer questions even while offline, without external message brokers or coordination infrastructure.
 
 11. **Zero-dependency agent memory.** A production-ready 8-phase architecture (719 tests, 12 SQLite tables) that integrates persistent storage, full-text search, knowledge graphs, cognitive scoring, memory hierarchy, dream cycles, inter-agent communication, and observability in a single `pip install` with no external infrastructure requirements.
 
