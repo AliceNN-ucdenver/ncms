@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-03-14T00:21:12.975906+00:00",
+  "git_sha": "9e3a6dd",
+  "ingest_samples": 20,
+  "search_queries": 15,
+  "baseline": {
+    "ingest_ms": {
+      "p50": 351.77,
+      "p95": 5420.69,
+      "p99": 5420.69,
+      "mean": 560.93
+    },
+    "search_ms": {
+      "p50": 37.93,
+      "p95": 61.81,
+      "p99": 61.81,
+      "mean": 42.38
+    }
+  },
+  "full_pipeline": {
+    "ingest_ms": {
+      "p50": 673.86,
+      "p95": 935.73,
+      "p99": 935.73,
+      "mean": 586.15
+    },
+    "search_ms": {
+      "p50": 35.05,
+      "p95": 80.33,
+      "p99": 80.33,
+      "mean": 45.26
+    }
+  },
+  "memory_growth": {
+    "total_memories": 26,
+    "samples_ingested": 20,
+    "growth_ratio": 1.3
+  }
+}

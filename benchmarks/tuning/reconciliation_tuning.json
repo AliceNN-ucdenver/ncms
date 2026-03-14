@@ -1,0 +1,157 @@
+{
+  "timestamp": "2026-03-14T00:21:12.417485+00:00",
+  "git_sha": "9e3a6dd",
+  "transitions": 20,
+  "grid": {
+    "supersession_penalty": [
+      0.2,
+      0.3,
+      0.4,
+      0.5
+    ],
+    "conflict_penalty": [
+      0.1,
+      0.15,
+      0.2,
+      0.3
+    ]
+  },
+  "configs": [
+    {
+      "index": 0,
+      "supersession_penalty": 0.2,
+      "conflict_penalty": 0.1,
+      "demotion_rate": 0.55,
+      "correct": 11,
+      "total": 20
+    },
+    {
+      "index": 1,
+      "supersession_penalty": 0.2,
+      "conflict_penalty": 0.15,
+      "demotion_rate": 0.35,
+      "correct": 7,
+      "total": 20
+    },
+    {
+      "index": 2,
+      "supersession_penalty": 0.2,
+      "conflict_penalty": 0.2,
+      "demotion_rate": 0.5,
+      "correct": 10,
+      "total": 20
+    },
+    {
+      "index": 3,
+      "supersession_penalty": 0.2,
+      "conflict_penalty": 0.3,
+      "demotion_rate": 0.4,
+      "correct": 8,
+      "total": 20
+    },
+    {
+      "index": 4,
+      "supersession_penalty": 0.3,
+      "conflict_penalty": 0.1,
+      "demotion_rate": 0.45,
+      "correct": 9,
+      "total": 20
+    },
+    {
+      "index": 5,
+      "supersession_penalty": 0.3,
+      "conflict_penalty": 0.15,
+      "demotion_rate": 0.5,
+      "correct": 10,
+      "total": 20
+    },
+    {
+      "index": 6,
+      "supersession_penalty": 0.3,
+      "conflict_penalty": 0.2,
+      "demotion_rate": 0.45,
+      "correct": 9,
+      "total": 20
+    },
+    {
+      "index": 7,
+      "supersession_penalty": 0.3,
+      "conflict_penalty": 0.3,
+      "demotion_rate": 0.5,
+      "correct": 10,
+      "total": 20
+    },
+    {
+      "index": 8,
+      "supersession_penalty": 0.4,
+      "conflict_penalty": 0.1,
+      "demotion_rate": 0.6,
+      "correct": 12,
+      "total": 20
+    },
+    {
+      "index": 9,
+      "supersession_penalty": 0.4,
+      "conflict_penalty": 0.15,
+      "demotion_rate": 0.6,
+      "correct": 12,
+      "total": 20
+    },
+    {
+      "index": 10,
+      "supersession_penalty": 0.4,
+      "conflict_penalty": 0.2,
+      "demotion_rate": 0.55,
+      "correct": 11,
+      "total": 20
+    },
+    {
+      "index": 11,
+      "supersession_penalty": 0.4,
+      "conflict_penalty": 0.3,
+      "demotion_rate": 0.4,
+      "correct": 8,
+      "total": 20
+    },
+    {
+      "index": 12,
+      "supersession_penalty": 0.5,
+      "conflict_penalty": 0.1,
+      "demotion_rate": 0.5,
+      "correct": 10,
+      "total": 20
+    },
+    {
+      "index": 13,
+      "supersession_penalty": 0.5,
+      "conflict_penalty": 0.15,
+      "demotion_rate": 0.35,
+      "correct": 7,
+      "total": 20
+    },
+    {
+      "index": 14,
+      "supersession_penalty": 0.5,
+      "conflict_penalty": 0.2,
+      "demotion_rate": 0.5,
+      "correct": 10,
+      "total": 20
+    },
+    {
+      "index": 15,
+      "supersession_penalty": 0.5,
+      "conflict_penalty": 0.3,
+      "demotion_rate": 0.65,
+      "correct": 13,
+      "total": 20
+    }
+  ],
+  "best": {
+    "index": 15,
+    "supersession_penalty": 0.5,
+    "conflict_penalty": 0.3,
+    "demotion_rate": 0.65,
+    "correct": 13,
+    "total": 20
+  }
+}

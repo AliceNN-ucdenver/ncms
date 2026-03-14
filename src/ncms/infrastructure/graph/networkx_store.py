@@ -130,3 +130,50 @@ class NetworkXGraph:
         self._memory_entities.clear()
         self._entity_memories.clear()
         self._name_index.clear()
+
+    # ── Phase 8: Centrality + Entity-Memory Lookup ───────────────────
+
+    def pagerank(self, alpha: float = 0.85) -> dict[str, float]:
+        """Compute PageRank centrality over the entity graph.
+
+        Pure-Python power iteration (no scipy dependency).
+        Returns a dict mapping entity_id → centrality score (sums to ~1.0).
+        Returns empty dict if the graph has no nodes.
+        """
+        if self._graph.number_of_nodes() == 0:
+            return {}
+
+        nodes = list(self._graph.nodes())
+        n = len(nodes)
+        if n == 0:
+            return {}
+
+        # Initialize uniform
+        rank: dict[str, float] = {node: 1.0 / n for node in nodes}
+
+        # Power iteration (50 iterations is plenty for convergence)
+        for _ in range(50):
+            new_rank: dict[str, float] = {}
+            # Dangling node mass (nodes with no outgoing edges)
+            dangling_sum = sum(
+                rank[node] for node in nodes
+                if self._graph.out_degree(node) == 0
+            )
+
+            for node in nodes:
+                # Teleport + dangling redistribution
+                new_rank[node] = (1.0 - alpha) / n + alpha * dangling_sum / n
+
+                # Incoming link contributions
+                for pred in self._graph.predecessors(node):
+                    out_deg = self._graph.out_degree(pred)
+                    if out_deg > 0:
+                        new_rank[node] += alpha * rank[pred] / out_deg
+
+            rank = new_rank
+
+        return rank
+
+    def get_memory_ids_for_entity(self, entity_id: str) -> set[str]:
+        """Return all memory IDs linked to a specific entity."""
+        return self._entity_memories.get(entity_id, set()).copy()

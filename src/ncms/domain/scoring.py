@@ -258,12 +258,14 @@ def route_memory(f: AdmissionFeatures, score: float) -> str:
 
     Routing policy from NCMS-Next §8.4.
     """
+    # Phase 7 tuned thresholds (original: discard<0.25, ephemeral<0.45,
+    # state_change>=0.50, episode>=0.55)
     if score < 0.25 and f.persistence < 0.20 and f.state_change_signal < 0.20:
         return "discard"
-    if f.state_change_signal >= 0.50:
+    if f.state_change_signal >= 0.35:
         return "entity_state_update"
-    if f.episode_affinity >= 0.55:
+    if f.episode_affinity >= 0.40:
         return "episode_fragment"
-    if 0.25 <= score < 0.45:
+    if 0.25 <= score < 0.35:
         return "ephemeral_cache"
     return "atomic_memory"

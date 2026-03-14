@@ -131,6 +131,19 @@ class NCMSConfig(BaseSettings):
     abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
     consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
 
+    # Dream cycles (Phase 8)
+    dream_cycle_enabled: bool = False
+    dream_rehearsal_fraction: float = 0.10       # Top fraction of memories to rehearse
+    dream_staleness_days: int = 7                # Memory considered stale after N days
+    dream_min_access_count: int = 3              # Minimum accesses before eligible
+    dream_rehearsal_weight_centrality: float = 0.40
+    dream_rehearsal_weight_staleness: float = 0.30
+    dream_rehearsal_weight_importance: float = 0.20
+    dream_rehearsal_weight_access_count: float = 0.05
+    dream_rehearsal_weight_recency: float = 0.05
+    dream_importance_drift_window_days: int = 14  # Window for access rate comparison
+    dream_importance_drift_rate: float = 0.1      # Max importance adjustment per cycle
+
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
 

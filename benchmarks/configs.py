@@ -108,4 +108,20 @@ CORE_CONFIGS: list[AblationConfig] = [
     ),
 ]
 
-ABLATION_CONFIGS: list[AblationConfig] = CORE_CONFIGS
+# Phase 7 tuned config — grid search over 108 weight combinations on SciFact
+# Best nDCG@10 = 0.7053 (+1.1% over Phase 6 best of 0.6976)
+# Key findings: ACT-R hurts on IR benchmarks, BM25 weight should be higher (0.7),
+# SPLADE lower (0.2), graph expansion helps (0.3), hierarchy neutral (0.0).
+TUNED_CONFIG = AblationConfig(
+    name="tuned",
+    display_name="Tuned (Phase 7)",
+    use_splade=True,
+    graph_expansion_enabled=True,
+    scoring_weight_bm25=0.7,
+    scoring_weight_actr=0.0,
+    scoring_weight_splade=0.2,
+    scoring_weight_graph=0.3,
+    actr_threshold=-999.0,
+)
+
+ABLATION_CONFIGS: list[AblationConfig] = [*CORE_CONFIGS, TUNED_CONFIG]

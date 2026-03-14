@@ -19,6 +19,7 @@ from ncms.domain.models import (
     Memory,
     Relationship,
     ScoredMemory,
+    SearchLogEntry,
 )
 from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import (
@@ -882,6 +883,16 @@ class MemoryService:
                 "total_candidates": len(all_candidates),
             })
 
+        # Phase 8: Load learned association strengths for spreading activation
+        assoc_strengths: dict[tuple[str, str], float] | None = None
+        if self._config.dream_cycle_enabled:
+            try:
+                assoc_strengths = await self._store.get_association_strengths()
+                if not assoc_strengths:
+                    assoc_strengths = None  # Fall back to default overlap model
+            except Exception:
+                logger.debug("Failed to load association strengths", exc_info=True)
+
         # Load full memory objects and compute activation scores
         t0 = time.perf_counter()
         scored: list[ScoredMemory] = []
@@ -908,6 +919,7 @@ class MemoryService:
             spread = spreading_activation(
                 memory_entity_ids=memory_entities,
                 context_entity_ids=context_entity_ids,
+                association_strengths=assoc_strengths,
                 source_activation=self._config.actr_max_spread,
             )
 
@@ -1073,6 +1085,22 @@ class MemoryService:
             top_score=results[0].total_activation if results else None,
             agent_id=agent_id,
         )
+
+        # Phase 8: Log search for dream cycle PMI computation
+        if self._config.dream_cycle_enabled and results:
+            try:
+                entity_names_for_log = [
+                    e["name"] for e in query_entity_names
+                ] if query_entity_names else []
+                await self._store.log_search(SearchLogEntry(
+                    query=query,
+                    query_entities=entity_names_for_log,
+                    returned_ids=[r.memory.id for r in results],
+                    agent_id=agent_id,
+                ))
+            except Exception:
+                logger.debug("Failed to log search for dream cycle", exc_info=True)
+
         return results
 
     async def _load_candidate_previews(

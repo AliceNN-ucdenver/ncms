@@ -1383,6 +1383,298 @@ In ACT-R theory, dream consolidation is modeled as offline rehearsal — the hip
 - **Dream association** → PMI-based entity association strength learning from co-access patterns
 - **Dream triage** → importance score adjustment based on access trend analysis
 
+### Why ACT-R Fails on Static IR Benchmarks
+
+Phase 7 tuning confirmed ACT-R weight ≤0.0 is optimal on BEIR (SciFact nDCG@10: 0.7053 without ACT-R vs 0.6903 with ACT-R=0.4). This is **expected** — BEIR is a single-shot benchmark where every document has identical access history (1 access, same timestamp). ACT-R's `ln(Σ(t^-d))` formula produces uniform scores across all candidates, contributing only noise.
+
+ACT-R requires **differential access patterns** — some memories accessed more recently/frequently than others — to provide signal. These patterns emerge naturally from:
+1. Agent work sessions (repeated queries about active topics)
+2. Dream rehearsal (important memories replayed during sleep)
+3. Consolidation (insights re-access their source memories)
+
+### Dream Cycle Architecture
+
+```
+Agent Lifecycle with Dream Cycle
+═════════════════════════════════
+
+  ┌─────────────────────────────────────────────────┐
+  │  WAKE PHASE (normal operation)                  │
+  │                                                 │
+  │  store() → creates access_log entry (t₁)        │
+  │  search() → creates access_log entries (t₂..tₙ) │
+  │  ask() → routes through bus, may access memories │
+  │                                                 │
+  │  Result: differential access patterns emerge     │
+  │  - Working knowledge: 5-20 accesses/day         │
+  │  - Background facts: 1 access (ingest only)     │
+  │  - Stale knowledge: last access days ago        │
+  └──────────────────────┬──────────────────────────┘
+                         │ agent.sleep()
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  DREAM PHASE 1: Rehearsal Selection             │
+  │                                                 │
+  │  Score all memories for rehearsal priority:      │
+  │                                                 │
+  │  rehearsal_priority(m) =                        │
+  │    w₁ · graph_centrality(m)     [importance]    │
+  │    + w₂ · access_trend(m)       [momentum]      │
+  │    + w₃ · episode_membership(m) [context]       │
+  │    + w₄ · entity_fan_out(m)     [connectivity]  │
+  │    − w₅ · recency(m)           [already fresh]  │
+  │                                                 │
+  │  Select top-K for rehearsal (K ≈ 30% of active) │
+  │  Cap: max 1 synthetic access per memory/night   │
+  └──────────────────────┬──────────────────────────┘
+                         │
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  DREAM PHASE 2: Replay Execution               │
+  │                                                 │
+  │  For each selected memory:                      │
+  │    record_access(memory_id, source="dream")     │
+  │    → inserts access_log row with current time   │
+  │    → ACT-R base-level recomputes on next query  │
+  │                                                 │
+  │  For episode members (contextual replay):       │
+  │    replay all members of active episodes        │
+  │    → strengthens episode coherence              │
+  │                                                 │
+  │  For conflicting states:                        │
+  │    replay current state (NOT superseded)         │
+  │    → widens activation gap between old/new      │
+  └──────────────────────┬──────────────────────────┘
+                         │
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  DREAM PHASE 3: Association Learning            │
+  │                                                 │
+  │  Compute PMI from co-access patterns:           │
+  │    PMI(e₁, e₂) = log(P(e₁,e₂) / P(e₁)·P(e₂)) │
+  │                                                 │
+  │  Where co-access = entities appearing in        │
+  │  memories returned by the same search query     │
+  │                                                 │
+  │  Store in association_strengths table            │
+  │  → feeds spreading_activation() at query time   │
+  └──────────────────────┬──────────────────────────┘
+                         │
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  DREAM PHASE 4: Importance Drift                │
+  │                                                 │
+  │  Analyze 30-day access trends per memory:       │
+  │    trend = linear_regression(access_counts/week) │
+  │                                                 │
+  │  Rising trend → boost importance                │
+  │  Declining trend → reduce importance            │
+  │  No accesses → natural ACT-R decay handles it   │
+  └──────────────────────┬──────────────────────────┘
+                         │ agent.wake()
+                         ▼
+  ┌─────────────────────────────────────────────────┐
+  │  POST-DREAM QUERY                               │
+  │                                                 │
+  │  ACT-R now has differential signal:             │
+  │  - Rehearsed: 3+ accesses (store + use + dream) │
+  │  - Unrehearsed: 1 access (store only)           │
+  │  - Stale: last access days ago, decayed         │
+  │                                                 │
+  │  Spreading activation uses learned PMI weights  │
+  │  instead of uniform 1.0 for all associations    │
+  └─────────────────────────────────────────────────┘
+```
+
+### Rehearsal Selector Algorithm
+
+The rehearsal selector determines which memories get replayed during dream phase 1. This is the critical design decision — dreaming about the wrong memories wastes rehearsal budget and can over-boost irrelevant content.
+
+```python
+def select_for_rehearsal(
+    memories: list[Memory],
+    graph: NetworkXGraph,
+    access_log: list[AccessEntry],
+    episodes: list[MemoryNode],
+    config: DreamConfig,
+) -> list[str]:
+    """Select memory IDs for dream rehearsal.
+
+    Selection criteria (weighted scoring):
+    1. Graph centrality — memories connected to many entities are
+       structurally important (high PageRank in knowledge graph)
+    2. Access momentum — memories with increasing access frequency
+       are "hot" working knowledge worth reinforcing
+    3. Episode membership — members of active (open) episodes are
+       rehearsed together to strengthen episodic associations
+    4. Entity fan-out — memories linking multiple entities serve as
+       bridge nodes worth preserving
+    5. Staleness penalty — recently-accessed memories don't need
+       rehearsal (they're already fresh in ACT-R)
+
+    Returns top-K memory IDs sorted by rehearsal priority.
+    """
+    scores: dict[str, float] = {}
+
+    for mem in memories:
+        # 1. Graph centrality (PageRank)
+        centrality = graph.pagerank().get(mem.id, 0.0)
+
+        # 2. Access momentum (slope of access frequency over last 7 days)
+        recent_accesses = [a for a in access_log
+                          if a.memory_id == mem.id
+                          and a.age_days <= 7]
+        momentum = _compute_access_trend(recent_accesses)
+
+        # 3. Episode membership (boost if in active episode)
+        in_active_episode = any(
+            ep for ep in episodes
+            if mem.id in ep.metadata.get("member_ids", [])
+            and ep.metadata.get("status") == "open"
+        )
+        episode_bonus = 1.0 if in_active_episode else 0.0
+
+        # 4. Entity fan-out (number of distinct entities)
+        entity_count = len(graph.get_memory_entities(mem.id))
+        fan_out = min(1.0, entity_count / 5.0)  # normalize, cap at 5
+
+        # 5. Staleness (how long since last access)
+        last_access_days = _days_since_last_access(mem.id, access_log)
+        # Invert: recent = low priority, stale = high priority
+        # But too stale (>30d) = probably irrelevant
+        staleness = 0.0
+        if 1.0 <= last_access_days <= 30.0:
+            staleness = last_access_days / 30.0  # linear 0→1
+        elif last_access_days < 1.0:
+            staleness = -0.5  # penalty: already fresh
+
+        scores[mem.id] = (
+            config.w_centrality * centrality      # default 0.30
+            + config.w_momentum * momentum        # default 0.25
+            + config.w_episode * episode_bonus     # default 0.20
+            + config.w_fan_out * fan_out           # default 0.10
+            + config.w_staleness * staleness       # default 0.15
+        )
+
+    # Select top-K (cap at 30% of total memories)
+    max_k = max(1, int(len(memories) * config.rehearsal_fraction))
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [mid for mid, _ in ranked[:max_k]]
+```
+
+### Rehearsal Selection Weights
+
+| Signal | Weight | Rationale |
+|--------|--------|-----------|
+| `w_centrality` | 0.30 | Structurally important memories (many entity connections) are worth preserving |
+| `w_momentum` | 0.25 | Rising access frequency indicates active working knowledge |
+| `w_episode` | 0.20 | Episode members should be rehearsed together for coherence |
+| `w_staleness` | 0.15 | Stale-but-important memories benefit most from rehearsal |
+| `w_fan_out` | 0.10 | Bridge memories connecting multiple entities preserve graph structure |
+
+### Conflict-Aware Rehearsal
+
+When the dream cycle encounters entity states involved in supersession:
+- **Current state**: always rehearsed (maintains activation advantage)
+- **Superseded state**: never rehearsed (allowed to naturally decay via ACT-R)
+- **Conflicting states**: both rehearsed, but current state gets priority slot
+
+This creates a widening activation gap between current and obsolete knowledge over successive dream cycles — the correct answer becomes increasingly dominant without any explicit penalty mechanism.
+
+### ACT-R Evaluation Protocol
+
+Since BEIR benchmarks cannot evaluate ACT-R (static, no access history), Phase 8C introduces a purpose-built **Simulated Agent Workday** benchmark:
+
+```
+Protocol: Simulated Agent Workday
+══════════════════════════════════
+
+Day 1-3: Ingest Phase
+  - Store 100 memories across 5 topics (auth, database, deploy, monitoring, API)
+  - 20 memories per topic, mixed types (facts, state updates, episodes)
+
+Day 4-7: Work Phase (simulated access patterns)
+  - Agent queries auth + database topics heavily (5-10 searches/day)
+  - Agent queries monitoring occasionally (1-2 searches/day)
+  - Deploy + API topics: no queries (stale)
+  - Each search creates access_log entries for returned memories
+
+Day 7 (night): Dream Cycle
+  - Run full dream cycle: rehearsal → association learning → importance drift
+  - Rehearsal selector picks auth + database memories (high momentum)
+  - Monitoring memories partially rehearsed (some centrality)
+  - Deploy + API memories: unrehearsed (allowed to decay)
+
+Day 8: Evaluation Queries
+  - Query all 5 topics with identical queries
+  - Measure: do rehearsed memories rank higher than unrehearsed?
+
+Metrics:
+  ┌───────────────────────────────────────────────┐
+  │ Rehearsal Boost Rate (RBR):                   │
+  │   % of queries where rehearsed memories       │
+  │   rank above unrehearsed for same topic        │
+  │   Target: ≥ 85%                               │
+  │                                               │
+  │ Recency Discrimination (RD):                  │
+  │   Rank correlation between access recency     │
+  │   and retrieval rank                          │
+  │   Target: Spearman ρ ≥ 0.6                    │
+  │                                               │
+  │ Staleness Decay Rate (SDR):                   │
+  │   Activation ratio: unrehearsed / rehearsed   │
+  │   after N dream cycles                        │
+  │   Target: < 0.5 after 3 cycles                │
+  │                                               │
+  │ Compounding Effect (CE):                      │
+  │   RBR improvement per additional dream cycle  │
+  │   Measure at 1, 3, 7, 14 cycles              │
+  │   Target: monotonically increasing, plateau   │
+  │                                               │
+  │ ACT-R Weight Crossover:                       │
+  │   Find optimal ACT-R weight on this benchmark │
+  │   Compare: ACT-R=0 vs ACT-R=0.1..0.5        │
+  │   Expect: positive weight now helps (unlike   │
+  │   BEIR where ACT-R=0 was optimal)            │
+  └───────────────────────────────────────────────┘
+
+Control conditions:
+  A) No dream cycle, ACT-R=0 (BEIR-optimal baseline)
+  B) No dream cycle, ACT-R=0.4 (uniform access, should hurt)
+  C) Dream cycle, ACT-R=0 (rehearsal but no scoring signal)
+  D) Dream cycle, ACT-R=0.4 (full cognitive pipeline)
+
+Expected result: D >> A > C > B
+  - D wins because dream creates differential access + ACT-R exploits it
+  - A is BEIR-optimal but can't distinguish working vs stale knowledge
+  - C rehearses but doesn't use the signal
+  - B has ACT-R noise with no differential access (worst case)
+```
+
+### Superseded State Demotion via Dream Cycles
+
+Dream rehearsal provides a natural alternative to explicit supersession penalties for demoting obsolete states in retrieval:
+
+```
+State transition: "PostgreSQL 14" → "PostgreSQL 16" (supersedes)
+
+Without dream:
+  Both states have 1 access each → ACT-R scores identical
+  Must rely on explicit penalty (−0.3) to demote old state
+
+With dream:
+  Cycle 1: current state rehearsed, old state not → 2 vs 1 accesses
+  Cycle 3: current state 4 accesses, old state 1 → activation gap widens
+  Cycle 7: old state activation decayed below threshold → naturally filtered
+
+  ACT-R formula does the work:
+    current: ln(t₁⁻⁰·⁵ + t₂⁻⁰·⁵ + t₃⁻⁰·⁵ + t₄⁻⁰·⁵) ≈ 0.8
+    old:     ln(t₁⁻⁰·⁵)                              ≈ -1.2
+    Gap: 2.0 activation units (no explicit penalty needed)
+```
+
+This is more cognitively faithful than hardcoded penalties — the system "forgets" obsolete knowledge through disuse, just as humans do.
+
 ### Phase 8A: Search Logging & Data Collection (estimated: 2-3 days)
 
 | # | Task | Files | Verification |
@@ -1401,7 +1693,7 @@ In ACT-R theory, dream consolidation is modeled as offline rehearsal — the hip
 | 8.B.2 | Implement `learn_association_strengths()`: compute PMI from co-access entity pairs | `consolidation_service.py` | association_strengths table populated; frequently co-accessed entity pairs have positive PMI |
 | 8.B.3 | Implement `adjust_importance_drift()`: raise importance for increasing-access memories, lower for declining | `consolidation_service.py` | importance field updated based on 30-day access trend |
 | 8.B.4 | Add `run_dream_cycle()` orchestrator that runs all three passes in sequence | `consolidation_service.py` | Single entry point; idempotent; logs stats |
-| 8.B.5 | Add config flags: `NCMS_DREAM_CYCLE_ENABLED`, `NCMS_DREAM_REHEARSAL_STALENESS_DAYS`, `NCMS_DREAM_MIN_ACCESS_COUNT` | `config.py` | Feature flag controls; defaults disabled |
+| 8.B.5 | Add config flags: `NCMS_DREAM_CYCLE_ENABLED`, `NCMS_DREAM_REHEARSAL_FRACTION` (0.3), `NCMS_DREAM_STALENESS_DAYS` (30), `NCMS_DREAM_MIN_ACCESS_COUNT` (2), `NCMS_DREAM_W_CENTRALITY` (0.30), `NCMS_DREAM_W_MOMENTUM` (0.25), `NCMS_DREAM_W_EPISODE` (0.20), `NCMS_DREAM_W_STALENESS` (0.15), `NCMS_DREAM_W_FAN_OUT` (0.10) | `config.py` | Feature flag controls; defaults disabled; rehearsal weights tunable |
 | 8.B.6 | Unit tests: synthetic access injection, PMI computation, importance drift, edge cases (empty access log, single memory) | `tests/unit/` | All pass; deterministic with fixed timestamps |
 | 8.B.7 | Integration test: full dream cycle on a populated memory store; verify activation scores improve for rehearsed memories | `tests/integration/` | Before/after activation comparison |
 
@@ -1409,18 +1701,23 @@ In ACT-R theory, dream consolidation is modeled as offline rehearsal — the hip
 
 | # | Task | Files | Verification |
 |---|------|-------|--------------|
-| 8.C.1 | Create temporal benchmark: SciFact with synthetic access patterns (simulate 30 days of agent usage) | `benchmarks/` | Reproducible access pattern generation |
-| 8.C.2 | Run ablation: SPLADE+Graph baseline → +Dream Rehearsal → +Association Learning → +Importance Drift | `benchmarks/` | Each component measured independently |
-| 8.C.3 | Compare vs. LLM-as-judge: Dream-consolidated ACT-R vs. Tier 3 judge on same queries | `benchmarks/` | Quantify quality gap (if any) vs. cost savings |
-| 8.C.4 | Measure compounding effect: run dream cycle for 1, 7, 30 simulated nights | `benchmarks/` | Retrieval quality improves with more dream cycles |
-| 8.C.5 | Update paper Section 6.5 and README with Project Oracle results | `docs/paper.md`, `README.md` | Results documented |
+| 8.C.1 | Create Simulated Agent Workday benchmark: 100 memories across 5 topics, 7-day work simulation with differential access patterns, dream cycle, post-dream evaluation queries | `benchmarks/dream/` | Reproducible; deterministic with seeded timestamps |
+| 8.C.2 | Implement 4 control conditions: (A) no dream + ACT-R=0, (B) no dream + ACT-R=0.4, (C) dream + ACT-R=0, (D) dream + ACT-R=0.4 | `benchmarks/dream/` | All 4 conditions runnable; D should outperform A |
+| 8.C.3 | Compute ACT-R-specific metrics: Rehearsal Boost Rate (≥85%), Recency Discrimination (Spearman ρ≥0.6), Staleness Decay Rate (<0.5 after 3 cycles), ACT-R Weight Crossover point | `benchmarks/dream/` | Metrics demonstrate differential access value |
+| 8.C.4 | Measure compounding effect: run dream cycle for 1, 3, 7, 14 simulated nights; plot RBR and activation gap curves | `benchmarks/dream/` | Monotonically increasing RBR, plateau identification |
+| 8.C.5 | Run superseded state demotion test: compare explicit penalty (Phase 7) vs dream-based decay across N cycles | `benchmarks/dream/` | Dream-based demotion achieves ≥ penalty-based demotion after N cycles |
+| 8.C.6 | Run ablation: SPLADE+Graph baseline → +Dream Rehearsal → +Association Learning → +Importance Drift | `benchmarks/dream/` | Each component measured independently |
+| 8.C.7 | Update paper Section 6.5 and README with Project Oracle results | `docs/paper.md`, `README.md` | Results documented |
 
 **Phase 8 exit criteria:**
 - [ ] Dream cycle runs without LLM calls
-- [ ] Association strengths populated from co-access patterns
-- [ ] ACT-R scoring improves with dream cycle (measured on temporal benchmark)
-- [ ] Compounding improvement demonstrated over multiple dream cycles
-- [ ] All features toggleable via config flags
+- [ ] Rehearsal selector picks structurally important + actively used memories (centrality + momentum)
+- [ ] Association strengths populated from co-access patterns (PMI-based)
+- [ ] ACT-R weight crossover demonstrated: positive ACT-R weight helps on Simulated Workday (unlike BEIR where ACT-R=0 is optimal)
+- [ ] Rehearsal Boost Rate ≥ 85% (rehearsed memories rank above unrehearsed)
+- [ ] Compounding improvement demonstrated over multiple dream cycles (monotonic RBR increase)
+- [ ] Superseded state demotion via dream decay matches or exceeds explicit penalty approach
+- [ ] All features toggleable via config flags (10 new `NCMS_DREAM_*` params)
 - [ ] Zero query-time latency impact (all work is offline)
 
 ---

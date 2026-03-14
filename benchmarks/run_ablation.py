@@ -100,12 +100,17 @@ async def run_ablation(
 def main() -> None:
     args = parse_args()
 
-    # Configure logging
+    # Configure logging — file + console for provenance
     level = logging.DEBUG if args.verbose else logging.INFO
+    log_path = f"{args.output_dir}/ablation_run.log"
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
+        handlers=[
+            logging.FileHandler(log_path, mode="w"),
+            logging.StreamHandler(sys.stdout),
+        ],
     )
 
     # Parse dataset list

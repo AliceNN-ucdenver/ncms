@@ -637,6 +637,293 @@ class ConsolidationService:
             logger.info("Refreshed %d stale abstract nodes", refreshed)
         return refreshed
 
+    # ── Phase 8: Dream Cycle ────────────────────────────────────────────
+
+    async def run_dream_rehearsal(self) -> int:
+        """Select important memories and inject synthetic access records.
+
+        Uses a 5-signal weighted selector:
+        - PageRank centrality (entity graph importance)
+        - Staleness (days since last access)
+        - Memory importance score
+        - Access count
+        - Inverse recency (penalise very recently accessed)
+
+        Returns the number of memories rehearsed.
+        """
+        if not self._config.dream_cycle_enabled:
+            return 0
+        if not self._graph:
+            logger.warning("Graph not available, skipping dream rehearsal")
+            return 0
+
+        # 1. Compute PageRank centrality over entity graph
+        centrality = self._graph.pagerank()
+
+        # 2. Load all memories
+        memories = await self._store.list_memories(limit=100000)
+        if not memories:
+            return 0
+
+        # 3. For each memory, compute selection signals
+        candidates: list[dict[str, Any]] = []
+        for memory in memories:
+            access_ages = await self._store.get_access_times(memory.id)
+            access_count = len(access_ages)
+
+            # Skip memories with too few accesses
+            if access_count < self._config.dream_min_access_count:
+                continue
+
+            # Centrality: average PageRank of linked entities
+            entity_ids = self._graph.get_entity_ids_for_memory(memory.id)
+            mem_centrality = 0.0
+            if entity_ids and centrality:
+                scores = [centrality.get(eid, 0.0) for eid in entity_ids]
+                mem_centrality = sum(scores) / len(scores) if scores else 0.0
+
+            # Staleness: days since last access
+            last_access_age = min(access_ages) if access_ages else float("inf")
+            staleness = last_access_age / 86400.0  # Convert seconds to days
+
+            # Importance: memory.importance (already 0-10 scale)
+            importance = memory.importance
+
+            # Recency: invert — recently accessed get lower dream priority
+            recency = last_access_age / 86400.0 if access_ages else 0.0
+
+            candidates.append({
+                "memory": memory,
+                "centrality": mem_centrality,
+                "staleness": staleness,
+                "importance": importance,
+                "access_count": float(access_count),
+                "recency": recency,
+            })
+
+        if not candidates:
+            return 0
+
+        # 4. Rank-normalize each signal to [0, 1]
+        for signal in ("centrality", "staleness", "importance", "access_count", "recency"):
+            values = [c[signal] for c in candidates]
+            min_val, max_val = min(values), max(values)
+            range_val = max_val - min_val
+            for c in candidates:
+                c[f"{signal}_norm"] = (
+                    (c[signal] - min_val) / range_val if range_val > 0 else 0.5
+                )
+
+        # 5. Compute weighted dream score
+        cfg = self._config
+        for c in candidates:
+            c["dream_score"] = (
+                cfg.dream_rehearsal_weight_centrality * c["centrality_norm"]
+                + cfg.dream_rehearsal_weight_staleness * c["staleness_norm"]
+                + cfg.dream_rehearsal_weight_importance * c["importance_norm"]
+                + cfg.dream_rehearsal_weight_access_count * c["access_count_norm"]
+                + cfg.dream_rehearsal_weight_recency * c["recency_norm"]
+            )
+
+        # 6. Select top fraction
+        candidates.sort(key=lambda c: c["dream_score"], reverse=True)
+        n_rehearse = max(1, int(len(candidates) * self._config.dream_rehearsal_fraction))
+        selected = candidates[:n_rehearse]
+
+        # 7. Inject synthetic access records
+        rehearsed = 0
+        for c in selected:
+            memory = c["memory"]
+            await self._store.log_access(
+                AccessRecord(
+                    memory_id=memory.id,
+                    accessing_agent="dream_rehearsal",
+                    query_context=f"dream_cycle:score={c['dream_score']:.3f}",
+                )
+            )
+            rehearsed += 1
+
+        logger.info(
+            "Dream rehearsal: rehearsed %d/%d eligible memories (from %d total)",
+            rehearsed, len(candidates), len(memories),
+        )
+        return rehearsed
+
+    async def learn_association_strengths(self) -> int:
+        """Compute PMI association strengths from search co-access patterns.
+
+        For each search result set, entities that co-occur in returned
+        memories are associated.  PMI(a,b) = log(P(a,b) / P(a)*P(b)).
+
+        Returns the number of association pairs saved.
+        """
+        if not self._config.dream_cycle_enabled:
+            return 0
+
+        import math
+
+        # Get last run timestamp
+        last_run = await self._store.get_consolidation_value(
+            "last_association_learning"
+        )
+
+        # Get search-result pairs since last run
+        pairs = await self._store.get_search_access_pairs(since=last_run)
+        if not pairs:
+            return 0
+
+        # Collect entity co-occurrences from search results
+        entity_count: dict[str, int] = defaultdict(int)  # P(entity)
+        pair_count: dict[tuple[str, str], int] = defaultdict(int)  # P(a, b)
+        total_searches = 0
+
+        for _query, returned_ids in pairs:
+            if not returned_ids:
+                continue
+            total_searches += 1
+
+            # Collect all entities from returned memories
+            search_entities: set[str] = set()
+            for memory_id in returned_ids:
+                entity_ids = (
+                    self._graph.get_entity_ids_for_memory(memory_id)
+                    if self._graph else set()
+                )
+                search_entities.update(entity_ids)
+
+            # Count individual entities
+            for eid in search_entities:
+                entity_count[eid] += 1
+
+            # Count co-occurring pairs (canonical ordering)
+            entity_list = sorted(search_entities)
+            for i, e1 in enumerate(entity_list):
+                for e2 in entity_list[i + 1:]:
+                    pair_count[(e1, e2)] += 1
+
+        if total_searches == 0 or not pair_count:
+            return 0
+
+        # Compute PMI for each pair
+        saved = 0
+        for (e1, e2), co_count in pair_count.items():
+            p_ab = co_count / total_searches
+            p_a = entity_count[e1] / total_searches
+            p_b = entity_count[e2] / total_searches
+
+            if p_a > 0 and p_b > 0 and p_ab > 0:
+                pmi = math.log(p_ab / (p_a * p_b))
+                # Clamp to [0, 10] and normalize to [0, 1]
+                pmi_clamped = max(0.0, min(10.0, pmi))
+                strength = pmi_clamped / 10.0
+
+                if strength > 0.01:  # Skip negligible associations
+                    await self._store.save_association_strength(e1, e2, strength)
+                    saved += 1
+
+        # Update last run timestamp
+        await self._store.set_consolidation_value(
+            "last_association_learning",
+            datetime.now(UTC).isoformat(),
+        )
+
+        logger.info(
+            "Association learning: saved %d pairs from %d searches",
+            saved, total_searches,
+        )
+        return saved
+
+    async def adjust_importance_drift(self) -> int:
+        """Adjust memory importance based on access rate trends.
+
+        Compares recent access rate (last window/2) vs older rate (window/2
+        before that). Memories accessed more recently get importance bumped
+        up; memories accessed less get bumped down.
+
+        Returns the number of memories adjusted.
+        """
+        if not self._config.dream_cycle_enabled:
+            return 0
+
+        half_window = timedelta(
+            days=self._config.dream_importance_drift_window_days / 2.0
+        )
+        window = timedelta(days=self._config.dream_importance_drift_window_days)
+        drift_rate = self._config.dream_importance_drift_rate
+
+        memories = await self._store.list_memories(limit=100000)
+        adjusted = 0
+
+        for memory in memories:
+            access_ages = await self._store.get_access_times(memory.id)
+            if len(access_ages) < 2:
+                continue
+
+            # Split accesses into recent (last half window) and older (before that)
+            recent_count = sum(
+                1 for age in access_ages if age < half_window.total_seconds()
+            )
+            older_count = sum(
+                1 for age in access_ages
+                if half_window.total_seconds() <= age < window.total_seconds()
+            )
+
+            # Compute rates (accesses per day)
+            half_days = half_window.total_seconds() / 86400.0
+            recent_rate = recent_count / half_days if half_days > 0 else 0
+            older_rate = older_count / half_days if half_days > 0 else 0
+
+            # Determine drift direction
+            if recent_rate > older_rate * 1.5:
+                # Momentum up — accessed more recently
+                delta = drift_rate
+            elif older_rate > recent_rate * 1.5:
+                # Momentum down — access dropping off
+                delta = -drift_rate
+            else:
+                continue
+
+            # Apply drift (clamp importance to [0.0, 10.0])
+            new_importance = max(0.0, min(10.0, memory.importance + delta))
+            if abs(new_importance - memory.importance) > 0.001:
+                memory.importance = new_importance
+                await self._store.update_memory(memory)
+                adjusted += 1
+
+        logger.info(
+            "Importance drift: adjusted %d/%d memories", adjusted, len(memories),
+        )
+        return adjusted
+
+    async def run_dream_cycle(self) -> dict[str, int]:
+        """Run full dream cycle: rehearsal → association learning → importance drift.
+
+        Each phase is wrapped in suppress(Exception) so failures are non-fatal.
+        Returns a dict mapping phase names to counts.
+        """
+        if not self._config.dream_cycle_enabled:
+            return {"rehearsal": 0, "associations": 0, "drift": 0}
+
+        results: dict[str, int] = {}
+
+        with contextlib.suppress(Exception):
+            results["rehearsal"] = await self.run_dream_rehearsal()
+
+        with contextlib.suppress(Exception):
+            results["associations"] = await self.learn_association_strengths()
+
+        with contextlib.suppress(Exception):
+            results["drift"] = await self.adjust_importance_drift()
+
+        # Fill defaults for any phases that raised
+        results.setdefault("rehearsal", 0)
+        results.setdefault("associations", 0)
+        results.setdefault("drift", 0)
+
+        self._emit_dream_cycle_complete(results)
+        logger.info("Dream cycle complete: %s", results)
+        return results
+
     # ── Orchestrator ─────────────────────────────────────────────────────
 
     async def run_consolidation_pass(self) -> dict[str, int]:
@@ -651,6 +938,11 @@ class ConsolidationService:
         results["trajectories"] = await self.consolidate_trajectories()
         results["patterns"] = await self.consolidate_patterns()
         results["refresh"] = await self.refresh_stale_abstracts()
+
+        # Phase 8: Dream cycle
+        if self._config.dream_cycle_enabled:
+            dream_results = await self.run_dream_cycle()
+            results.update({f"dream_{k}": v for k, v in dream_results.items()})
 
         self._emit_pass_complete(results)
         logger.info("Consolidation pass complete: %s", results)
@@ -770,3 +1062,9 @@ class ConsolidationService:
         if self._event_log is not None:
             with contextlib.suppress(Exception):
                 self._event_log.consolidation_pass_complete(results=results)
+
+    def _emit_dream_cycle_complete(self, results: dict[str, int]) -> None:
+        """Emit a dream cycle complete event."""
+        if self._event_log is not None:
+            with contextlib.suppress(Exception):
+                self._event_log.dream_cycle_complete(results=results)

@@ -174,10 +174,10 @@ class TestUpdateMemoryNode:
 
 
 class TestV3Migration:
-    async def test_schema_version_is_3(self, phase2_store: SQLiteStore) -> None:
+    async def test_schema_version_at_least_3(self, phase2_store: SQLiteStore) -> None:
         cursor = await phase2_store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
-        assert row[0] == 3
+        assert row[0] >= 3
 
     async def test_observed_at_column_exists(self, phase2_store: SQLiteStore) -> None:
         cursor = await phase2_store.db.execute("PRAGMA table_info(memory_nodes)")

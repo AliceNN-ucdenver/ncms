@@ -73,7 +73,8 @@ _HEDGING: frozenset[str] = frozenset({
 
 _STATE_CHANGE_VERBS: frozenset[str] = frozenset({
     "changed", "updated", "now", "switched", "moved", "set to",
-    "became", "is now", "transitioned",
+    "became", "is now", "transitioned", "upgraded", "downgraded",
+    "migrated", "replaced", "bumped", "converted",
 })
 
 # Date patterns
@@ -169,6 +170,10 @@ class AdmissionService:
 
     def _compute_persistence(self, text_lower: str) -> float:
         """Persistence = durability of the information."""
+        # Very short content (< 20 chars) is almost certainly noise/social
+        if len(text_lower) < 20:
+            return 0.05
+
         high_count = _count_matches(text_lower, _PERSISTENCE_HIGH)
         low_count = _count_matches(text_lower, _PERSISTENCE_LOW)
         if high_count > 0 and low_count == 0:
@@ -194,15 +199,18 @@ class AdmissionService:
     def _compute_state_change_signal(self, text_lower: str) -> float:
         """State change signal from entity state mutation indicators."""
         score = 0.0
-        # State change verbs
+        # State change verbs (1 match → 0.20, 2 → 0.40)
         verb_count = _count_matches(text_lower, _STATE_CHANGE_VERBS)
-        score += min(0.40, verb_count * 0.15)
+        score += min(0.50, verb_count * 0.20)
         # Version patterns (v1.2.3 style)
         if _VERSION_PATTERN.search(text_lower):
             score += 0.20
         # "status" or "state" words near change indicators
         if ("status" in text_lower or "state" in text_lower) and verb_count > 0:
             score += 0.25
+        # "from X to Y" pattern — strong state transition signal
+        if " from " in text_lower and " to " in text_lower:
+            score += 0.20
         return _clamp(score)
 
     @staticmethod

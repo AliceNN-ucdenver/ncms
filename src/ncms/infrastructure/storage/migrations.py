@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -141,6 +141,30 @@ CREATE TABLE IF NOT EXISTS ephemeral_cache (
 CREATE INDEX IF NOT EXISTS idx_ephemeral_expires ON ephemeral_cache(expires_at);
 """
 
+# ── V4: Dream cycle search logging + association strengths (Phase 8) ─────
+
+V4_TABLES = """
+-- Search log for tracking query → returned memory associations (dream cycle PMI)
+CREATE TABLE IF NOT EXISTS search_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query TEXT NOT NULL,
+    query_entities TEXT NOT NULL DEFAULT '[]',
+    returned_ids TEXT NOT NULL DEFAULT '[]',
+    timestamp TEXT NOT NULL,
+    agent_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_search_log_ts ON search_log(timestamp);
+
+-- Learned association strengths between entity pairs (dream cycle PMI output)
+CREATE TABLE IF NOT EXISTS association_strengths (
+    entity_id_1 TEXT NOT NULL,
+    entity_id_2 TEXT NOT NULL,
+    strength REAL NOT NULL DEFAULT 0.0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (entity_id_1, entity_id_2)
+);
+"""
+
 # Backward compat alias used by older code paths
 CREATE_TABLES = V1_TABLES
 
@@ -189,5 +213,15 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (3,),
+        )
+        await db.commit()
+        current_version = 3
+
+    if current_version < 4:
+        # V4: Dream cycle tables (Phase 8 — search logging + association learning)
+        await db.executescript(V4_TABLES)
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (4,),
         )
         await db.commit()

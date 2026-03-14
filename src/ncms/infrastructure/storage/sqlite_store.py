@@ -23,6 +23,7 @@ from ncms.domain.models import (
     MemoryNode,
     NodeType,
     Relationship,
+    SearchLogEntry,
     SnapshotEntry,
 )
 from ncms.infrastructure.storage.migrations import run_migrations
@@ -685,6 +686,90 @@ class SQLiteStore:
             await self.db.commit()
         return count
 
+    # ── Search Log (Phase 8 — Dream Cycles) ────────────────────────────
+
+    async def log_search(self, entry: SearchLogEntry) -> None:
+        """Log a search query and its returned memory IDs."""
+        await self.db.execute(
+            """INSERT INTO search_log (query, query_entities, returned_ids, timestamp, agent_id)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                entry.query,
+                json.dumps(entry.query_entities),
+                json.dumps(entry.returned_ids),
+                entry.timestamp.isoformat(),
+                entry.agent_id,
+            ),
+        )
+        await self.db.commit()
+
+    async def get_recent_searches(
+        self, limit: int = 100, since: str | None = None,
+    ) -> list[SearchLogEntry]:
+        """Get recent search log entries, optionally filtered by timestamp."""
+        if since:
+            cursor = await self.db.execute(
+                """SELECT * FROM search_log
+                   WHERE timestamp > ?
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (since, limit),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT * FROM search_log ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            )
+        rows = await cursor.fetchall()
+        return [self._row_to_search_log(r) for r in rows]
+
+    async def get_search_access_pairs(
+        self, since: str | None = None,
+    ) -> list[tuple[str, list[str]]]:
+        """Get (query, returned_ids) pairs for PMI computation."""
+        if since:
+            cursor = await self.db.execute(
+                """SELECT query, returned_ids FROM search_log
+                   WHERE timestamp > ?
+                   ORDER BY timestamp ASC""",
+                (since,),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT query, returned_ids FROM search_log ORDER BY timestamp ASC"
+            )
+        rows = await cursor.fetchall()
+        return [(row[0], json.loads(row[1])) for row in rows]
+
+    # ── Association Strengths (Phase 8 — Dream Cycles) ───────────────
+
+    async def save_association_strength(
+        self, entity_id_1: str, entity_id_2: str, strength: float,
+    ) -> None:
+        """UPSERT association strength with canonical ordering (min/max)."""
+        # Canonical ordering ensures (A, B) and (B, A) map to same row
+        e1, e2 = min(entity_id_1, entity_id_2), max(entity_id_1, entity_id_2)
+        await self.db.execute(
+            """INSERT OR REPLACE INTO association_strengths
+               (entity_id_1, entity_id_2, strength, updated_at)
+               VALUES (?, ?, ?, ?)""",
+            (e1, e2, strength, _now_iso()),
+        )
+        await self.db.commit()
+
+    async def get_association_strengths(self) -> dict[tuple[str, str], float]:
+        """Load all association strengths into a dict with both direction lookups."""
+        cursor = await self.db.execute(
+            "SELECT entity_id_1, entity_id_2, strength FROM association_strengths"
+        )
+        rows = await cursor.fetchall()
+        result: dict[tuple[str, str], float] = {}
+        for row in rows:
+            e1, e2, strength = row[0], row[1], row[2]
+            # Store both directions for O(1) lookup in spreading_activation
+            result[(e1, e2)] = strength
+            result[(e2, e1)] = strength
+        return result
+
     # ── Row Converters ───────────────────────────────────────────────────
 
     @staticmethod
@@ -804,4 +889,15 @@ class SQLiteStore:
             ttl_seconds=row["ttl_seconds"],
             created_at=datetime.fromisoformat(row["created_at"]),
             expires_at=datetime.fromisoformat(row["expires_at"]),
+        )
+
+    @staticmethod
+    def _row_to_search_log(row: aiosqlite.Row) -> SearchLogEntry:
+        return SearchLogEntry(
+            id=row["id"],
+            query=row["query"],
+            query_entities=json.loads(row["query_entities"]),
+            returned_ids=json.loads(row["returned_ids"]),
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+            agent_id=row["agent_id"],
         )

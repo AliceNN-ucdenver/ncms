@@ -194,19 +194,19 @@ class TestRouteMemory:
         f = AdmissionFeatures(novelty=0.05, persistence=0.05, state_change_signal=0.05)
         routes.add(route_memory(f, 0.10))
 
-        # ephemeral_cache
+        # ephemeral_cache (range: 0.25 <= score < 0.35)
         f = AdmissionFeatures(novelty=0.5)
-        routes.add(route_memory(f, 0.35))
+        routes.add(route_memory(f, 0.30))
 
-        # atomic_memory
+        # atomic_memory (score >= 0.35)
         f = AdmissionFeatures(novelty=0.9)
         routes.add(route_memory(f, 0.60))
 
-        # entity_state_update
+        # entity_state_update (state_change_signal >= 0.35)
         f = AdmissionFeatures(state_change_signal=0.60)
         routes.add(route_memory(f, 0.50))
 
-        # episode_fragment
+        # episode_fragment (episode_affinity >= 0.40)
         f = AdmissionFeatures(episode_affinity=0.70)
         routes.add(route_memory(f, 0.50))
 

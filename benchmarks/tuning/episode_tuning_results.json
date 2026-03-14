@@ -1,0 +1,423 @@
+{
+  "timestamp": "2026-03-14T00:21:11.706394+00:00",
+  "git_sha": "9e3a6dd",
+  "scenarios": 5,
+  "total_fragments": 17,
+  "total_distractors": 10,
+  "configs": [
+    {
+      "index": 0,
+      "threshold": 0.2,
+      "min_entities": 1,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 1,
+      "threshold": 0.2,
+      "min_entities": 1,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 2,
+      "threshold": 0.2,
+      "min_entities": 1,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 3,
+      "threshold": 0.2,
+      "min_entities": 2,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 4,
+      "threshold": 0.2,
+      "min_entities": 2,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 5,
+      "threshold": 0.2,
+      "min_entities": 2,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 6,
+      "threshold": 0.2,
+      "min_entities": 3,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 7,
+      "threshold": 0.2,
+      "min_entities": 3,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 8,
+      "threshold": 0.2,
+      "min_entities": 3,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 9,
+      "threshold": 0.25,
+      "min_entities": 1,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 10,
+      "threshold": 0.25,
+      "min_entities": 1,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 11,
+      "threshold": 0.25,
+      "min_entities": 1,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 12,
+      "threshold": 0.25,
+      "min_entities": 2,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 13,
+      "threshold": 0.25,
+      "min_entities": 2,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 14,
+      "threshold": 0.25,
+      "min_entities": 2,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 15,
+      "threshold": 0.25,
+      "min_entities": 3,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 16,
+      "threshold": 0.25,
+      "min_entities": 3,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 17,
+      "threshold": 0.25,
+      "min_entities": 3,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 18,
+      "threshold": 0.3,
+      "min_entities": 1,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 19,
+      "threshold": 0.3,
+      "min_entities": 1,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 20,
+      "threshold": 0.3,
+      "min_entities": 1,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 21,
+      "threshold": 0.3,
+      "min_entities": 2,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 22,
+      "threshold": 0.3,
+      "min_entities": 2,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 23,
+      "threshold": 0.3,
+      "min_entities": 2,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 24,
+      "threshold": 0.3,
+      "min_entities": 3,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 25,
+      "threshold": 0.3,
+      "min_entities": 3,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 26,
+      "threshold": 0.3,
+      "min_entities": 3,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 27,
+      "threshold": 0.35,
+      "min_entities": 1,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 28,
+      "threshold": 0.35,
+      "min_entities": 1,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 29,
+      "threshold": 0.35,
+      "min_entities": 1,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 30,
+      "threshold": 0.35,
+      "min_entities": 2,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 31,
+      "threshold": 0.35,
+      "min_entities": 2,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 32,
+      "threshold": 0.35,
+      "min_entities": 2,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 33,
+      "threshold": 0.35,
+      "min_entities": 3,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 34,
+      "threshold": 0.35,
+      "min_entities": 3,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 35,
+      "threshold": 0.35,
+      "min_entities": 3,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 36,
+      "threshold": 0.4,
+      "min_entities": 1,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 37,
+      "threshold": 0.4,
+      "min_entities": 1,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 38,
+      "threshold": 0.4,
+      "min_entities": 1,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 39,
+      "threshold": 0.4,
+      "min_entities": 2,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 40,
+      "threshold": 0.4,
+      "min_entities": 2,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 41,
+      "threshold": 0.4,
+      "min_entities": 2,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 42,
+      "threshold": 0.4,
+      "min_entities": 3,
+      "weights": "balanced",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 43,
+      "threshold": 0.4,
+      "min_entities": 3,
+      "weights": "entity_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    },
+    {
+      "index": 44,
+      "threshold": 0.4,
+      "min_entities": 3,
+      "weights": "bm25_heavy",
+      "precision": 0.6667,
+      "correct": 10,
+      "total": 15
+    }
+  ],
+  "best": {
+    "index": 0,
+    "threshold": 0.2,
+    "min_entities": 1,
+    "weights": "balanced",
+    "precision": 0.6667,
+    "correct": 10,
+    "total": 15
+  }
+}

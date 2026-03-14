@@ -420,6 +420,26 @@ class KnowledgeSnapshot(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Search Logging (Phase 8 — Dream Cycles)
+# ---------------------------------------------------------------------------
+
+
+class SearchLogEntry(BaseModel):
+    """A log entry recording a search query and its returned results.
+
+    Used by dream cycles to compute PMI association strengths between
+    entity pairs that co-occur in search results.
+    """
+
+    id: int | None = None  # Auto-assigned by SQLite
+    query: str
+    query_entities: list[str] = Field(default_factory=list)
+    returned_ids: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=_utcnow)
+    agent_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Search Results
 # ---------------------------------------------------------------------------
 

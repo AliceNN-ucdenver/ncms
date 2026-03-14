@@ -111,7 +111,7 @@ src/ncms/
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
 5. **AsyncIO in-process bus** — Zero deps, <1ms latency. Protocol interface allows Redis/NATS swap later.
-6. **Raw SQL via aiosqlite** — 10 tables don't need an ORM. WAL mode for concurrent reads.
+6. **Raw SQL via aiosqlite** — 12 tables don't need an ORM. WAL mode for concurrent reads.
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
@@ -120,6 +120,7 @@ src/ncms/
 11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
 12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 13. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
+14. **Dream cycles** (Phase 8) — Offline rehearsal creating differential access patterns so ACT-R provides meaningful signal. Three non-LLM passes: (8A) search logging captures query→result associations, learned entity co-occurrence strengths via PMI feed into spreading activation; (8B) dream rehearsal selects top memories by 5-signal weighted score (centrality 0.40, staleness 0.30, importance 0.20, access_count 0.05, recency 0.05) and injects synthetic access records; importance drift compares recent vs older access rates and adjusts importance within ±drift_rate. Integrated into consolidation pass. Feature-flagged off by default (`NCMS_DREAM_CYCLE_ENABLED=false`).
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -151,12 +152,12 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 ## Data Flow
 
 1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode]
-2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → ACT-R + graph scoring [+ hierarchy bonus − supersession/conflict penalty] → ranked results
+2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → ACT-R + graph scoring [+ hierarchy bonus − supersession/conflict penalty + dream association strengths] → ranked results → [search log for dream cycle PMI]
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
 
-## Database Schema (10 tables)
+## Database Schema (12 tables)
 
 **V1 (base):**
 - `memories` — Core knowledge storage
@@ -174,6 +175,10 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 **V3 (Phase 2 — Bitemporal):**
 - `memory_nodes` + `observed_at` (when source says event happened) + `ingested_at` (when NCMS stored it)
+
+**V4 (Phase 8 — Dream Cycles):**
+- `search_log` — Query → returned memory ID associations for PMI computation
+- `association_strengths` — Learned entity-pair co-occurrence strengths (PMI-based)
 
 ## Testing Conventions
 
@@ -248,6 +253,17 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_PATTERN_STABILITY_THRESHOLD` | `0.7` | Promote to strategic_insight above this |
 | `NCMS_ABSTRACT_REFRESH_DAYS` | `7` | Staleness window for re-synthesis |
 | `NCMS_CONSOLIDATION_MAX_ABSTRACTS_PER_RUN` | `10` | Cap abstracts per consolidation pass |
+| `NCMS_DREAM_CYCLE_ENABLED` | `false` | Enable dream cycle (rehearsal + associations + drift) |
+| `NCMS_DREAM_REHEARSAL_FRACTION` | `0.10` | Top fraction of eligible memories to rehearse |
+| `NCMS_DREAM_STALENESS_DAYS` | `7` | Memory considered stale after N days |
+| `NCMS_DREAM_MIN_ACCESS_COUNT` | `3` | Minimum accesses before eligible for rehearsal |
+| `NCMS_DREAM_REHEARSAL_WEIGHT_CENTRALITY` | `0.40` | PageRank centrality weight in rehearsal selector |
+| `NCMS_DREAM_REHEARSAL_WEIGHT_STALENESS` | `0.30` | Staleness weight in rehearsal selector |
+| `NCMS_DREAM_REHEARSAL_WEIGHT_IMPORTANCE` | `0.20` | Importance weight in rehearsal selector |
+| `NCMS_DREAM_REHEARSAL_WEIGHT_ACCESS_COUNT` | `0.05` | Access count weight in rehearsal selector |
+| `NCMS_DREAM_REHEARSAL_WEIGHT_RECENCY` | `0.05` | Recency weight in rehearsal selector |
+| `NCMS_DREAM_IMPORTANCE_DRIFT_WINDOW_DAYS` | `14` | Window for access rate comparison |
+| `NCMS_DREAM_IMPORTANCE_DRIFT_RATE` | `0.1` | Max importance adjustment per cycle |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

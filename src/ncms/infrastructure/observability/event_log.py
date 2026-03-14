@@ -351,6 +351,16 @@ class EventLog:
             data=results,
         ))
 
+    def dream_cycle_complete(
+        self,
+        results: dict[str, int],
+    ) -> None:
+        """Emit a summary event when a dream cycle finishes."""
+        self.emit(DashboardEvent(
+            type="dream.cycle_complete",
+            data=results,
+        ))
+
     def memory_searched(
         self,
         query: str,

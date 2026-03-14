@@ -53,6 +53,9 @@ async def call_llm_json(
     )
     if api_base:
         kwargs["api_base"] = api_base
+        # Local vLLM via openai/ prefix needs a dummy API key
+        if model.startswith("openai/"):
+            kwargs["api_key"] = "na"
     # Disable thinking mode for reasoning models
     if model.startswith("ollama"):
         kwargs["think"] = False
