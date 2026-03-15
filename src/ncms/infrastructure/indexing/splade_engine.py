@@ -1,13 +1,16 @@
-"""SPLADE sparse neural retrieval engine.
+"""SPLADE sparse neural retrieval engine (splade-v3 via sentence-transformers).
 
-Uses fastembed's SparseTextEmbedding for ONNX-based SPLADE encoding.
-Stores sparse vectors in-memory for brute-force dot-product search.
-Suitable for corpora up to ~100K memories.
+Uses sentence-transformers' SparseEncoder for SPLADE v3 encoding with
+automatic MPS/CUDA/CPU device selection.  Stores sparse vectors in-memory
+for brute-force dot-product search.  Suitable for corpora up to ~100K memories.
 
 Long texts are automatically chunked at sentence boundaries so each
-chunk fits within SPLADE's 128-token window (~500 chars).  Sparse
+chunk fits within SPLADE v3's 512-token window (~2,000 chars).  Sparse
 vectors from each chunk are merged by taking the max weight per
 vocabulary index, preserving the strongest signal across the document.
+
+Key difference from v1: SPLADE v3 uses asymmetric encoding —
+``encode_document()`` for indexing and ``encode_query()`` for search.
 
 Disabled by default; enable via config.splade_enabled = True.
 """
@@ -15,6 +18,8 @@ Disabled by default; enable via config.splade_enabled = True.
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from dataclasses import dataclass, field
 
 from ncms.domain.models import Memory
@@ -22,10 +27,31 @@ from ncms.infrastructure.text.chunking import chunk_text
 
 logger = logging.getLogger(__name__)
 
-# SPLADE's tokenizer truncates at 128 tokens.  At ~4 chars/token the safe
-# character budget is ~400 chars, leaving headroom for special tokens.
-_SPLADE_CHUNK_MAX_CHARS: int = 400
-_SPLADE_CHUNK_OVERLAP: int = 50
+# SPLADE v3's BERT backbone has a 512-token window.  At ~4 chars/token the safe
+# character budget is ~2,000 chars, leaving headroom for special tokens.
+_SPLADE_CHUNK_MAX_CHARS: int = 2000
+_SPLADE_CHUNK_OVERLAP: int = 100
+
+
+def _resolve_device() -> str:
+    """Pick the best available device: MPS > CUDA > CPU.
+
+    Override with ``NCMS_SPLADE_DEVICE=cpu|mps|cuda`` env var.
+    """
+    override = os.environ.get("NCMS_SPLADE_DEVICE", "").strip().lower()
+    if override in ("cpu", "mps", "cuda"):
+        return override
+
+    try:
+        import torch
+
+        if torch.backends.mps.is_available():
+            return "mps"
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
 
 
 @dataclass
@@ -36,56 +62,98 @@ class SparseVector:
     values: list[float] = field(default_factory=list)
 
 
+def _tensor_to_sparse_vector(tensor) -> SparseVector:
+    """Convert a PyTorch tensor (sparse or dense) to SparseVector."""
+    import torch
+
+    if isinstance(tensor, torch.Tensor):
+        if tensor.is_sparse:
+            tensor = tensor.to_dense()
+        flat = tensor.flatten()
+        nonzero_mask = flat != 0
+        indices = torch.nonzero(nonzero_mask, as_tuple=True)[0]
+        values = flat[indices]
+        return SparseVector(
+            indices=indices.tolist(),
+            values=values.tolist(),
+        )
+
+    # scipy sparse fallback
+    if hasattr(tensor, "toarray"):
+        import numpy as np
+
+        dense = np.asarray(tensor.toarray()).flatten()
+        nonzero = np.nonzero(dense)[0]
+        return SparseVector(
+            indices=nonzero.tolist(),
+            values=dense[nonzero].tolist(),
+        )
+
+    return SparseVector()
+
+
 class SpladeEngine:
     """SPLADE sparse neural retrieval engine.
 
-    Encodes text into sparse vectors via fastembed's ONNX-based SPLADE model.
+    Encodes text into sparse vectors via sentence-transformers' SparseEncoder
+    using the SPLADE v3 model with MPS/CUDA/CPU auto-detection.
     Long texts are chunked and merged (max-pool per vocab index).
     Stores vectors in-memory (``dict[str, SparseVector]``) and performs
     brute-force dot-product search.  Suitable for corpora up to ~100K memories.
+
+    SPLADE v3 uses asymmetric encoding: ``encode_document()`` for indexing
+    and ``encode_query()`` for search queries.
     """
 
     def __init__(
         self,
-        model_name: str = "prithivida/Splade_PP_en_v1",
+        model_name: str = "naver/splade-v3",
         cache_dir: str | None = None,
     ):
         self._model_name = model_name
         self._cache_dir = cache_dir
-        self._model: object | None = None  # Lazy-loaded SparseTextEmbedding
+        self._model: object | None = None  # Lazy-loaded SparseEncoder
         self._vectors: dict[str, SparseVector] = {}
+        self._lock = threading.Lock()  # Serializes model load + inference
 
     def _ensure_model(self) -> None:
-        """Lazy-load the SPLADE model on first use (~530 MB ONNX download)."""
-        if self._model is not None:
-            return
-        from fastembed import SparseTextEmbedding
+        """Lazy-load the SPLADE model on first use."""
+        with self._lock:
+            if self._model is not None:
+                return
+            from sentence_transformers import SparseEncoder
 
-        kwargs: dict[str, object] = {"model_name": self._model_name}
-        if self._cache_dir:
-            kwargs["cache_dir"] = self._cache_dir
-        self._model = SparseTextEmbedding(**kwargs)
-        logger.info("SPLADE model loaded: %s", self._model_name)
+            device = _resolve_device()
+            logger.info(
+                "Loading SPLADE model: %s on %s (first call only)", self._model_name, device,
+            )
+            kwargs: dict[str, object] = {}
+            if self._cache_dir:
+                kwargs["cache_dir"] = self._cache_dir
+            self._model = SparseEncoder(self._model_name, device=device, **kwargs)
+            logger.info("SPLADE model loaded on %s", device)
 
-    def _embed_chunked(self, text: str) -> SparseVector:
-        """Encode text with chunking, merging via max-pool per vocab index."""
-        chunks = chunk_text(text, max_chars=_SPLADE_CHUNK_MAX_CHARS, overlap=_SPLADE_CHUNK_OVERLAP)
+    def _embed_document_chunked(self, text: str) -> SparseVector:
+        """Encode document text with chunking, merging via max-pool per vocab index."""
+        chunks = chunk_text(
+            text, max_chars=_SPLADE_CHUNK_MAX_CHARS, overlap=_SPLADE_CHUNK_OVERLAP,
+        )
 
-        if len(chunks) == 1:
-            embeddings = list(self._model.embed(chunks, batch_size=1))  # type: ignore[union-attr]
-            if not embeddings:
-                return SparseVector()
-            emb = embeddings[0]
-            return SparseVector(
-                indices=emb.indices.tolist(),
-                values=emb.values.tolist(),
+        # Encode all chunks as documents (asymmetric: document side)
+        # Lock serializes GPU access (PyTorch models are not thread-safe).
+        with self._lock:
+            embeddings = self._model.encode_document(  # type: ignore[union-attr]
+                chunks, show_progress_bar=False,
             )
 
-        # Encode all chunks and max-pool across vocab indices
+        if len(chunks) == 1:
+            return _tensor_to_sparse_vector(embeddings[0])
+
+        # Max-pool across vocab indices for multi-chunk documents
         merged: dict[int, float] = {}
-        embeddings = list(self._model.embed(chunks, batch_size=len(chunks)))  # type: ignore[union-attr]
         for emb in embeddings:
-            for idx, val in zip(emb.indices.tolist(), emb.values.tolist(), strict=True):
+            sv = _tensor_to_sparse_vector(emb)
+            for idx, val in zip(sv.indices, sv.values, strict=True):
                 if idx not in merged or val > merged[idx]:
                     merged[idx] = val
 
@@ -102,10 +170,20 @@ class SpladeEngine:
             values=[v for _, v in sorted_items],
         )
 
+    def _embed_query(self, query: str) -> SparseVector:
+        """Encode a query string (asymmetric: query side)."""
+        with self._lock:
+            embeddings = self._model.encode_query(  # type: ignore[union-attr]
+                [query], show_progress_bar=False,
+            )
+        if not len(embeddings):
+            return SparseVector()
+        return _tensor_to_sparse_vector(embeddings[0])
+
     def index_memory(self, memory: Memory) -> None:
         """Encode a memory's content and store its sparse vector."""
         self._ensure_model()
-        sv = self._embed_chunked(memory.content)
+        sv = self._embed_document_chunked(memory.content)
         if sv.indices:
             self._vectors[memory.id] = sv
 
@@ -116,19 +194,21 @@ class SpladeEngine:
     def search(self, query: str, limit: int = 50) -> list[tuple[str, float]]:
         """Search by SPLADE sparse dot-product similarity.
 
+        Uses asymmetric encoding: query is encoded with ``encode_query()``
+        (which produces different sparse representations than document encoding).
+
         Returns ``(memory_id, splade_score)`` pairs sorted descending by score.
         """
         if not self._vectors:
             return []
 
         self._ensure_model()
-        query_embeddings = list(self._model.embed([query], batch_size=1))  # type: ignore[union-attr]
-        if not query_embeddings:
+        q_sv = self._embed_query(query)
+        if not q_sv.indices:
             return []
 
-        q_emb = query_embeddings[0]
         q_map: dict[int, float] = dict(
-            zip(q_emb.indices.tolist(), q_emb.values.tolist(), strict=True)
+            zip(q_sv.indices, q_sv.values, strict=True),
         )
 
         scores: list[tuple[str, float]] = []
@@ -183,7 +263,7 @@ class SpladeEngine:
         """Max-pool multiple sparse vectors into a centroid.
 
         Takes the maximum weight per vocabulary index across all vectors.
-        Same strategy as chunk merging in ``_embed_chunked()``.
+        Same strategy as chunk merging in ``_embed_document_chunked()``.
         """
         if not vectors:
             return SparseVector()

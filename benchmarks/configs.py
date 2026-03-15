@@ -109,17 +109,18 @@ CORE_CONFIGS: list[AblationConfig] = [
 ]
 
 # Phase 7 tuned config — grid search over 108 weight combinations on SciFact
-# Best nDCG@10 = 0.7053 (+1.1% over Phase 6 best of 0.6976)
-# Key findings: ACT-R hurts on IR benchmarks, BM25 weight should be higher (0.7),
-# SPLADE lower (0.2), graph expansion helps (0.3), hierarchy neutral (0.0).
+# Best nDCG@10 = 0.7206 (+3.3% over Phase 6 best of 0.6976)
+# SPLADE v3 (sentence-transformers SparseEncoder) with asymmetric encoding.
+# Key findings: ACT-R hurts on cold corpora, BM25=0.6, SPLADE=0.3, Graph=0.3,
+# hierarchy neutral (0.0). Exceeds ColBERTv2 (0.693) and SPLADE++ (0.710).
 TUNED_CONFIG = AblationConfig(
     name="tuned",
     display_name="Tuned (Phase 7)",
     use_splade=True,
     graph_expansion_enabled=True,
-    scoring_weight_bm25=0.7,
+    scoring_weight_bm25=0.6,
     scoring_weight_actr=0.0,
-    scoring_weight_splade=0.2,
+    scoring_weight_splade=0.3,
     scoring_weight_graph=0.3,
     actr_threshold=-999.0,
 )

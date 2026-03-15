@@ -52,6 +52,14 @@ async def create_ncms_services(
         )
         logger.info("SPLADE engine enabled with model: %s", config.splade_model)
 
+    # Admission scoring (Phase 1, disabled by default)
+    admission = None
+    if config.admission_enabled:
+        from ncms.application.admission_service import AdmissionService
+
+        admission = AdmissionService(store=store, index=index, graph=graph, config=config)
+        logger.info("Admission scoring enabled")
+
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
     if config.reconciliation_enabled:
@@ -91,8 +99,8 @@ async def create_ncms_services(
     # Application services
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
-        splade=splade, reconciliation=reconciliation,
-        episode=episode,
+        splade=splade, admission=admission,
+        reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
     )
     snapshot_svc = SnapshotService(

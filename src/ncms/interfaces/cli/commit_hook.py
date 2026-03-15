@@ -54,7 +54,44 @@ async def _handle_event(
     index.initialize()
 
     graph = NetworkXGraph()
-    memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
+
+    # Optional services (respect env flags for proper routing)
+    splade = None
+    if config.splade_enabled:
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+        splade = SpladeEngine(
+            model_name=config.splade_model,
+            cache_dir=config.model_cache_dir,
+        )
+
+    admission = None
+    if config.admission_enabled:
+        from ncms.application.admission_service import AdmissionService
+
+        admission = AdmissionService(
+            store=store, index=index, graph=graph, config=config,
+        )
+
+    reconciliation = None
+    if config.reconciliation_enabled:
+        from ncms.application.reconciliation_service import ReconciliationService
+
+        reconciliation = ReconciliationService(store=store, config=config)
+
+    episode = None
+    if config.episodes_enabled:
+        from ncms.application.episode_service import EpisodeService
+
+        episode = EpisodeService(
+            store=store, index=index, config=config, splade=splade,
+        )
+
+    memory_svc = MemoryService(
+        store=store, index=index, graph=graph, config=config,
+        splade=splade, admission=admission,
+        reconciliation=reconciliation, episode=episode,
+    )
     await GraphService(store=store, graph=graph).rebuild_from_store()
 
     try:

@@ -204,6 +204,9 @@ def _log_run_header(
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
+
     args = parse_args()
 
     # Parse dataset list early so we fail fast on bad names

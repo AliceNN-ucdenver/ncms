@@ -166,7 +166,7 @@ The agent lifecycle (`start → work → sleep → wake → shutdown`) ensures k
 
 ## Benchmarks
 
-NCMS achieves **0.698 nDCG@10 on SciFact** and **0.7053 tuned** without a single embedding vector, outperforming published dense and sparse neural retrieval baselines (DPR, ANCE, ColBERT v2). Weight tuning across 108 ranking configs, 486 admission configs, and 16 reconciliation configs validated every pipeline component. The keyword bridge catastrophic failure (nDCG@10: 0.690 to 0.032) directly motivated the HTMG architecture.
+NCMS achieves **nDCG@10 = 0.7206 on SciFact** — the BEIR dataset most aligned with factual knowledge retrieval — exceeding published ColBERTv2 (0.693, +4.0%) and SPLADE++ (0.710, +1.5%) without dense vectors or LLM at query time. Cross-domain validation on NFCorpus (biomedical) shows consistent improvement: **+10.0% over BM25** (0.3188 → 0.3506). Weight tuning across 108 ranking configs confirmed optimal weights (BM25=0.6, SPLADE=0.3, Graph=0.3, ACT-R=0.0), with ACT-R deferred to post-dream-cycle activation. The keyword bridge catastrophic failure (nDCG@10: 0.690 → 0.032) directly motivated the HTMG architecture.
 
 See the [full ablation study, weight tuning results, and completed milestones](docs/ncms_v1.md#v1-ablation-study) for methodology, per-dataset metrics, and development history.
 
@@ -225,7 +225,7 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 ## Roadmap
 
 **Evaluation**
-- [ ] Oracle ablation &mdash; before/after BEIR benchmarking to validate dream-cycle-enhanced ACT-R
+- [ ] Oracle ablation &mdash; dream-cycle-enhanced ACT-R evaluation (baseline ablation complete, dream cycle evaluation pending)
 
 **Ingestion**
 - [ ] Directory watcher &mdash; filesystem monitor with auto-domain classification
@@ -247,9 +247,13 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 ## Acknowledgments
 
 - **[GLiNER](https://github.com/urchade/GLiNER)** &mdash; Zero-shot NER by [Zaratiana et al. (NAACL 2024)](https://arxiv.org/abs/2311.08526)
-- **[SPLADE](https://github.com/naver/splade)** &mdash; Sparse neural retrieval by [Formal et al. (SIGIR 2021)](https://arxiv.org/abs/2107.05720), powered by [fastembed](https://github.com/qdrant/fastembed)
+- **[SPLADE](https://github.com/naver/splade)** &mdash; Sparse neural retrieval by [Formal et al. (SIGIR 2021)](https://arxiv.org/abs/2107.05720), powered by [sentence-transformers](https://www.sbert.net/) SparseEncoder
 - **[Tantivy](https://github.com/quickwit-oss/tantivy)** &mdash; Rust-based full-text search engine
 - **[ACT-R](https://en.wikipedia.org/wiki/ACT-R)** &mdash; Cognitive architecture by John R. Anderson
+- **[BEIR](https://github.com/beir-cellar/beir)** &mdash; Heterogeneous IR benchmark by [Thakur et al. (NeurIPS 2021)](https://arxiv.org/abs/2104.08663)
+- **[NetworkX](https://networkx.org/)** &mdash; Graph library powering the knowledge graph
+- **[litellm](https://github.com/BerriAI/litellm)** &mdash; Universal LLM API proxy
+- **[aiosqlite](https://github.com/omnilib/aiosqlite)** &mdash; Async SQLite wrapper
 
 ## License
 

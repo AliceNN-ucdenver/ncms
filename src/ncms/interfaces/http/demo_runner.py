@@ -145,6 +145,52 @@ async def run_demo_loop(
     )
     await asyncio.sleep(STEP_DELAY)
 
+    # ── Phase 5.5: Entity State Evolution (requires admission + reconciliation) ──
+
+    if memory_svc._config.admission_enabled:
+        logger.info("Phase 5.5: Entity state evolution demo")
+
+        # Initial state for auth-service
+        await api_agent.store_knowledge(
+            "auth-service: status = healthy, serving requests normally",
+            domains=["api"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
+        # State change — triggers state_change_signal via "changed from...to"
+        await api_agent.store_knowledge(
+            "auth-service status changed from healthy to degraded due to high latency",
+            domains=["api"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
+        # Another state update — supersedes the degraded state
+        await api_agent.store_knowledge(
+            "auth-service status updated from degraded to healthy after scaling up",
+            domains=["api"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
+        # Database connection pool state evolution
+        await db_agent.store_knowledge(
+            "pgbouncer: connection_pool_size = 20, status = nominal",
+            domains=["db"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
+        await db_agent.store_knowledge(
+            "pgbouncer connection_pool_size changed from 20 to 50 for load handling",
+            domains=["db"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
+        # Rate limit state change
+        await api_agent.store_knowledge(
+            "rate-limiter: state changed from 100 req/min to 200 req/min per API key",
+            domains=["api"],
+        )
+        await asyncio.sleep(STEP_DELAY)
+
     # ── Phase 6: Memory Search ────────────────────────────────────────────
 
     # Search for JWT-related memories

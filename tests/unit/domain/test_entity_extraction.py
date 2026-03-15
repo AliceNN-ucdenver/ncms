@@ -37,11 +37,17 @@ class TestResolveLabels:
         result = resolve_labels(["api"], cached_labels={})
         assert result == UNIVERSAL_LABELS
 
-    def test_cached_labels_returned(self):
-        """Cached domain labels should be returned."""
+    def test_cached_labels_merged_with_universal(self):
+        """Cached domain labels should be merged with universal labels."""
         cached = {"api": ["endpoint", "service", "protocol"]}
         result = resolve_labels(["api"], cached_labels=cached)
-        assert result == ["endpoint", "service", "protocol"]
+        # Universal labels come first
+        for label in UNIVERSAL_LABELS:
+            assert label in result
+        # Domain labels added on top
+        for label in ["endpoint", "service", "protocol"]:
+            assert label in result
+        assert len(result) == len(UNIVERSAL_LABELS) + 3
 
     def test_multi_domain_merge(self):
         """Labels from multiple domains should be merged."""
@@ -83,11 +89,16 @@ class TestResolveLabels:
         result = resolve_labels(["finance"], cached_labels=cached)
         assert result == UNIVERSAL_LABELS
 
-    def test_partial_cache_uses_available(self):
-        """If some domains have cached labels, use those."""
+    def test_partial_cache_merges_available(self):
+        """If some domains have cached labels, merge with universal."""
         cached = {"api": ["endpoint", "service"]}
         result = resolve_labels(["api", "finance"], cached_labels=cached)
-        assert result == ["endpoint", "service"]
+        # Universal labels always included
+        for label in UNIVERSAL_LABELS:
+            assert label in result
+        # Available domain labels merged on top
+        assert "endpoint" in result
+        assert "service" in result
 
     def test_returns_copy_not_reference(self):
         """Should return a new list, not a reference to UNIVERSAL_LABELS."""

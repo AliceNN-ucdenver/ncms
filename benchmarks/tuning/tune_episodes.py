@@ -280,6 +280,8 @@ async def evaluate_episodes() -> dict:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     asyncio.run(evaluate_episodes())
 
 

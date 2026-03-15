@@ -6,7 +6,9 @@ store, search, recall, and manage the full retrieval pipeline.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import time
 import uuid
 
@@ -102,42 +104,77 @@ class MemoryService:
     ) -> dict:
         """Extract entity state metadata from content and extracted entities.
 
-        Heuristic: parse "entity: key = value" or "entity key is value" patterns
-        from content. Falls back to using the first extracted entity as entity_id
-        and the content as state_value with a generic state_key.
+        Heuristic patterns (tried in order):
+        1. "EntityName: key = value" — structured assignment
+        2. "EntityName key changed/updated from X to Y" — state transition
+        3. "EntityName: key changed/updated from X to Y" — colon + transition
+        4. "EntityName key is/was/set to value" — state declaration
+        5. Fallback: first GLiNER entity as entity_id, content as value
 
         Returns a dict suitable for MemoryNode.metadata with entity_id, state_key,
         state_value, and optionally state_scope.
         """
         import re
 
-        # Try structured pattern: "EntityName: key = value"
+        # Pattern 1: "EntityName: key = value"
         # e.g. "auth-service: status = deployed"
-        pattern = re.compile(
+        p_assign = re.compile(
             r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
             re.MULTILINE,
         )
-        match = pattern.search(content)
-        if match:
+        m = p_assign.search(content)
+        if m:
             return {
-                "entity_id": match.group(1).strip(),
-                "state_key": match.group(2).strip(),
-                "state_value": match.group(3).strip(),
+                "entity_id": m.group(1).strip(),
+                "state_key": m.group(2).strip(),
+                "state_value": m.group(3).strip(),
             }
 
-        # Try "EntityName key is/are/was/were value" pattern
+        # Pattern 2: "EntityName key changed/updated from X to Y"
+        # e.g. "auth-service status changed from healthy to degraded ..."
+        p_transition = re.compile(
+            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
+            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+(?:due|for|after|because)\b.*)?$",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        m = p_transition.search(content)
+        if m:
+            return {
+                "entity_id": m.group(1).strip(),
+                "state_key": m.group(2).strip(),
+                "state_value": m.group(4).strip(),
+                "state_previous": m.group(3).strip(),
+            }
+
+        # Pattern 3: "EntityName: key changed/updated from X to Y"
+        # e.g. "rate-limiter: state changed from 100 req/min to 200 req/min ..."
+        p_colon_transition = re.compile(
+            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s+"
+            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+(?:due|for|after|because|per)\b.*)?$",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        m = p_colon_transition.search(content)
+        if m:
+            return {
+                "entity_id": m.group(1).strip(),
+                "state_key": m.group(2).strip(),
+                "state_value": m.group(4).strip(),
+                "state_previous": m.group(3).strip(),
+            }
+
+        # Pattern 4: "EntityName key is/are/was/were/changed to/set to value"
         # e.g. "auth-service status is deployed"
-        pattern2 = re.compile(
+        p_declaration = re.compile(
             r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
             r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
             re.MULTILINE | re.IGNORECASE,
         )
-        match2 = pattern2.search(content)
-        if match2:
+        m = p_declaration.search(content)
+        if m:
             return {
-                "entity_id": match2.group(1).strip(),
-                "state_key": match2.group(2).strip(),
-                "state_value": match2.group(3).strip(),
+                "entity_id": m.group(1).strip(),
+                "state_key": m.group(2).strip(),
+                "state_value": m.group(3).strip(),
             }
 
         # Fallback: use first entity as entity_id, content as value
@@ -183,6 +220,7 @@ class MemoryService:
 
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
+        admission_features: object | None = None  # AdmissionFeatures, preserved for L2 node
         if self._admission is not None and self._config.admission_enabled:
             t0 = time.perf_counter()
             try:
@@ -196,6 +234,7 @@ class MemoryService:
                 )
                 admission_score = score_admission(features)
                 admission_route = route_memory(features, admission_score)
+                admission_features = features  # preserve for L2 node creation
 
                 feature_dict = _asdict(features)
                 _emit_stage("admission", (time.perf_counter() - t0) * 1000, {
@@ -292,39 +331,56 @@ class MemoryService:
         await self._store.save_memory(memory)
         _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
-        # Index in Tantivy
-        t0 = time.perf_counter()
-        self._index.index_memory(memory)
-        _emit_stage("bm25_index", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
+        # ── Concurrent indexing + entity extraction ──────────────────────
+        # BM25, SPLADE, and GLiNER are independent — run them concurrently.
+        # Each sync call is wrapped in asyncio.to_thread to release the
+        # event loop while GPU/CPU inference runs.
 
-        # Index in SPLADE (if enabled)
-        if self._splade is not None:
-            t0 = time.perf_counter()
-            try:
-                self._splade.index_memory(memory)
-            except Exception:
-                logger.warning(
-                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True
-                )
-            _emit_stage("splade_index", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
-
-        # Auto-extract entities from content + merge with manually provided ones
-        t0 = time.perf_counter()
         from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
 
-        cached = await self._get_cached_labels(domains or [])
-        labels = resolve_labels(domains or [], cached_labels=cached)
-        auto_entities = extract_entities_gliner(
-            content,
-            model_name=self._config.gliner_model,
-            threshold=self._config.gliner_threshold,
-            labels=labels,
-            cache_dir=self._config.model_cache_dir,
+        async def _do_bm25() -> float:
+            t = time.perf_counter()
+            await asyncio.to_thread(self._index.index_memory, memory)
+            return (time.perf_counter() - t) * 1000
+
+        async def _do_splade() -> float:
+            if self._splade is None:
+                return 0.0
+            t = time.perf_counter()
+            try:
+                await asyncio.to_thread(self._splade.index_memory, memory)
+            except Exception:
+                logger.warning(
+                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True,
+                )
+            return (time.perf_counter() - t) * 1000
+
+        async def _do_gliner() -> tuple[list[dict[str, str]], float]:
+            t = time.perf_counter()
+            cached = await self._get_cached_labels(domains or [])
+            gliner_labels = resolve_labels(domains or [], cached_labels=cached)
+            result = await asyncio.to_thread(
+                extract_entities_gliner,
+                content,
+                model_name=self._config.gliner_model,
+                threshold=self._config.gliner_threshold,
+                labels=gliner_labels,
+                cache_dir=self._config.model_cache_dir,
+            )
+            return result, (time.perf_counter() - t) * 1000
+
+        bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
+            _do_bm25(), _do_splade(), _do_gliner(),
         )
+
+        _emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
+        if self._splade is not None:
+            _emit_stage("splade_index", splade_ms, memory_id=memory.id)
+
         manual = list(entities or [])
         manual_names = {e["name"].lower() for e in manual}
         all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
-        _emit_stage("entity_extraction", (time.perf_counter() - t0) * 1000, {
+        _emit_stage("entity_extraction", extract_ms, {
             "extractor": "gliner",
             "auto_count": len(auto_entities),
             "manual_count": len(manual),
@@ -461,58 +517,86 @@ class MemoryService:
             "total_duration_ms": round(total_ms, 2),
         }, memory_id=memory.id)
 
-        # Write MemoryNode (Phase 1 — admission-routed, or Phase 3 — episodes enabled)
+        # Write MemoryNodes (additive layering: L1 atomic always, L2 entity_state if detected)
         _should_create_node = (
-            admission_route in ("atomic_memory", "entity_state_update", "episode_fragment")
+            admission_route == "persist"
+            or admission_route is None  # admission disabled, always create
             or (self._config.episodes_enabled and self._episode is not None)
         )
         if _should_create_node:
             try:
-                from ncms.domain.models import MemoryNode, NodeType
+                from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
 
-                node_type_map = {
-                    "atomic_memory": NodeType.ATOMIC,
-                    "entity_state_update": NodeType.ENTITY_STATE,
-                    "episode_fragment": NodeType.ATOMIC,
-                }
+                # L1: ALWAYS create atomic node for persisted content
+                l1_node = MemoryNode(
+                    memory_id=memory.id,
+                    node_type=NodeType.ATOMIC,
+                    importance=memory.importance,
+                )
+                await self._store.save_memory_node(l1_node)
+                _emit_stage("memory_node", 0.0, {
+                    "node_id": l1_node.id,
+                    "node_type": "atomic",
+                    "layer": "L1",
+                }, memory_id=memory.id)
 
-                # Build metadata for entity_state_update nodes (Phase 2A)
-                node_metadata: dict = {}
-                if admission_route == "entity_state_update":
+                # L2: ADDITIONALLY create entity_state if state change or state
+                # declaration detected.  Two triggers:
+                # a) admission scored state_change_signal ≥ 0.35 (explicit change)
+                # b) content matches structured assignment "Entity: key = value"
+                #    (initial state declaration — no change verb required)
+                l2_node: MemoryNode | None = None
+                _has_state_change = (
+                    admission_features is not None
+                    and hasattr(admission_features, "state_change_signal")
+                    and admission_features.state_change_signal >= 0.35
+                )
+                _has_state_declaration = bool(
+                    re.search(
+                        r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                        content,
+                        re.MULTILINE,
+                    )
+                ) if admission_features is not None else False
+                if _has_state_change or _has_state_declaration:
                     node_metadata = self._extract_entity_state_meta(
                         content, all_entities,
                     )
+                    l2_node = MemoryNode(
+                        memory_id=memory.id,
+                        node_type=NodeType.ENTITY_STATE,
+                        importance=memory.importance,
+                        metadata=node_metadata,
+                    )
+                    await self._store.save_memory_node(l2_node)
 
-                # Determine node type (default ATOMIC when no admission route)
-                node_type = node_type_map.get(
-                    admission_route or "", NodeType.ATOMIC,
-                )
-
-                node = MemoryNode(
-                    memory_id=memory.id,
-                    node_type=node_type,
-                    importance=memory.importance,
-                    metadata=node_metadata,
-                )
-                await self._store.save_memory_node(node)
-                _emit_stage("memory_node", 0.0, {
-                    "node_id": node.id,
-                    "node_type": node.node_type.value,
-                    "has_entity_state": bool(node_metadata.get("entity_id")),
-                }, memory_id=memory.id)
+                    # DERIVED_FROM edge: L2 → L1
+                    await self._store.save_graph_edge(GraphEdge(
+                        source_id=l2_node.id,
+                        target_id=l1_node.id,
+                        edge_type=EdgeType.DERIVED_FROM,
+                        metadata={"layer": "L2_from_L1"},
+                    ))
+                    _emit_stage("memory_node", 0.0, {
+                        "node_id": l2_node.id,
+                        "node_type": "entity_state",
+                        "layer": "L2",
+                        "derived_from": l1_node.id,
+                        "has_entity_state": bool(node_metadata.get("entity_id")),
+                    }, memory_id=memory.id)
 
                 # Phase 2A: Reconcile entity state against existing states
                 if (
-                    admission_route == "entity_state_update"
+                    l2_node is not None
                     and self._reconciliation is not None
                     and self._config.reconciliation_enabled
-                    and node_metadata.get("entity_id")
+                    and l2_node.metadata.get("entity_id")
                 ):
                     t0_recon = time.perf_counter()
                     try:
-                        results = await self._reconciliation.reconcile(node)  # type: ignore[attr-defined]
+                        results = await self._reconciliation.reconcile(l2_node)  # type: ignore[attr-defined]
                         recon_data: dict = {
-                            "node_id": node.id,
+                            "node_id": l2_node.id,
                             "results_count": len(results),
                             "relations": [
                                 {"relation": r.relation, "existing": r.existing_node_id}
@@ -528,7 +612,7 @@ class MemoryService:
                     except Exception:
                         logger.warning(
                             "Reconciliation failed for node %s, continuing",
-                            node.id,
+                            l2_node.id,
                             exc_info=True,
                         )
                         _emit_stage(
@@ -537,7 +621,7 @@ class MemoryService:
                             memory_id=memory.id,
                         )
 
-                # Phase 3: Episode formation
+                # Phase 3: Episode formation (links to L1 atomic node)
                 if (
                     self._episode is not None
                     and self._config.episodes_enabled
@@ -545,12 +629,12 @@ class MemoryService:
                     t0_ep = time.perf_counter()
                     try:
                         episode_node = await self._episode.assign_or_create(  # type: ignore[attr-defined]
-                            fragment_node=node,
+                            fragment_node=l1_node,
                             fragment_memory=memory,
                             entity_ids=linked_entity_ids,
                         )
                         ep_data: dict = {
-                            "node_id": node.id,
+                            "node_id": l1_node.id,
                             "episode_id": (
                                 episode_node.id if episode_node else None
                             ),
@@ -573,7 +657,7 @@ class MemoryService:
                     except Exception:
                         logger.warning(
                             "Episode formation failed for node %s, continuing",
-                            node.id,
+                            l1_node.id,
                             exc_info=True,
                         )
                         _emit_stage(

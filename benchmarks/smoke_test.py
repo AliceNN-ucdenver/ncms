@@ -148,5 +148,7 @@ async def run_smoke_test(llm_model: str | None = None) -> None:
 
 
 if __name__ == "__main__":
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     args = parse_args()
     asyncio.run(run_smoke_test(llm_model=args.llm_model))

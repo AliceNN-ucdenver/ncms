@@ -211,6 +211,19 @@ def create_dashboard_app(
                     "type": "linked",
                 })
 
+        # Batch-lookup HTMG node types for memories
+        if memory_ids_seen:
+            store = cast(SQLiteStore, memory_service._store)
+            mem_nodes = await store.get_memory_nodes_for_memories(
+                list(memory_ids_seen)
+            )
+            for node in nodes:
+                if node.get("group") == "memory":
+                    node_list = mem_nodes.get(node["id"], [])
+                    node["node_type"] = (
+                        node_list[0].node_type if node_list else None
+                    )
+
         # Entity -> Entity relationships (from graph edges)
         nx_graph = graph._graph
         for source, target, data in nx_graph.edges(data=True):
@@ -362,6 +375,63 @@ def create_dashboard_app(
             "states": [n.model_dump(mode="json") for n in history],
         })
 
+    async def api_entities_with_states(request: Request) -> JSONResponse:
+        """Return entities that have state nodes, with state counts and keys."""
+        from ncms.domain.models import NodeType
+
+        store = cast(SQLiteStore, memory_service._store)
+        nodes = await store.get_memory_nodes_by_type(NodeType.ENTITY_STATE.value)
+
+        # Group by entity_id → collect state keys and counts
+        entities: dict[str, dict[str, Any]] = {}
+        for n in nodes:
+            eid = n.metadata.get("entity_id", "unknown")
+            if eid not in entities:
+                entities[eid] = {
+                    "entity_id": eid,
+                    "state_count": 0,
+                    "current_count": 0,
+                    "state_keys": set(),
+                }
+            entities[eid]["state_count"] += 1
+            if n.is_current:
+                entities[eid]["current_count"] += 1
+            key = n.metadata.get("state_key", "state")
+            entities[eid]["state_keys"].add(key)
+
+        # Convert sets to sorted lists for JSON
+        result = []
+        for info in sorted(entities.values(), key=lambda x: -x["state_count"]):
+            info["state_keys"] = sorted(info["state_keys"])
+            result.append(info)
+
+        return JSONResponse(result)
+
+    async def api_bus_snapshot(request: Request) -> JSONResponse:
+        """Return current bus state snapshot (agents, domains, subscriptions)."""
+        agents = bus_service.get_all_agents()
+        domains = bus_service.list_domains()
+        subs = bus_service.get_subscriptions()
+        return JSONResponse({
+            "agents": [
+                {
+                    "agent_id": a.agent_id,
+                    "domains": a.domains,
+                    "status": a.status,
+                    "last_seen": a.last_seen.isoformat() if a.last_seen else None,
+                }
+                for a in agents
+            ],
+            "domains": {d: aids for d, aids in domains.items()},
+            "subscriptions": {
+                aid: {
+                    "domains": sf.domains,
+                    "severity_min": sf.severity_min,
+                }
+                for aid, sf in subs.items()
+            },
+        })
+
     async def api_events(request: Request) -> JSONResponse:
         """Return recent events as JSON (non-streaming)."""
         from dataclasses import asdict
@@ -392,8 +462,10 @@ def create_dashboard_app(
         Route("/api/memories", api_memories),
         Route("/api/topics", api_topics),
         Route("/api/stats", api_stats),
+        Route("/api/bus/snapshot", api_bus_snapshot),
         Route("/api/episodes", api_episodes),
         Route("/api/episodes/{episode_id}", api_episode_detail),
+        Route("/api/entities-with-states", api_entities_with_states),
         Route("/api/entity-states/{entity_id}", api_entity_states),
         Route("/api/entity-states/{entity_id}/history", api_entity_state_history),
     ]
@@ -450,6 +522,13 @@ async def run_dashboard(
             cache_dir=config.model_cache_dir,
         )
 
+    # Admission scoring (Phase 1, disabled by default)
+    admission = None
+    if config.admission_enabled:
+        from ncms.application.admission_service import AdmissionService
+
+        admission = AdmissionService(store=store, index=index, graph=graph, config=config)
+
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
     if config.reconciliation_enabled:
@@ -469,10 +548,21 @@ async def run_dashboard(
             event_log=event_log, splade=splade,
         )
 
+    # Intent classifier (Phase 4, disabled by default)
+    intent_classifier = None
+    if config.intent_classification_enabled:
+        from ncms.infrastructure.indexing.exemplar_intent_index import (
+            ExemplarIntentIndex,
+        )
+
+        intent_classifier = ExemplarIntentIndex()
+        logger.info("BM25 exemplar intent classifier enabled")
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
-        event_log=event_log, reconciliation=reconciliation,
-        episode=episode,
+        event_log=event_log, splade=splade, admission=admission,
+        reconciliation=reconciliation, episode=episode,
+        intent_classifier=intent_classifier,
     )
     snapshot_svc = SnapshotService(
         store=store,

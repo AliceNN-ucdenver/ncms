@@ -210,3 +210,9 @@ class BusService:
 
     def is_agent_online(self, agent_id: str) -> bool:
         return self._bus.is_agent_online(agent_id)
+
+    def get_subscriptions(self) -> dict[str, SubscriptionFilter]:
+        """Return current subscription filters per agent (for dashboard)."""
+        if hasattr(self._bus, "get_subscriptions"):
+            return self._bus.get_subscriptions()
+        return {}

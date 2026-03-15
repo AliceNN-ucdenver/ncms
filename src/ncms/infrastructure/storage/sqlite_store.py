@@ -95,6 +95,17 @@ class SQLiteStore:
         await self.save_memory(memory)
 
     async def delete_memory(self, memory_id: str) -> None:
+        # Delete HTMG edges referencing any nodes for this memory
+        await self.db.execute(
+            "DELETE FROM graph_edges WHERE source_id IN "
+            "(SELECT id FROM memory_nodes WHERE memory_id = ?) "
+            "OR target_id IN (SELECT id FROM memory_nodes WHERE memory_id = ?)",
+            (memory_id, memory_id),
+        )
+        # Delete HTMG nodes (FK to memories)
+        await self.db.execute(
+            "DELETE FROM memory_nodes WHERE memory_id = ?", (memory_id,)
+        )
         await self.db.execute("DELETE FROM memory_entities WHERE memory_id = ?", (memory_id,))
         await self.db.execute("DELETE FROM access_log WHERE memory_id = ?", (memory_id,))
         await self.db.execute("DELETE FROM memories WHERE id = ?", (memory_id,))

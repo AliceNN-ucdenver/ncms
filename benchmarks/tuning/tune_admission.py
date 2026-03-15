@@ -36,7 +36,7 @@ TUNING_DIR = Path(__file__).parent
 class LabeledExample:
     """Content with expected admission route."""
     content: str
-    expected_route: str  # atomic_memory | ephemeral_cache | discard | entity_state_update | episode_fragment
+    expected_route: str  # persist | ephemeral_cache | discard
     category: str  # human-readable category for reporting
 
 
@@ -44,85 +44,85 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
     # --- atomic_memory: architecture decisions, important facts ---
     LabeledExample(
         "We decided to migrate from REST to gRPC for all internal service communication",
-        "atomic_memory", "architecture_decision",
+        "persist", "architecture_decision",
     ),
     LabeledExample(
         "The authentication service uses OAuth 2.0 with PKCE flow for mobile clients",
-        "atomic_memory", "architecture_fact",
+        "persist", "architecture_fact",
     ),
     LabeledExample(
         "PostgreSQL 16 was chosen as the primary database for the user service",
-        "atomic_memory", "technology_choice",
+        "persist", "technology_choice",
     ),
     LabeledExample(
         "The API rate limit is set to 1000 requests per minute per API key",
-        "atomic_memory", "configuration",
+        "persist", "configuration",
     ),
     LabeledExample(
         "All microservices must implement health check endpoints at /healthz",
-        "atomic_memory", "policy",
+        "persist", "policy",
     ),
     LabeledExample(
         "The frontend uses React 18 with server-side rendering via Next.js",
-        "atomic_memory", "architecture_fact",
+        "persist", "architecture_fact",
     ),
     LabeledExample(
         "CI/CD pipeline runs on GitHub Actions with Docker-based build steps",
-        "atomic_memory", "infrastructure",
+        "persist", "infrastructure",
     ),
     LabeledExample(
         "The search service uses Elasticsearch 8.x with custom analyzers for multi-language support",
-        "atomic_memory", "architecture_fact",
+        "persist", "architecture_fact",
     ),
     LabeledExample(
         "Data retention policy requires user data deletion within 30 days of account closure",
-        "atomic_memory", "policy",
+        "persist", "policy",
     ),
     LabeledExample(
         "The payment processing module integrates with Stripe API v2023-10 for all transactions",
-        "atomic_memory", "integration",
+        "persist", "integration",
     ),
     LabeledExample(
         "Redis cluster with 6 nodes handles session management and caching across all services",
-        "atomic_memory", "infrastructure",
+        "persist", "infrastructure",
     ),
     LabeledExample(
         "GraphQL federation is used to compose the unified API gateway from 12 subgraphs",
-        "atomic_memory", "architecture_fact",
+        "persist", "architecture_fact",
     ),
 
     # --- entity_state_update: status changes, version updates ---
     LabeledExample(
         "The auth service was updated from OAuth 1.0 to OAuth 2.0 as of January 2026",
-        "entity_state_update", "state_change",
+        "persist", "state_change",
     ),
     LabeledExample(
         "Database version upgraded from PostgreSQL 14 to PostgreSQL 16",
-        "entity_state_update", "version_change",
+        "persist", "version_change",
     ),
     LabeledExample(
         "The payment gateway switched from Stripe to Adyen in production",
-        "entity_state_update", "provider_change",
+        "persist", "provider_change",
     ),
     LabeledExample(
         "API endpoint /v2/users replaced the deprecated /v1/users endpoint",
-        "entity_state_update", "api_change",
+        "persist", "api_change",
     ),
     LabeledExample(
         "Monitoring moved from Datadog to Grafana Cloud as of March 2026",
-        "entity_state_update", "tool_change",
+        "persist", "tool_change",
     ),
     LabeledExample(
         "The user service status changed from degraded to healthy after the fix was deployed",
-        "entity_state_update", "status_change",
+        "persist", "status_change",
     ),
     LabeledExample(
         "Container runtime migrated from Docker to containerd across all Kubernetes clusters",
-        "entity_state_update", "infrastructure_change",
+        "persist", "infrastructure_change",
     ),
     LabeledExample(
         "Node.js version bumped from 18 to 20 LTS for all backend services",
-        "entity_state_update", "version_change",
+        "persist", "version_change",
     ),
 
     # --- ephemeral_cache: useful but transient ---
@@ -204,27 +204,27 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
     # --- episode_fragment: incident-related, causal chains ---
     LabeledExample(
         "INCIDENT: Production API latency spiked to 5s at 14:00 UTC due to database connection pool exhaustion",
-        "episode_fragment", "incident",
+        "persist", "incident",
     ),
     LabeledExample(
         "Root cause identified: the connection pool leak was caused by unclosed transactions in the batch processor",
-        "episode_fragment", "root_cause",
+        "persist", "root_cause",
     ),
     LabeledExample(
         "Hotfix deployed: increased connection pool size from 20 to 50 and added connection timeout of 30s",
-        "episode_fragment", "resolution",
+        "persist", "resolution",
     ),
     LabeledExample(
         "Post-incident review: the monitoring alert for connection pool usage fired 10 minutes after the spike started",
-        "episode_fragment", "post_mortem",
+        "persist", "post_mortem",
     ),
     LabeledExample(
         "Sprint retrospective: the auth refactor introduced a regression in token validation affecting 3 downstream services",
-        "episode_fragment", "retrospective",
+        "persist", "retrospective",
     ),
     LabeledExample(
         "Deployment of v2.3.1 to production started at 09:00, includes fix for JIRA-4521 payment timeout issue",
-        "episode_fragment", "deployment",
+        "persist", "deployment",
     ),
 ]
 
@@ -271,16 +271,12 @@ def route_with_config(
     score: float,
     cfg: RoutingConfig,
 ) -> str:
-    """Route memory using custom thresholds."""
+    """Route memory using custom thresholds (3-way quality gate)."""
     if score < cfg.discard_threshold and features.persistence < 0.20 and features.state_change_signal < 0.20:
         return "discard"
-    if features.state_change_signal >= cfg.state_change_threshold:
-        return "entity_state_update"
-    if features.episode_affinity >= cfg.episode_affinity_threshold:
-        return "episode_fragment"
     if cfg.discard_threshold <= score < cfg.ephemeral_upper:
         return "ephemeral_cache"
-    return "atomic_memory"
+    return "persist"
 
 
 @dataclass
@@ -537,6 +533,8 @@ def _write_results(results: dict) -> None:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     t0 = time.perf_counter()
     results = run_grid_search()
     elapsed = time.perf_counter() - t0

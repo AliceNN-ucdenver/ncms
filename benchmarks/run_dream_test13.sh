@@ -158,11 +158,12 @@ async def run_dream_test13():
             consolidation_metrics = await run_consolidation_stage(state, stage)
             logger.info('    Consolidation: %s', consolidation_metrics)
 
-        # Measure retrieval
-        metrics = await measure_retrieval(state, small_queries, small_qrels)
+        # Measure retrieval (returns RetrievalResult dataclass)
+        retrieval = await measure_retrieval(state, small_queries, small_qrels)
         elapsed = time.perf_counter() - t1
+        ir_metrics = retrieval.metrics  # dict with nDCG@10, MRR@10, etc.
 
-        ndcg = metrics.get('nDCG@10', 0.0)
+        ndcg = ir_metrics.get('nDCG@10', 0.0)
         if baseline_ndcg is None:
             baseline_ndcg = ndcg
 
@@ -172,7 +173,8 @@ async def run_dream_test13():
         )
 
         results[stage.name] = {
-            'retrieval_metrics': metrics,
+            'retrieval_metrics': ir_metrics,
+            'per_query_ndcg': retrieval.per_query_ndcg,
             'consolidation_metrics': consolidation_metrics,
             'delta_pct': round(delta_pct, 2),
             'elapsed_seconds': round(elapsed, 2),
@@ -180,8 +182,8 @@ async def run_dream_test13():
 
         logger.info('    nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f  '
                      'delta=%.2f%%  insights=%d  (%.2fs)',
-                     ndcg, metrics.get('MRR@10', 0), metrics.get('Recall@100', 0),
-                     delta_pct, int(metrics.get('insight_count', 0)), elapsed)
+                     ndcg, ir_metrics.get('MRR@10', 0), ir_metrics.get('Recall@100', 0),
+                     delta_pct, int(ir_metrics.get('insight_count', 0)), elapsed)
 
     await state.store.close()
 

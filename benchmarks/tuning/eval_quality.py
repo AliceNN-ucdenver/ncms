@@ -219,6 +219,8 @@ def _format_pct(values: list[float]) -> str:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     asyncio.run(measure_latency())
 
 

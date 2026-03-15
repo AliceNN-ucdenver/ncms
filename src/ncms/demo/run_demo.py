@@ -83,7 +83,54 @@ async def run_demo() -> None:
     graph = NetworkXGraph()
     bus = AsyncKnowledgeBus(ask_timeout_ms=2000)
 
-    memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
+    # SPLADE sparse neural retrieval (disabled by default)
+    splade = None
+    if config.splade_enabled:
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+        splade = SpladeEngine(
+            model_name=config.splade_model,
+            cache_dir=config.model_cache_dir,
+        )
+
+    # Admission scoring (Phase 1, disabled by default)
+    admission = None
+    if config.admission_enabled:
+        from ncms.application.admission_service import AdmissionService
+
+        admission = AdmissionService(store=store, index=index, graph=graph, config=config)
+
+    # Reconciliation service (Phase 2, disabled by default)
+    reconciliation = None
+    if config.reconciliation_enabled:
+        from ncms.application.reconciliation_service import ReconciliationService
+
+        reconciliation = ReconciliationService(store=store, config=config)
+
+    # Episode formation (Phase 3, disabled by default)
+    episode = None
+    if config.episodes_enabled:
+        from ncms.application.episode_service import EpisodeService
+
+        episode = EpisodeService(
+            store=store, index=index, config=config, splade=splade,
+        )
+
+    # Intent classifier (Phase 4, disabled by default)
+    intent_classifier = None
+    if config.intent_classification_enabled:
+        from ncms.infrastructure.indexing.exemplar_intent_index import (
+            ExemplarIntentIndex,
+        )
+
+        intent_classifier = ExemplarIntentIndex()
+
+    memory_svc = MemoryService(
+        store=store, index=index, graph=graph, config=config,
+        splade=splade, admission=admission,
+        reconciliation=reconciliation, episode=episode,
+        intent_classifier=intent_classifier,
+    )
     snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
     bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
 
@@ -91,6 +138,16 @@ async def run_demo() -> None:
     step("Tantivy BM25 index created")
     step("NetworkX knowledge graph ready")
     step("AsyncIO Knowledge Bus started")
+    if splade:
+        step("SPLADE sparse neural retrieval enabled")
+    if admission:
+        step("Admission scoring enabled")
+    if reconciliation:
+        step("Reconciliation service enabled")
+    if episode:
+        step("Episode formation enabled")
+    if intent_classifier:
+        step("Intent classification enabled")
     result("All services online")
 
     # ── Create Agents ────────────────────────────────────────────────

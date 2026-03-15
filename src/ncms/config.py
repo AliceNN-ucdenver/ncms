@@ -35,9 +35,9 @@ class NCMSConfig(BaseSettings):
 
     # SPLADE
     splade_enabled: bool = False
-    splade_model: str = "prithivida/Splade_PP_en_v1"
+    splade_model: str = "naver/splade-v3"
     splade_top_k: int = 50
-    scoring_weight_splade: float = 0.0
+    scoring_weight_splade: float = 0.3  # Tuned: grid search on SciFact (2026-03-14)
 
     # Contradiction detection (uses llm_model + llm_api_base for the LLM)
     contradiction_detection_enabled: bool = False
@@ -50,16 +50,16 @@ class NCMSConfig(BaseSettings):
     # Retrieval pipeline
     tier1_candidates: int = 50
     tier2_candidates: int = 20
-    scoring_weight_bm25: float = 0.6
-    scoring_weight_actr: float = 0.4
-    scoring_weight_graph: float = 0.0  # Graph-expansion entity overlap (spreading activation)
+    scoring_weight_bm25: float = 0.6   # Tuned: grid search on SciFact (2026-03-14)
+    scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
+    scoring_weight_graph: float = 0.3  # Tuned: entity overlap via spreading activation
 
     # Graph expansion (Tier 1.5)
     graph_expansion_enabled: bool = True
     graph_expansion_depth: int = 1
     graph_expansion_max: int = 10
 
-    # Model cache directory (for GLiNER / SPLADE / fastembed downloads)
+    # Model cache directory (for GLiNER / SPLADE / sentence-transformers downloads)
     # Defaults to ~/.cache/huggingface/hub if not set
     model_cache_dir: str | None = None
 

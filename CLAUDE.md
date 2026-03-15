@@ -2,7 +2,7 @@
 
 ## What Is This?
 
-NeMo Cognitive Memory System (NCMS) — a Python library providing persistent cognitive memory for AI agents. Vector-free retrieval via BM25 + ACT-R scoring, an embedded knowledge bus for agent coordination, and snapshot-based surrogate responses when agents go offline.
+NeMo Cognitive Memory System (NCMS) — a Python library providing persistent cognitive memory for AI agents. Hybrid retrieval via BM25 + SPLADE v3 sparse neural + graph spreading activation, an embedded knowledge bus for agent coordination, and snapshot-based surrogate responses when agents go offline.
 
 ## Toolchain
 
@@ -88,7 +88,7 @@ src/ncms/
 │   ├── storage/sqlite_store.py  # aiosqlite — 10 tables, WAL mode, parameterized SQL
 │   ├── storage/migrations.py    # DDL for schema creation and versioning (V1 base + V2 HTMG + V3 bitemporal)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
-│   ├── indexing/splade_engine.py  # SPLADE sparse neural retrieval (fastembed)
+│   ├── indexing/splade_engine.py  # SPLADE v3 sparse neural retrieval (sentence-transformers)
 │   ├── indexing/exemplar_intent_index.py # BM25 exemplar intent classifier (Phase 4)
 │   ├── graph/networkx_store.py  # NetworkX DiGraph knowledge graph + O(1) name index
 │   ├── bus/async_bus.py         # AsyncIO in-process event bus
@@ -122,17 +122,17 @@ src/ncms/
 
 ## Key Design Decisions
 
-1. **No vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE sparse neural retrieval via fastembed (required, disabled by default). Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
-2. **Two-tier retrieval**: BM25 + SPLADE candidates → ACT-R cognitive rescoring (zero LLM at query time).
-3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math.
+1. **No dense vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE v3 sparse neural retrieval via sentence-transformers SparseEncoder (asymmetric encoding: `encode_document()` for indexing, `encode_query()` for search) with MPS/CUDA auto-detection. Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
+2. **Three-signal retrieval**: BM25 (0.6) + SPLADE (0.3) + Graph spreading activation (0.3) — tuned via grid search on SciFact BEIR (nDCG@10=0.7206, +3.3% over BM25+SPLADE baseline, exceeds published ColBERTv2 and SPLADE++ on SciFact). Zero LLM at query time.
+3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + spreading_activation + noise`. Recency and frequency modeled with cognitive science math. Weight defaults to 0.0 — grid search showed ACT-R hurts on cold corpora with no access history; designed to activate after dream cycles build differential access patterns.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
 5. **AsyncIO in-process bus** — Zero deps, <1ms latency. Protocol interface allows Redis/NATS swap later.
 6. **Raw SQL via aiosqlite** — 12 tables don't need an ORM. WAL mode for concurrent reads.
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
-9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE (400 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
+9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE v3 (2,000 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 10. **Hybrid episode linker** — Episodes group related fragments via incremental multi-signal matching (no LLM). Each episode maintains a compact profile (entities + domains + anchors) indexed in BM25/SPLADE. New fragments scored against candidates using 7 weighted signals: BM25 lexical match, SPLADE semantic match, entity overlap coefficient, domain overlap, temporal proximity, source agent, and structured anchor bonus. Weights auto-redistribute when SPLADE is disabled.
-10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming content to discard/ephemeral/atomic/entity-state/episode destinations. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
+10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) implements a 3-way quality gate: discard / ephemeral_cache / persist. State change signal and episode affinity are classification signals consumed by additive node creation (not routing destinations). Every persisted memory gets an L1 atomic node; content with state change signal ≥ 0.35 or structured state declaration (`Entity: key = value`) additionally gets an L2 entity_state node with a DERIVED_FROM edge to L1; episodes link to L1 atomic nodes. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
 11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
 12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 13. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
@@ -147,7 +147,7 @@ Models with fixed token windows silently truncate long text. NCMS auto-chunks wh
 | Component | Token Limit | Chunk Size | Overlap | Merge Strategy |
 |-----------|-------------|-----------|---------|----------------|
 | GLiNER NER | 384 tokens | 1,200 chars | 100 chars | Entity dedup (lowercase, first wins) |
-| SPLADE embedding | 128 tokens | 400 chars | 50 chars | Max-pool per vocab index |
+| SPLADE v3 embedding | 512 tokens | 2,000 chars | 100 chars | Max-pool per vocab index |
 
 ### LLM Prompt Truncation (hardcoded, fits 32K context)
 
@@ -167,8 +167,8 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 ## Data Flow
 
-1. **Store**: Content → [admission scoring → route] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode]
-2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → ACT-R + graph scoring [+ hierarchy bonus − supersession/conflict penalty + dream association strengths] → ranked results → [search log for dream cycle PMI]
+1. **Store**: Content → [admission scoring → 3-way quality gate: discard/ephemeral/persist] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → L1 atomic node (always) → [L2 entity_state node if state change/declaration detected, DERIVED_FROM edge to L1] → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode, links to L1]
+2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → weighted scoring (BM25 0.6 + SPLADE 0.3 + Graph 0.3) [+ ACT-R if enabled + hierarchy bonus − supersession/conflict penalty + dream association strengths] → ranked results → [search log for dream cycle PMI]
 3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
 4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
@@ -215,15 +215,17 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_ACTR_DECAY` | `0.5` | Memory decay rate (d parameter) |
 | `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval threshold |
+| `NCMS_SCORING_WEIGHT_BM25` | `0.6` | BM25 weight in combined score (tuned on SciFact) |
+| `NCMS_SCORING_WEIGHT_ACTR` | `0.0` | ACT-R weight (0.0 default; activates after dream cycles) |
 | `NCMS_BUS_ASK_TIMEOUT_MS` | `5000` | Bus ask timeout |
 | `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for contradiction detection |
 | `NCMS_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
-| `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE). Defaults to HuggingFace cache |
+| `NCMS_MODEL_CACHE_DIR` | *(none)* | Directory for downloaded models (GLiNER, SPLADE, sentence-transformers). Defaults to HuggingFace cache |
 | `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval (required dep) |
-| `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
+| `NCMS_SPLADE_MODEL` | `naver/splade-v3` | SPLADE model (sentence-transformers SparseEncoder) |
 | `NCMS_SPLADE_TOP_K` | `50` | SPLADE candidates per search |
-| `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
-| `NCMS_SCORING_WEIGHT_GRAPH` | `0.0` | Graph expansion entity-overlap weight (spreading activation) |
+| `NCMS_SCORING_WEIGHT_SPLADE` | `0.3` | SPLADE weight in combined score (tuned on SciFact) |
+| `NCMS_SCORING_WEIGHT_GRAPH` | `0.3` | Graph expansion entity-overlap weight (tuned on SciFact) |
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |

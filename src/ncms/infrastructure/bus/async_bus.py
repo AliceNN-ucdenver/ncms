@@ -70,6 +70,12 @@ class AsyncKnowledgeBus:
         self._announcement_inbox.clear()
         self._subscriptions.clear()
 
+    # ── Introspection (dashboard) ────────────────────────────────────────
+
+    def get_subscriptions(self) -> dict[str, SubscriptionFilter]:
+        """Return copy of current subscription filters (for dashboard)."""
+        return dict(self._subscriptions)
+
     # ── Registration ─────────────────────────────────────────────────────
 
     async def register_provider(self, agent_id: str, domains: list[str]) -> None:

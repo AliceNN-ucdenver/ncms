@@ -236,24 +236,21 @@ class TestFullPipeline:
             "Some content", domains=["test"]
         )
         assert isinstance(score, float)
-        assert route in {
-            "discard", "ephemeral_cache", "atomic_memory",
-            "entity_state_update", "episode_fragment",
-        }
+        assert route in {"discard", "ephemeral_cache", "persist"}
         assert features.novelty >= 0.0
 
     async def test_high_quality_content_routes_to_atomic(
         self, admission: AdmissionService
     ):
-        """High-quality content should route to atomic_memory."""
+        """High-quality content should pass quality gate (persist)."""
         _, score, route = await admission.evaluate(
             "Architectural decision: we chose PostgreSQL for the primary database "
             "due to its JSON support and reliability. This was decided on 2026-03-01 "
             "after evaluating multiple options.",
             source_type="authoritative",
         )
-        assert score > 0.45
-        assert route == "atomic_memory"
+        assert score > 0.35
+        assert route == "persist"
 
     async def test_generic_content_routes_to_ephemeral_or_discard(
         self, admission: AdmissionService

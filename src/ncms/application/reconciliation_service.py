@@ -1,7 +1,7 @@
 """Reconciliation Service — classifies and applies relations between memory states.
 
-When a new entity state update arrives (routed by admission as 'entity_state_update'),
-this service:
+When a new L2 entity_state node is created (triggered by state change signal
+or structured state declaration in memory_service), this service:
 1. Finds existing states for the same entity + state_key
 2. Classifies the relation (supports, refines, supersedes, conflicts, unrelated)
 3. Applies the appropriate action (create edges, flip is_current, set valid_to)

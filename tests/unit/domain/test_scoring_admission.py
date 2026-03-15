@@ -118,28 +118,6 @@ class TestRouteMemory:
         assert score < 0.25
         assert route_memory(f, score) == "discard"
 
-    def test_entity_state_update(self):
-        """High state_change_signal → entity_state_update regardless of score."""
-        f = AdmissionFeatures(
-            novelty=0.3,
-            state_change_signal=0.55,
-        )
-        score = score_admission(f)
-        assert route_memory(f, score) == "entity_state_update"
-
-    def test_episode_fragment(self):
-        """High episode_affinity → episode_fragment."""
-        f = AdmissionFeatures(
-            novelty=0.5,
-            utility=0.4,
-            reliability=0.5,
-            persistence=0.4,
-            episode_affinity=0.60,
-        )
-        score = score_admission(f)
-        assert score >= 0.25  # Must not trigger discard
-        assert route_memory(f, score) == "episode_fragment"
-
     def test_ephemeral_cache(self):
         """Mid-range score → ephemeral_cache."""
         f = AdmissionFeatures(
@@ -149,12 +127,12 @@ class TestRouteMemory:
             persistence=0.30,
         )
         score = score_admission(f)
-        # Should be in range [0.25, 0.45)
-        assert 0.25 <= score < 0.45
+        # Should be in range [0.25, 0.35)
+        assert 0.25 <= score < 0.35
         assert route_memory(f, score) == "ephemeral_cache"
 
-    def test_atomic_memory(self):
-        """High score → atomic_memory."""
+    def test_persist_high_score(self):
+        """High score → persist (quality gate passed)."""
         f = AdmissionFeatures(
             novelty=0.9,
             utility=0.8,
@@ -164,30 +142,34 @@ class TestRouteMemory:
             redundancy=0.1,
         )
         score = score_admission(f)
-        assert score >= 0.45
-        assert route_memory(f, score) == "atomic_memory"
+        assert score >= 0.35
+        assert route_memory(f, score) == "persist"
 
-    def test_state_change_overrides_ephemeral(self):
-        """Entity state update takes priority over ephemeral routing."""
+    def test_high_state_change_persists(self):
+        """High state_change_signal routes to persist (L2 created downstream)."""
         f = AdmissionFeatures(
-            novelty=0.2,
-            state_change_signal=0.50,
+            novelty=0.3,
+            state_change_signal=0.55,
         )
-        score = 0.30  # Would be ephemeral by score alone
-        assert route_memory(f, score) == "entity_state_update"
+        score = score_admission(f)
+        # State change is a classification signal, not a routing destination
+        assert route_memory(f, score) == "persist"
 
-    def test_episode_overrides_atomic(self):
-        """Episode fragment takes priority over atomic routing."""
+    def test_high_episode_affinity_persists(self):
+        """High episode_affinity routes to persist (episode linking done downstream)."""
         f = AdmissionFeatures(
-            novelty=0.9,
-            utility=0.8,
+            novelty=0.8,
+            utility=0.5,
+            reliability=0.6,
+            persistence=0.5,
             episode_affinity=0.60,
         )
-        score = 0.70  # Would be atomic by score alone
-        assert route_memory(f, score) == "episode_fragment"
+        score = score_admission(f)
+        assert score >= 0.35
+        assert route_memory(f, score) == "persist"
 
     def test_all_routes_reachable(self):
-        """Verify all 5 routes can be produced."""
+        """Verify all 3 routes can be produced."""
         routes = set()
 
         # discard
@@ -198,22 +180,8 @@ class TestRouteMemory:
         f = AdmissionFeatures(novelty=0.5)
         routes.add(route_memory(f, 0.30))
 
-        # atomic_memory (score >= 0.35)
+        # persist (score >= 0.35)
         f = AdmissionFeatures(novelty=0.9)
         routes.add(route_memory(f, 0.60))
 
-        # entity_state_update (state_change_signal >= 0.35)
-        f = AdmissionFeatures(state_change_signal=0.60)
-        routes.add(route_memory(f, 0.50))
-
-        # episode_fragment (episode_affinity >= 0.40)
-        f = AdmissionFeatures(episode_affinity=0.70)
-        routes.add(route_memory(f, 0.50))
-
-        assert routes == {
-            "discard",
-            "ephemeral_cache",
-            "atomic_memory",
-            "entity_state_update",
-            "episode_fragment",
-        }
+        assert routes == {"discard", "ephemeral_cache", "persist"}

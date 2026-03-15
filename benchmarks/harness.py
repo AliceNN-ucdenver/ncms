@@ -6,6 +6,7 @@ Ingests once per dataset, then runs all ablation configs against the same data.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -81,46 +82,55 @@ async def ingest_corpus(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
 
-    # Ingest corpus
+    # Ingest corpus — concurrent with semaphore to overlap GPU/CPU work
     doc_to_mem: dict[str, str] = {}
     mem_to_doc: dict[str, str] = {}
+    sem = asyncio.Semaphore(3)  # Max 3 concurrent store_memory calls
 
-    total = len(corpus)
-    t0 = time.perf_counter()
-    last_log = t0
-
-    for i, (doc_id, doc) in enumerate(corpus.items()):
+    async def _ingest_one(
+        doc_id: str, doc: dict[str, str],
+    ) -> tuple[str, str] | None:
         title = doc.get("title", "")
         text = doc.get("text", "")
         content = f"{title}\n{text}".strip() if title else text
-
         if not content:
-            continue
-
+            return None
         # Truncate very long documents (99.7% of BEIR docs are under 10K chars;
         # Spark vLLM max-model-len is 32768 tokens so 10K chars is safe)
         content = content[:10000]
-
-        memory = await svc.store_memory(
-            content=content,
-            memory_type="fact",
-            domains=[domain] if domain != "general" else [],
-        )
-
-        doc_to_mem[doc_id] = memory.id
-        mem_to_doc[memory.id] = doc_id
-
-        # Progress logging every 30 seconds
-        now = time.perf_counter()
-        if now - last_log >= 30.0 or i == total - 1:
-            elapsed = now - t0
-            rate = (i + 1) / elapsed if elapsed > 0 else 0
-            eta = (total - i - 1) / rate if rate > 0 else 0
-            logger.info(
-                "  Ingested %d/%d docs (%.1f docs/sec, ETA %.0fs)",
-                i + 1, total, rate, eta,
+        async with sem:
+            memory = await svc.store_memory(
+                content=content,
+                memory_type="fact",
+                domains=[domain] if domain != "general" else [],
             )
-            last_log = now
+        return doc_id, memory.id
+
+    total = len(corpus)
+    t0 = time.perf_counter()
+    completed = 0
+    batch_size = 50
+    items = list(corpus.items())
+
+    for batch_start in range(0, total, batch_size):
+        batch = items[batch_start : batch_start + batch_size]
+        results = await asyncio.gather(
+            *[_ingest_one(did, doc) for did, doc in batch],
+        )
+        for result in results:
+            if result is not None:
+                did, mid = result
+                doc_to_mem[did] = mid
+                mem_to_doc[mid] = did
+        completed += len(batch)
+
+        elapsed = time.perf_counter() - t0
+        rate = completed / elapsed if elapsed > 0 else 0
+        eta = (total - completed) / rate if rate > 0 else 0
+        logger.info(
+            "  Ingested %d/%d docs (%.1f docs/sec, ETA %.0fs)",
+            completed, total, rate, eta,
+        )
 
     elapsed = time.perf_counter() - t0
     logger.info(

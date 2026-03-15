@@ -1,14 +1,14 @@
 """Unit tests for the SPLADE sparse retrieval engine.
 
-Mocks fastembed to avoid downloading the ~530 MB model during CI.
+Mocks sentence-transformers to avoid downloading the model during CI.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
+import torch
 
 from ncms.domain.models import Memory
 from ncms.infrastructure.indexing.splade_engine import SparseVector, SpladeEngine
@@ -19,23 +19,29 @@ from ncms.infrastructure.indexing.splade_engine import SparseVector, SpladeEngin
 # ---------------------------------------------------------------------------
 
 
-class MockSparseEmbedding:
-    """Mimics fastembed's SparseEmbedding namedtuple."""
+def _make_sparse_tensor(indices: list[int], values: list[float], size: int = 1000):
+    """Create a dense PyTorch tensor with non-zero values at given indices."""
+    t = torch.zeros(size)
+    for idx, val in zip(indices, values, strict=True):
+        t[idx] = val
+    return t
 
-    def __init__(self, indices: list[int], values: list[float]):
-        self.indices = np.array(indices)
-        self.values = np.array(values)
 
-
-def _deterministic_embed(texts: list[str], batch_size: int = 1):
-    """Return deterministic sparse vectors based on word hashing."""
+def _deterministic_encode_document(texts: list[str]):
+    """Return deterministic sparse tensors for document encoding."""
     results = []
     for text in texts:
         words = text.lower().split()[:10]
         indices = [abs(hash(w)) % 1000 for w in words]
         values = [1.0] * len(indices)
-        results.append(MockSparseEmbedding(indices, values))
+        results.append(_make_sparse_tensor(indices, values))
     return results
+
+
+def _deterministic_encode_query(texts: list[str]):
+    """Return deterministic sparse tensors for query encoding."""
+    # Same logic as document encoding for test determinism
+    return _deterministic_encode_document(texts)
 
 
 def _make_memory(content: str, memory_id: str | None = None) -> Memory:
@@ -56,7 +62,8 @@ class TestSpladeEngine:
         """Indexed memories should be retrievable via search."""
         engine = SpladeEngine()
         engine._model = MagicMock()
-        engine._model.embed = _deterministic_embed
+        engine._model.encode_document = _deterministic_encode_document
+        engine._model.encode_query = _deterministic_encode_query
 
         mem1 = _make_memory("Flask web framework for REST APIs", "mem-1")
         mem2 = _make_memory("Django template rendering system", "mem-2")
@@ -79,7 +86,8 @@ class TestSpladeEngine:
         """Removed memory should not appear in search results."""
         engine = SpladeEngine()
         engine._model = MagicMock()
-        engine._model.embed = _deterministic_embed
+        engine._model.encode_document = _deterministic_encode_document
+        engine._model.encode_query = _deterministic_encode_query
 
         mem1 = _make_memory("Flask API", "mem-1")
         mem2 = _make_memory("Flask routing", "mem-2")
@@ -100,7 +108,8 @@ class TestSpladeEngine:
         """Searching an empty index should return an empty list."""
         engine = SpladeEngine()
         engine._model = MagicMock()
-        engine._model.embed = _deterministic_embed
+        engine._model.encode_document = _deterministic_encode_document
+        engine._model.encode_query = _deterministic_encode_query
 
         results = engine.search("anything")
         assert results == []
@@ -110,7 +119,8 @@ class TestSpladeEngine:
         """vector_count should reflect the number of indexed memories."""
         engine = SpladeEngine()
         engine._model = MagicMock()
-        engine._model.embed = _deterministic_embed
+        engine._model.encode_document = _deterministic_encode_document
+        engine._model.encode_query = _deterministic_encode_query
 
         assert engine.vector_count == 0
         engine.index_memory(_make_memory("first", "m-1"))
@@ -125,7 +135,8 @@ class TestSpladeEngine:
         """All returned scores should be positive and sorted descending."""
         engine = SpladeEngine()
         engine._model = MagicMock()
-        engine._model.embed = _deterministic_embed
+        engine._model.encode_document = _deterministic_encode_document
+        engine._model.encode_query = _deterministic_encode_query
 
         for i in range(5):
             engine.index_memory(_make_memory(f"document number {i} about APIs", f"m-{i}"))
@@ -151,3 +162,8 @@ class TestSpladeEngine:
         """Removing a non-existent memory should not raise."""
         engine = SpladeEngine()
         engine.remove("does-not-exist")  # Should not raise
+
+    def test_default_model_is_splade_v3(self):
+        """Default model should be naver/splade-v3."""
+        engine = SpladeEngine()
+        assert engine._model_name == "naver/splade-v3"

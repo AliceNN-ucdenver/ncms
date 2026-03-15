@@ -12,7 +12,7 @@ This document preserves the original NCMS architecture diagram from the initial 
 - **Entity graph** — NetworkX directed graph with GLiNER-extracted entities and memory-entity links
 - **Three-tier retrieval** — BM25 + SPLADE candidates → graph expansion → ACT-R cognitive rescoring
 - **Knowledge Bus** — AsyncIO domain-routed inter-agent communication with surrogate responses
-- **Ablation-validated** — 0.698 nDCG@10 on SciFact (BEIR), outperforming published dense retrieval baselines
+- **Ablation-validated** — 0.7206 nDCG@10 on SciFact (BEIR), exceeding published ColBERTv2 (0.693) and SPLADE++ (0.710)
 
 ## What V1 Lacked
 
@@ -25,7 +25,7 @@ This document preserves the original NCMS architecture diagram from the initial 
 
 ## What Changed
 
-The [keyword bridge catastrophic failure](#negative-results-keyword-bridges) (nDCG@10: 0.690 to 0.032) revealed that the flat entity graph needed **structural** cross-subgraph connectivity rather than **lexical** keyword bridges. This motivated the HTMG architecture with typed memory nodes, temporal episodes, entity state reconciliation, and dream-cycle-based offline learning.
+The [keyword bridge catastrophic failure](#negative-results-keyword-bridges) (nDCG@10: 0.6888 to 0.032) revealed that the flat entity graph needed **structural** cross-subgraph connectivity rather than **lexical** keyword bridges. This motivated the HTMG architecture with typed memory nodes, temporal episodes, entity state reconciliation, and dream-cycle-based offline learning.
 
 See the [current README](../README.md) for the full architecture.
 
@@ -59,16 +59,16 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 
 | Configuration | SciFact | NFCorpus | ArguAna |
 |---------------|:-------:|:--------:|:-------:|
-| BM25 Only | 0.687 | 0.319 | - |
-| + Graph Expansion | 0.690 | **0.321** | - |
-| + ACT-R Scoring | 0.686 | 0.317 | - |
-| + SPLADE Fusion | 0.697 | **0.339** | - |
-| **+ SPLADE + Graph** | **0.698** | 0.338 | - |
-| Full Pipeline | 0.690 | 0.337 | - |
+| BM25 Only | 0.6871 | 0.3188 | - |
+| + Graph Expansion | 0.6888 | 0.3198 | - |
+| + ACT-R Scoring | 0.6864 | 0.3139 | - |
+| + SPLADE Fusion | 0.7197 | 0.3495 | - |
+| **+ SPLADE + Graph** | **0.7206** | **0.3506** | - |
+| Full Pipeline | 0.7180 | 0.3474 | - |
 | + Keyword Bridges | 0.032 | - | - |
 | + Keywords + Judge | 0.032 | - | - |
 
-*SciFact re-run with improved GLiNER/SPLADE text chunking. NFCorpus/ArguAna pending re-run.*
+*Re-run with SPLADE v3 via sentence-transformers SparseEncoder and improved GLiNER/SPLADE text chunking. ArguAna pending re-run.*
 
 <details>
 <summary><b>Detailed per-dataset metrics</b> (click to expand)</summary>
@@ -77,12 +77,12 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|:-------:|:------:|:---------:|:----------:|
-| BM25 Only | 0.687 | 0.653 | 0.809 | 0.893 |
-| + Graph Expansion | 0.690 | 0.657 | 0.809 | 0.893 |
-| + ACT-R Scoring | 0.686 | 0.650 | 0.809 | 0.893 |
-| + SPLADE Fusion | 0.697 | 0.667 | 0.812 | 0.925 |
-| **+ SPLADE + Graph** | **0.698** | **0.667** | **0.812** | **0.925** |
-| Full Pipeline | 0.690 | 0.659 | 0.806 | 0.925 |
+| BM25 Only | 0.6871 | 0.653 | 0.809 | 0.893 |
+| + Graph Expansion | 0.6888 | 0.657 | 0.809 | 0.893 |
+| + ACT-R Scoring | 0.6864 | 0.650 | 0.809 | 0.893 |
+| + SPLADE Fusion | 0.7197 | 0.667 | 0.812 | 0.925 |
+| **+ SPLADE + Graph** | **0.7206** | **0.667** | **0.812** | **0.925** |
+| Full Pipeline | 0.7180 | 0.659 | 0.806 | 0.925 |
 | + Keyword Bridges | 0.032 | 0.037 | 0.030 | 0.030 |
 | + Keywords + Judge | 0.032 | 0.037 | 0.030 | 0.030 |
 
@@ -90,12 +90,12 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 
 | Configuration | nDCG@10 | MRR@10 | Recall@10 | Recall@100 |
 |---------------|:-------:|:------:|:---------:|:----------:|
-| BM25 Only | 0.319 | 0.524 | - | 0.215 |
-| + Graph Expansion | 0.321 | 0.524 | - | 0.220 |
-| + ACT-R Scoring | 0.317 | 0.523 | - | 0.215 |
-| + SPLADE Fusion | **0.339** | **0.553** | - | 0.262 |
-| + SPLADE + Graph | 0.338 | 0.552 | - | **0.266** |
-| Full Pipeline | 0.337 | 0.547 | - | **0.266** |
+| BM25 Only | 0.3188 | 0.524 | - | 0.215 |
+| + Graph Expansion | 0.3198 | 0.524 | - | 0.220 |
+| + ACT-R Scoring | 0.3139 | 0.523 | - | 0.215 |
+| + SPLADE Fusion | 0.3495 | **0.553** | - | 0.262 |
+| **+ SPLADE + Graph** | **0.3506** | 0.552 | - | **0.266** |
+| Full Pipeline | 0.3474 | 0.547 | - | **0.266** |
 
 </details>
 
@@ -103,17 +103,19 @@ Synonym tuning matters: `medication` outperforms `drug`, `medical_condition` out
 
 | System | SciFact nDCG@10 | NCMS Comparison |
 |--------|:---------------:|:---------------:|
-| DPR (dense) | 0.318 | NCMS +120% |
-| ANCE (dense) | 0.507 | NCMS +38% |
-| BM25 (published) | 0.671 | NCMS +4.0% |
-| SPLADE v2 / ColBERT v2 | 0.693 | NCMS +0.7% |
+| DPR (dense) | 0.318 | NCMS +127% |
+| ANCE (dense) | 0.507 | NCMS +42% |
+| BM25 (published) | 0.671 | NCMS +7.4% |
+| SPLADE++ (published) | 0.710 | NCMS +1.5% |
+| ColBERTv2 (published) | 0.693 | NCMS +4.0% |
 
-NCMS achieves **0.698 nDCG@10 on SciFact without a single embedding vector** - outperforming published dense and sparse neural retrieval baselines using only BM25 + SPLADE sparse expansion + entity-graph traversal + cognitive scoring.
+NCMS achieves **0.7206 nDCG@10 on SciFact without a single embedding vector** - exceeding published ColBERTv2 (0.693) and SPLADE++ (0.710) using only BM25 + SPLADE v3 sparse expansion via sentence-transformers SparseEncoder + entity-graph traversal + cognitive scoring.
 
 **Key findings:**
-- **SPLADE fusion is the largest single contributor** (+1.5% SciFact), adding learned term expansion on top of BM25
-- **Graph expansion provides consistent lift** across datasets (+0.4% SciFact, +0.6% NFCorpus) via entity-based cross-memory discovery
-- **SPLADE + Graph is the best configuration** (0.698 SciFact) - combining learned term expansion with entity-graph discovery
+- **SPLADE v3 fusion is the largest single contributor** (+4.7% SciFact, +9.6% NFCorpus), adding learned term expansion on top of BM25 via sentence-transformers SparseEncoder
+- **Graph expansion provides consistent lift** across datasets (+0.2% SciFact, +0.3% NFCorpus) via entity-based cross-memory discovery
+- **SPLADE + Graph is the best configuration** (0.7206 SciFact, 0.3506 NFCorpus) - combining learned term expansion with entity-graph discovery
+- **NFCorpus cross-domain validation** shows +10% improvement over BM25 baseline (0.3188 to 0.3506), confirming gains generalize beyond SciFact
 - **Keyword bridges catastrophically fail** (0.032 nDCG@10) - LLM-extracted generic keywords create high-fanout hub nodes in the entity graph, flooding graph expansion with irrelevant candidates (see Negative Results below)
 
 ### Weight Tuning (Phase 7)
@@ -129,7 +131,7 @@ After the initial ablation established component contributions, we ran systemati
 | SPLADE weight | 0.2-0.4 | **0.2** |
 | Graph weight | 0.0-0.3 | **0.3** |
 | Hierarchy weight | 0.0-0.1 | **0.0** |
-| **Tuned nDCG@10** | | **0.7053** (+1.1%) |
+| **Tuned nDCG@10** | | **0.7206** (+3.3%) |
 
 The critical finding: **ACT-R weight = 0 is optimal on static benchmarks.** On BEIR datasets, every document has exactly one access at the same time, so `ln(sum(t^-d))` produces identical scores for all candidates - contributing only noise. This is expected: ACT-R was designed for systems with *real* temporal access patterns. Dream cycles (Phase 8) address this by creating differential access histories offline.
 
@@ -149,7 +151,7 @@ Search gets *faster* with the full pipeline because better candidate selection r
 
 ### Negative Results: Keyword Bridges
 
-LLM-extracted keyword bridge nodes were intended to connect entity subgraphs that share semantic themes. In practice, they **destroyed retrieval quality**, dropping nDCG@10 from 0.690 to 0.032 (-95%).
+LLM-extracted keyword bridge nodes were intended to connect entity subgraphs that share semantic themes. In practice, they **destroyed retrieval quality**, dropping nDCG@10 from 0.6888 to 0.032 (-95%).
 
 **Root cause:** The LLM extracts generic conceptual keywords ("study", "treatment", "effect", "analysis") that connect thousands of documents as high-fanout hub nodes. During graph expansion, these hubs flood the candidate pool with irrelevant documents, pushing relevant results entirely out of the top-100. Recall@100 dropped from 0.925 to 0.030 - meaning relevant documents are no longer retrievable at all.
 

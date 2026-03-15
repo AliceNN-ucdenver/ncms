@@ -7,6 +7,7 @@ Provides sub-millisecond search with BM25 scoring.
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 
 import tantivy
@@ -21,6 +22,7 @@ class TantivyEngine:
         self._path = path
         self._index: tantivy.Index | None = None
         self._schema: tantivy.Schema | None = None
+        self._writer_lock = threading.Lock()  # Tantivy allows only one writer at a time
 
     def initialize(self, path: str | None = None) -> None:
         effective_path = path or self._path
@@ -49,16 +51,17 @@ class TantivyEngine:
         return self._index
 
     def index_memory(self, memory: Memory) -> None:
-        writer = self.index.writer()
-        writer.add_document(
-            tantivy.Document(
-                memory_id=memory.id,
-                content=memory.content,
-                domains=" ".join(memory.domains),
-                tags=" ".join(memory.tags),
+        with self._writer_lock:
+            writer = self.index.writer()
+            writer.add_document(
+                tantivy.Document(
+                    memory_id=memory.id,
+                    content=memory.content,
+                    domains=" ".join(memory.domains),
+                    tags=" ".join(memory.tags),
+                )
             )
-        )
-        writer.commit()
+            writer.commit()
 
     @staticmethod
     def _sanitize_query(query: str) -> str:
@@ -78,8 +81,14 @@ class TantivyEngine:
         # replace with space (tokenizer strips them anyway)
         query = query.replace("'", " ").replace("`", " ")
 
+        # Strip backslashes from source text BEFORE escaping — they carry
+        # no search semantics and double-escaping (\\ + \() creates invalid
+        # Tantivy syntax.  This fixes ArguAna-style queries with literal \( \).
+        query = query.replace("\\", " ")
+
         # Backslash-escape all other Tantivy syntax characters
-        escape_chars = set('+^:{}"[]()~!\\*-/')
+        # Include < > which are range query operators in Tantivy
+        escape_chars = set('+^:{}"[]()~!*-/<>')
         escaped = []
         for ch in query:
             if ch in escape_chars:
@@ -112,6 +121,7 @@ class TantivyEngine:
         return scored
 
     def remove(self, memory_id: str) -> None:
-        writer = self.index.writer()
-        writer.delete_documents("memory_id", memory_id)
-        writer.commit()
+        with self._writer_lock:
+            writer = self.index.writer()
+            writer.delete_documents("memory_id", memory_id)
+            writer.commit()

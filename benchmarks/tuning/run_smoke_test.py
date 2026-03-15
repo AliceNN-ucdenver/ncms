@@ -269,6 +269,8 @@ def _write_report(results: dict) -> None:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     results = asyncio.run(run_smoke_test())
     # Exit with error if any critical test failed
     tests = results.get("tests", {})

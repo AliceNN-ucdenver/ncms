@@ -4,9 +4,9 @@ Reuses the ablation harness (ingest_corpus + run_config_queries) to evaluate a
 focused grid of weight combinations around the best-performing region from the
 Phase 6 ablation study.
 
-Baseline (scifact):
-  BM25+SPLADE+Graph  nDCG@10=0.6976  (best)
-  Full (+ ACT-R)     nDCG@10=0.6903  (ACT-R hurts)
+Baseline (scifact, SPLADE v3 + sentence-transformers SparseEncoder):
+  BM25+SPLADE+Graph  nDCG@10=0.7206  (best, tuned 2026-03-14)
+  Full (+ ACT-R)     nDCG@10=0.6903  (ACT-R hurts on cold corpora)
 
 Grid focuses on:
   - BM25: [0.5, 0.6, 0.7, 0.8]
@@ -208,15 +208,32 @@ async def evaluate_grid(
         }
         results["configs"].append(entry)
 
-        if metrics["nDCG@10"] > best_ndcg:
+        is_new_best = metrics["nDCG@10"] > best_ndcg
+        if is_new_best:
             best_ndcg = metrics["nDCG@10"]
             best_cfg = entry
 
-        # Progress every 20 configs
-        if (i + 1) % 20 == 0 or i == total_configs - 1:
-            total_elapsed = time.perf_counter() - grid_start
-            rate = (i + 1) / total_elapsed
-            eta = (total_configs - i - 1) / rate if rate > 0 else 0
+        # Log every config to file for incremental progress
+        total_elapsed = time.perf_counter() - grid_start
+        rate = (i + 1) / total_elapsed
+        eta = (total_configs - i - 1) / rate if rate > 0 else 0
+        best_marker = " ★ NEW BEST" if is_new_best else ""
+        logger.info(
+            "[%d/%d] nDCG@10=%.5f bm25=%.1f actr=%.1f splade=%.1f "
+            "graph=%.1f hier=%.1f (%.1fs, %.2f cfg/s, ETA %.0fs)%s",
+            i + 1, total_configs, metrics["nDCG@10"],
+            cfg["bm25"], cfg["actr"], cfg["splade"],
+            cfg["graph"], cfg["hierarchy"],
+            elapsed, rate, eta, best_marker,
+        )
+
+        # Save incremental results every 10 configs (crash recovery)
+        if (i + 1) % 10 == 0:
+            results["best"] = best_cfg
+            _write_results(results)
+
+        # Console progress every 10 configs
+        if (i + 1) % 10 == 0 or i == total_configs - 1:
             print(
                 f"  [{i+1}/{total_configs}] "
                 f"best nDCG@10={best_ndcg:.4f} "
@@ -340,6 +357,8 @@ def _write_report(results: dict) -> None:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     # Log to file in tuning directory (not stderr) for provenance
     log_path = TUNING_DIR / "ranking_grid_run.log"
     logging.basicConfig(

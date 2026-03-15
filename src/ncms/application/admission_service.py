@@ -1,8 +1,9 @@
 """Admission Service — computes features and routes incoming content.
 
-Evaluates whether new information should be discarded, cached ephemerally,
-stored as atomic memory, routed as an entity state update, or attached to
-an open episode.  All 8 features are heuristic-based (no LLM required).
+Implements a 3-way quality gate: discard / ephemeral_cache / persist.
+State change signal and episode affinity are classification signals
+consumed by additive node creation in memory_service (not routing
+destinations).  All 8 features are heuristic-based (no LLM required).
 
 Feature-flagged via ``config.admission_enabled`` (default False).
 """
@@ -41,8 +42,19 @@ _ARCHITECTURE_MARKERS: frozenset[str] = frozenset({
     "constraint", "principle", "standard", "guideline", "policy",
 })
 
+_REFERENCE_MARKERS: frozenset[str] = frozenset({
+    "endpoint", "returns", "accepts", "supports", "requires",
+    "configuration", "parameter", "query", "response", "request",
+    "method", "schema", "field", "column", "table", "index",
+    "function", "class", "module", "interface", "protocol",
+    "format", "type", "value", "default", "option",
+    "authentication", "authorization", "token", "permission",
+    "route", "path", "url", "api", "service", "handler",
+})
+
 _UTILITY_MARKERS: frozenset[str] = (
-    _DECISION_MARKERS | _CHANGE_MARKERS | _INCIDENT_MARKERS | _ARCHITECTURE_MARKERS
+    _DECISION_MARKERS | _CHANGE_MARKERS | _INCIDENT_MARKERS
+    | _ARCHITECTURE_MARKERS | _REFERENCE_MARKERS
 )
 
 _TEMPORAL_MARKERS: frozenset[str] = frozenset({

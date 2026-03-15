@@ -247,25 +247,19 @@ def score_admission(f: AdmissionFeatures) -> float:
 
 
 def route_memory(f: AdmissionFeatures, score: float) -> str:
-    """Determine storage route from features and admission score.
+    """Quality gate for memory persistence.
 
     Returns one of:
         ``"discard"``            — score too low, not worth keeping
         ``"ephemeral_cache"``    — useful but low persistence, TTL-based
-        ``"atomic_memory"``      — standard persistent memory
-        ``"entity_state_update"``— state change for a tracked entity
-        ``"episode_fragment"``   — fragment belonging to an open episode
+        ``"persist"``            — passes quality gate, create L1 atomic node
 
-    Routing policy from NCMS-Next §8.4.
+    State change (``f.state_change_signal``) and episode affinity
+    (``f.episode_affinity``) are classification signals consumed by
+    the node-creation layer, not routing destinations.
     """
-    # Phase 7 tuned thresholds (original: discard<0.25, ephemeral<0.45,
-    # state_change>=0.50, episode>=0.55)
     if score < 0.25 and f.persistence < 0.20 and f.state_change_signal < 0.20:
         return "discard"
-    if f.state_change_signal >= 0.35:
-        return "entity_state_update"
-    if f.episode_affinity >= 0.40:
-        return "episode_fragment"
     if 0.25 <= score < 0.35:
         return "ephemeral_cache"
-    return "atomic_memory"
+    return "persist"

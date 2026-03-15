@@ -35,7 +35,11 @@ class TestGlinerAlwaysUsed:
         """Resolved labels should flow through to GLiNER extraction."""
         cached = {"finance": ["company", "stock", "market"]}
         labels = resolve_labels(["finance"], cached_labels=cached)
-        assert labels == ["company", "stock", "market"]
+        # Domain labels merged ON TOP of universal labels
+        for domain_label in ["company", "stock", "market"]:
+            assert domain_label in labels
+        for universal_label in UNIVERSAL_LABELS:
+            assert universal_label in labels
 
         # These labels work with GLiNER
         results = extract_entities_gliner(
@@ -46,12 +50,12 @@ class TestGlinerAlwaysUsed:
         for entity in results:
             assert entity["type"] in labels
 
-    def test_domain_cached_labels_override_universal(self):
-        """Domain-cached labels should replace universal defaults."""
+    def test_domain_cached_labels_merged_with_universal(self):
+        """Domain-cached labels should be merged with universal defaults."""
         cached = {"biomedical": ["disease", "drug", "protein", "gene"]}
         labels = resolve_labels(["biomedical"], cached_labels=cached)
         assert "disease" in labels
-        assert "person" not in labels  # Universal label not included
+        assert "person" in labels  # Universal labels always included
 
     def test_empty_text_returns_empty(self):
         """Empty or very short text should return empty list."""

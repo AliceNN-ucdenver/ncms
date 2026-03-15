@@ -100,12 +100,12 @@ class TestAdmissionEnabled:
         # Should have admission metadata
         assert mem.structured is not None
         assert "admission" in mem.structured
-        assert mem.structured["admission"]["route"] == "atomic_memory"
+        assert mem.structured["admission"]["route"] == "persist"
 
-        # Should have a MemoryNode
+        # Should have at least an L1 atomic MemoryNode (may also have L2 entity_state)
         nodes = await fresh_store.get_memory_nodes_for_memory(mem.id)
-        assert len(nodes) == 1
-        assert nodes[0].node_type.value == "atomic"
+        assert len(nodes) >= 1
+        assert any(n.node_type.value == "atomic" for n in nodes)
 
     async def test_discard_not_persisted(
         self, fresh_store, fresh_index, fresh_graph, admission_config
@@ -166,10 +166,10 @@ class TestAdmissionEnabled:
             entry = await fresh_store.get_ephemeral(ephemeral_id)
             assert entry is not None
 
-    async def test_no_memory_node_when_no_admission(
+    async def test_atomic_node_always_created(
         self, fresh_store, fresh_index, fresh_graph, disabled_config
     ):
-        """Without admission, no MemoryNode is created."""
+        """Without admission, L1 atomic MemoryNode is still created."""
         svc = MemoryService(
             store=fresh_store, index=fresh_index, graph=fresh_graph,
             config=disabled_config,
@@ -179,7 +179,8 @@ class TestAdmissionEnabled:
             domains=["test"],
         )
         nodes = await fresh_store.get_memory_nodes_for_memory(mem.id)
-        assert len(nodes) == 0
+        assert len(nodes) == 1
+        assert nodes[0].node_type.value == "atomic"
 
     async def test_admission_failure_still_stores(
         self, fresh_store, fresh_index, fresh_graph, admission_config

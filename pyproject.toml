@@ -30,7 +30,7 @@ dependencies = [
     "litellm>=1.40,<2.0",
     "anyio>=4.3,<5.0",
     "gliner>=0.2.10,<1.0",
-    "fastembed>=0.3,<1.0",
+    "sentence-transformers>=5.0,<6.0",
     "json-repair>=0.39,<1.0",
 ]
 

@@ -17,6 +17,9 @@ wheels/
 ncms_data/
 .ncms/
 
+# Secrets
+.env
+
 # Tools
 .mypy_cache/
 .pytest_cache/

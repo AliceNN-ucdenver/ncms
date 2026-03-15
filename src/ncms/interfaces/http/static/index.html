@@ -926,6 +926,551 @@
     margin-top: 4px;
   }
 
+  /* ── Bus State Section (in modal) ──────────────────────────── */
+  .bus-state-section {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .bus-state-heading {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-purple);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .bus-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+  }
+
+  .bus-agent-row .agent-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 100px;
+  }
+
+  .bus-domain-group {
+    margin-top: 8px;
+  }
+
+  .bus-domain-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    margin-bottom: 2px;
+  }
+
+  .bus-domain-agents {
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding-left: 8px;
+  }
+
+  .bus-timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 3px 4px;
+  }
+
+  .bus-timeline-item:hover {
+    background: rgba(88, 166, 255, 0.08);
+    color: var(--text-primary);
+  }
+
+  .bus-timeline-icon {
+    font-size: 10px;
+    width: 14px;
+    text-align: center;
+  }
+
+  .bus-timeline-time {
+    color: var(--text-muted);
+    font-size: 10px;
+    margin-left: auto;
+  }
+
+  .bus-no-activity {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 4px 0;
+  }
+
+  /* ── Admission Panel ─────────────────────────────────────────── */
+  .admission-panel {
+    width: 90%;
+    max-width: 1200px;
+    margin: 8px auto 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+
+  .admission-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .admission-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-amber);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .admission-toggle {
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .admission-feed {
+    margin-top: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .admission-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+    cursor: pointer;
+  }
+
+  .admission-item:last-child { border-bottom: none; }
+
+  .admission-score-bar {
+    width: 60px;
+    height: 6px;
+    background: var(--bg-primary);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .admission-score-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .admission-route {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .route-discard { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+  .route-ephemeral_cache { background: rgba(210, 153, 34, 0.2); color: var(--accent-amber); }
+  .route-persist { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+  /* Legacy route classes (backward compat with stored events) */
+  .route-atomic_memory { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+  .route-entity_state_update { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); }
+  .route-episode_fragment { background: rgba(210, 153, 34, 0.2); color: var(--accent-amber); }
+
+  .admission-features {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-top: 4px;
+    padding: 6px 0 6px 68px;
+  }
+
+  .admission-feature {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+  }
+
+  .admission-feature-label {
+    color: var(--text-muted);
+    min-width: 55px;
+  }
+
+  .admission-feature-bar {
+    width: 30px;
+    height: 4px;
+    background: var(--bg-primary);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .admission-feature-fill {
+    height: 100%;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+  }
+
+  .admission-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 12px;
+  }
+
+  /* ── Episode Timeline Overlay ────────────────────────────────── */
+  .episode-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-primary);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .episode-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .episode-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-amber);
+  }
+
+  .episode-close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .episode-close-btn:hover { color: var(--text-primary); }
+
+  .episode-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .episode-timeline-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  .episode-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .episode-card:hover {
+    border-color: var(--accent-amber);
+  }
+
+  .episode-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .episode-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .episode-status-dot.open { background: var(--accent-green); }
+  .episode-status-dot.closed { background: var(--text-muted); }
+
+  .episode-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .episode-card-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 12px;
+  }
+
+  .episode-detail-panel {
+    width: 360px;
+    border-left: 1px solid var(--border);
+    background: var(--bg-secondary);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .episode-detail-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .episode-member {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .episode-member-type {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .episode-member-content {
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .episode-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px;
+    font-size: 14px;
+  }
+
+  /* ── State History Overlay ────────────────────────────────── */
+  .state-history-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-primary);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .state-history-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .state-history-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent-green);
+  }
+
+  .state-history-close-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .state-history-close-btn:hover { color: var(--text-primary); }
+
+  .state-history-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .state-history-list {
+    width: 320px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .state-entity-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .state-entity-card:hover, .state-entity-card.active {
+    border-color: var(--accent-green);
+  }
+
+  .state-entity-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .state-entity-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 12px;
+  }
+
+  .state-timeline-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  .state-timeline-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px;
+    font-size: 14px;
+  }
+
+  .state-key-group {
+    margin-bottom: 20px;
+  }
+
+  .state-key-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .state-transition {
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 2px;
+  }
+
+  .state-timeline-rail {
+    width: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .state-timeline-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+
+  .state-timeline-dot.current {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.5);
+  }
+
+  .state-timeline-dot.superseded {
+    background: var(--text-muted);
+  }
+
+  .state-timeline-line {
+    width: 2px;
+    flex: 1;
+    background: var(--border);
+  }
+
+  .state-transition-card {
+    flex: 1;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-left: 8px;
+    margin-bottom: 8px;
+  }
+
+  .state-transition-card.current {
+    border-color: rgba(63, 185, 80, 0.4);
+  }
+
+  .state-transition-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+
+  .state-transition-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .state-current-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--accent-green);
+  }
+
+  .state-superseded-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(139, 148, 158, 0.15);
+    color: var(--text-muted);
+  }
+
   /* ── View Graph Button ─────────────────────────────────────── */
   .graph-btn {
     background: rgba(188, 140, 255, 0.15);
@@ -1432,6 +1977,8 @@
     <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
     <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
     <button class="graph-btn" onclick="openGraphView()">&#x2B22; View Graph</button>
+    <button class="graph-btn" onclick="openEpisodeView()" style="background:rgba(210,153,34,0.15);color:var(--accent-amber);border-color:rgba(210,153,34,0.3)">&#x23F1; Episodes</button>
+    <button class="graph-btn" onclick="openStateHistoryView()" style="background:rgba(63,185,80,0.15);color:var(--accent-green);border-color:rgba(63,185,80,0.3)">&#x1F4CA; States</button>
   </div>
 </div>
 
@@ -1446,9 +1993,50 @@
     <div class="pipeline-empty">No pipeline activity yet</div>
   </div>
 
+  <!-- Admission Scoring Panel -->
+  <div class="admission-panel" id="admission-panel" style="display:none">
+    <div class="admission-header" onclick="toggleAdmissionFeed()">
+      <span class="admission-title">&#x2696; Admission Scoring</span>
+      <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+    </div>
+    <div class="admission-feed" id="admission-feed" style="display:none">
+      <div class="admission-empty">No admission decisions yet</div>
+    </div>
+  </div>
+
   <!-- Central Knowledge Bus backbone -->
   <div class="bus-backbone">
     <span class="bus-label">Knowledge Bus</span>
+  </div>
+</div>
+
+<!-- Episode Timeline Overlay -->
+<div class="episode-overlay" id="episode-overlay" style="display:none">
+  <div class="episode-header">
+    <span class="episode-title">&#x23F1; Episode Timeline</span>
+    <button class="episode-close-btn" onclick="closeEpisodeView()">&times;</button>
+  </div>
+  <div class="episode-body">
+    <div class="episode-timeline-area" id="episode-timeline-area">
+      <div class="episode-empty">Loading episodes...</div>
+    </div>
+    <div class="episode-detail-panel" id="episode-detail-panel" style="display:none"></div>
+  </div>
+</div>
+
+<!-- State History Overlay -->
+<div class="state-history-overlay" id="state-history-overlay" style="display:none">
+  <div class="state-history-header">
+    <span class="state-history-title">&#x1F4CA; Entity State History</span>
+    <button class="state-history-close-btn" onclick="closeStateHistoryView()">&times;</button>
+  </div>
+  <div class="state-history-body">
+    <div class="state-history-list" id="state-history-list">
+      <div class="state-timeline-empty">Loading entities...</div>
+    </div>
+    <div class="state-timeline-area" id="state-timeline-area">
+      <div class="state-timeline-empty">Select an entity to view state transitions</div>
+    </div>
   </div>
 </div>
 
@@ -1485,6 +2073,8 @@ const state = {
   pipelines: {},         // pipeline_id -> { type, stages: [{stage, duration_ms, data, timestamp}], agent_id }
   activePipeline: null,  // pipeline_id of the most recent pipeline
   expandedStage: null,   // { pipelineId, stage } for detail view
+  admissionFeed: [],     // [{score, route, features, agent_id, timestamp, content}]
+  episodes: {},          // episode_id -> { title, status, member_count, created_at }
 };
 
 const MAX_ACTIVITIES = 25;
@@ -1542,7 +2132,9 @@ function connectSSE() {
   const eventTypes = [
     'agent.registered', 'agent.deregistered', 'agent.status',
     'bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate',
-    'memory.stored', 'memory.searched'
+    'memory.stored', 'memory.searched',
+    'episode.created', 'episode.assigned', 'episode.closed',
+    'admission.scored',
   ];
 
   eventTypes.forEach(type => {
@@ -1621,6 +2213,43 @@ function handleEvent(event) {
   if (event.agent_id && !event._isReply) {
     const isSending = ['bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate'].includes(event.type);
     animateFlow(event.agent_id, isSending ? 'send' : 'neutral');
+  }
+
+  // Episode events
+  if (event.type === 'episode.created' && d.episode_id) {
+    state.episodes[d.episode_id] = {
+      title: d.title || '(untitled)',
+      status: 'open',
+      member_count: 0,
+      created_at: event.timestamp,
+    };
+  }
+  if (event.type === 'episode.assigned' && d.episode_id) {
+    const ep = state.episodes[d.episode_id];
+    if (ep) ep.member_count = (ep.member_count || 0) + 1;
+  }
+  if (event.type === 'episode.closed' && d.episode_id) {
+    const ep = state.episodes[d.episode_id];
+    if (ep) {
+      ep.status = 'closed';
+      ep.member_count = d.member_count || ep.member_count;
+    }
+  }
+
+  // Admission scoring events
+  if (event.type === 'admission.scored') {
+    state.admissionFeed.unshift({
+      score: d.score || 0,
+      route: d.route || 'unknown',
+      features: d.features || {},
+      agent_id: event.agent_id,
+      timestamp: event.timestamp,
+      content: d.content || '',
+      id: event.id,
+    });
+    if (state.admissionFeed.length > 30) state.admissionFeed.pop();
+    document.getElementById('admission-panel').style.display = '';
+    renderAdmissionFeed();
   }
 
   updateStats();
@@ -1876,6 +2505,29 @@ function showDetail(eventId) {
     if (d.top_score != null) {
       fieldsHTML += modalField('Top Score', d.top_score.toFixed(3));
     }
+  } else if (event.type === 'admission.scored') {
+    fieldsHTML += modalField('Score', d.score != null ? d.score.toFixed(3) : 'N/A');
+    fieldsHTML += modalField('Route', `<span class="admission-route route-${d.route || 'unknown'}">${(d.route || 'unknown').replace(/_/g, ' ')}</span>`);
+    if (d.features) {
+      let featHTML = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-size:11px">';
+      Object.entries(d.features).forEach(([k, v]) => {
+        featHTML += `<span><span style="color:var(--text-muted)">${k}:</span> ${typeof v === 'number' ? v.toFixed(3) : v}</span>`;
+      });
+      featHTML += '</div>';
+      fieldsHTML += modalField('Features', featHTML);
+    }
+  } else if (event.type === 'episode.created') {
+    fieldsHTML += modalField('Episode ID', d.episode_id || '');
+    fieldsHTML += modalField('Title', d.title || '(untitled)');
+    if (d.anchor_type) fieldsHTML += modalField('Anchor Type', d.anchor_type);
+  } else if (event.type === 'episode.assigned') {
+    fieldsHTML += modalField('Episode ID', d.episode_id || '');
+    fieldsHTML += modalField('Fragment ID', d.fragment_id || '');
+    fieldsHTML += modalField('Match Score', d.match_score != null ? d.match_score.toFixed(3) : 'N/A');
+  } else if (event.type === 'episode.closed') {
+    fieldsHTML += modalField('Episode ID', d.episode_id || '');
+    fieldsHTML += modalField('Reason', d.reason || '');
+    fieldsHTML += modalField('Members', String(d.member_count || 0));
   } else {
     fieldsHTML += modalField('Data', '<pre>' + escapeHtml(JSON.stringify(d, null, 2)) + '</pre>');
   }
@@ -1889,6 +2541,9 @@ function showDetail(eventId) {
     sourceBanner = `<div class="source-banner source-snapshot">&#x2601; Snapshot Response${age}</div>`;
   }
 
+  // Bus State at this moment
+  const busStateHTML = renderBusStateSection(event);
+
   const modal = document.getElementById('modal-root');
   modal.innerHTML = `
     <div class="modal-overlay" onclick="closeModal(event)">
@@ -1898,6 +2553,7 @@ function showDetail(eventId) {
         <div class="modal-agent">${event.agent_id || 'System'} &middot; ${formatTimeFull(event.timestamp)}</div>
         ${sourceBanner}
         ${fieldsHTML}
+        ${busStateHTML}
       </div>
     </div>`;
 }
@@ -1983,6 +2639,391 @@ function buildThreadHTML(askId, currentEvent) {
 
   html += '</div>';
   return html;
+}
+
+// ── Bus State Reconstruction ─────────────────────────────────────────
+
+function reconstructBusStateAt(targetTimestamp) {
+  // Collect all agent lifecycle events and sort chronologically
+  const agentEvents = Object.values(state.eventStore)
+    .filter(e => e.type && e.type.startsWith('agent.') && e.timestamp <= targetTimestamp)
+    .sort((a, b) => a.timestamp < b.timestamp ? -1 : 1);
+
+  // Replay to build agent registry at that point in time
+  const agents = {};
+  agentEvents.forEach(e => {
+    const id = e.agent_id;
+    if (!id) return;
+    const d = e.data || {};
+    if (e.type === 'agent.registered') {
+      agents[id] = { domains: d.domains || [], status: 'online' };
+    } else if (e.type === 'agent.deregistered') {
+      if (agents[id]) agents[id].status = 'offline';
+    } else if (e.type === 'agent.status') {
+      if (agents[id]) agents[id].status = d.status || 'unknown';
+    }
+  });
+
+  // Build domain map
+  const domainMap = {};
+  Object.entries(agents).forEach(([id, a]) => {
+    if (a.status === 'offline') return;
+    (a.domains || []).forEach(d => {
+      if (!domainMap[d]) domainMap[d] = [];
+      domainMap[d].push(id);
+    });
+  });
+
+  // Collect recent bus activity in 30s window
+  const windowStart = new Date(new Date(targetTimestamp).getTime() - 30000).toISOString();
+  const busTypes = ['bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate'];
+  const recentActivity = Object.values(state.eventStore)
+    .filter(e => busTypes.includes(e.type) && e.timestamp >= windowStart && e.timestamp <= targetTimestamp)
+    .sort((a, b) => a.timestamp < b.timestamp ? -1 : 1);
+
+  return { agents, domainMap, recentActivity };
+}
+
+function renderBusStateSection(event) {
+  const busState = reconstructBusStateAt(event.timestamp);
+  const agentEntries = Object.entries(busState.agents).filter(([_, a]) => a.status !== 'offline');
+
+  if (agentEntries.length === 0 && busState.recentActivity.length === 0) {
+    return '';
+  }
+
+  let html = '<div class="bus-state-section">';
+  html += '<div class="bus-state-heading">&#x1F4E1; Bus State at this moment</div>';
+
+  // Agent registry
+  if (agentEntries.length > 0) {
+    agentEntries.forEach(([id, a]) => {
+      const statusColor = a.status === 'online' ? 'var(--accent-green)' :
+                          a.status === 'sleeping' ? 'var(--accent-amber)' : 'var(--accent-red)';
+      const domains = (a.domains || []).map(d =>
+        `<span class="modal-tag" style="font-size:9px;padding:1px 5px">${escapeHtml(d)}</span>`
+      ).join('');
+      html += `<div class="bus-agent-row">
+        <span class="agent-name">${escapeHtml(id)}</span>
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${statusColor}"></span>
+        <span style="font-size:10px;color:var(--text-muted)">${a.status}</span>
+        ${domains}
+      </div>`;
+    });
+  }
+
+  // Domain map
+  const domainEntries = Object.entries(busState.domainMap);
+  if (domainEntries.length > 0) {
+    html += '<div style="margin-top:8px">';
+    html += '<div class="bus-state-heading" style="font-size:10px;margin-bottom:4px">Domain Routing</div>';
+    domainEntries.forEach(([domain, agentIds]) => {
+      html += `<div class="bus-domain-group">
+        <span class="bus-domain-label">${escapeHtml(domain)}</span>
+        <span class="bus-domain-agents">${agentIds.map(a => escapeHtml(a)).join(', ')}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  // Recent bus activity
+  if (busState.recentActivity.length > 0) {
+    html += '<div style="margin-top:10px">';
+    html += '<div class="bus-state-heading" style="font-size:10px;margin-bottom:4px">Recent Bus Activity</div>';
+    busState.recentActivity.forEach(e => {
+      const d = e.data || {};
+      const icon = e.type === 'bus.ask' ? '?' :
+                   e.type === 'bus.response' ? '&#x2713;' :
+                   e.type === 'bus.announce' ? '!' : '&#x2601;';
+      const iconColor = e.type === 'bus.ask' ? 'var(--accent-blue)' :
+                        e.type === 'bus.response' ? 'var(--accent-green)' :
+                        e.type === 'bus.announce' ? 'var(--accent-amber)' : 'var(--accent-pink)';
+      const text = d.question || d.answer || d.content || d.event || e.type;
+      const truncated = typeof text === 'string' && text.length > 60 ? text.slice(0, 60) + '...' : text;
+      html += `<div class="bus-timeline-item" onclick="showDetail('${e.id}')">
+        <span class="bus-timeline-icon" style="color:${iconColor}">${icon}</span>
+        <span>${escapeHtml(e.agent_id || '')} ${escapeHtml(String(truncated))}</span>
+        <span class="bus-timeline-time">${formatTime(e.timestamp)}</span>
+      </div>`;
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="bus-no-activity">No bus activity in the 30s window</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── Admission Panel ─────────────────────────────────────────────────
+
+const MAX_ADMISSION_FEED = 30;
+const ADMISSION_FEATURES = [
+  'novelty', 'utility', 'reliability', 'temporal_salience',
+  'persistence', 'redundancy', 'episode_affinity', 'state_change_signal'
+];
+
+let admissionExpanded = {};
+
+function toggleAdmissionFeed() {
+  const feed = document.getElementById('admission-feed');
+  const toggle = document.getElementById('admission-toggle');
+  if (feed.style.display === 'none') {
+    feed.style.display = '';
+    toggle.innerHTML = '&#x25B2;';
+  } else {
+    feed.style.display = 'none';
+    toggle.innerHTML = '&#x25BC;';
+  }
+}
+
+function renderAdmissionFeed() {
+  const feed = document.getElementById('admission-feed');
+  if (state.admissionFeed.length === 0) {
+    feed.innerHTML = '<div class="admission-empty">No admission decisions yet</div>';
+    return;
+  }
+
+  let html = '';
+  state.admissionFeed.forEach((item, idx) => {
+    const pct = Math.min(100, Math.max(0, item.score * 100));
+    const barColor = item.route === 'discard' ? 'var(--accent-red)' :
+                     item.route === 'ephemeral_cache' ? 'var(--accent-amber)' :
+                     item.route === 'persist' ? 'var(--accent-blue)' : 'var(--accent-blue)';
+    const routeClass = 'route-' + item.route;
+    const truncContent = item.content && item.content.length > 40 ? item.content.slice(0, 40) + '...' : (item.content || '');
+
+    html += `<div>
+      <div class="admission-item" onclick="admissionExpanded['${idx}'] = !admissionExpanded['${idx}']; renderAdmissionFeed()">
+        <div class="admission-score-bar">
+          <div class="admission-score-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+        <span style="font-size:11px;color:var(--text-secondary);min-width:35px">${item.score.toFixed(2)}</span>
+        <span class="admission-route ${routeClass}">${item.route.replace(/_/g, ' ')}</span>
+        <span style="flex:1;font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(truncContent)}</span>
+        <span style="font-size:10px;color:var(--text-muted)">${formatTime(item.timestamp)}</span>
+      </div>`;
+
+    if (admissionExpanded[idx]) {
+      html += '<div class="admission-features">';
+      ADMISSION_FEATURES.forEach(f => {
+        const val = (item.features[f] != null) ? item.features[f] : 0;
+        const fPct = Math.min(100, Math.max(0, val * 100));
+        const label = f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/Salience|Affinity|Signal/g, '').trim();
+        html += `<div class="admission-feature">
+          <span class="admission-feature-label">${label.slice(0, 8)}</span>
+          <div class="admission-feature-bar">
+            <div class="admission-feature-fill" style="width:${fPct}%"></div>
+          </div>
+          <span style="font-size:9px;color:var(--text-muted)">${val.toFixed(2)}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+
+  feed.innerHTML = html;
+}
+
+// ── Episode Timeline ────────────────────────────────────────────────
+
+function openEpisodeView() {
+  document.getElementById('episode-overlay').style.display = 'flex';
+  loadEpisodeData();
+}
+
+function closeEpisodeView() {
+  document.getElementById('episode-overlay').style.display = 'none';
+}
+
+async function loadEpisodeData() {
+  const area = document.getElementById('episode-timeline-area');
+  try {
+    const resp = await fetch('/api/episodes');
+    const episodes = await resp.json();
+
+    if (!episodes || episodes.length === 0) {
+      area.innerHTML = '<div class="episode-empty">No episodes found. Enable episode formation with NCMS_EPISODES_ENABLED=true</div>';
+      return;
+    }
+
+    let html = '';
+    episodes.forEach(ep => {
+      const isOpen = ep.status === 'open';
+      const statusClass = isOpen ? 'open' : 'closed';
+      const title = ep.title || '(untitled episode)';
+      const created = ep.created_at ? formatTimeFull(ep.created_at) : '';
+      const closed = ep.closed_at ? ' &middot; closed ' + formatTimeFull(ep.closed_at) : '';
+
+      html += `<div class="episode-card" onclick="loadEpisodeDetail('${ep.episode_id}')">
+        <div class="episode-card-header">
+          <span class="episode-status-dot ${statusClass}"></span>
+          <span class="episode-card-title">${escapeHtml(title)}</span>
+        </div>
+        <div class="episode-card-meta">
+          <span>${ep.member_count || 0} members</span>
+          <span>${created}${closed}</span>
+          <span style="text-transform:uppercase;font-size:10px;font-weight:600;color:${isOpen ? 'var(--accent-green)' : 'var(--text-muted)'}">${ep.status}</span>
+        </div>
+      </div>`;
+    });
+
+    area.innerHTML = html;
+  } catch (err) {
+    area.innerHTML = `<div class="episode-empty">Error loading episodes: ${err.message}</div>`;
+  }
+}
+
+async function loadEpisodeDetail(episodeId) {
+  const panel = document.getElementById('episode-detail-panel');
+  panel.style.display = '';
+
+  try {
+    const resp = await fetch(`/api/episodes/${episodeId}`);
+    const detail = await resp.json();
+
+    let html = `<div class="episode-detail-title">${escapeHtml(detail.title || '(untitled)')}</div>`;
+    html += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+      Status: <strong>${detail.status}</strong> &middot; ${detail.member_count} members
+    </div>`;
+
+    if (detail.members && detail.members.length > 0) {
+      detail.members.forEach(m => {
+        html += `<div class="episode-member">
+          <div class="episode-member-type">${m.node_type || 'atomic'}</div>
+          <div class="episode-member-content">${escapeHtml(m.content || '(no content)')}</div>
+        </div>`;
+      });
+    } else {
+      html += '<div style="color:var(--text-muted);font-size:12px">No members</div>';
+    }
+
+    panel.innerHTML = html;
+  } catch (err) {
+    panel.innerHTML = `<div style="color:var(--accent-red);font-size:12px">Error: ${err.message}</div>`;
+  }
+}
+
+// ── State History Timeline ──────────────────────────────────────────
+
+function openStateHistoryView() {
+  document.getElementById('state-history-overlay').style.display = 'flex';
+  loadEntitiesWithStates();
+}
+
+function closeStateHistoryView() {
+  document.getElementById('state-history-overlay').style.display = 'none';
+}
+
+async function loadEntitiesWithStates() {
+  const list = document.getElementById('state-history-list');
+  try {
+    const resp = await fetch('/api/entities-with-states');
+    const entities = await resp.json();
+
+    if (!entities || entities.length === 0) {
+      list.innerHTML = '<div class="state-timeline-empty">No entity states found. Enable reconciliation with NCMS_RECONCILIATION_ENABLED=true</div>';
+      return;
+    }
+
+    let html = '';
+    entities.forEach(e => {
+      const keys = (e.state_keys || []).join(', ');
+      html += `<div class="state-entity-card" id="state-card-${e.entity_id}" onclick="loadStateHistory('${escapeHtml(e.entity_id)}', this)">
+        <div class="state-entity-name">${escapeHtml(e.entity_id)}</div>
+        <div class="state-entity-meta">
+          <span>${e.state_count} state${e.state_count !== 1 ? 's' : ''}</span>
+          <span>${e.current_count} current</span>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px">keys: ${escapeHtml(keys)}</div>
+      </div>`;
+    });
+
+    list.innerHTML = html;
+  } catch (err) {
+    list.innerHTML = `<div class="state-timeline-empty">Error: ${err.message}</div>`;
+  }
+}
+
+async function loadStateHistory(entityId, cardEl) {
+  // Highlight active card
+  document.querySelectorAll('.state-entity-card.active').forEach(c => c.classList.remove('active'));
+  if (cardEl) cardEl.classList.add('active');
+
+  const area = document.getElementById('state-timeline-area');
+  area.innerHTML = '<div class="state-timeline-empty">Loading state history...</div>';
+
+  try {
+    // First get entity states to discover keys
+    const statesResp = await fetch(`/api/entity-states/${encodeURIComponent(entityId)}`);
+    const statesData = await statesResp.json();
+
+    // Discover unique state keys from all states
+    const allStates = statesData.current_states || [];
+    const stateKeys = new Set();
+    allStates.forEach(s => {
+      const key = (s.metadata && s.metadata.state_key) || 'state';
+      stateKeys.add(key);
+    });
+    // If no keys found, try 'state' as default
+    if (stateKeys.size === 0) stateKeys.add('state');
+
+    // Fetch history for each key
+    let html = `<h3 style="color:var(--text-primary);font-size:15px;margin:0 0 16px 0">${escapeHtml(entityId)}</h3>`;
+    let anyHistory = false;
+
+    for (const key of stateKeys) {
+      const histResp = await fetch(`/api/entity-states/${encodeURIComponent(entityId)}/history?key=${encodeURIComponent(key)}`);
+      const histData = await histResp.json();
+      const states = histData.states || [];
+
+      if (states.length === 0) continue;
+      anyHistory = true;
+
+      html += `<div class="state-key-group">
+        <div class="state-key-label">${escapeHtml(key)} (${states.length} transition${states.length !== 1 ? 's' : ''})</div>`;
+
+      states.forEach((s, i) => {
+        const isCurrent = s.is_current;
+        const dotClass = isCurrent ? 'current' : 'superseded';
+        const cardClass = isCurrent ? ' current' : '';
+
+        const value = (s.metadata && s.metadata.state_value) || '(unknown)';
+        const scope = (s.metadata && s.metadata.state_scope) || '';
+        const validFrom = s.valid_from ? formatTimeFull(s.valid_from) : '';
+        const validTo = s.valid_to ? formatTimeFull(s.valid_to) : '';
+        const observedAt = s.observed_at ? formatTimeFull(s.observed_at) : '';
+
+        html += `<div class="state-transition">
+          <div class="state-timeline-rail">
+            <div class="state-timeline-dot ${dotClass}"></div>
+            ${i < states.length - 1 ? '<div class="state-timeline-line"></div>' : ''}
+          </div>
+          <div class="state-transition-card${cardClass}">
+            <div class="state-transition-value">${escapeHtml(String(value))}</div>
+            <div class="state-transition-meta">
+              ${isCurrent ? '<span class="state-current-badge">current</span>' : '<span class="state-superseded-badge">superseded</span>'}
+              ${validFrom ? `<span>from: ${validFrom}</span>` : ''}
+              ${validTo ? `<span>to: ${validTo}</span>` : ''}
+              ${observedAt ? `<span>observed: ${observedAt}</span>` : ''}
+              ${scope ? `<span>scope: ${escapeHtml(scope)}</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+      });
+
+      html += '</div>';
+    }
+
+    if (!anyHistory) {
+      html += '<div class="state-timeline-empty">No state transitions found for this entity</div>';
+    }
+
+    area.innerHTML = html;
+  } catch (err) {
+    area.innerHTML = `<div class="state-timeline-empty">Error: ${err.message}</div>`;
+  }
 }
 
 // ── Pipeline Handling ────────────────────────────────────────────────
@@ -2295,6 +3336,14 @@ const MEMORY_COLORS = {
 };
 const DEFAULT_MEMORY_COLOR = '#6e7681';
 
+// HTMG node type colors (Phase 6B.1)
+const NODE_TYPE_COLORS = {
+  atomic: '#58a6ff',
+  entity_state: '#3fb950',
+  episode: '#d29922',
+  abstract: '#bc8cff',
+};
+
 let graphSimulation = null;
 let graphData = null;
 let graphFilterState = {};  // type -> boolean (visible)
@@ -2303,12 +3352,13 @@ function getEntityColor(type) {
   return ENTITY_COLORS[type] || DEFAULT_ENTITY_COLOR;
 }
 
-function getMemoryColor(type) {
+function getMemoryColor(type, nodeType) {
+  if (nodeType && NODE_TYPE_COLORS[nodeType]) return NODE_TYPE_COLORS[nodeType];
   return MEMORY_COLORS[type] || DEFAULT_MEMORY_COLOR;
 }
 
 function getNodeColor(d) {
-  return d.group === 'entity' ? getEntityColor(d.type) : getMemoryColor(d.type);
+  return d.group === 'entity' ? getEntityColor(d.type) : getMemoryColor(d.type, d.node_type);
 }
 
 // ── Open / Close ────────────────────────────────────────────────────
@@ -2420,10 +3470,19 @@ function buildLegend(nodes) {
     </span>`;
   });
 
-  // Memory types
-  html += `<span class="graph-legend-item">
-    <span class="graph-legend-swatch" style="background:#6e7681;width:7px;height:7px"></span>memory
-  </span>`;
+  // Memory types — show HTMG node types if any present
+  const hasNodeTypes = nodes.some(n => n.group === 'memory' && n.node_type);
+  if (hasNodeTypes) {
+    Object.entries(NODE_TYPE_COLORS).forEach(([nt, color]) => {
+      html += `<span class="graph-legend-item">
+        <span class="graph-legend-swatch" style="background:${color};width:7px;height:7px"></span>${nt.replace(/_/g, ' ')}
+      </span>`;
+    });
+  } else {
+    html += `<span class="graph-legend-item">
+      <span class="graph-legend-swatch" style="background:#6e7681;width:7px;height:7px"></span>memory
+    </span>`;
+  }
   html += `<span class="graph-legend-item">
     <span class="graph-legend-swatch" style="background:#fbbf24;width:7px;height:7px;box-shadow:0 0 6px #fbbf24"></span>insight
   </span>`;
@@ -2513,7 +3572,7 @@ function renderGraph(data) {
   node.filter(d => d.group === 'memory')
     .append('circle')
     .attr('r', 5)
-    .attr('fill', d => d.is_insight ? '#fbbf24' : getMemoryColor(d.type))
+    .attr('fill', d => d.is_insight ? '#fbbf24' : getMemoryColor(d.type, d.node_type))
     .attr('filter', d => d.is_insight ? 'url(#glow-insight)' : 'none')
     .attr('opacity', 0.8);
 
@@ -2773,9 +3832,9 @@ function renderTopicsPanel(data) {
     html += '<div class="topics-empty">No domain-specific topics cached</div>';
   }
 
-  // Always show universal labels as fallback reference
+  // Always show universal labels — always included alongside domain labels
   html += `<div class="topics-domain">
-    <div class="topics-domain-name" style="color:var(--text-muted)">Universal (fallback)</div>
+    <div class="topics-domain-name" style="color:var(--text-muted)">Universal (always included)</div>
     <div class="topics-label-list">
       ${universal.map(l => `<span class="topics-label universal">${escapeHtml(l)}</span>`).join('')}
     </div>

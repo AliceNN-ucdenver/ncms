@@ -324,6 +324,8 @@ async def evaluate_reconciliation() -> dict:
 
 
 def main() -> None:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
     asyncio.run(evaluate_reconciliation())
 
 
