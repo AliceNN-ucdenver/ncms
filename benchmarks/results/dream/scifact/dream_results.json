@@ -1,0 +1,1064 @@
+{
+  "scifact": {
+    "dataset": "scifact",
+    "ingestion": {
+      "docs_ingested": 4967,
+      "episodes_created": 2438,
+      "ingestion_seconds": 27232.08,
+      "llm_model": "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "llm_api_base": "http://spark-ee7d.local:8000/v1"
+    },
+    "stages": {
+      "baseline": {
+        "display_name": "Baseline (Phases 1-3)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6840885261683213,
+          "MRR@10": 0.6576521164021164,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 0,
+          "total_memories": 7693
+        },
+        "consolidation_metrics": {},
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6840885261683213,
+            "MRR@10": 0.6576521164021164,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 640.6
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6836696142244957,
+            "MRR@10": 0.6575780423280423,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 645.8
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6836186137090451,
+            "MRR@10": 0.6565224867724868,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 628.1
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.6822449505305459,
+            "MRR@10": 0.6547910052910053,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 635.3
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6817765644750422,
+            "MRR@10": 0.654271164021164,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 576.4
+          }
+        },
+        "insight_count": 0,
+        "total_memories": 7693,
+        "delta_pct": 0.0,
+        "elapsed_seconds": 3779.37,
+        "diagnostics": {
+          "actr": {
+            "mean": 0.4367,
+            "median": 0.561,
+            "std": 1.0848,
+            "min": -5.1708,
+            "max": 5.3445,
+            "count_above_threshold": 7278,
+            "count_below_threshold": 0,
+            "total_with_access": 7278,
+            "total_memories": 7693
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.0,
+            "median": 5.0,
+            "std": 0.0,
+            "count_above_baseline": 0
+          },
+          "abstracts": {
+            "episode_summary": 0,
+            "state_trajectory": 0,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": null,
+          "insight_contribution": {
+            "in_top10": 0,
+            "in_top100": 0,
+            "contributed_relevant": 0,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055812,
+            "nonzero_count": 11084,
+            "total_scored": 100440
+          }
+        }
+      },
+      "episode_summaries": {
+        "display_name": "+ Episode Summaries (5A)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6843367574048725,
+          "MRR@10": 0.6579298941798942,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 100,
+          "total_memories": 7793
+        },
+        "consolidation_metrics": {
+          "decay": 453,
+          "knowledge": 0,
+          "episodes": 100,
+          "trajectories": 0,
+          "patterns": 0,
+          "refresh": 0
+        },
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6843367574048725,
+            "MRR@10": 0.6579298941798942,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 656.0
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6836297303266754,
+            "MRR@10": 0.6575410052910052,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 665.0
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6836186137090451,
+            "MRR@10": 0.6565224867724868,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 675.6
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.682001113550757,
+            "MRR@10": 0.6544021164021164,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 688.5
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6807774084600358,
+            "MRR@10": 0.6528822751322751,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 715.6
+          }
+        },
+        "insight_count": 100,
+        "total_memories": 7793,
+        "delta_pct": 0.04,
+        "elapsed_seconds": 4683.79,
+        "diagnostics": {
+          "actr": {
+            "mean": 0.6715,
+            "median": 0.8036,
+            "std": 1.1212,
+            "min": -5.2412,
+            "max": 5.6059,
+            "count_above_threshold": 7382,
+            "count_below_threshold": 0,
+            "total_with_access": 7382,
+            "total_memories": 7793
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.0584,
+            "median": 5.0,
+            "std": 0.5122,
+            "count_above_baseline": 100
+          },
+          "abstracts": {
+            "episode_summary": 100,
+            "state_trajectory": 0,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": {
+            "improved": 1,
+            "degraded": 0,
+            "unchanged": 299,
+            "top5_improved": [
+              [
+                "821",
+                0.0745
+              ],
+              [
+                "1",
+                0.0
+              ],
+              [
+                "3",
+                0.0
+              ],
+              [
+                "5",
+                0.0
+              ],
+              [
+                "13",
+                0.0
+              ]
+            ],
+            "top5_degraded": [
+              [
+                "1395",
+                0.0
+              ],
+              [
+                "1389",
+                0.0
+              ],
+              [
+                "1385",
+                0.0
+              ],
+              [
+                "1382",
+                0.0
+              ],
+              [
+                "1379",
+                0.0
+              ]
+            ]
+          },
+          "insight_contribution": {
+            "in_top10": 33,
+            "in_top100": 297,
+            "contributed_relevant": 77,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055704,
+            "nonzero_count": 11064,
+            "total_scored": 100451
+          }
+        }
+      },
+      "trajectories": {
+        "display_name": "+ State Trajectories (5B)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6843367574048725,
+          "MRR@10": 0.6579298941798942,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 161,
+          "total_memories": 7854
+        },
+        "consolidation_metrics": {
+          "decay": 474,
+          "knowledge": 0,
+          "episodes": 0,
+          "trajectories": 61,
+          "patterns": 0,
+          "refresh": 0
+        },
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6843367574048725,
+            "MRR@10": 0.6579298941798942,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 700.2
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6837318823937637,
+            "MRR@10": 0.6576521164021164,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 707.7
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6837207657761335,
+            "MRR@10": 0.6566335978835979,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 726.8
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.6833334997726072,
+            "MRR@10": 0.6561798941798942,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 730.9
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6808795605271242,
+            "MRR@10": 0.6529933862433862,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 742.5
+          }
+        },
+        "insight_count": 161,
+        "total_memories": 7854,
+        "delta_pct": 0.04,
+        "elapsed_seconds": 4608.44,
+        "diagnostics": {
+          "actr": {
+            "mean": 0.8124,
+            "median": 0.9767,
+            "std": 1.2173,
+            "min": -5.3019,
+            "max": 5.7907,
+            "count_above_threshold": 7444,
+            "count_below_threshold": 0,
+            "total_with_access": 7444,
+            "total_memories": 7854
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.0925,
+            "median": 5.0,
+            "std": 0.6397,
+            "count_above_baseline": 161
+          },
+          "abstracts": {
+            "episode_summary": 100,
+            "state_trajectory": 61,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": {
+            "improved": 1,
+            "degraded": 0,
+            "unchanged": 299,
+            "top5_improved": [
+              [
+                "821",
+                0.0745
+              ],
+              [
+                "1",
+                0.0
+              ],
+              [
+                "3",
+                0.0
+              ],
+              [
+                "5",
+                0.0
+              ],
+              [
+                "13",
+                0.0
+              ]
+            ],
+            "top5_degraded": [
+              [
+                "1395",
+                0.0
+              ],
+              [
+                "1389",
+                0.0
+              ],
+              [
+                "1385",
+                0.0
+              ],
+              [
+                "1382",
+                0.0
+              ],
+              [
+                "1379",
+                0.0
+              ]
+            ]
+          },
+          "insight_contribution": {
+            "in_top10": 33,
+            "in_top100": 297,
+            "contributed_relevant": 77,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055715,
+            "nonzero_count": 11039,
+            "total_scored": 100192
+          }
+        }
+      },
+      "patterns": {
+        "display_name": "+ Pattern Detection (5C)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6843367574048725,
+          "MRR@10": 0.6579298941798942,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 161,
+          "total_memories": 7854
+        },
+        "consolidation_metrics": {
+          "decay": 538,
+          "knowledge": 0,
+          "episodes": 0,
+          "trajectories": 0,
+          "patterns": 0,
+          "refresh": 0
+        },
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6843367574048725,
+            "MRR@10": 0.6579298941798942,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 740.9
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6837318823937637,
+            "MRR@10": 0.6576521164021164,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 755.8
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6837207657761335,
+            "MRR@10": 0.6566335978835979,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 763.4
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.6832572535933582,
+            "MRR@10": 0.6561005291005291,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 744.4
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6808795605271242,
+            "MRR@10": 0.6529933862433862,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 756.7
+          }
+        },
+        "insight_count": 161,
+        "total_memories": 7854,
+        "delta_pct": 0.04,
+        "elapsed_seconds": 4508.18,
+        "diagnostics": {
+          "actr": {
+            "mean": 0.9437,
+            "median": 1.1179,
+            "std": 1.2433,
+            "min": -5.3549,
+            "max": 5.9272,
+            "count_above_threshold": 7444,
+            "count_below_threshold": 0,
+            "total_with_access": 7444,
+            "total_memories": 7854
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.0925,
+            "median": 5.0,
+            "std": 0.6397,
+            "count_above_baseline": 161
+          },
+          "abstracts": {
+            "episode_summary": 100,
+            "state_trajectory": 61,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": {
+            "improved": 1,
+            "degraded": 0,
+            "unchanged": 299,
+            "top5_improved": [
+              [
+                "821",
+                0.0745
+              ],
+              [
+                "1",
+                0.0
+              ],
+              [
+                "3",
+                0.0
+              ],
+              [
+                "5",
+                0.0
+              ],
+              [
+                "13",
+                0.0
+              ]
+            ],
+            "top5_degraded": [
+              [
+                "1395",
+                0.0
+              ],
+              [
+                "1389",
+                0.0
+              ],
+              [
+                "1385",
+                0.0
+              ],
+              [
+                "1382",
+                0.0
+              ],
+              [
+                "1379",
+                0.0
+              ]
+            ]
+          },
+          "insight_contribution": {
+            "in_top10": 33,
+            "in_top100": 297,
+            "contributed_relevant": 77,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055715,
+            "nonzero_count": 11039,
+            "total_scored": 100192
+          }
+        }
+      },
+      "dream_1x": {
+        "display_name": "+ Dream Cycle (1\u00d7)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6843367574048725,
+          "MRR@10": 0.6579298941798942,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 161,
+          "total_memories": 7854
+        },
+        "consolidation_metrics": {
+          "decay": 538,
+          "knowledge": 0,
+          "episodes": 0,
+          "trajectories": 0,
+          "patterns": 0,
+          "refresh": 0,
+          "dream_rehearsal": 1488,
+          "dream_associations": 0,
+          "dream_drift": 7357
+        },
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6843367574048725,
+            "MRR@10": 0.6579298941798942,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 801.4
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6837318823937637,
+            "MRR@10": 0.6576521164021164,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 815.1
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6837207657761335,
+            "MRR@10": 0.6566335978835979,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 838.8
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.6832091373229523,
+            "MRR@10": 0.6560542328042328,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 834.7
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6808607768950777,
+            "MRR@10": 0.6529933862433862,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 843.5
+          }
+        },
+        "insight_count": 161,
+        "total_memories": 7854,
+        "delta_pct": 0.04,
+        "elapsed_seconds": 7261.19,
+        "diagnostics": {
+          "actr": {
+            "mean": 1.073,
+            "median": 1.2439,
+            "std": 1.2378,
+            "min": -4.9754,
+            "max": 6.0539,
+            "count_above_threshold": 7444,
+            "count_below_threshold": 0,
+            "total_with_access": 7444,
+            "total_memories": 7854
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.1861,
+            "median": 5.1,
+            "std": 0.6332,
+            "count_above_baseline": 7444
+          },
+          "abstracts": {
+            "episode_summary": 100,
+            "state_trajectory": 61,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": {
+            "improved": 1,
+            "degraded": 0,
+            "unchanged": 299,
+            "top5_improved": [
+              [
+                "821",
+                0.0745
+              ],
+              [
+                "1",
+                0.0
+              ],
+              [
+                "3",
+                0.0
+              ],
+              [
+                "5",
+                0.0
+              ],
+              [
+                "13",
+                0.0
+              ]
+            ],
+            "top5_degraded": [
+              [
+                "1395",
+                0.0
+              ],
+              [
+                "1389",
+                0.0
+              ],
+              [
+                "1385",
+                0.0
+              ],
+              [
+                "1382",
+                0.0
+              ],
+              [
+                "1379",
+                0.0
+              ]
+            ]
+          },
+          "insight_contribution": {
+            "in_top10": 33,
+            "in_top100": 297,
+            "contributed_relevant": 77,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055715,
+            "nonzero_count": 11039,
+            "total_scored": 100192
+          }
+        }
+      },
+      "dream_3x": {
+        "display_name": "+ Dream Cycle (3\u00d7)",
+        "retrieval_metrics": {
+          "nDCG@10": 0.6843367574048725,
+          "MRR@10": 0.6579298941798942,
+          "Recall@10": 0.7904444444444444,
+          "Recall@100": 0.8928333333333334,
+          "num_queries": 300,
+          "insight_count": 161,
+          "total_memories": 7854
+        },
+        "consolidation_metrics": {
+          "decay": 1376,
+          "knowledge": 0,
+          "episodes": 0,
+          "trajectories": 0,
+          "patterns": 0,
+          "refresh": 0,
+          "dream_rehearsal": 4464,
+          "dream_associations": 0,
+          "dream_drift": 22302
+        },
+        "actr_crossover": {
+          "actr_0.0": {
+            "nDCG@10": 0.6843367574048725,
+            "MRR@10": 0.6579298941798942,
+            "Recall@10": 0.7904444444444444,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 866.4
+          },
+          "actr_0.1": {
+            "nDCG@10": 0.6837318823937637,
+            "MRR@10": 0.6576521164021164,
+            "Recall@10": 0.7897777777777778,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 861.0
+          },
+          "actr_0.2": {
+            "nDCG@10": 0.6837207657761335,
+            "MRR@10": 0.6566335978835979,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 864.1
+          },
+          "actr_0.3": {
+            "nDCG@10": 0.6832091373229523,
+            "MRR@10": 0.6560542328042328,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 867.7
+          },
+          "actr_0.4": {
+            "nDCG@10": 0.6808607768950777,
+            "MRR@10": 0.6529933862433862,
+            "Recall@10": 0.7931111111111111,
+            "Recall@100": 0.8928333333333334,
+            "elapsed_s": 902.0
+          }
+        },
+        "insight_count": 161,
+        "total_memories": 7854,
+        "delta_pct": 0.04,
+        "elapsed_seconds": 5238.98,
+        "diagnostics": {
+          "actr": {
+            "mean": 1.1465,
+            "median": 1.3065,
+            "std": 1.1851,
+            "min": -4.9875,
+            "max": 6.1137,
+            "count_above_threshold": 7444,
+            "count_below_threshold": 0,
+            "total_with_access": 7444,
+            "total_memories": 7854
+          },
+          "graph": {
+            "entity_count": 51357,
+            "relationship_count": 0,
+            "density": 0,
+            "weakly_connected_components": 51357,
+            "pagerank_mean": 1.9e-05,
+            "pagerank_max": 1.9e-05,
+            "pagerank_std": 0.0,
+            "top5_entities": [
+              [
+                "Microstructural development",
+                1.9e-05
+              ],
+              [
+                "cerebral white matter",
+                1.9e-05
+              ],
+              [
+                "diffusion tensor magnetic resonance imaging",
+                1.9e-05
+              ],
+              [
+                "cortical development",
+                1.9e-05
+              ],
+              [
+                "functional disabilities",
+                1.9e-05
+              ]
+            ]
+          },
+          "associations": {
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0
+          },
+          "importance": {
+            "mean": 5.4701,
+            "median": 5.4,
+            "std": 0.6386,
+            "count_above_baseline": 7444
+          },
+          "abstracts": {
+            "episode_summary": 100,
+            "state_trajectory": 61,
+            "recurring_pattern": 0,
+            "strategic_insight": 0
+          },
+          "per_query_deltas": {
+            "improved": 1,
+            "degraded": 0,
+            "unchanged": 299,
+            "top5_improved": [
+              [
+                "821",
+                0.0745
+              ],
+              [
+                "1",
+                0.0
+              ],
+              [
+                "3",
+                0.0
+              ],
+              [
+                "5",
+                0.0
+              ],
+              [
+                "13",
+                0.0
+              ]
+            ],
+            "top5_degraded": [
+              [
+                "1395",
+                0.0
+              ],
+              [
+                "1389",
+                0.0
+              ],
+              [
+                "1385",
+                0.0
+              ],
+              [
+                "1382",
+                0.0
+              ],
+              [
+                "1379",
+                0.0
+              ]
+            ]
+          },
+          "insight_contribution": {
+            "in_top10": 33,
+            "in_top100": 297,
+            "contributed_relevant": 77,
+            "total_queries": 1109
+          },
+          "spreading": {
+            "mean": 0.055715,
+            "nonzero_count": 11039,
+            "total_scored": 100192
+          }
+        }
+      }
+    },
+    "total_elapsed_seconds": 57312.65
+  }
+}

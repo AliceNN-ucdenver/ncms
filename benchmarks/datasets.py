@@ -51,6 +51,19 @@ DATASET_TOPICS: dict[str, dict[str, list[str] | str]] = {
     },
 }
 
+# SWE-bench Django entity labels (code-entity tuned for GLiNER)
+SWEBENCH_TOPICS: dict[str, dict[str, list[str] | str]] = {
+    "swebench_django": {
+        "domain": "django",
+        "labels": [
+            "class", "method", "function", "module", "field",
+            "model", "view", "middleware", "url_pattern", "form",
+            "template", "queryset", "manager", "migration", "signal",
+            "test_case", "exception", "setting", "command", "mixin",
+        ],
+    },
+}
+
 SUPPORTED_DATASETS = list(DATASET_TOPICS.keys())
 
 # Default cache directory for downloaded datasets

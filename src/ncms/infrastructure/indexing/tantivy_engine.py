@@ -63,52 +63,14 @@ class TantivyEngine:
             )
             writer.commit()
 
-    @staticmethod
-    def _sanitize_query(query: str) -> str:
-        """Escape special characters for Tantivy's query parser.
-
-        Per Quickwit/Tantivy docs, these characters are syntactically
-        significant and must be backslash-escaped in non-quoted terms:
-            + ^ ` : { } " [ ] ( ) ~ ! \\ * SPACE
-
-        Additionally, - is a NOT operator when it precedes a term.
-        Single quotes cause parse errors in tantivy-py and must be removed.
-
-        Escaping (vs removing) preserves the original query terms for
-        BM25 tokenization.
-        """
-        # Single/backtick quotes can't be backslash-escaped in tantivy —
-        # replace with space (tokenizer strips them anyway)
-        query = query.replace("'", " ").replace("`", " ")
-
-        # Strip backslashes from source text BEFORE escaping — they carry
-        # no search semantics and double-escaping (\\ + \() creates invalid
-        # Tantivy syntax.  This fixes ArguAna-style queries with literal \( \).
-        query = query.replace("\\", " ")
-
-        # Backslash-escape all other Tantivy syntax characters
-        # Include < > which are range query operators in Tantivy
-        escape_chars = set('+^:{}"[]()~!*-/<>')
-        escaped = []
-        for ch in query:
-            if ch in escape_chars:
-                escaped.append(f"\\{ch}")
-            else:
-                escaped.append(ch)
-        return "".join(escaped).strip()
-
     def search(self, query: str, limit: int = 50) -> list[tuple[str, float]]:
         """Search the index and return (memory_id, bm25_score) pairs."""
         self.index.reload()
         searcher = self.index.searcher()
 
-        # Sanitize query to avoid Tantivy parse errors from special characters
-        safe_query = self._sanitize_query(query)
-        if not safe_query:
-            return []
-
-        # Parse query against content field with boost, plus domains and tags
-        parsed = self.index.parse_query(safe_query, ["content", "domains", "tags"])
+        # Lenient parse silently drops invalid syntax while preserving
+        # all valid terms — no manual sanitization needed.
+        parsed, _errors = self.index.parse_query_lenient(query, ["content", "domains", "tags"])
         results = searcher.search(parsed, limit).hits
 
         scored: list[tuple[str, float]] = []

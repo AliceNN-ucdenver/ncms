@@ -29,22 +29,6 @@ from ncms.domain.intent import (
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_query(query: str) -> str:
-    """Escape special characters for Tantivy's query parser.
-
-    Mirrors TantivyEngine._sanitize_query — single quotes and backticks are
-    replaced with spaces, all other Tantivy syntax chars are backslash-escaped.
-    """
-    query = query.replace("'", " ").replace("`", " ")
-    escape_chars = set('+^:{}"[]()~!\\*-/')
-    escaped = []
-    for ch in query:
-        if ch in escape_chars:
-            escaped.append(f"\\{ch}")
-        else:
-            escaped.append(ch)
-    return "".join(escaped).strip()
-
 
 class ExemplarIntentIndex:
     """BM25 exemplar index for intent classification.
@@ -96,8 +80,7 @@ class ExemplarIntentIndex:
         Returns:
             IntentResult with classified intent, confidence, and target node types.
         """
-        safe_query = _sanitize_query(query)
-        if not safe_query.strip():
+        if not query.strip():
             return IntentResult(
                 intent=QueryIntent.FACT_LOOKUP,
                 confidence=1.0,
@@ -108,7 +91,7 @@ class ExemplarIntentIndex:
         searcher = self._index.searcher()
 
         try:
-            parsed = self._index.parse_query(safe_query, ["content"])
+            parsed, _errors = self._index.parse_query_lenient(query, ["content"])
         except Exception:
             logger.debug("Tantivy parse error for intent query: %r", query)
             return IntentResult(

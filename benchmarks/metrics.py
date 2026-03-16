@@ -66,6 +66,87 @@ def recall_at_k(ranked_ids: list[str], qrel: dict[str, int], k: int) -> float:
     return len(relevant & retrieved) / len(relevant)
 
 
+def classification_accuracy(
+    predictions: dict[str, str],
+    labels: dict[str, str],
+) -> float:
+    """Classification accuracy for TTL evaluation.
+
+    Args:
+        predictions: {query_id: predicted_label}
+        labels: {query_id: ground_truth_label}
+
+    Returns:
+        Accuracy as a float (0.0 to 1.0).
+    """
+    correct = 0
+    total = 0
+    for qid, pred in predictions.items():
+        if qid in labels:
+            total += 1
+            if pred == labels[qid]:
+                correct += 1
+    return correct / max(total, 1)
+
+
+def temporal_mrr(
+    rankings: dict[str, list[str]],
+    targets: dict[str, str],
+) -> float:
+    """Temporal MRR for CR evaluation.
+
+    For each query, the target is the most recent document (representing
+    current state). MRR measures the rank of this target document.
+
+    Args:
+        rankings: {query_id: ranked list of doc_ids}
+        targets: {query_id: target_doc_id} (most recent / current state)
+
+    Returns:
+        Mean Reciprocal Rank across all queries.
+    """
+    mrr_scores: list[float] = []
+    for qid, target_doc in targets.items():
+        ranked = rankings.get(qid, [])
+        for i, doc_id in enumerate(ranked[:100]):
+            if doc_id == target_doc:
+                mrr_scores.append(1.0 / (i + 1))
+                break
+        else:
+            mrr_scores.append(0.0)
+
+    return sum(mrr_scores) / max(len(mrr_scores), 1)
+
+
+def entity_coverage_f1(
+    retrieved_entities: set[str],
+    expected_entities: set[str],
+) -> float:
+    """Entity coverage F1 for LRU evaluation.
+
+    Measures how well retrieved results cover the expected subsystem entities.
+
+    Args:
+        retrieved_entities: Entity names found in retrieved results.
+        expected_entities: Entity names expected for this query's subsystem.
+
+    Returns:
+        F1 score between retrieved and expected entity sets.
+    """
+    if not expected_entities:
+        return 0.0
+    if not retrieved_entities:
+        return 0.0
+
+    tp = len(retrieved_entities & expected_entities)
+    precision = tp / len(retrieved_entities) if retrieved_entities else 0.0
+    recall = tp / len(expected_entities) if expected_entities else 0.0
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
 def compute_all_metrics(
     rankings: dict[str, list[str]],
     qrels: dict[str, dict[str, int]],

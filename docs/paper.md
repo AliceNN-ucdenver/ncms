@@ -467,7 +467,7 @@ A distinctive feature of NCMS is its embedded Knowledge Bus, which enables agent
 - **GLiNER model size.** The 209M-parameter GLiNER model adds ~50ms per chunk at ingest time. With automatic chunking, long documents (~10K chars) produce ~8 chunks, increasing per-document NER time to ~400ms. This may not be acceptable for high-throughput streaming ingestion.
 - **Keyword bridge failure scope.** The catastrophic keyword bridge failure was evaluated on SciFact only. While we believe the mechanism (hub-node flooding) is dataset-independent, confirmation on other BEIR datasets would strengthen the finding.
 - **Admission routing accuracy.** The 41.7% accuracy on atomic memory routing indicates that distinguishing "worth remembering permanently" from "useful but temporary" remains a subjective boundary that heuristic features cannot fully capture.
-- **Dream cycle evaluation.** Dream cycles are implemented but not yet evaluated on temporal benchmarks. The hypothesis that creating differential access patterns will make ACT-R weight > 0 beneficial requires empirical validation on datasets with longitudinal access patterns.
+- **Dream cycle evaluation.** Dream cycles evaluated on SciFact (Section 6.8) produced flat nDCG@10 across all stages due to zero entity overlap between documents. The hypothesis that differential access patterns make ACT-R weight > 0 beneficial remains untested on data with relational structure; SWE-bench Django evaluation is planned to address this gap.
 
 ### 6.6 Hierarchical Temporal Memory Graph (Implemented)
 
@@ -491,6 +491,58 @@ Dream cycles (Section 4.7) address this by creating the differential access patt
 
 This approach mirrors biological sleep consolidation: the brain doesn't change its retrieval mechanism during sleep, it changes the *strength* of stored memories through selective replay. NCMS's dream cycle does the same for computational memory.
 
+### 6.8 Dream Cycle Experiment on SciFact: A Decisive Negative Result
+
+To empirically validate the dream cycle hypothesis (that creating differential access patterns would make ACT-R weight > 0 beneficial), we conducted a 6-stage incremental experiment on SciFact using the full HTMG pipeline. Each stage added one consolidation or dream component on top of the tuned baseline (BM25 0.6 + SPLADE 0.3 + Graph 0.3 + ACT-R 0.0), with grid search over ACT-R weights at every stage.
+
+**Table 7. SciFact Dream Cycle Progression (nDCG@10)**
+
+| Stage | nDCG@10 | Delta % | ACT-R Best Weight |
+|-------|---------|---------|-------------------|
+| Baseline (Phases 1-3) | 0.6841 | — | 0.0 |
+| + Episode Summaries (5A) | 0.6843 | +0.04% | 0.0 |
+| + State Trajectories (5B) | 0.6843 | +0.04% | 0.0 |
+| + Pattern Detection (5C) | 0.6843 | +0.04% | 0.0 |
+| + Dream Cycle (1x) | 0.6843 | +0.04% | 0.0 |
+| + Dream Cycle (3x) | 0.6843 | +0.04% | 0.0 |
+
+The result is unambiguous: nDCG@10 is flat across all six stages. Episode summaries, state trajectories, pattern detection, and up to three dream cycles produce no measurable retrieval improvement. ACT-R's optimal weight remains 0.0 at every stage.
+
+#### Structural Diagnosis
+
+Post-experiment analysis revealed the root cause. We instrumented the graph and scoring layers to extract structural diagnostics:
+
+**Table 8. SciFact Structural Diagnostics vs. Expected Agent Workload**
+
+| Metric | SciFact (observed) | Expected (agent workload) |
+|--------|-------------------|--------------------------|
+| Entities | 51,357 | ~2,000-5,000 |
+| Graph edges | 0 | Thousands |
+| Connected components | 51,357 | < 100 |
+| Spreading activation mean | 0.0558 | >> 0.1 |
+
+SciFact contains 5,183 independent scientific abstracts. GLiNER extracts 51,357 entities, but because no two abstracts share entities, the graph has zero edges and 51,357 disconnected components. The spreading activation mean of 0.0558 is near-zero and uniform across all candidates, meaning graph expansion contributes no discriminative signal. Dream rehearsal injects synthetic access records, but with no graph connectivity, the differential access patterns cannot propagate through spreading activation. The ACT-R crossover point (where weight > 0 becomes beneficial) is never reached because the prerequisite condition of entity overlap between documents does not exist.
+
+#### Root Cause: Benchmark-Architecture Mismatch
+
+BEIR documents are independent scientific abstracts, each describing a self-contained claim with its own unique set of entities. This is the opposite of what NCMS's cognitive architecture is designed to exploit. The HTMG assumes that knowledge accumulates over time about shared entities (a deployment target, a database schema, an API endpoint), forming temporal episodes and entity state histories that dream cycles can then consolidate and rehearse. When documents share no entities, every HTMG mechanism above the base retrieval layer (episodes, state reconciliation, spreading activation, dream rehearsal, association learning) operates on disconnected singletons and produces no additional signal.
+
+This is not a failure of the dream cycle implementation but a fundamental mismatch between the evaluation dataset and the target workload. NCMS's cognitive features (ACT-R temporal decay, spreading activation, episodes, state reconciliation, dream rehearsal) require three structural properties that are present in agent workflows but absent in IR benchmarks:
+
+1. **Entity overlap across documents.** Agent memory about a codebase accumulates observations about the same classes, functions, and configurations. IR benchmark documents are self-contained.
+2. **Temporal ordering.** Agent observations arrive in causal sequence (bug report, then investigation, then fix, then verification). IR benchmark documents have no temporal relationship.
+3. **Causal chains.** Agent knowledge forms chains of reasoning (configuration change caused performance regression caused incident caused rollback). IR benchmark documents are independent claims.
+
+#### Transition to SWE-bench
+
+These findings motivate a transition from IR benchmarks to agent-native evaluation. The SWE-bench Django subset (850 real GitHub issues, 2012-2023) provides exactly the relational structure that SciFact lacks:
+
+- **Shared code entities.** Issues reference the same Django models, views, middleware, and settings across hundreds of issues, creating dense entity overlap.
+- **Temporal ordering.** Issues span 11 years of development history with natural causal ordering (feature request, implementation, bug report, fix).
+- **Causal chains.** Issues form dependency chains (a migration change breaks a queryset, which surfaces as a test failure, which gets bisected to a specific commit).
+
+Evaluation will target MemoryAgentBench's four memory competencies: Associative Recall (AR), Time-To-Live (TTL), Least Recently Used (LRU), and Conditional Recall (CR). These competencies directly map to NCMS features: AR tests spreading activation and entity graph traversal, TTL tests ACT-R temporal decay, LRU tests access-frequency-based scoring, and CR tests state reconciliation and conditional retrieval. This evaluation framework will measure whether dream cycles create meaningful differential access patterns when the underlying data has the relational structure the architecture requires.
+
 ---
 
 ## 7. Conclusion
@@ -501,11 +553,13 @@ The research arc tells a coherent story. The initial ablation established compon
 
 The weight tuning revelation that ACT-R weight = 0 is optimal on static benchmarks (because all documents share identical access history) led to the final piece: dream cycles inspired by biological sleep consolidation. Dream rehearsal creates differential access patterns, PMI association learning provides data-driven entity weights for spreading activation, and importance drift adjusts memory salience from usage trends. Together, these three non-LLM passes transform ACT-R from a uniform-noise contributor into a potentially discriminative scoring signal.
 
+Empirical validation of dream cycles on SciFact (Section 6.8) produced a decisive negative result: nDCG@10 remained flat at 0.6843 across all six stages (episode summaries, state trajectories, pattern detection, and up to three dream cycles), with ACT-R's optimal weight remaining 0.0 throughout. Structural analysis revealed the root cause: SciFact's 5,183 independent abstracts produce 51,357 entities with zero graph edges and 51,357 disconnected components. Without entity overlap between documents, dream rehearsal cannot create differential access patterns that propagate through spreading activation. This confirms that NCMS's cognitive features require the relational structure present in agent workflows (shared entities, temporal ordering, causal chains) but absent in IR benchmarks.
+
 The system represents an 8-phase architecture validated by 719 tests, with comprehensive tuning across retrieval ranking (108 configurations), admission routing (486 configurations), and reconciliation penalties (16 configurations). It ships as a single `pip install` with zero external dependencies, 12 SQLite tables, and a real-time observability dashboard, making production deployment of a sophisticated cognitive memory system accessible to any Python project.
 
 Three key innovations distinguish NCMS: (1) the first application of ACT-R cognitive scoring to information retrieval, with dream cycles that create the temporal context ACT-R requires; (2) an embedded Knowledge Bus with snapshot surrogates that enables agents to share knowledge and answer questions even while offline; and (3) the empirical demonstration that graph-based retrieval requires specific, discriminative nodes (named entities) rather than generic bridges (keywords), a finding with broad implications for any system using knowledge graph expansion.
 
-Future work will evaluate dream-cycle-enhanced ACT-R on temporal benchmarks (LoCoMo, FiFA), assess the impact of PMI-learned association strengths on spreading activation quality, and validate the complete system on production multi-agent deployments where longitudinal access patterns provide the temporal context that static IR benchmarks cannot.
+Future work transitions from IR benchmarks to agent-native evaluation. The SWE-bench Django subset (850 real GitHub issues spanning 2012-2023) provides the relational structure that SciFact lacks: shared code entities across hundreds of issues, temporal ordering over 11 years of development, and causal dependency chains. Evaluation will target MemoryAgentBench's four memory competencies (Associative Recall, Time-To-Live, Least Recently Used, Conditional Recall), which map directly to NCMS features (spreading activation, ACT-R decay, access-frequency scoring, state reconciliation). This will determine whether dream cycles create meaningful differential access patterns when the underlying data has the entity overlap and temporal structure the architecture requires. Additional future work includes assessing the impact of PMI-learned association strengths on spreading activation quality and validating the complete system on production multi-agent deployments.
 
 ---
 

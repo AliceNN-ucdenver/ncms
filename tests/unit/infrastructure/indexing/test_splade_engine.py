@@ -27,7 +27,7 @@ def _make_sparse_tensor(indices: list[int], values: list[float], size: int = 100
     return t
 
 
-def _deterministic_encode_document(texts: list[str]):
+def _deterministic_encode_document(texts: list[str], **kwargs: object):
     """Return deterministic sparse tensors for document encoding."""
     results = []
     for text in texts:
@@ -38,7 +38,7 @@ def _deterministic_encode_document(texts: list[str]):
     return results
 
 
-def _deterministic_encode_query(texts: list[str]):
+def _deterministic_encode_query(texts: list[str], **kwargs: object):
     """Return deterministic sparse tensors for query encoding."""
     # Same logic as document encoding for test determinism
     return _deterministic_encode_document(texts)

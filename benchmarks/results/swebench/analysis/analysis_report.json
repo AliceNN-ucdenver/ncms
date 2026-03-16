@@ -1,0 +1,302 @@
+{
+  "total_instances": 850,
+  "file_overlap": {
+    "total_pairs": 360825,
+    "pairs_with_overlap": 7193,
+    "overlap_fraction": 0.019934871475091803,
+    "jaccard_mean": 0.5490551844819662,
+    "jaccard_median": 0.5,
+    "jaccard_max": 1.0,
+    "jaccard_std": 0.3621322022969037
+  },
+  "file_distribution": {
+    "unique_files": 313,
+    "files_in_2plus_issues": 208,
+    "files_in_5plus_issues": 85,
+    "files_in_10plus_issues": 25,
+    "top_20_files": [
+      [
+        "django/db/models/sql/query.py",
+        50
+      ],
+      [
+        "django/db/models/expressions.py",
+        44
+      ],
+      [
+        "django/db/models/query.py",
+        38
+      ],
+      [
+        "django/db/models/base.py",
+        37
+      ],
+      [
+        "django/db/models/sql/compiler.py",
+        32
+      ],
+      [
+        "django/db/models/fields/__init__.py",
+        31
+      ],
+      [
+        "django/contrib/admin/options.py",
+        18
+      ],
+      [
+        "django/db/migrations/autodetector.py",
+        18
+      ],
+      [
+        "django/db/models/fields/related.py",
+        17
+      ],
+      [
+        "django/forms/models.py",
+        16
+      ],
+      [
+        "django/urls/resolvers.py",
+        15
+      ],
+      [
+        "django/views/debug.py",
+        14
+      ],
+      [
+        "django/utils/autoreload.py",
+        14
+      ],
+      [
+        "django/db/backends/sqlite3/schema.py",
+        13
+      ],
+      [
+        "django/db/models/lookups.py",
+        12
+      ],
+      [
+        "django/template/defaultfilters.py",
+        12
+      ],
+      [
+        "django/db/models/query_utils.py",
+        12
+      ],
+      [
+        "django/db/backends/base/schema.py",
+        12
+      ],
+      [
+        "django/db/migrations/operations/models.py",
+        12
+      ],
+      [
+        "django/http/response.py",
+        11
+      ]
+    ]
+  },
+  "subsystems": {
+    "distribution": {
+      "orm": 382,
+      "management": 67,
+      "utils": 63,
+      "admin": 57,
+      "other": 56,
+      "forms": 48,
+      "auth": 38,
+      "templates": 26,
+      "views": 24,
+      "urls": 15,
+      "http": 13,
+      "middleware": 13,
+      "cache": 13,
+      "staticfiles": 11,
+      "contenttypes": 8,
+      "sessions": 7,
+      "mail": 4,
+      "serializers": 4,
+      "signals": 1
+    },
+    "num_subsystems": 19
+  },
+  "temporal": {
+    "year_distribution": {
+      "2015": 2,
+      "2016": 3,
+      "2017": 6,
+      "2018": 17,
+      "2019": 193,
+      "2020": 226,
+      "2021": 177,
+      "2022": 147,
+      "2023": 79
+    },
+    "version_distribution": {
+      "3.2": 157,
+      "3.0": 137,
+      "3.1": 128,
+      "4.1": 124,
+      "4.0": 123,
+      "4.2": 84,
+      "5.0": 81,
+      "2.2": 6,
+      "1.11": 4,
+      "2.0": 2,
+      "2.1": 2,
+      "1.9": 1,
+      "1.10": 1
+    },
+    "date_range": {
+      "earliest": "2015-08-19",
+      "latest": "2023-07-17"
+    }
+  },
+  "entity_overlap": {
+    "sample_size": 50,
+    "extraction_time_s": 24.5,
+    "unique_entities": 468,
+    "entities_in_2plus_issues": 72,
+    "entities_in_5plus_issues": 9,
+    "total_entity_memory_edges": 627,
+    "entities_per_issue": {
+      "mean": 12.54,
+      "median": 11.0,
+      "max": 20
+    },
+    "pairwise_overlap": {
+      "total_pairs": 1225,
+      "pairs_with_overlap": 459,
+      "overlap_fraction": 0.3746938775510204,
+      "jaccard_mean": 0.05560123600668548,
+      "jaccard_median": 0.041666666666666664,
+      "jaccard_max": 0.3333333333333333
+    },
+    "top_20_entities": [
+      [
+        "django",
+        27
+      ],
+      [
+        "models",
+        11
+      ],
+      [
+        "model",
+        8
+      ],
+      [
+        "settings",
+        7
+      ],
+      [
+        "pull",
+        7
+      ],
+      [
+        "manage.py",
+        6
+      ],
+      [
+        "manage",
+        5
+      ],
+      [
+        "form",
+        5
+      ],
+      [
+        "test",
+        5
+      ],
+      [
+        "execute",
+        4
+      ],
+      [
+        "command",
+        4
+      ],
+      [
+        "sql",
+        4
+      ],
+      [
+        "field",
+        4
+      ],
+      [
+        "admin",
+        4
+      ],
+      [
+        "core",
+        3
+      ],
+      [
+        "conf",
+        3
+      ],
+      [
+        "base",
+        3
+      ],
+      [
+        "base.py",
+        3
+      ],
+      [
+        "app",
+        3
+      ],
+      [
+        "makemigrations",
+        3
+      ]
+    ],
+    "predicted_graph": {
+      "note": "Extrapolated from 50 sample to full corpus",
+      "predicted_unique_entities": 4773,
+      "predicted_connected_ratio": 0.3746938775510204
+    }
+  },
+  "qrel_coverage": {
+    "ar": {
+      "queries_with_judgments": 159,
+      "total_test_queries": 170,
+      "coverage": 0.9352941176470588,
+      "avg_relevant_per_query": 15.119496855345911
+    },
+    "ttl": {
+      "total_labeled": 170,
+      "subsystem_distribution": {
+        "orm": 83,
+        "other": 14,
+        "forms": 13,
+        "admin": 12,
+        "management": 11,
+        "utils": 10,
+        "templates": 9,
+        "auth": 6,
+        "middleware": 2,
+        "contenttypes": 2,
+        "staticfiles": 2,
+        "urls": 2,
+        "views": 1,
+        "cache": 1,
+        "http": 1,
+        "serializers": 1
+      }
+    },
+    "cr": {
+      "file_state_queries": 146,
+      "avg_temporal_depth": 7.397260273972603
+    },
+    "lru": {
+      "holistic_queries": 45,
+      "avg_relevant_per_query": 52.333333333333336
+    }
+  },
+  "analysis_time_s": 26.4
+}
