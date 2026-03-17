@@ -54,10 +54,13 @@ def spreading_activation(
     association_strengths: dict[tuple[str, str], float] | None = None,
     source_activation: float = 1.0,
 ) -> float:
-    """Compute spreading activation from context to memory via shared entities.
+    """Compute spreading activation from context to memory via entity overlap.
 
-    Simple overlap model: activation spreads from context entities to memory
-    entities that match. Association strengths can optionally weight connections.
+    Legacy overlap model: activation spreads from context entities to memory
+    entities that match. Used as the ACT-R S_i component.
+
+    Uses Jaccard normalization: |overlap| / |union| instead of |overlap| / |context|.
+    Association strengths from dream cycle PMI optionally weight connections.
 
     Args:
         memory_entity_ids: Entity IDs linked to the candidate memory.
@@ -66,30 +69,119 @@ def spreading_activation(
         source_activation: Total activation available to spread.
 
     Returns:
-        Spreading activation S_i.
+        Spreading activation S_i (Jaccard-normalized).
     """
     if not memory_entity_ids or not context_entity_ids:
         return 0.0
 
-    overlap = set(memory_entity_ids) & set(context_entity_ids)
+    mem_set = set(memory_entity_ids)
+    ctx_set = set(context_entity_ids)
+    overlap = mem_set & ctx_set
     if not overlap:
         return 0.0
 
-    # Distribute source activation equally across context elements
-    w_j = source_activation / len(context_entity_ids)
+    # Jaccard normalization: |overlap| / |union| (Fix #5)
+    union_size = len(mem_set | ctx_set)
+    if union_size == 0:
+        return 0.0
 
-    total = 0.0
-    for entity_id in overlap:
-        if association_strengths:
-            # Use explicit association strength if available
-            for ctx_id in context_entity_ids:
+    if association_strengths:
+        # Use explicit association strengths (PMI from dream cycles)
+        total = 0.0
+        for entity_id in overlap:
+            max_strength = 0.0
+            for ctx_id in ctx_set:
                 s = association_strengths.get((ctx_id, entity_id), 0.0)
-                total += w_j * s
-        else:
-            # Default: each overlap contributes proportionally
-            total += w_j
+                max_strength = max(max_strength, s)
+            total += max_strength
+        return source_activation * total / union_size
+    else:
+        # Default: Jaccard overlap
+        return source_activation * len(overlap) / union_size
 
-    return total
+
+def graph_spreading_activation(
+    memory_entity_ids: list[str],
+    context_entity_ids: list[str],
+    neighbor_fn: object,  # Callable[[str], list[tuple[str, float]]]
+    entity_idf: dict[str, float] | None = None,
+    hop_decay: float = 0.5,
+    max_hops: int = 2,
+    source_activation: float = 1.0,
+) -> float:
+    """Compute graph-based spreading activation with per-hop decay and IDF weighting.
+
+    Propagates activation from context entities through the graph to reach
+    memory entities. Unlike the overlap model, this traverses edges with
+    decay per hop and weights entities by IDF (rare entities contribute more).
+
+    Args:
+        memory_entity_ids: Entity IDs linked to the candidate memory.
+        context_entity_ids: Entity IDs active in the current query context.
+        neighbor_fn: Function(entity_id) → [(neighbor_id, edge_weight), ...].
+            Must return weighted neighbors for graph traversal.
+        entity_idf: Optional dict mapping entity_id → IDF weight.
+            If None, all entities weighted equally.
+        hop_decay: Activation multiplier per hop (0.5 = halve each hop).
+        max_hops: Maximum hops to propagate (default 2).
+        source_activation: Total activation available to spread.
+
+    Returns:
+        Graph-based spreading activation score.
+    """
+    if not memory_entity_ids or not context_entity_ids:
+        return 0.0
+
+    mem_set = set(memory_entity_ids)
+
+    # Propagate activation from each context entity through the graph
+    # activation_at[entity_id] = max activation reaching that entity
+    activation_at: dict[str, float] = {}
+
+    for ctx_id in context_entity_ids:
+        # IDF weight for this context entity (rare entities get more activation)
+        idf_weight = entity_idf.get(ctx_id, 1.0) if entity_idf else 1.0
+        initial_activation = source_activation * idf_weight / len(context_entity_ids)
+
+        # BFS with decay
+        current_activation: dict[str, float] = {ctx_id: initial_activation}
+
+        for _hop in range(max_hops):
+            next_activation: dict[str, float] = {}
+            for entity_id, act_val in current_activation.items():
+                if act_val < 0.001:  # Prune negligible activations
+                    continue
+                # Get neighbors with edge weights
+                neighbors = neighbor_fn(entity_id)  # type: ignore[operator]
+                if not neighbors:
+                    continue
+                for neighbor_id, edge_weight in neighbors:
+                    propagated = act_val * hop_decay * edge_weight
+                    if propagated > next_activation.get(neighbor_id, 0.0):
+                        next_activation[neighbor_id] = propagated
+            # Merge: take max activation at each node
+            for nid, act_val in next_activation.items():
+                if act_val > activation_at.get(nid, 0.0):
+                    activation_at[nid] = act_val
+            current_activation = next_activation
+
+        # Direct match (0 hops) — context entity is in memory
+        if ctx_id in mem_set:
+            direct = initial_activation
+            if direct > activation_at.get(ctx_id, 0.0):
+                activation_at[ctx_id] = direct
+
+    # Sum activation that reached memory entities, weighted by IDF
+    total = 0.0
+    for mem_id in mem_set:
+        act_val = activation_at.get(mem_id, 0.0)
+        if act_val > 0:
+            mem_idf = entity_idf.get(mem_id, 1.0) if entity_idf else 1.0
+            total += act_val * mem_idf
+
+    # Normalize by union size (Jaccard-style) to keep scores comparable
+    union_size = len(mem_set | set(context_entity_ids))
+    return total / max(union_size, 1)
 
 
 def activation_noise(sigma: float = 0.25) -> float:

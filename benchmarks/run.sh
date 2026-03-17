@@ -48,6 +48,13 @@ EXTRA_ARGS="$*"
 # ── Pre-flight checks ─────────────────────────────────────────────────
 cd "$PROJECT_ROOT"
 
+# Load .env if present (HF_TOKEN, etc.)
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 # Check uv is available
 if ! command -v uv &>/dev/null; then
     error "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
 import uuid
@@ -28,6 +29,7 @@ from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
     conflict_annotation_penalty,
+    graph_spreading_activation,
     hierarchy_match_bonus,
     retrieval_probability,
     spreading_activation,
@@ -402,6 +404,45 @@ class MemoryService:
         _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
             "entities_linked": len(all_entities),
         }, memory_id=memory.id)
+
+        # Co-occurrence edges: connect entities appearing in the same document.
+        # This gives the entity graph connectivity for graph expansion traversal.
+        # Fix #6: Cap clique size to avoid hub-node inflation from generic entities.
+        # Fix #2: Track co-occurrence counts for PMI weight computation.
+        # In-memory only (not persisted to SQLite) — rebuilt each session.
+        if self._config.cooccurrence_edges_enabled and len(linked_entity_ids) > 1:
+            t0 = time.perf_counter()
+            cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
+            cooc_count = 0
+            edges_new = 0
+            edges_incremented = 0
+            for i, a in enumerate(cooc_ids):
+                for b in cooc_ids[i + 1 :]:
+                    # Check if edge already exists — increment count instead of
+                    # duplicating. This tracks frequency for PMI weighting.
+                    existing_count = self._graph.get_edge_cooccurrence(a, b)
+                    if existing_count > 0:
+                        self._graph.increment_edge_cooccurrence(a, b)
+                        self._graph.increment_edge_cooccurrence(b, a)
+                        edges_incremented += 1
+                    else:
+                        self._graph.add_relationship(Relationship(
+                            source_entity_id=a, target_entity_id=b,
+                            type="co_occurs", source_memory_id=memory.id,
+                        ))
+                        self._graph.add_relationship(Relationship(
+                            source_entity_id=b, target_entity_id=a,
+                            type="co_occurs", source_memory_id=memory.id,
+                        ))
+                        edges_new += 1
+                    cooc_count += 1
+            _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {
+                "edges_new": edges_new,
+                "edges_incremented": edges_incremented,
+                "entities_used": len(cooc_ids),
+                "entities_capped": len(linked_entity_ids)
+                > self._config.cooccurrence_max_entities,
+            }, memory_id=memory.id)
 
         # Contradiction detection (uses shared llm_model + llm_api_base)
         contradiction_count = 0
@@ -977,6 +1018,35 @@ class MemoryService:
             except Exception:
                 logger.debug("Failed to load association strengths", exc_info=True)
 
+        # Compute IDF weights for entity-based scoring (Fix #3)
+        # IDF = log(N / df) where N = total memories, df = memories containing entity
+        entity_idf: dict[str, float] | None = None
+        if context_entity_ids and self._config.graph_expansion_enabled:
+            try:
+                doc_freq = self._graph.get_entity_document_frequency()
+                total_docs = max(self._graph.total_memory_count(), 1)
+                entity_idf = {}
+                for eid, df in doc_freq.items():
+                    if df > 0:
+                        entity_idf[eid] = math.log(total_docs / df)
+                    else:
+                        entity_idf[eid] = 0.0
+            except Exception:
+                logger.debug("Failed to compute entity IDF", exc_info=True)
+
+        # Compute PMI-based edge weights for co-occurrence graph (Fix #2)
+        # PMI(a,b) = log(P(a,b) / (P(a) * P(b)))
+        # Weight = max(0, PMI) normalized to [0, 1]
+        if self._config.cooccurrence_edges_enabled and entity_idf:
+            try:
+                self._compute_pmi_edge_weights()
+            except Exception:
+                logger.debug("Failed to compute PMI edge weights", exc_info=True)
+
+        # Build neighbor lookup for graph-based spreading activation
+        def _neighbor_fn(eid: str) -> list[tuple[str, float]]:
+            return self._graph.get_neighbors_with_weights(eid)
+
         # Load full memory objects and compute activation scores
         t0 = time.perf_counter()
         scored: list[ScoredMemory] = []
@@ -998,12 +1068,24 @@ class MemoryService:
             access_ages = await self._store.get_access_times(memory_id)
             bl = base_level_activation(access_ages, decay=self._config.actr_decay)
 
-            # Spreading activation from graph via shared entities
+            # Spreading activation: two separate signals (Fix #4 — no double-counting)
+            # 1. ACT-R spread: Jaccard entity overlap (for total_activation)
+            # 2. Graph spread: true graph traversal with IDF + PMI weights (for w_graph)
             memory_entities = self._graph.get_entity_ids_for_memory(memory_id)
             spread = spreading_activation(
                 memory_entity_ids=memory_entities,
                 context_entity_ids=context_entity_ids,
                 association_strengths=assoc_strengths,
+                source_activation=self._config.actr_max_spread,
+            )
+            # Graph-based spreading activation (traverses edges with decay + IDF)
+            graph_spread = graph_spreading_activation(
+                memory_entity_ids=memory_entities,
+                context_entity_ids=context_entity_ids,
+                neighbor_fn=_neighbor_fn,
+                entity_idf=entity_idf,
+                hop_decay=self._config.graph_hop_decay,
+                max_hops=self._config.graph_spreading_max_hops,
                 source_activation=self._config.actr_max_spread,
             )
 
@@ -1064,6 +1146,10 @@ class MemoryService:
             splade_score_val = splade_scores.get(memory_id, 0.0)
 
             # Combine BM25, SPLADE, activation, graph, and hierarchy scoring
+            # Fix #4: graph signal uses graph_spread (traversal + IDF + PMI),
+            # NOT spread (which is already inside ACT-R's total_activation).
+            # Reconciliation penalty applied directly to combined score
+            # (not just via ACT-R) so it works even with w_actr=0.0.
             w_bm25 = self._config.scoring_weight_bm25
             w_actr = self._config.scoring_weight_actr
             w_splade = self._config.scoring_weight_splade
@@ -1073,8 +1159,9 @@ class MemoryService:
                 bm25_score * w_bm25
                 + act * w_actr
                 + splade_score_val * w_splade
-                + spread * w_graph  # Entity overlap signal (independent of ACT-R weight)
+                + graph_spread * w_graph  # Graph traversal signal (IDF + PMI weighted)
                 + h_bonus * w_hierarchy
+                - penalty  # Supersession/conflict penalty (independent of ACT-R weight)
             )
 
             # Compute retrieval probability for threshold filtering
@@ -1099,7 +1186,7 @@ class MemoryService:
                     bm25_score=bm25_score,
                     splade_score=splade_score_val,
                     base_level=bl,
-                    spreading=spread,
+                    spreading=graph_spread,  # Graph-based signal for display/debug
                     total_activation=combined,
                     retrieval_prob=ret_prob,
                     is_superseded=mem_is_superseded,
@@ -1202,6 +1289,55 @@ class MemoryService:
                 ),
             })
         return result
+
+    # ── PMI Edge Weights ──────────────────────────────────────────────────
+
+    def _compute_pmi_edge_weights(self) -> None:
+        """Compute PMI-based weights for co-occurrence edges (Fix #2).
+
+        PMI(a,b) = log2(P(a,b) / (P(a) * P(b)))
+        where P(a) = df(a)/N, P(a,b) = cooc(a,b)/N
+
+        High PMI = rare co-occurrence (discriminative).
+        Low PMI = common pair (generic, low signal).
+        Edge weight = clamp(PMI / max_pmi, 0.01, 1.0).
+        """
+        doc_freq = self._graph.get_entity_document_frequency()
+        total_docs = max(self._graph.total_memory_count(), 1)
+
+        if total_docs < 2:
+            return
+
+        # Iterate all edges and compute PMI weights
+        max_pmi = 0.01  # Will be updated
+        edge_pmis: list[tuple[str, str, float]] = []
+
+        with self._graph._lock:
+            for source, target, data in self._graph._graph.edges(data=True):
+                if data.get("type") != "co_occurs":
+                    continue
+                cooc_count = data.get("cooc_count", 1)
+                df_a = doc_freq.get(source, 1)
+                df_b = doc_freq.get(target, 1)
+
+                p_ab = cooc_count / total_docs
+                p_a = df_a / total_docs
+                p_b = df_b / total_docs
+
+                if p_a > 0 and p_b > 0 and p_ab > 0:
+                    pmi = math.log2(p_ab / (p_a * p_b))
+                    pmi = max(pmi, 0.0)  # Only positive PMI
+                else:
+                    pmi = 0.0
+
+                edge_pmis.append((source, target, pmi))
+                if pmi > max_pmi:
+                    max_pmi = pmi
+
+        # Normalize to [0.01, 1.0] and set weights
+        for source, target, pmi in edge_pmis:
+            weight = max(0.01, pmi / max_pmi) if max_pmi > 0 else 0.01
+            self._graph.set_edge_weight(source, target, weight)
 
     # ── Intent Supplementary Candidates ──────────────────────────────────
 

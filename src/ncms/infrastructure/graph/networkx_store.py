@@ -195,3 +195,69 @@ class NetworkXGraph:
         """Return all memory IDs linked to a specific entity."""
         with self._lock:
             return self._entity_memories.get(entity_id, set()).copy()
+
+    def get_entity_document_frequency(self) -> dict[str, int]:
+        """Return entity_id → number of memories it appears in (for IDF)."""
+        with self._lock:
+            return {eid: len(mids) for eid, mids in self._entity_memories.items()}
+
+    def total_memory_count(self) -> int:
+        """Return total number of memories with entity links."""
+        with self._lock:
+            return len(self._memory_entities)
+
+    def get_edge_weight(self, source_id: str, target_id: str) -> float:
+        """Return the edge weight between two entities (0.0 if no edge)."""
+        with self._lock:
+            if self._graph.has_edge(source_id, target_id):
+                return self._graph[source_id][target_id].get("weight", 1.0)
+            return 0.0
+
+    def set_edge_weight(self, source_id: str, target_id: str, weight: float) -> None:
+        """Set the weight on an existing edge."""
+        with self._lock:
+            if self._graph.has_edge(source_id, target_id):
+                self._graph[source_id][target_id]["weight"] = weight
+
+    def get_neighbors_with_weights(
+        self, entity_id: str,
+    ) -> list[tuple[str, float]]:
+        """Return (neighbor_id, edge_weight) for all neighbors of an entity."""
+        with self._lock:
+            if entity_id not in self._graph:
+                return []
+            neighbors: list[tuple[str, float]] = []
+            seen: set[str] = set()
+            # Outgoing
+            for _, target, data in self._graph.out_edges(entity_id, data=True):
+                if target not in seen:
+                    neighbors.append((target, data.get("weight", 1.0)))
+                    seen.add(target)
+            # Incoming
+            for source, _, data in self._graph.in_edges(entity_id, data=True):
+                if source not in seen:
+                    neighbors.append((source, data.get("weight", 1.0)))
+                    seen.add(source)
+            return neighbors
+
+    def increment_edge_cooccurrence(
+        self, source_id: str, target_id: str,
+    ) -> int:
+        """Increment co-occurrence count on an edge. Returns new count.
+
+        If edge exists, increments its 'cooc_count' attribute.
+        Returns 0 if edge doesn't exist.
+        """
+        with self._lock:
+            if self._graph.has_edge(source_id, target_id):
+                count = self._graph[source_id][target_id].get("cooc_count", 1) + 1
+                self._graph[source_id][target_id]["cooc_count"] = count
+                return count
+            return 0
+
+    def get_edge_cooccurrence(self, source_id: str, target_id: str) -> int:
+        """Return co-occurrence count for an edge (0 if no edge)."""
+        with self._lock:
+            if self._graph.has_edge(source_id, target_id):
+                return self._graph[source_id][target_id].get("cooc_count", 1)
+            return 0

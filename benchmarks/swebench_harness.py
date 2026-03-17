@@ -133,6 +133,9 @@ async def ingest_swebench(
         admission_enabled=True,
         reconciliation_enabled=True,
         episodes_enabled=True,
+        # Enable dream cycle flag globally so search logging populates
+        # search_log table for PMI computation across ALL stages
+        dream_cycle_enabled=True,
         # LLM config
         consolidation_knowledge_model=llm_model,
         consolidation_knowledge_api_base=llm_api_base,

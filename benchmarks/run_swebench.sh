@@ -14,6 +14,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
+# Load .env if present (HF_TOKEN, etc.)
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+    echo "  ✓ .env loaded (HF_TOKEN=${HF_TOKEN:+set}${HF_TOKEN:-unset})"
+else
+    echo "  ⚠ No .env file found"
+fi
+
 # Defaults (overridable via env vars)
 LLM_MODEL="${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
 LLM_API_BASE="${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
@@ -51,7 +61,7 @@ echo "  ✓ Python imports OK"
 # Check LLM connectivity (skip for analysis-only)
 if [[ "${1:-}" != "--analysis-only" ]]; then
     if [[ -n "$LLM_API_BASE" ]]; then
-        if ! curl -s --connect-timeout 5 "$LLM_API_BASE/models" >/dev/null 2>&1; then
+        if ! curl -s --connect-timeout 10 --max-time 30 "$LLM_API_BASE/models" >/dev/null 2>&1; then
             echo "WARNING: Cannot reach LLM at $LLM_API_BASE"
             echo "  Consolidation stages may fail. Continue? (Ctrl+C to abort)"
             sleep 3

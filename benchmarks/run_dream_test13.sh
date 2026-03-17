@@ -25,6 +25,13 @@ LLM_API_BASE="${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
 
 cd "$PROJECT_ROOT"
 
+# Load .env if present (HF_TOKEN, etc.)
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 export PYTHONUNBUFFERED=1
 
 mkdir -p "$RESULTS_DIR"

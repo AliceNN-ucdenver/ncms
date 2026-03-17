@@ -59,6 +59,14 @@ class NCMSConfig(BaseSettings):
     graph_expansion_depth: int = 1
     graph_expansion_max: int = 10
 
+    # Co-occurrence edges (entity graph connectivity)
+    cooccurrence_edges_enabled: bool = True
+    cooccurrence_max_entities: int = 12  # Fix #6: reduced from 20 to cap clique inflation
+
+    # Graph-based spreading activation parameters
+    graph_hop_decay: float = 0.5       # Activation multiplier per hop
+    graph_spreading_max_hops: int = 2  # Maximum hops for graph traversal
+
     # Model cache directory (for GLiNER / SPLADE / sentence-transformers downloads)
     # Defaults to ~/.cache/huggingface/hub if not set
     model_cache_dir: str | None = None

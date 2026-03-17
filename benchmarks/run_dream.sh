@@ -48,6 +48,13 @@ LLM_API_BASE="${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
 # ── Pre-flight checks ─────────────────────────────────────────────────
 cd "$PROJECT_ROOT"
 
+# Load .env if present (HF_TOKEN, etc.)
+if [[ -f .env ]]; then
+    set -a
+    source .env
+    set +a
+fi
+
 if ! command -v uv &>/dev/null; then
     error "uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
