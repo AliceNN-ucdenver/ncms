@@ -31,6 +31,8 @@ from ncms.domain.scoring import (
     conflict_annotation_penalty,
     graph_spreading_activation,
     hierarchy_match_bonus,
+    ppr_graph_score,
+    recency_score,
     retrieval_probability,
     spreading_activation,
     supersession_penalty,
@@ -919,6 +921,28 @@ class MemoryService:
             "context_entity_count": len(context_entity_ids),
         })
 
+        # Phase 9: Query expansion — inject PMI-learned terms into BM25
+        if self._config.dream_query_expansion_enabled and context_entity_ids:
+            try:
+                expansion_terms = await self._get_query_expansion_terms(
+                    context_entity_ids
+                )
+                if expansion_terms:
+                    expanded_query = query + " " + " ".join(expansion_terms)
+                    expanded_bm25 = self._index.search(
+                        expanded_query, limit=self._config.tier1_candidates,
+                    )
+                    # Merge expanded results into bm25_scores (take max)
+                    for mid, score in expanded_bm25:
+                        if mid not in bm25_scores or score > bm25_scores[mid]:
+                            bm25_scores[mid] = score
+                    _emit_stage("query_expansion", 0, {
+                        "terms": expansion_terms,
+                        "expanded_candidates": len(expanded_bm25),
+                    })
+            except Exception:
+                logger.debug("Query expansion failed", exc_info=True)
+
         # ── Tier 1.5: Graph-expanded candidate discovery ────────────────
         # Collect entity IDs from fused hits, then discover related memories
         # via shared graph entities that search missed lexically.
@@ -1035,17 +1059,49 @@ class MemoryService:
                 logger.debug("Failed to compute entity IDF", exc_info=True)
 
         # Compute PMI-based edge weights for co-occurrence graph (Fix #2)
-        # PMI(a,b) = log(P(a,b) / (P(a) * P(b)))
-        # Weight = max(0, PMI) normalized to [0, 1]
-        if self._config.cooccurrence_edges_enabled and entity_idf:
+        # Only needed for BFS fallback path (PPR uses edge weights directly)
+        if (
+            not self._config.graph_ppr_enabled
+            and self._config.cooccurrence_edges_enabled
+            and entity_idf
+        ):
             try:
                 self._compute_pmi_edge_weights()
             except Exception:
                 logger.debug("Failed to compute PMI edge weights", exc_info=True)
 
-        # Build neighbor lookup for graph-based spreading activation
+        # Phase 9: Personalized PageRank — compute ONCE per query (not per candidate)
+        ppr_scores: dict[str, float] = {}
+        if self._config.graph_ppr_enabled and context_entity_ids:
+            try:
+                seed = {
+                    eid: entity_idf.get(eid, 1.0) if entity_idf else 1.0
+                    for eid in context_entity_ids
+                }
+                ppr_scores = self._graph.personalized_pagerank(seed)
+            except Exception:
+                logger.debug("PPR computation failed, falling back to BFS", exc_info=True)
+
+        # BFS fallback closures (only used when PPR disabled or fails)
         def _neighbor_fn(eid: str) -> list[tuple[str, float]]:
             return self._graph.get_neighbors_with_weights(eid)
+
+        def _degree_fn(eid: str) -> int:
+            return self._graph.get_entity_degree(eid)
+
+        # Phase 9: Resolve signal weights (per-intent or global)
+        w_bm25 = self._config.scoring_weight_bm25
+        w_actr = self._config.scoring_weight_actr
+        w_splade = self._config.scoring_weight_splade
+        w_graph = self._config.scoring_weight_graph
+        w_recency = self._config.scoring_weight_recency
+
+        if self._config.intent_routing_enabled and intent_result:
+            try:
+                routed = self._get_intent_weights(intent_result.intent)
+                w_bm25, w_splade, w_graph, w_recency = routed
+            except Exception:
+                logger.debug("Intent weight routing failed, using defaults", exc_info=True)
 
         # Load full memory objects and compute activation scores
         t0 = time.perf_counter()
@@ -1070,7 +1126,7 @@ class MemoryService:
 
             # Spreading activation: two separate signals (Fix #4 — no double-counting)
             # 1. ACT-R spread: Jaccard entity overlap (for total_activation)
-            # 2. Graph spread: true graph traversal with IDF + PMI weights (for w_graph)
+            # 2. Graph spread: PPR or BFS traversal (for w_graph)
             memory_entities = self._graph.get_entity_ids_for_memory(memory_id)
             spread = spreading_activation(
                 memory_entity_ids=memory_entities,
@@ -1078,16 +1134,24 @@ class MemoryService:
                 association_strengths=assoc_strengths,
                 source_activation=self._config.actr_max_spread,
             )
-            # Graph-based spreading activation (traverses edges with decay + IDF)
-            graph_spread = graph_spreading_activation(
-                memory_entity_ids=memory_entities,
-                context_entity_ids=context_entity_ids,
-                neighbor_fn=_neighbor_fn,
-                entity_idf=entity_idf,
-                hop_decay=self._config.graph_hop_decay,
-                max_hops=self._config.graph_spreading_max_hops,
-                source_activation=self._config.actr_max_spread,
-            )
+            # Phase 9: PPR graph score (or BFS fallback)
+            if ppr_scores:
+                graph_spread = ppr_graph_score(
+                    memory_entity_ids=memory_entities,
+                    ppr_scores=ppr_scores,
+                    entity_idf=entity_idf,
+                )
+            else:
+                graph_spread = graph_spreading_activation(
+                    memory_entity_ids=memory_entities,
+                    context_entity_ids=context_entity_ids,
+                    neighbor_fn=_neighbor_fn,
+                    entity_idf=entity_idf,
+                    hop_decay=self._config.graph_hop_decay,
+                    max_hops=self._config.graph_spreading_max_hops,
+                    source_activation=self._config.actr_max_spread,
+                    degree_fn=_degree_fn,
+                )
 
             noise = activation_noise(sigma=self._config.actr_noise)
 
@@ -1145,15 +1209,22 @@ class MemoryService:
             bm25_score = bm25_scores.get(memory_id, 0.0)
             splade_score_val = splade_scores.get(memory_id, 0.0)
 
-            # Combine BM25, SPLADE, activation, graph, and hierarchy scoring
-            # Fix #4: graph signal uses graph_spread (traversal + IDF + PMI),
+            # Recency scoring: exponential decay based on memory age
+            rec_score = 0.0
+            if w_recency > 0 and memory.created_at:
+                from datetime import UTC, datetime
+                now = datetime.now(UTC)
+                age_seconds = max(0.0, (now - memory.created_at).total_seconds())
+                rec_score = recency_score(
+                    age_seconds,
+                    half_life_days=self._config.recency_half_life_days,
+                )
+
+            # Combine BM25, SPLADE, activation, graph, hierarchy, and recency
+            # Graph signal uses graph_spread (PPR or BFS traversal),
             # NOT spread (which is already inside ACT-R's total_activation).
             # Reconciliation penalty applied directly to combined score
             # (not just via ACT-R) so it works even with w_actr=0.0.
-            w_bm25 = self._config.scoring_weight_bm25
-            w_actr = self._config.scoring_weight_actr
-            w_splade = self._config.scoring_weight_splade
-            w_graph = self._config.scoring_weight_graph
             w_hierarchy = self._config.scoring_weight_hierarchy
             combined = (
                 bm25_score * w_bm25
@@ -1161,6 +1232,7 @@ class MemoryService:
                 + splade_score_val * w_splade
                 + graph_spread * w_graph  # Graph traversal signal (IDF + PMI weighted)
                 + h_bonus * w_hierarchy
+                + rec_score * w_recency  # Temporal recency (newer = higher)
                 - penalty  # Supersession/conflict penalty (independent of ACT-R weight)
             )
 
@@ -1396,6 +1468,83 @@ class MemoryService:
         # pattern_lookup and strategic_reflection: no supplement until Phase 5
 
         return supplement
+
+    # ── Phase 9: Per-Intent Weight Routing ────────────────────────────────
+
+    def _get_intent_weights(self, intent: QueryIntent) -> tuple[float, float, float, float]:
+        """Resolve (w_bm25, w_splade, w_graph, w_recency) for the classified intent.
+
+        Returns a 4-tuple of weights parsed from the config string for this intent.
+        Falls back to global defaults on parse error.
+        """
+        intent_key = intent.value  # e.g. "fact_lookup"
+        config_attr = f"intent_weights_{intent_key}"
+        raw = getattr(self._config, config_attr, None)
+        if not raw:
+            return (
+                self._config.scoring_weight_bm25,
+                self._config.scoring_weight_splade,
+                self._config.scoring_weight_graph,
+                self._config.scoring_weight_recency,
+            )
+        try:
+            parts = [float(x.strip()) for x in raw.split(",")]
+            if len(parts) != 4:
+                raise ValueError(f"Expected 4 weights, got {len(parts)}")
+            return (parts[0], parts[1], parts[2], parts[3])
+        except (ValueError, TypeError):
+            logger.warning("Invalid intent weights for %s: %r", intent_key, raw)
+            return (
+                self._config.scoring_weight_bm25,
+                self._config.scoring_weight_splade,
+                self._config.scoring_weight_graph,
+                self._config.scoring_weight_recency,
+            )
+
+    # ── Phase 9: Query Expansion ──────────────────────────────────────────
+
+    _query_expansion_dict: dict[str, list[str]] | None = None
+
+    async def _get_query_expansion_terms(
+        self, context_entity_ids: list[str],
+    ) -> list[str]:
+        """Look up PMI-learned expansion terms for the query's entities.
+
+        Loads the expansion dict from consolidation_state on first call
+        (cached thereafter). Returns a flat list of expansion term strings.
+        """
+        import json as _json
+
+        # Lazy-load expansion dict
+        if self._query_expansion_dict is None:
+            raw = await self._store.get_consolidation_value("query_expansion_dict")
+            if raw:
+                try:
+                    self._query_expansion_dict = _json.loads(raw)
+                except Exception:
+                    self._query_expansion_dict = {}
+            else:
+                self._query_expansion_dict = {}
+
+        if not self._query_expansion_dict:
+            return []
+
+        # Look up entity names from graph for expansion
+        terms: list[str] = []
+        seen: set[str] = set()
+        max_terms = self._config.dream_expansion_max_terms
+
+        for eid in context_entity_ids:
+            # Entity names are stored in graph node attributes
+            expansions = self._query_expansion_dict.get(eid, [])
+            for term in expansions:
+                if term not in seen:
+                    terms.append(term)
+                    seen.add(term)
+                    if len(terms) >= max_terms:
+                        return terms
+
+        return terms
 
     # ── Direct Access ────────────────────────────────────────────────────
 

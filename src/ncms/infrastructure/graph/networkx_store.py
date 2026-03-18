@@ -261,3 +261,84 @@ class NetworkXGraph:
             if self._graph.has_edge(source_id, target_id):
                 return self._graph[source_id][target_id].get("cooc_count", 1)
             return 0
+
+    def get_entity_degree(self, entity_id: str) -> int:
+        """Return total degree (in + out) for an entity node.
+
+        Used for hub-node dampening in graph spreading activation.
+        High-degree nodes (e.g., generic entities like 'django', 'model')
+        get dampened to prevent flooding activation across the graph.
+        """
+        with self._lock:
+            if entity_id not in self._graph:
+                return 0
+            return (
+                self._graph.in_degree(entity_id)
+                + self._graph.out_degree(entity_id)
+            )
+
+    # ── Phase 9: Personalized PageRank ────────────────────────────────
+
+    def personalized_pagerank(
+        self,
+        seed_entities: dict[str, float],
+        alpha: float = 0.85,
+        max_iter: int = 50,
+        tol: float = 1e-6,
+    ) -> dict[str, float]:
+        """Compute Personalized PageRank from seed entities.
+
+        Query-conditioned graph scoring: activation flows from seed (query)
+        entities through the graph. Entities close to the query via many
+        high-weight paths get higher scores (HippoRAG-style).
+
+        Args:
+            seed_entities: entity_id → IDF weight (will be normalized to sum 1.0).
+            alpha: Damping factor (probability of following links vs teleporting).
+            max_iter: Maximum power iteration steps.
+            tol: Convergence tolerance.
+
+        Returns:
+            Dict mapping entity_id → PPR score (probability, sums to ~1.0).
+            Empty dict if graph has no nodes or no valid seeds.
+        """
+        with self._lock:
+            if self._graph.number_of_nodes() == 0 or not seed_entities:
+                return {}
+
+            # Filter seeds to only entities present in the graph
+            valid_seeds = {
+                eid: w for eid, w in seed_entities.items()
+                if eid in self._graph and w > 0
+            }
+            if not valid_seeds:
+                return {}
+
+            # Normalize to probability distribution (sum to 1.0)
+            total_w = sum(valid_seeds.values())
+            if total_w <= 0:
+                return {}
+            personalization = {eid: w / total_w for eid, w in valid_seeds.items()}
+
+            try:
+                return nx.pagerank(
+                    self._graph,
+                    alpha=alpha,
+                    personalization=personalization,
+                    max_iter=max_iter,
+                    tol=tol,
+                )
+            except nx.PowerIterationFailedConvergence:
+                # Return last iteration result via lower tolerance
+                try:
+                    return nx.pagerank(
+                        self._graph,
+                        alpha=alpha,
+                        personalization=personalization,
+                        max_iter=max_iter * 2,
+                        tol=tol * 100,
+                    )
+                except Exception:
+                    return {}
+            except Exception:
+                return {}

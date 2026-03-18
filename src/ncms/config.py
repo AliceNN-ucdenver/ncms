@@ -66,6 +66,11 @@ class NCMSConfig(BaseSettings):
     # Graph-based spreading activation parameters
     graph_hop_decay: float = 0.5       # Activation multiplier per hop
     graph_spreading_max_hops: int = 2  # Maximum hops for graph traversal
+    graph_ppr_enabled: bool = True     # Use Personalized PageRank (replaces BFS)
+
+    # Recency scoring
+    scoring_weight_recency: float = 0.0   # Additive recency weight (0 = disabled)
+    recency_half_life_days: float = 30.0  # Half-life for exponential recency decay
 
     # Model cache directory (for GLiNER / SPLADE / sentence-transformers downloads)
     # Defaults to ~/.cache/huggingface/hub if not set
@@ -138,6 +143,27 @@ class NCMSConfig(BaseSettings):
     pattern_stability_threshold: float = 0.7         # Promote to strategic_insight above this
     abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
     consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
+
+    # Per-intent signal weights (Phase 9 — RouteRAG-style)
+    intent_routing_enabled: bool = False
+    intent_weights_fact_lookup: str = "0.6,0.3,0.3,0.0"
+    intent_weights_current_state_lookup: str = "0.4,0.2,0.5,0.1"
+    intent_weights_historical_lookup: str = "0.5,0.3,0.3,0.1"
+    intent_weights_event_reconstruction: str = "0.5,0.3,0.4,0.0"
+    intent_weights_change_detection: str = "0.4,0.2,0.5,0.1"
+    intent_weights_pattern_lookup: str = "0.3,0.5,0.3,0.0"
+    intent_weights_strategic_reflection: str = "0.3,0.5,0.3,0.0"
+
+    # Dream query expansion (Phase 9 — REM phase)
+    dream_query_expansion_enabled: bool = False
+    dream_expansion_max_terms: int = 5
+    dream_expansion_min_pmi: float = 0.3
+
+    # Active forgetting (Phase 9 — SleepGate-inspired)
+    dream_active_forgetting_enabled: bool = False
+    dream_forgetting_decay_rate: float = 0.2
+    dream_forgetting_access_prune_days: int = 30
+    dream_forgetting_conflict_age_days: int = 7
 
     # Dream cycles (Phase 8)
     dream_cycle_enabled: bool = False

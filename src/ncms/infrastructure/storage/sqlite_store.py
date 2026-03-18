@@ -7,7 +7,7 @@ All SQL is parameterized to prevent injection.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -161,6 +161,19 @@ class SQLiteStore:
             ),
         )
         await self.db.commit()
+
+    async def prune_access_records(self, memory_id: str, max_age_days: int) -> int:
+        """Delete access records older than max_age_days for a memory.
+
+        Returns the number of records deleted.
+        """
+        cutoff = (datetime.now(UTC) - timedelta(days=max_age_days)).isoformat()
+        cursor = await self.db.execute(
+            "DELETE FROM access_log WHERE memory_id = ? AND accessed_at < ?",
+            (memory_id, cutoff),
+        )
+        await self.db.commit()
+        return cursor.rowcount
 
     async def get_access_times(self, memory_id: str) -> list[float]:
         """Return ages in seconds of all accesses for a memory."""

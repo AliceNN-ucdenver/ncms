@@ -32,6 +32,19 @@ from ncms.domain.scoring import base_level_activation
 logger = logging.getLogger(__name__)
 
 
+def _collect_entity_ids(
+    graph: GraphEngine | None,
+    memory_ids: list[str],
+) -> set[str]:
+    """Collect all entity IDs linked to a set of memories."""
+    entity_ids: set[str] = set()
+    if not graph:
+        return entity_ids
+    for mid in memory_ids:
+        entity_ids.update(graph.get_entity_ids_for_memory(mid))
+    return entity_ids
+
+
 class ConsolidationService:
     """Background maintenance for memory health and knowledge consolidation."""
 
@@ -281,7 +294,7 @@ class ConsolidationService:
             )
             await self._store.save_memory_node(abstract_node)
 
-            # Create graph edges
+            # Create graph edges (SQLite HTMG)
             await self._store.save_graph_edge(GraphEdge(
                 source_id=abstract_node.id,
                 target_id=ep_node.id,
@@ -293,6 +306,14 @@ class ConsolidationService:
                     target_id=member.id,
                     edge_type=EdgeType.DERIVED_FROM,
                 ))
+
+            # Bridge entity links from source members to abstract memory
+            # so graph traversal can discover summaries through shared entities
+            if self._graph:
+                member_mids = [m.memory_id for m in members]
+                source_entities = _collect_entity_ids(self._graph, member_mids)
+                for eid in source_entities:
+                    self._graph.link_memory_entity(abstract_memory.id, eid)
 
             # Mark episode as summarized
             ep_node.metadata["summarized"] = True
@@ -452,6 +473,13 @@ class ConsolidationService:
                         edge_type=EdgeType.DERIVED_FROM,
                     ))
 
+                # Bridge entity links from source states to trajectory abstract
+                if self._graph:
+                    state_mids = [s.memory_id for s in key_states]
+                    source_entities = _collect_entity_ids(self._graph, state_mids)
+                    for eid in source_entities:
+                        self._graph.link_memory_entity(abstract_memory.id, eid)
+
                 self._emit_abstract_created(
                     "state_trajectory", abstract_node.id, len(key_states)
                 )
@@ -597,6 +625,13 @@ class ConsolidationService:
                     edge_type=EdgeType.DERIVED_FROM,
                 ))
 
+            # Bridge entity links from source summaries to pattern abstract
+            if self._graph:
+                summary_mids = [s.memory_id for s in cluster_nodes]
+                source_entities = _collect_entity_ids(self._graph, summary_mids)
+                for eid in source_entities:
+                    self._graph.link_memory_entity(abstract_memory.id, eid)
+
             self._emit_abstract_created(abstract_type, abstract_node.id, len(cluster_nodes))
             patterns_created += 1
 
@@ -730,17 +765,36 @@ class ConsolidationService:
         n_rehearse = max(1, int(len(candidates) * self._config.dream_rehearsal_fraction))
         selected = candidates[:n_rehearse]
 
-        # 7. Inject synthetic access records
+        # 7. Inject differential synthetic access records
+        # Scale accesses proportionally to dream score: top memories get 5 accesses,
+        # lowest get 1. This creates the differential access patterns that ACT-R needs
+        # instead of uniform injection that compresses the activation range.
         rehearsed = 0
+        if selected:
+            max_dream = selected[0]["dream_score"]  # Already sorted descending
+            min_dream = selected[-1]["dream_score"]
+            dream_range = max_dream - min_dream
+
         for c in selected:
             memory = c["memory"]
-            await self._store.log_access(
-                AccessRecord(
-                    memory_id=memory.id,
-                    accessing_agent="dream_rehearsal",
-                    query_context=f"dream_cycle:score={c['dream_score']:.3f}",
+            # Map dream_score to 1-5 accesses (linear interpolation)
+            if dream_range > 0:
+                normalized = (c["dream_score"] - min_dream) / dream_range
+                n_accesses = 1 + int(normalized * 4)  # 1 to 5
+            else:
+                n_accesses = 1
+
+            for _i in range(n_accesses):
+                await self._store.log_access(
+                    AccessRecord(
+                        memory_id=memory.id,
+                        accessing_agent="dream_rehearsal",
+                        query_context=(
+                            f"dream_cycle:score={c['dream_score']:.3f}"
+                            f":accesses={n_accesses}"
+                        ),
+                    )
                 )
-            )
             rehearsed += 1
 
         logger.info(
@@ -831,7 +885,87 @@ class ConsolidationService:
             "Association learning: saved %d pairs from %d searches",
             saved, total_searches,
         )
+
+        # Bridge learned associations into the NetworkX graph for spreading activation
+        if saved > 0 and self._graph:
+            bridged = self._bridge_pmi_to_graph(pair_count, total_searches, entity_count)
+            logger.info(
+                "PMI-to-graph bridge: updated %d edge weights", bridged,
+            )
+
         return saved
+
+    def _bridge_pmi_to_graph(
+        self,
+        pair_count: dict[tuple[str, str], int],
+        total_searches: int,
+        entity_count: dict[str, int],
+    ) -> int:
+        """Bridge dream PMI associations into NetworkX graph edge weights.
+
+        For existing co-occurrence edges, updates their weight with the learned
+        PMI value (blended with structural PMI). For high-PMI pairs without
+        edges, creates new edges so graph traversal can discover them.
+
+        Returns the number of edge weights updated or edges created.
+        """
+        import math as _math
+
+        if not pair_count or total_searches == 0:
+            return 0
+
+        # Compute PMI for each pair and find max for normalization
+        pmi_values: list[tuple[str, str, float]] = []
+        max_pmi = 0.01
+
+        for (e1, e2), co_count in pair_count.items():
+            p_ab = co_count / total_searches
+            p_a = entity_count.get(e1, 1) / total_searches
+            p_b = entity_count.get(e2, 1) / total_searches
+
+            if p_a > 0 and p_b > 0 and p_ab > 0:
+                pmi = _math.log2(p_ab / (p_a * p_b))
+                pmi = max(pmi, 0.0)
+            else:
+                pmi = 0.0
+
+            if pmi > 0.01:
+                pmi_values.append((e1, e2, pmi))
+                if pmi > max_pmi:
+                    max_pmi = pmi
+
+        updated = 0
+        for e1, e2, pmi in pmi_values:
+            weight = max(0.01, pmi / max_pmi)
+
+            # Update existing edge weight (blend: 0.3 structural + 0.7 learned)
+            existing_fwd = self._graph.get_edge_weight(e1, e2)
+            existing_rev = self._graph.get_edge_weight(e2, e1)
+
+            if existing_fwd > 0:
+                blended = 0.3 * existing_fwd + 0.7 * weight
+                self._graph.set_edge_weight(e1, e2, blended)
+                updated += 1
+            if existing_rev > 0:
+                blended = 0.3 * existing_rev + 0.7 * weight
+                self._graph.set_edge_weight(e2, e1, blended)
+                updated += 1
+
+            # For top-PMI pairs without edges, create new edges
+            # (only if PMI is in top 10% to avoid graph explosion)
+            if existing_fwd == 0 and existing_rev == 0 and weight > 0.9:
+                from ncms.domain.models import Relationship
+
+                self._graph.add_relationship(Relationship(
+                    source_entity_id=e1,
+                    target_entity_id=e2,
+                    type="learned_association",
+                    source_memory_id="dream_pmi",
+                ))
+                self._graph.set_edge_weight(e1, e2, weight)
+                updated += 1
+
+        return updated
 
     async def adjust_importance_drift(self) -> int:
         """Adjust memory importance based on access rate trends.
@@ -895,8 +1029,150 @@ class ConsolidationService:
         )
         return adjusted
 
+    async def build_query_expansion_dict(self) -> int:
+        """Build PMI-based query expansion dictionary (Phase 9 REM phase).
+
+        For each high-PMI entity pair, creates bidirectional expansion entries:
+        entity_name_a → [entity_name_b, ...] and vice versa.
+
+        Stored as JSON in consolidation_state for use by the search pipeline.
+
+        Returns the number of entity pairs included.
+        """
+        if not self._config.dream_query_expansion_enabled:
+            return 0
+
+        import json as _json
+
+        min_pmi = self._config.dream_expansion_min_pmi
+        max_terms = self._config.dream_expansion_max_terms
+
+        # Load all association strengths
+        assoc = await self._store.get_association_strengths()
+        if not assoc:
+            return 0
+
+        # Build bidirectional expansion map (entity_id → [(entity_id, strength)])
+        raw_expansions: dict[str, list[tuple[str, float]]] = defaultdict(list)
+        for (e1, e2), strength in assoc.items():
+            if strength >= min_pmi:
+                raw_expansions[e1].append((e2, strength))
+                raw_expansions[e2].append((e1, strength))
+
+        if not raw_expansions:
+            return 0
+
+        # Sort by strength (descending) and take top-K per entity
+        expansion_dict: dict[str, list[str]] = {}
+        total_pairs = 0
+        for eid, candidates in raw_expansions.items():
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            top = [c[0] for c in candidates[:max_terms]]
+            if top:
+                expansion_dict[eid] = top
+                total_pairs += len(top)
+
+        # Store as JSON in consolidation_state
+        await self._store.set_consolidation_value(
+            "query_expansion_dict",
+            _json.dumps(expansion_dict),
+        )
+
+        logger.info(
+            "Query expansion dict: %d entities with %d total expansion terms",
+            len(expansion_dict), total_pairs,
+        )
+        return total_pairs
+
+    async def active_forgetting(self) -> int:
+        """Suppress superseded/conflicting memories (Phase 9 — SleepGate-inspired).
+
+        - Superseded memories (is_current=False): reduce importance per cycle
+        - Prune old access records for superseded memories
+        - Conflicting memories with unresolved conflicts: reduce importance
+
+        Returns the number of memories affected.
+        """
+        if not self._config.dream_active_forgetting_enabled:
+            return 0
+
+        decay_rate = self._config.dream_forgetting_decay_rate
+        access_prune_days = self._config.dream_forgetting_access_prune_days
+        conflict_age_days = self._config.dream_forgetting_conflict_age_days
+
+        affected = 0
+
+        # Phase 4a: Decay superseded memories
+        try:
+            from ncms.domain.models import NodeType
+            superseded_nodes = await self._store.get_memory_nodes_by_type(
+                NodeType.ENTITY_STATE.value
+            )
+            for node in superseded_nodes:
+                if node.is_current:
+                    continue
+                # Reduce importance of the source memory
+                memory = await self._store.get_memory(node.memory_id)
+                if not memory:
+                    continue
+                new_importance = max(0.0, memory.importance - decay_rate)
+                if abs(new_importance - memory.importance) > 0.001:
+                    memory.importance = new_importance
+                    await self._store.update_memory(memory)
+                    affected += 1
+
+                # Prune old access records
+                try:
+                    pruned = await self._store.prune_access_records(
+                        node.memory_id, access_prune_days,
+                    )
+                    if pruned > 0:
+                        logger.debug(
+                            "Pruned %d access records for superseded memory %s",
+                            pruned, node.memory_id,
+                        )
+                except Exception:
+                    pass  # prune_access_records may not be implemented yet
+
+        except Exception:
+            logger.debug("Active forgetting (supersession) failed", exc_info=True)
+
+        # Phase 4b: Reduce importance of unresolved conflict memories
+        try:
+            from ncms.domain.models import EdgeType, NodeType
+
+            cutoff = (
+                datetime.now(UTC) - timedelta(days=conflict_age_days)
+            ).isoformat()
+
+            entity_state_nodes = await self._store.get_memory_nodes_by_type(
+                NodeType.ENTITY_STATE.value
+            )
+            for node in entity_state_nodes:
+                if not node.is_current:
+                    continue
+                conflict_edges = await self._store.get_graph_edges(
+                    node.id, EdgeType.CONFLICTS_WITH,
+                )
+                if not conflict_edges:
+                    continue
+                # Check if conflict is old enough
+                if node.metadata.get("ingested_at", "") < cutoff:
+                    memory = await self._store.get_memory(node.memory_id)
+                    if memory:
+                        new_importance = max(0.0, memory.importance - decay_rate * 0.5)
+                        if abs(new_importance - memory.importance) > 0.001:
+                            memory.importance = new_importance
+                            await self._store.update_memory(memory)
+                            affected += 1
+        except Exception:
+            logger.debug("Active forgetting (conflicts) failed", exc_info=True)
+
+        logger.info("Active forgetting: affected %d memories", affected)
+        return affected
+
     async def run_dream_cycle(self) -> dict[str, int]:
-        """Run full dream cycle: rehearsal → association learning → importance drift.
+        """Run full dream cycle: rehearsal → associations → expansion → forgetting → drift.
 
         Each phase is wrapped in suppress(Exception) so failures are non-fatal.
         Returns a dict mapping phase names to counts.
@@ -912,12 +1188,22 @@ class ConsolidationService:
         with contextlib.suppress(Exception):
             results["associations"] = await self.learn_association_strengths()
 
+        # Phase 9: Query expansion dict (REM phase)
+        with contextlib.suppress(Exception):
+            results["query_expansion"] = await self.build_query_expansion_dict()
+
+        # Phase 9: Active forgetting
+        with contextlib.suppress(Exception):
+            results["forgetting"] = await self.active_forgetting()
+
         with contextlib.suppress(Exception):
             results["drift"] = await self.adjust_importance_drift()
 
         # Fill defaults for any phases that raised
         results.setdefault("rehearsal", 0)
         results.setdefault("associations", 0)
+        results.setdefault("query_expansion", 0)
+        results.setdefault("forgetting", 0)
         results.setdefault("drift", 0)
 
         self._emit_dream_cycle_complete(results)

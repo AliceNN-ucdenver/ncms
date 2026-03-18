@@ -108,12 +108,14 @@ def graph_spreading_activation(
     hop_decay: float = 0.5,
     max_hops: int = 2,
     source_activation: float = 1.0,
+    degree_fn: object | None = None,  # Callable[[str], int] for hub dampening
 ) -> float:
     """Compute graph-based spreading activation with per-hop decay and IDF weighting.
 
     Propagates activation from context entities through the graph to reach
     memory entities. Unlike the overlap model, this traverses edges with
-    decay per hop and weights entities by IDF (rare entities contribute more).
+    decay per hop, weights entities by IDF (rare entities contribute more),
+    and dampens activation through high-degree hub nodes.
 
     Args:
         memory_entity_ids: Entity IDs linked to the candidate memory.
@@ -125,6 +127,10 @@ def graph_spreading_activation(
         hop_decay: Activation multiplier per hop (0.5 = halve each hop).
         max_hops: Maximum hops to propagate (default 2).
         source_activation: Total activation available to spread.
+        degree_fn: Optional Function(entity_id) → degree (int).
+            When provided, dampens activation through high-degree hub nodes
+            by dividing by log2(degree). Prevents hub nodes from flooding
+            activation to the entire graph.
 
     Returns:
         Graph-based spreading activation score.
@@ -155,8 +161,19 @@ def graph_spreading_activation(
                 neighbors = neighbor_fn(entity_id)  # type: ignore[operator]
                 if not neighbors:
                     continue
+
+                # Hub dampening: divide activation by log2(degree) for
+                # high-degree nodes. A node with degree 2948 gets dampened
+                # by ~11.5x, preventing it from flooding the graph.
+                # Nodes with degree ≤ 4 are undampened (log2(4) = 2, min clamp).
+                dampen = 1.0
+                if degree_fn is not None:
+                    degree = degree_fn(entity_id)  # type: ignore[operator]
+                    if degree > 4:
+                        dampen = 1.0 / math.log2(degree)
+
                 for neighbor_id, edge_weight in neighbors:
-                    propagated = act_val * hop_decay * edge_weight
+                    propagated = act_val * hop_decay * edge_weight * dampen
                     if propagated > next_activation.get(neighbor_id, 0.0):
                         next_activation[neighbor_id] = propagated
             # Merge: take max activation at each node
@@ -182,6 +199,40 @@ def graph_spreading_activation(
     # Normalize by union size (Jaccard-style) to keep scores comparable
     union_size = len(mem_set | set(context_entity_ids))
     return total / max(union_size, 1)
+
+
+def ppr_graph_score(
+    memory_entity_ids: list[str],
+    ppr_scores: dict[str, float],
+    entity_idf: dict[str, float] | None = None,
+) -> float:
+    """Compute graph score from Personalized PageRank entity scores.
+
+    Maps PPR entity-level scores to a memory-level score by summing
+    the IDF-weighted PPR scores for each entity linked to the memory.
+
+    Unlike BFS spreading activation, PPR produces a probability distribution
+    that naturally scales with graph structure. No union normalization needed.
+
+    Args:
+        memory_entity_ids: Entity IDs linked to the candidate memory.
+        ppr_scores: PPR result dict from personalized_pagerank().
+        entity_idf: Optional IDF weights (rare entities get more weight).
+
+    Returns:
+        Graph score for the memory (higher = more relevant to query).
+    """
+    if not memory_entity_ids or not ppr_scores:
+        return 0.0
+
+    total = 0.0
+    for eid in memory_entity_ids:
+        ppr_val = ppr_scores.get(eid, 0.0)
+        if ppr_val > 0:
+            idf_w = entity_idf.get(eid, 1.0) if entity_idf else 1.0
+            total += ppr_val * idf_w
+
+    return total
 
 
 def activation_noise(sigma: float = 0.25) -> float:
@@ -225,6 +276,39 @@ def retrieval_probability(activation: float, threshold: float = -2.0, tau: float
     # Clamp to prevent overflow
     x = max(-500, min(500, x))
     return 1.0 / (1.0 + math.exp(-x))
+
+
+# ---------------------------------------------------------------------------
+# Recency Scoring (temporal preference for recent memories)
+# ---------------------------------------------------------------------------
+
+
+def recency_score(
+    created_age_seconds: float,
+    half_life_days: float = 30.0,
+) -> float:
+    """Compute a recency score that decays over time.
+
+    Uses exponential decay: score = exp(-lambda * age_days)
+    where lambda = ln(2) / half_life_days.
+
+    A memory created today gets score ~1.0.
+    A memory half_life_days old gets score ~0.5.
+    A memory 3x half_life old gets score ~0.125.
+
+    Args:
+        created_age_seconds: Time in seconds since memory was created.
+            Must be non-negative.
+        half_life_days: Days until the recency score halves (default 30).
+
+    Returns:
+        Recency score in (0.0, 1.0].
+    """
+    if created_age_seconds <= 0:
+        return 1.0
+    age_days = created_age_seconds / 86400.0
+    decay_rate = math.log(2) / max(half_life_days, 0.01)
+    return math.exp(-decay_rate * age_days)
 
 
 # ---------------------------------------------------------------------------
