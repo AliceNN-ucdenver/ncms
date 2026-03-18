@@ -136,6 +136,8 @@ async def ingest_swebench(
         # Enable dream cycle flag globally so search logging populates
         # search_log table for PMI computation across ALL stages
         dream_cycle_enabled=True,
+        # Phase 9: Query expansion at search time (dict built during dream cycles)
+        dream_query_expansion_enabled=True,
         # LLM config
         consolidation_knowledge_model=llm_model,
         consolidation_knowledge_api_base=llm_api_base,
@@ -301,6 +303,9 @@ async def run_consolidation_stage(state: SWEState, stage: DreamStage) -> dict[st
         pattern_entity_overlap_threshold=0.2,
         dream_min_access_count=1,
         dream_rehearsal_fraction=0.20,
+        # Phase 9: Enable query expansion + active forgetting during dream cycles
+        dream_query_expansion_enabled=stage.dream_cycle,
+        dream_active_forgetting_enabled=stage.dream_cycle,
     )
 
     consolidation_svc = ConsolidationService(

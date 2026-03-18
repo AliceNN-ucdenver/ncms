@@ -55,11 +55,17 @@ async def synthesize_insight(
         return None
 
     try:
-        # Format memories for the prompt (truncate each to 2000 chars)
-        memories_text = "\n".join(
-            f"- [{m.id[:8]}] ({', '.join(m.domains) or 'general'}): {m.content[:2000]}"
-            for m in cluster.memories
-        )
+        # Format memories for the prompt (truncate each to 2000 chars, cap total to ~20K chars)
+        max_prompt_chars = 20_000
+        memory_lines: list[str] = []
+        total_chars = 0
+        for m in cluster.memories:
+            line = f"- [{m.id[:8]}] ({', '.join(m.domains) or 'general'}): {m.content[:2000]}"
+            if total_chars + len(line) > max_prompt_chars:
+                break
+            memory_lines.append(line)
+            total_chars += len(line)
+        memories_text = "\n".join(memory_lines)
         shared_text = ", ".join(sorted(cluster.shared_entity_ids)[:15]) or "none"
         domains_text = ", ".join(sorted(cluster.domains)) or "general"
 
