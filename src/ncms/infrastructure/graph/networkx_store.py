@@ -104,6 +104,12 @@ class NetworkXGraph:
         with self._lock:
             return self._name_index.get(name.lower())
 
+    def get_entity_name(self, entity_id: str) -> str | None:
+        """Return entity name by ID, or None if not in graph."""
+        with self._lock:
+            data = self._graph.nodes.get(entity_id)
+            return data.get("name") if data else None
+
     def get_entity_ids_for_memory(self, memory_id: str) -> list[str]:
         with self._lock:
             return list(self._memory_entities.get(memory_id, set()))

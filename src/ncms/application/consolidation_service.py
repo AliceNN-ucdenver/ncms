@@ -1047,30 +1047,49 @@ class ConsolidationService:
         min_pmi = self._config.dream_expansion_min_pmi
         max_terms = self._config.dream_expansion_max_terms
 
-        # Load all association strengths
-        assoc = await self._store.get_association_strengths()
-        if not assoc:
+        # Load only strong associations (SQL-filtered, not full 3M+ table)
+        strong = await self._store.get_strong_associations(
+            min_strength=min_pmi, limit=100_000,
+        )
+        if not strong:
+            logger.info("Query expansion: no associations above min_pmi=%.2f", min_pmi)
             return 0
 
         # Build bidirectional expansion map (entity_id → [(entity_id, strength)])
         raw_expansions: dict[str, list[tuple[str, float]]] = defaultdict(list)
-        for (e1, e2), strength in assoc.items():
-            if strength >= min_pmi:
-                raw_expansions[e1].append((e2, strength))
-                raw_expansions[e2].append((e1, strength))
+        for e1, e2, strength in strong:
+            raw_expansions[e1].append((e2, strength))
+            raw_expansions[e2].append((e1, strength))
 
         if not raw_expansions:
             return 0
 
-        # Sort by strength (descending) and take top-K per entity
+        # Resolve entity IDs to names for BM25 query expansion
+        entity_name_cache: dict[str, str] = {}
+        if self._graph:
+            all_eids = set(raw_expansions.keys())
+            for candidates in raw_expansions.values():
+                for eid, _ in candidates:
+                    all_eids.add(eid)
+            for eid in all_eids:
+                name = self._graph.get_entity_name(eid)
+                if name:
+                    entity_name_cache[eid] = name
+
+        # Sort by strength (descending) and take top-K per entity, storing names
         expansion_dict: dict[str, list[str]] = {}
         total_pairs = 0
         for eid, candidates in raw_expansions.items():
             candidates.sort(key=lambda x: x[1], reverse=True)
-            top = [c[0] for c in candidates[:max_terms]]
-            if top:
-                expansion_dict[eid] = top
-                total_pairs += len(top)
+            # Map target entity IDs to names for BM25 matching
+            top_names = [
+                entity_name_cache[c[0]]
+                for c in candidates[:max_terms]
+                if c[0] in entity_name_cache
+            ]
+            if top_names:
+                expansion_dict[eid] = top_names
+                total_pairs += len(top_names)
 
         # Store as JSON in consolidation_state
         await self._store.set_consolidation_value(

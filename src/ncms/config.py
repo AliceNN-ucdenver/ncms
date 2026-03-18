@@ -157,7 +157,7 @@ class NCMSConfig(BaseSettings):
     # Dream query expansion (Phase 9 — REM phase)
     dream_query_expansion_enabled: bool = False
     dream_expansion_max_terms: int = 5
-    dream_expansion_min_pmi: float = 0.3
+    dream_expansion_min_pmi: float = 0.1
 
     # Active forgetting (Phase 9 — SleepGate-inspired)
     dream_active_forgetting_enabled: bool = False

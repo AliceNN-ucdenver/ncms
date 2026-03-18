@@ -180,6 +180,9 @@ class MemoryStore(
     async def get_association_strengths(
         self,
     ) -> dict[tuple[str, str], float]: ...
+    async def get_strong_associations(
+        self, min_strength: float = 0.3, limit: int = 50_000,
+    ) -> list[tuple[str, str, float]]: ...
 
 
 # ── Search & Graph Protocols ──────────────────────────────────────────────

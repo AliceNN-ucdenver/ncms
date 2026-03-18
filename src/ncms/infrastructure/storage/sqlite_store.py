@@ -794,6 +794,17 @@ class SQLiteStore:
             result[(e2, e1)] = strength
         return result
 
+    async def get_strong_associations(
+        self, min_strength: float = 0.3, limit: int = 50_000,
+    ) -> list[tuple[str, str, float]]:
+        """Load associations above min_strength, ordered by strength descending."""
+        cursor = await self.db.execute(
+            "SELECT entity_id_1, entity_id_2, strength FROM association_strengths "
+            "WHERE strength >= ? ORDER BY strength DESC LIMIT ?",
+            (min_strength, limit),
+        )
+        return [(r[0], r[1], r[2]) for r in await cursor.fetchall()]
+
     # ── Row Converters ───────────────────────────────────────────────────
 
     @staticmethod
