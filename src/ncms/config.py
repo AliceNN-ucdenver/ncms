@@ -156,14 +156,14 @@ class NCMSConfig(BaseSettings):
 
     # Dream query expansion (Phase 9 — REM phase)
     dream_query_expansion_enabled: bool = False
-    dream_expansion_max_terms: int = 5
+    dream_expansion_max_terms: int = 20   # Tuned up from 5: more terms = more BM25 recall
     dream_expansion_min_pmi: float = 0.1
 
     # Active forgetting (Phase 9 — SleepGate-inspired)
     dream_active_forgetting_enabled: bool = False
-    dream_forgetting_decay_rate: float = 0.2
-    dream_forgetting_access_prune_days: int = 30
-    dream_forgetting_conflict_age_days: int = 7
+    dream_forgetting_decay_rate: float = 0.05  # Tuned down from 0.2: 0.2 destroyed CR (-11.8%)
+    dream_forgetting_access_prune_days: int = 90  # Tuned up from 30: preserve more access history
+    dream_forgetting_conflict_age_days: int = 14  # Tuned up from 7: less aggressive on conflicts
 
     # Dream cycles (Phase 8)
     dream_cycle_enabled: bool = False

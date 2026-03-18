@@ -1088,6 +1088,12 @@ class MemoryService:
                     for eid in context_entity_ids
                 }
                 ppr_scores = self._graph.personalized_pagerank(seed)
+                # Normalize PPR to [0, 1] range so graph signal competes with BM25.
+                # Raw PPR is a probability distribution (sums to 1.0 over ~3K entities),
+                # producing per-entity values ~0.0003 — 1000x smaller than BM25 scores.
+                max_ppr = max(ppr_scores.values()) if ppr_scores else 0.0
+                if max_ppr > 0:
+                    ppr_scores = {k: v / max_ppr for k, v in ppr_scores.items()}
             except Exception:
                 logger.debug("PPR computation failed, falling back to BFS", exc_info=True)
 
@@ -1546,22 +1552,26 @@ class MemoryService:
         if not self._query_expansion_dict:
             return []
 
-        # Look up entity names from graph for expansion
+        # Round-robin allocation: each entity gets a fair share of expansion slots
+        # (prevents first entity from hogging all max_terms slots)
         terms: list[str] = []
         seen: set[str] = set()
         max_terms = self._config.dream_expansion_max_terms
+        n_entities = len(context_entity_ids) if context_entity_ids else 1
+        per_entity = max(2, max_terms // n_entities)
 
         for eid in context_entity_ids:
-            # Entity names are stored in graph node attributes
             expansions = self._query_expansion_dict.get(eid, [])
+            count = 0
             for term in expansions:
-                if term not in seen:
+                if term not in seen and count < per_entity:
                     terms.append(term)
                     seen.add(term)
-                    if len(terms) >= max_terms:
-                        return terms
+                    count += 1
+            if len(terms) >= max_terms:
+                break
 
-        return terms
+        return terms[:max_terms]
 
     # ── Direct Access ────────────────────────────────────────────────────
 
