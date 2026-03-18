@@ -1208,12 +1208,16 @@ class ConsolidationService:
             results["associations"] = await self.learn_association_strengths()
 
         # Phase 9: Query expansion dict (REM phase)
-        with contextlib.suppress(Exception):
+        try:
             results["query_expansion"] = await self.build_query_expansion_dict()
+        except Exception:
+            logger.warning("Query expansion dict failed", exc_info=True)
 
         # Phase 9: Active forgetting
-        with contextlib.suppress(Exception):
+        try:
             results["forgetting"] = await self.active_forgetting()
+        except Exception:
+            logger.warning("Active forgetting failed", exc_info=True)
 
         with contextlib.suppress(Exception):
             results["drift"] = await self.adjust_importance_drift()

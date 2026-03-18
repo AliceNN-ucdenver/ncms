@@ -933,12 +933,21 @@ class MemoryService:
                         expanded_query, limit=self._config.tier1_candidates,
                     )
                     # Merge expanded results into bm25_scores (take max)
+                    # AND inject novel candidates into fused_candidates so they
+                    # enter the scoring loop (not just update scores for existing)
+                    existing_fused = {mid for mid, _ in fused_candidates}
+                    novel_from_expansion = 0
                     for mid, score in expanded_bm25:
                         if mid not in bm25_scores or score > bm25_scores[mid]:
                             bm25_scores[mid] = score
+                        if mid not in existing_fused:
+                            fused_candidates.append((mid, score))
+                            existing_fused.add(mid)
+                            novel_from_expansion += 1
                     _emit_stage("query_expansion", 0, {
                         "terms": expansion_terms,
                         "expanded_candidates": len(expanded_bm25),
+                        "novel_candidates": novel_from_expansion,
                     })
             except Exception:
                 logger.debug("Query expansion failed", exc_info=True)
@@ -1505,17 +1514,25 @@ class MemoryService:
 
     _query_expansion_dict: dict[str, list[str]] | None = None
 
+    def invalidate_query_expansion_cache(self) -> None:
+        """Clear cached expansion dict so next search reloads from DB.
+
+        Call after dream cycle writes a new expansion dict.
+        """
+        self._query_expansion_dict = None
+
     async def _get_query_expansion_terms(
         self, context_entity_ids: list[str],
     ) -> list[str]:
         """Look up PMI-learned expansion terms for the query's entities.
 
         Loads the expansion dict from consolidation_state on first call
-        (cached thereafter). Returns a flat list of expansion term strings.
+        (cached until invalidate_query_expansion_cache() is called).
+        Returns a flat list of expansion term strings (entity names).
         """
         import json as _json
 
-        # Lazy-load expansion dict
+        # Lazy-load expansion dict (reloads after invalidation)
         if self._query_expansion_dict is None:
             raw = await self._store.get_consolidation_value("query_expansion_dict")
             if raw:
