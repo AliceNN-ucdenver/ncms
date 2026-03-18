@@ -1083,10 +1083,10 @@ class MemoryService:
         ppr_scores: dict[str, float] = {}
         if self._config.graph_ppr_enabled and context_entity_ids:
             try:
-                seed = {
-                    eid: entity_idf.get(eid, 1.0) if entity_idf else 1.0
-                    for eid in context_entity_ids
-                }
+                # Fix #3 (audit): seed PPR with uniform weights.
+                # IDF is already applied in ppr_graph_score(); using IDF
+                # here too double-dips and over-weights rare entities.
+                seed = {eid: 1.0 for eid in context_entity_ids}
                 ppr_scores = self._graph.personalized_pagerank(seed)
                 # Normalize PPR to [0, 1] range so graph signal competes with BM25.
                 # Raw PPR is a probability distribution (sums to 1.0 over ~3K entities),
@@ -1118,12 +1118,16 @@ class MemoryService:
             except Exception:
                 logger.debug("Intent weight routing failed, using defaults", exc_info=True)
 
-        # Load full memory objects and compute activation scores
+        # ── Pass 1: Compute raw signals for all candidates ─────────────
+        # Two-pass scoring: first collect raw signals, then normalize
+        # to [0, 1] so weights actually control relative importance.
+        # This fixes the BM25 vs SPLADE scale mismatch (BM25: 1-15,
+        # SPLADE: 5-200+) and makes graph signal competitive.
         t0 = time.perf_counter()
-        scored: list[ScoredMemory] = []
+
+        raw_candidates: list[dict] = []
         candidates_scored = 0
-        filtered_below_threshold = 0
-        top_activation = 0.0
+
         for memory_id, _fused_score in all_candidates:
             memory = await self._store.get_memory(memory_id)
             if not memory:
@@ -1139,16 +1143,21 @@ class MemoryService:
             access_ages = await self._store.get_access_times(memory_id)
             bl = base_level_activation(access_ages, decay=self._config.actr_decay)
 
-            # Spreading activation: two separate signals (Fix #4 — no double-counting)
+            # Spreading activation: two separate signals
             # 1. ACT-R spread: Jaccard entity overlap (for total_activation)
             # 2. Graph spread: PPR or BFS traversal (for w_graph)
             memory_entities = self._graph.get_entity_ids_for_memory(memory_id)
-            spread = spreading_activation(
-                memory_entity_ids=memory_entities,
-                context_entity_ids=context_entity_ids,
-                association_strengths=assoc_strengths,
-                source_activation=self._config.actr_max_spread,
-            )
+
+            # Only compute Jaccard spread if ACT-R is enabled (saves CPU)
+            spread = 0.0
+            if w_actr > 0:
+                spread = spreading_activation(
+                    memory_entity_ids=memory_entities,
+                    context_entity_ids=context_entity_ids,
+                    association_strengths=assoc_strengths,
+                    source_activation=self._config.actr_max_spread,
+                )
+
             # Phase 9: PPR graph score (or BFS fallback)
             if ppr_scores:
                 graph_spread = ppr_graph_score(
@@ -1187,7 +1196,6 @@ class MemoryService:
                         if not mn.is_current:
                             mem_is_superseded = True
                             mem_superseded_by = mn.metadata.get("superseded_by")
-                        # Check for conflict edges
                         conflict_edges = await self._store.get_graph_edges(
                             mn.id, EdgeType.CONFLICTS_WITH,
                         )
@@ -1218,9 +1226,11 @@ class MemoryService:
                     bonus=self._config.intent_hierarchy_bonus,
                 )
 
-            act = total_activation(bl, spread, noise, mismatch_penalty=penalty)
+            # Penalty is applied in combined score (Pass 2), not inside ACT-R,
+            # to avoid double-counting when w_actr > 0.
+            act = total_activation(bl, spread, noise, mismatch_penalty=0.0)
 
-            # Look up per-source scores
+            # Raw per-source scores (NOT yet normalized)
             bm25_score = bm25_scores.get(memory_id, 0.0)
             splade_score_val = splade_scores.get(memory_id, 0.0)
 
@@ -1235,62 +1245,97 @@ class MemoryService:
                     half_life_days=self._config.recency_half_life_days,
                 )
 
-            # Combine BM25, SPLADE, activation, graph, hierarchy, and recency
-            # Graph signal uses graph_spread (PPR or BFS traversal),
-            # NOT spread (which is already inside ACT-R's total_activation).
-            # Reconciliation penalty applied directly to combined score
-            # (not just via ACT-R) so it works even with w_actr=0.0.
-            w_hierarchy = self._config.scoring_weight_hierarchy
-            combined = (
-                bm25_score * w_bm25
-                + act * w_actr
-                + splade_score_val * w_splade
-                + graph_spread * w_graph  # Graph traversal signal (IDF + PMI weighted)
-                + h_bonus * w_hierarchy
-                + rec_score * w_recency  # Temporal recency (newer = higher)
-                - penalty  # Supersession/conflict penalty (independent of ACT-R weight)
-            )
-
-            # Compute retrieval probability for threshold filtering
-            ret_prob = retrieval_probability(
-                act,
-                threshold=self._config.actr_threshold,
-                tau=self._config.actr_temperature,
-            )
-
             candidates_scored += 1
+            raw_candidates.append({
+                "memory": memory,
+                "memory_id": memory_id,
+                "bm25_raw": bm25_score,
+                "splade_raw": splade_score_val,
+                "graph_raw": graph_spread,
+                "act": act,
+                "bl": bl,
+                "spread": spread,
+                "noise": noise,
+                "penalty": penalty,
+                "h_bonus": h_bonus,
+                "rec_score": rec_score,
+                "is_superseded": mem_is_superseded,
+                "has_conflicts": mem_has_conflicts,
+                "superseded_by": mem_superseded_by,
+                "node_types": candidate_node_types,
+            })
+
+        # ── Pass 2: Normalize signals and compute combined scores ─────
+        # Per-query min-max normalization puts all signals in [0, 1]
+        # so configured weights actually determine relative importance.
+        # Without this, SPLADE (5-200) dominates BM25 (1-15) despite
+        # lower weight, and graph signal is in yet another range.
+        if raw_candidates:
+            max_bm25 = max(c["bm25_raw"] for c in raw_candidates) or 1.0
+            max_splade = max(c["splade_raw"] for c in raw_candidates) or 1.0
+            max_graph = max(c["graph_raw"] for c in raw_candidates) or 1.0
+        else:
+            max_bm25 = max_splade = max_graph = 1.0
+
+        scored: list[ScoredMemory] = []
+        filtered_below_threshold = 0
+        top_activation = 0.0
+        w_hierarchy = self._config.scoring_weight_hierarchy
+        actr_enabled = w_actr > 0
+
+        for c in raw_candidates:
+            # Normalize each signal to [0, 1]
+            bm25_norm = c["bm25_raw"] / max_bm25
+            splade_norm = c["splade_raw"] / max_splade
+            graph_norm = c["graph_raw"] / max_graph
+
+            # Combined score with normalized signals
+            # Penalty applied ONLY here (not also inside ACT-R) to avoid
+            # double-counting when w_actr > 0.
+            combined = (
+                bm25_norm * w_bm25
+                + c["act"] * w_actr
+                + splade_norm * w_splade
+                + graph_norm * w_graph
+                + c["h_bonus"] * w_hierarchy
+                + c["rec_score"] * w_recency
+                - c["penalty"]
+            )
+
             if combined > top_activation:
                 top_activation = combined
 
-            # Filter out very low probability candidates
-            if ret_prob < 0.05:
-                filtered_below_threshold += 1
-                continue
+            # Retrieval probability filter:
+            # When ACT-R is disabled (w_actr=0), bypass the ret_prob filter.
+            # It uses ACT-R activation (which is meaningless at w_actr=0)
+            # and incorrectly kills graph-expanded candidates that have
+            # no access history but valid graph signal.
+            ret_prob = 1.0
+            if actr_enabled:
+                ret_prob = retrieval_probability(
+                    c["act"],
+                    threshold=self._config.actr_threshold,
+                    tau=self._config.actr_temperature,
+                )
+                if ret_prob < 0.05:
+                    filtered_below_threshold += 1
+                    continue
 
             scored.append(
                 ScoredMemory(
-                    memory=memory,
-                    bm25_score=bm25_score,
-                    splade_score=splade_score_val,
-                    base_level=bl,
-                    spreading=graph_spread,  # Graph-based signal for display/debug
+                    memory=c["memory"],
+                    bm25_score=c["bm25_raw"],
+                    splade_score=c["splade_raw"],
+                    base_level=c["bl"],
+                    spreading=c["graph_raw"],
                     total_activation=combined,
                     retrieval_prob=ret_prob,
-                    is_superseded=mem_is_superseded,
-                    has_conflicts=mem_has_conflicts,
-                    superseded_by=mem_superseded_by,
-                    node_types=candidate_node_types,
+                    is_superseded=c["is_superseded"],
+                    has_conflicts=c["has_conflicts"],
+                    superseded_by=c["superseded_by"],
+                    node_types=c["node_types"],
                     intent=intent_result.intent.value if intent_result else None,
-                    hierarchy_bonus=h_bonus,
-                )
-            )
-
-            # Log access for future ACT-R scoring
-            await self._store.log_access(
-                AccessRecord(
-                    memory_id=memory_id,
-                    accessing_agent=agent_id,
-                    query_context=query,
+                    hierarchy_bonus=c["h_bonus"],
                 )
             )
 
@@ -1299,9 +1344,13 @@ class MemoryService:
             "passed_threshold": len(scored),
             "filtered_below_threshold": filtered_below_threshold,
             "top_activation": round(top_activation, 3),
+            "normalization": {
+                "max_bm25": round(max_bm25, 3),
+                "max_splade": round(max_splade, 3),
+                "max_graph": round(max_graph, 3),
+            },
         }
         if self._config.pipeline_debug and scored:
-            # Sort by activation before taking top 20
             debug_scored = sorted(
                 scored, key=lambda s: s.total_activation, reverse=True,
             )
@@ -1327,6 +1376,18 @@ class MemoryService:
         scored.sort(key=lambda s: s.total_activation, reverse=True)
 
         results = scored[:limit]
+
+        # Log access ONLY for returned results (not all scored candidates).
+        # Logging all scored candidates inflates access counts and distorts
+        # ACT-R base-level activation for future queries.
+        for sm in results:
+            await self._store.log_access(
+                AccessRecord(
+                    memory_id=sm.memory.id,
+                    accessing_agent=agent_id,
+                    query_context=query,
+                )
+            )
 
         # Pipeline complete
         total_ms = (time.perf_counter() - pipeline_start) * 1000

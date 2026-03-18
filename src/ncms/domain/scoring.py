@@ -208,11 +208,12 @@ def ppr_graph_score(
 ) -> float:
     """Compute graph score from Personalized PageRank entity scores.
 
-    Maps PPR entity-level scores to a memory-level score by summing
-    the IDF-weighted PPR scores for each entity linked to the memory.
+    Maps PPR entity-level scores to a memory-level score by **mean-pooling**
+    the IDF-weighted PPR scores across the memory's entities. Mean-pooling
+    (vs. sum) prevents memories with many entities from getting inflated
+    scores just because they have more entity links.
 
-    Unlike BFS spreading activation, PPR produces a probability distribution
-    that naturally scales with graph structure. No union normalization needed.
+    PPR scores should be max-normalized to [0, 1] before calling this.
 
     Args:
         memory_entity_ids: Entity IDs linked to the candidate memory.
@@ -226,13 +227,15 @@ def ppr_graph_score(
         return 0.0
 
     total = 0.0
+    count = 0
     for eid in memory_entity_ids:
         ppr_val = ppr_scores.get(eid, 0.0)
         if ppr_val > 0:
             idf_w = entity_idf.get(eid, 1.0) if entity_idf else 1.0
             total += ppr_val * idf_w
+            count += 1
 
-    return total
+    return total / max(count, 1)
 
 
 def activation_noise(sigma: float = 0.25) -> float:
