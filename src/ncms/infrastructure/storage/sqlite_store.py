@@ -91,6 +91,18 @@ class SQLiteStore:
             return None
         return self._row_to_memory(row)
 
+    async def get_memories_batch(self, memory_ids: list[str]) -> dict[str, Memory]:
+        """Load multiple memories in a single query."""
+        if not memory_ids:
+            return {}
+        placeholders = ",".join("?" for _ in memory_ids)
+        cursor = await self.db.execute(
+            f"SELECT * FROM memories WHERE id IN ({placeholders})",  # noqa: S608
+            memory_ids,
+        )
+        rows = await cursor.fetchall()
+        return {row["id"]: self._row_to_memory(row) for row in rows}
+
     async def update_memory(self, memory: Memory) -> None:
         await self.save_memory(memory)
 
@@ -192,6 +204,31 @@ class SQLiteStore:
             if age > 0:
                 ages.append(age)
         return ages
+
+    async def get_access_times_batch(
+        self, memory_ids: list[str],
+    ) -> dict[str, list[float]]:
+        """Return ages in seconds for multiple memories in a single query."""
+        if not memory_ids:
+            return {}
+        now = datetime.now(UTC)
+        placeholders = ",".join("?" for _ in memory_ids)
+        cursor = await self.db.execute(
+            "SELECT memory_id, accessed_at FROM access_log "
+            f"WHERE memory_id IN ({placeholders}) "  # noqa: S608
+            "ORDER BY memory_id, accessed_at DESC",
+            memory_ids,
+        )
+        rows = await cursor.fetchall()
+        result: dict[str, list[float]] = {mid: [] for mid in memory_ids}
+        for row in rows:
+            accessed = datetime.fromisoformat(row[1])
+            if accessed.tzinfo is None:
+                accessed = accessed.replace(tzinfo=UTC)
+            age = (now - accessed).total_seconds()
+            if age > 0:
+                result[row[0]].append(age)
+        return result
 
     # ── Entity CRUD ──────────────────────────────────────────────────────
 
