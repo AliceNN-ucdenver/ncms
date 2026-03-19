@@ -1899,7 +1899,8 @@ class MemoryService:
 
         # Direct state lookup for each query entity
         for eid in entity_ids[:10]:
-            state_nodes = await self._store.get_current_entity_states(eid)
+            all_states = await self._store.get_entity_states_by_entity(eid)
+            state_nodes = [s for s in all_states if s.is_current]
             for sn in state_nodes:
                 if sn.memory_id in seen_memory_ids:
                     continue
@@ -2185,9 +2186,10 @@ class MemoryService:
             if not result.context.entity_states and entity_ids:
                 for eid in entity_ids[:10]:
                     try:
-                        state_nodes = await self._store.get_current_entity_states(
+                        all_st = await self._store.get_entity_states_by_entity(
                             eid,
                         )
+                        state_nodes = [s for s in all_st if s.is_current]
                     except Exception:
                         continue
                     for sn in state_nodes:
