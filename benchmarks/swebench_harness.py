@@ -526,6 +526,115 @@ async def measure_lru(
     return compute_all_metrics(rankings, lru_qrels)
 
 
+# ── Recall-based measurements (Phase 11) ─────────────────────────────────
+
+
+async def measure_ar_recall(
+    state: SWEState,
+    queries: dict[str, str],
+    qrels: dict[str, dict[str, int]],
+) -> dict[str, float]:
+    """AR using structured recall — episode expansion adds recall."""
+    from ncms.application.memory_service import MemoryService
+
+    svc = MemoryService(
+        store=state.store, index=state.index, graph=state.graph,
+        config=state.config, splade=state.splade,
+        reranker=state.reranker,
+    )
+
+    rankings: dict[str, list[str]] = {}
+    for qid, query_text in queries.items():
+        results = await svc.recall(query=query_text, domain="django", limit=10)
+        doc_ids: list[str] = []
+        for r in results:
+            # Primary result
+            doc_id = state.mem_to_doc.get(r.memory.memory.id)
+            if doc_id and doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+            # Episode siblings expand the retrieval set
+            if r.context.episode:
+                for sib_id in r.context.episode.sibling_ids:
+                    sib_doc = state.mem_to_doc.get(sib_id)
+                    if sib_doc and sib_doc not in doc_ids:
+                        doc_ids.append(sib_doc)
+        rankings[qid] = doc_ids
+
+    return compute_all_metrics(rankings, qrels)
+
+
+async def measure_cr_recall(
+    state: SWEState,
+    cr_queries: dict[str, str],
+    cr_qrels: dict[str, dict[str, int]],
+) -> dict[str, float]:
+    """CR using structured recall — state lookup bypasses BM25."""
+    from ncms.application.memory_service import MemoryService
+
+    svc = MemoryService(
+        store=state.store, index=state.index, graph=state.graph,
+        config=state.config, splade=state.splade,
+        reranker=state.reranker,
+    )
+
+    targets: dict[str, str] = {}
+    for qid, rels in cr_qrels.items():
+        for doc_id, grade in rels.items():
+            if grade == 2:
+                targets[qid] = doc_id
+                break
+
+    rankings: dict[str, list[str]] = {}
+    for qid, query_text in cr_queries.items():
+        results = await svc.recall(query=query_text, domain="django", limit=10)
+        doc_ids: list[str] = []
+        for r in results:
+            doc_id = state.mem_to_doc.get(r.memory.memory.id)
+            if doc_id and doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+        rankings[qid] = doc_ids
+
+    ir_metrics = compute_all_metrics(rankings, cr_qrels)
+    t_mrr = temporal_mrr(rankings, targets)
+    return {
+        "temporal_mrr": t_mrr,
+        "nDCG@10": ir_metrics["nDCG@10"],
+        "num_queries": ir_metrics["num_queries"],
+    }
+
+
+async def measure_lru_recall(
+    state: SWEState,
+    lru_queries: dict[str, str],
+    lru_qrels: dict[str, dict[str, int]],
+) -> dict[str, float]:
+    """LRU using structured recall — episode expansion helps long-range."""
+    from ncms.application.memory_service import MemoryService
+
+    svc = MemoryService(
+        store=state.store, index=state.index, graph=state.graph,
+        config=state.config, splade=state.splade,
+        reranker=state.reranker,
+    )
+
+    rankings: dict[str, list[str]] = {}
+    for qid, query_text in lru_queries.items():
+        results = await svc.recall(query=query_text, domain="django", limit=10)
+        doc_ids: list[str] = []
+        for r in results:
+            doc_id = state.mem_to_doc.get(r.memory.memory.id)
+            if doc_id and doc_id not in doc_ids:
+                doc_ids.append(doc_id)
+            if r.context.episode:
+                for sib_id in r.context.episode.sibling_ids:
+                    sib_doc = state.mem_to_doc.get(sib_id)
+                    if sib_doc and sib_doc not in doc_ids:
+                        doc_ids.append(sib_doc)
+        rankings[qid] = doc_ids
+
+    return compute_all_metrics(rankings, lru_qrels)
+
+
 # ── Graph diagnostics ────────────────────────────────────────────────────
 
 
@@ -714,6 +823,33 @@ async def run_swebench_experiment(
         lru_metrics = await measure_lru(state, lru_queries, lru_qrels)
         logger.info("    LRU nDCG@10=%.4f", lru_metrics["nDCG@10"])
 
+        # Phase 11: Recall-based measurements (structured retrieval)
+        recall_metrics: dict[str, Any] = {}
+        if state.config.intent_classification_enabled:
+            logger.info("  Measuring recall-based metrics (Phase 11)...")
+            try:
+                ar_recall = await measure_ar_recall(state, ar_queries, ar_qrels)
+                cr_recall = await measure_cr_recall(state, cr_queries, cr_qrels)
+                lru_recall = await measure_lru_recall(
+                    state, lru_queries, lru_qrels,
+                )
+                recall_metrics = {
+                    "ar_ndcg10": ar_recall["nDCG@10"],
+                    "ar_mrr10": ar_recall.get("MRR@10", 0.0),
+                    "cr_temporal_mrr": cr_recall["temporal_mrr"],
+                    "lru_ndcg10": lru_recall["nDCG@10"],
+                }
+                logger.info(
+                    "    Recall: AR=%.4f  CR=%.4f  LRU=%.4f",
+                    recall_metrics["ar_ndcg10"],
+                    recall_metrics["cr_temporal_mrr"],
+                    recall_metrics["lru_ndcg10"],
+                )
+            except Exception:
+                logger.warning(
+                    "Recall metrics failed, skipping", exc_info=True,
+                )
+
         # ACT-R crossover sweep (AR only)
         logger.info("  Running ACT-R crossover sweep...")
         actr_results = await actr_crossover_sweep(state, ar_queries, ar_qrels)
@@ -731,6 +867,7 @@ async def run_swebench_experiment(
             "ttl": ttl_metrics,
             "cr": cr_metrics,
             "lru": lru_metrics,
+            "recall": recall_metrics,
             "consolidation_metrics": consolidation_metrics,
             "actr_crossover": actr_results,
             "graph_diagnostics": graph_diag,
