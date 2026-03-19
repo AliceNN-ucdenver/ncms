@@ -52,7 +52,7 @@ class NCMSConfig(BaseSettings):
     tier2_candidates: int = 20
     scoring_weight_bm25: float = 0.6   # Tuned: grid search on SciFact (2026-03-14)
     scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
-    scoring_weight_graph: float = 0.3  # Tuned: entity overlap via spreading activation
+    scoring_weight_graph: float = 0.0  # Disabled: 7 SWE-bench runs show graph signal adds noise
 
     # Graph expansion (Tier 1.5)
     graph_expansion_enabled: bool = True
@@ -177,6 +177,13 @@ class NCMSConfig(BaseSettings):
     dream_rehearsal_weight_recency: float = 0.05
     dream_importance_drift_window_days: int = 14  # Window for access rate comparison
     dream_importance_drift_rate: float = 0.1      # Max importance adjustment per cycle
+
+    # Cross-encoder reranking (Phase 10)
+    reranker_enabled: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_top_k: int = 50       # Rerank this many RRF candidates
+    reranker_output_k: int = 20    # Keep this many after reranking
+    scoring_weight_ce: float = 0.7  # Cross-encoder weight when reranker active
 
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events

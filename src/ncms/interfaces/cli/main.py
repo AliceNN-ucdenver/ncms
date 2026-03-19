@@ -213,10 +213,23 @@ def load(
                 store=store, index=index, config=config, splade=splade,
             )
 
+        # Cross-encoder reranker (Phase 10, disabled by default)
+        reranker = None
+        if config.reranker_enabled:
+            from ncms.infrastructure.reranking.cross_encoder_reranker import (
+                CrossEncoderReranker,
+            )
+
+            reranker = CrossEncoderReranker(
+                model_name=config.reranker_model,
+                cache_dir=config.model_cache_dir,
+            )
+
         memory_svc = MemoryService(
             store=store, index=index, graph=graph, config=config,
             splade=splade, admission=admission,
             reconciliation=reconciliation, episode=episode,
+            reranker=reranker,
         )
         await GraphService(store=store, graph=graph).rebuild_from_store()
         loader = KnowledgeLoader(memory_svc)

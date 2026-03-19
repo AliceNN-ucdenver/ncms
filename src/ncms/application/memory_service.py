@@ -58,6 +58,7 @@ class MemoryService:
         reconciliation: object | None = None,
         episode: object | None = None,
         intent_classifier: object | None = None,
+        reranker: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -75,6 +76,8 @@ class MemoryService:
         self._episode = episode
         # Optional BM25 exemplar intent classifier (Phase 4, duck-typed)
         self._intent_classifier = intent_classifier
+        # Optional cross-encoder reranker (Phase 10, duck-typed)
+        self._reranker = reranker
 
     @property
     def store(self) -> MemoryStore:
@@ -899,6 +902,33 @@ class MemoryService:
             })
             return []
 
+        # ── Cross-encoder reranking (Phase 10) ────────────────────────
+        # Rerank top RRF candidates using a cross-encoder model.
+        # Runs between fusion and scoring to refine candidate order.
+        ce_scores: dict[str, float] = {}
+        if self._reranker is not None and self._config.reranker_enabled:
+            t0 = time.perf_counter()
+            rerank_ids = [mid for mid, _ in fused_candidates[
+                :self._config.reranker_top_k
+            ]]
+            rerank_memories = await self._store.get_memories_batch(rerank_ids)
+            rerank_pairs = [
+                (mid, rerank_memories[mid].content)
+                for mid in rerank_ids if mid in rerank_memories
+            ]
+            reranked = await asyncio.to_thread(
+                self._reranker.rerank, query, rerank_pairs,
+                self._config.reranker_output_k,
+            )
+            ce_scores = {mid: score for mid, score in reranked}
+            # Replace fused candidates with reranked order
+            fused_candidates = reranked
+            _emit_stage("cross_encoder_rerank", (time.perf_counter() - t0) * 1000, {
+                "input_count": len(rerank_pairs),
+                "output_count": len(reranked),
+                "top_score": round(reranked[0][1], 4) if reranked else None,
+            })
+
         # Build per-source score lookups
         bm25_scores: dict[str, float] = {mid: score for mid, score in bm25_results}
         splade_scores: dict[str, float] = {mid: score for mid, score in splade_results}
@@ -1078,8 +1108,13 @@ class MemoryService:
                 logger.debug("Failed to compute PMI edge weights", exc_info=True)
 
         # Phase 9: Personalized PageRank — compute ONCE per query (not per candidate)
+        # Skip entirely when graph weight is 0 (saves ~5ms per query)
         ppr_scores: dict[str, float] = {}
-        if self._config.graph_ppr_enabled and context_entity_ids:
+        if (
+            self._config.graph_ppr_enabled
+            and context_entity_ids
+            and self._config.scoring_weight_graph > 0
+        ):
             try:
                 # Fix #3 (audit): seed PPR with uniform weights.
                 # IDF is already applied in ppr_graph_score(); using IDF
@@ -1122,7 +1157,11 @@ class MemoryService:
         t0 = time.perf_counter()
         candidate_ids = [mid for mid, _ in all_candidates]
         memories_batch = await self._store.get_memories_batch(candidate_ids)
-        access_times_batch = await self._store.get_access_times_batch(candidate_ids)
+        # Skip access times load when ACT-R is disabled (saves ~50ms per query)
+        if w_actr > 0:
+            access_times_batch = await self._store.get_access_times_batch(candidate_ids)
+        else:
+            access_times_batch = {}
 
         # ── Pass 1: Compute raw signals for all candidates ─────────────
         # Two-pass scoring: first collect raw signals, then normalize
@@ -1284,6 +1323,17 @@ class MemoryService:
         top_activation = 0.0
         w_hierarchy = self._config.scoring_weight_hierarchy
         actr_enabled = w_actr > 0
+        w_ce = self._config.scoring_weight_ce if ce_scores else 0.0
+
+        # CE score normalization (min-max)
+        if ce_scores:
+            ce_vals = [ce_scores.get(c["memory_id"], 0.0) for c in raw_candidates]
+            max_ce = max(ce_vals) if ce_vals else 1.0
+            min_ce = min(ce_vals) if ce_vals else 0.0
+            ce_range = max_ce - min_ce if max_ce > min_ce else 1.0
+        else:
+            min_ce = 0.0
+            ce_range = 1.0
 
         for c in raw_candidates:
             # Normalize each signal to [0, 1]
@@ -1292,17 +1342,28 @@ class MemoryService:
             graph_norm = c["graph_raw"] / max_graph
 
             # Combined score with normalized signals
+            # When cross-encoder is active, CE dominates with BM25/SPLADE as tiebreakers.
             # Penalty applied ONLY here (not also inside ACT-R) to avoid
             # double-counting when w_actr > 0.
-            combined = (
-                bm25_norm * w_bm25
-                + c["act"] * w_actr
-                + splade_norm * w_splade
-                + graph_norm * w_graph
-                + c["h_bonus"] * w_hierarchy
-                + c["rec_score"] * w_recency
-                - c["penalty"]
-            )
+            if ce_scores:
+                ce_raw = ce_scores.get(c["memory_id"], min_ce)
+                ce_norm = (ce_raw - min_ce) / ce_range
+                combined = (
+                    ce_norm * w_ce
+                    + bm25_norm * (1.0 - w_ce) * 0.67  # BM25 tiebreaker
+                    + splade_norm * (1.0 - w_ce) * 0.33  # SPLADE tiebreaker
+                    - c["penalty"]
+                )
+            else:
+                combined = (
+                    bm25_norm * w_bm25
+                    + c["act"] * w_actr
+                    + splade_norm * w_splade
+                    + graph_norm * w_graph
+                    + c["h_bonus"] * w_hierarchy
+                    + c["rec_score"] * w_recency
+                    - c["penalty"]
+                )
 
             if combined > top_activation:
                 top_activation = combined

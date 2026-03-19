@@ -53,6 +53,7 @@ class SWEState:
     domain: str = "django"
     llm_model: str = ""
     llm_api_base: str = ""
+    reranker: Any = None  # CrossEncoderReranker (Phase 10)
     # Metadata
     train_instances: list[SWEInstance] = field(default_factory=list)
     test_instances: list[SWEInstance] = field(default_factory=list)
@@ -136,8 +137,11 @@ async def ingest_swebench(
         # Enable dream cycle flag globally so search logging populates
         # search_log table for PMI computation across ALL stages
         dream_cycle_enabled=True,
-        # Phase 9: Query expansion at search time (dict built during dream cycles)
-        dream_query_expansion_enabled=True,
+        # Phase 9: Query expansion disabled (Phase 10: 40K terms adds noise)
+        dream_query_expansion_enabled=False,
+        # Phase 10: Cross-encoder reranking
+        reranker_enabled=True,
+        reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
         # LLM config
         consolidation_knowledge_model=llm_model,
         consolidation_knowledge_api_base=llm_api_base,
@@ -159,10 +163,23 @@ async def ingest_swebench(
     reconciliation = ReconciliationService(store=store, config=config)
     episode = EpisodeService(store=store, index=index, config=config, splade=splade)
 
+    # Cross-encoder reranker (Phase 10)
+    reranker = None
+    if config.reranker_enabled:
+        from ncms.infrastructure.reranking.cross_encoder_reranker import (
+            CrossEncoderReranker,
+        )
+
+        reranker = CrossEncoderReranker(
+            model_name=config.reranker_model,
+            cache_dir=config.model_cache_dir,
+        )
+        logger.info("Cross-encoder reranker enabled: %s", config.reranker_model)
+
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         splade=splade, admission=admission, reconciliation=reconciliation,
-        episode=episode,
+        episode=episode, reranker=reranker,
     )
 
     # Ingest in chronological order
@@ -226,6 +243,7 @@ async def ingest_swebench(
         store=store, index=index, graph=graph, splade=splade,
         config=config, doc_to_mem=doc_to_mem, mem_to_doc=mem_to_doc,
         domain="django", llm_model=llm_model, llm_api_base=llm_api_base,
+        reranker=reranker,
         train_instances=train,
         docs_ingested=len(doc_to_mem),
         ingestion_seconds=elapsed,
@@ -268,6 +286,7 @@ async def inject_access_history(
     svc = MemoryService(
         store=state.store, index=state.index, graph=state.graph,
         config=state.config, splade=state.splade,
+        reranker=state.reranker,
     )
 
     total_accesses = 0
@@ -385,6 +404,7 @@ async def measure_ttl(
     svc = MemoryService(
         store=state.store, index=state.index, graph=state.graph,
         config=state.config, splade=state.splade,
+        reranker=state.reranker,
     )
 
     predictions: dict[str, str] = {}
@@ -436,6 +456,7 @@ async def measure_cr(
     svc = MemoryService(
         store=state.store, index=state.index, graph=state.graph,
         config=state.config, splade=state.splade,
+        reranker=state.reranker,
     )
 
     # Build targets: query_id → most recent doc_id (grade 2)
@@ -487,6 +508,7 @@ async def measure_lru(
     svc = MemoryService(
         store=state.store, index=state.index, graph=state.graph,
         config=state.config, splade=state.splade,
+        reranker=state.reranker,
     )
 
     rankings: dict[str, list[str]] = {}

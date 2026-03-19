@@ -558,11 +558,24 @@ async def run_dashboard(
         intent_classifier = ExemplarIntentIndex()
         logger.info("BM25 exemplar intent classifier enabled")
 
+    # Cross-encoder reranker (Phase 10)
+    reranker = None
+    if config.reranker_enabled:
+        from ncms.infrastructure.reranking.cross_encoder_reranker import (
+            CrossEncoderReranker,
+        )
+
+        reranker = CrossEncoderReranker(
+            model_name=config.reranker_model,
+            cache_dir=config.model_cache_dir,
+        )
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         event_log=event_log, splade=splade, admission=admission,
         reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
+        reranker=reranker,
     )
     snapshot_svc = SnapshotService(
         store=store,

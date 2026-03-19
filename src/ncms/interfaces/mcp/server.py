@@ -96,12 +96,26 @@ async def create_ncms_services(
         splade=splade,
     )
 
+    # Cross-encoder reranker (Phase 10)
+    reranker = None
+    if config.reranker_enabled:
+        from ncms.infrastructure.reranking.cross_encoder_reranker import (
+            CrossEncoderReranker,
+        )
+
+        reranker = CrossEncoderReranker(
+            model_name=config.reranker_model,
+            cache_dir=config.model_cache_dir,
+        )
+        logger.info("Cross-encoder reranker enabled: %s", config.reranker_model)
+
     # Application services
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         splade=splade, admission=admission,
         reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
+        reranker=reranker,
     )
     snapshot_svc = SnapshotService(
         store=store,

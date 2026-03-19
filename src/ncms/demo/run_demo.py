@@ -125,11 +125,24 @@ async def run_demo() -> None:
 
         intent_classifier = ExemplarIntentIndex()
 
+    # Cross-encoder reranker (Phase 10, disabled by default)
+    reranker = None
+    if config.reranker_enabled:
+        from ncms.infrastructure.reranking.cross_encoder_reranker import (
+            CrossEncoderReranker,
+        )
+
+        reranker = CrossEncoderReranker(
+            model_name=config.reranker_model,
+            cache_dir=config.model_cache_dir,
+        )
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         splade=splade, admission=admission,
         reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
+        reranker=reranker,
     )
     snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
     bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
