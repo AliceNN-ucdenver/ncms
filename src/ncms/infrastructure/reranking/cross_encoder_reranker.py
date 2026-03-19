@@ -61,7 +61,7 @@ class CrossEncoderReranker:
 
         # Truncate content to avoid exceeding model's token limit (512 tokens ~ 2000 chars)
         pairs = [(query, content[:2000]) for _, content in candidates]
-        scores = self._model.predict(pairs, batch_size=32)
+        scores = self._model.predict(pairs, batch_size=32, show_progress_bar=False)
 
         scored = list(zip(
             [mid for mid, _ in candidates],
