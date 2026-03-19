@@ -182,7 +182,7 @@ class TestToolCount:
     """Verify total tool count after Phase 6."""
 
     async def test_total_tools_without_consolidation(self) -> None:
-        """14 tools without consolidation service."""
+        """15 tools without consolidation service."""
         from mcp.server.fastmcp import FastMCP
 
         from ncms.interfaces.mcp.tools import register_tools
@@ -190,10 +190,10 @@ class TestToolCount:
         mcp = FastMCP(name="test")
         register_tools(mcp, AsyncMock(), MagicMock(), MagicMock())
         tools = await mcp.list_tools()
-        assert len(tools) == 14
+        assert len(tools) == 15  # noqa: PLR2004
 
     async def test_total_tools_with_consolidation(self) -> None:
-        """15 tools with consolidation service."""
+        """16 tools with consolidation service."""
         from mcp.server.fastmcp import FastMCP
 
         from ncms.interfaces.mcp.tools import register_tools
@@ -204,4 +204,4 @@ class TestToolCount:
             consolidation_svc=AsyncMock(),
         )
         tools = await mcp.list_tools()
-        assert len(tools) == 15
+        assert len(tools) == 16

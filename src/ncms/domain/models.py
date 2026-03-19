@@ -465,6 +465,61 @@ class ScoredMemory(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase 11: Structured Recall — context-enriched retrieval results
+# ---------------------------------------------------------------------------
+
+
+class EntityStateSnapshot(BaseModel):
+    """Current state of an entity mentioned in a recalled memory."""
+
+    entity_id: str
+    entity_name: str
+    state_key: str = ""
+    state_value: str = ""
+    is_current: bool = True
+    observed_at: datetime | None = None
+
+
+class EpisodeContext(BaseModel):
+    """Episode that a recalled memory belongs to."""
+
+    episode_id: str
+    episode_title: str = ""
+    status: str = "open"
+    member_count: int = 0
+    topic_entities: list[str] = Field(default_factory=list)
+    sibling_ids: list[str] = Field(default_factory=list)
+    summary: str | None = None
+
+
+class CausalChain(BaseModel):
+    """Directed edges connecting a memory to related memories via HTMG."""
+
+    supersedes: list[str] = Field(default_factory=list)
+    superseded_by: list[str] = Field(default_factory=list)
+    derived_from: list[str] = Field(default_factory=list)
+    supports: list[str] = Field(default_factory=list)
+    conflicts_with: list[str] = Field(default_factory=list)
+
+
+class RecallContext(BaseModel):
+    """Structured context enriching a single recalled memory."""
+
+    entity_states: list[EntityStateSnapshot] = Field(default_factory=list)
+    episode: EpisodeContext | None = None
+    causal_chain: CausalChain = Field(default_factory=CausalChain)
+    temporal_neighbors: list[str] = Field(default_factory=list)
+
+
+class RecallResult(BaseModel):
+    """A recalled memory with full context graph — one call, complete picture."""
+
+    memory: ScoredMemory
+    context: RecallContext = Field(default_factory=RecallContext)
+    retrieval_path: str = "fact_lookup"
+
+
+# ---------------------------------------------------------------------------
 # Agent Registry
 # ---------------------------------------------------------------------------
 

@@ -79,6 +79,87 @@ def register_tools(
         ]
 
     @mcp.tool()
+    async def recall_memory(
+        query: str,
+        domain: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Recall memory with full context enrichment.
+
+        Unlike search_memory which returns flat ranked results, recall_memory
+        routes queries to specialized retrieval paths based on intent and
+        enriches each result with episode context, entity states, and causal
+        chain edges. One call returns the complete picture.
+
+        Context includes:
+        - Episode membership (which episode, summary, sibling memories)
+        - Entity states (current state of all mentioned entities)
+        - Causal chain (supersedes, superseded_by, derived_from, conflicts)
+        - Retrieval path used (fact_lookup, state_lookup, episode_expansion, etc.)
+
+        Args:
+            query: Natural language query.
+            domain: Optional domain filter.
+            limit: Maximum results.
+
+        Returns:
+            List of memories with full context graph.
+        """
+        results = await memory_svc.recall(
+            query, domain=domain, limit=limit,
+        )
+        out = []
+        for r in results:
+            entry: dict[str, Any] = {
+                "memory_id": r.memory.memory.id,
+                "content": r.memory.memory.content,
+                "type": r.memory.memory.type,
+                "domains": r.memory.memory.domains,
+                "retrieval_path": r.retrieval_path,
+                "bm25_score": round(r.memory.bm25_score, 4),
+                "is_superseded": r.memory.is_superseded,
+                "created_at": r.memory.memory.created_at.isoformat(),
+            }
+            # Episode context
+            if r.context.episode:
+                ep = r.context.episode
+                entry["episode"] = {
+                    "id": ep.episode_id,
+                    "title": ep.episode_title,
+                    "status": ep.status,
+                    "member_count": ep.member_count,
+                    "topic_entities": ep.topic_entities[:10],
+                    "sibling_count": len(ep.sibling_ids),
+                    "summary": ep.summary[:300] if ep.summary else None,
+                }
+            # Entity states
+            if r.context.entity_states:
+                entry["entity_states"] = [
+                    {
+                        "entity": s.entity_name,
+                        "key": s.state_key,
+                        "value": s.state_value,
+                        "is_current": s.is_current,
+                    }
+                    for s in r.context.entity_states[:10]
+                ]
+            # Causal chain (only include non-empty)
+            cc = r.context.causal_chain
+            chain: dict[str, list[str]] = {}
+            if cc.supersedes:
+                chain["supersedes"] = cc.supersedes
+            if cc.superseded_by:
+                chain["superseded_by"] = cc.superseded_by
+            if cc.derived_from:
+                chain["derived_from"] = cc.derived_from
+            if cc.conflicts_with:
+                chain["conflicts_with"] = cc.conflicts_with
+            if chain:
+                entry["causal_chain"] = chain
+            out.append(entry)
+        return out
+
+    @mcp.tool()
     async def store_memory(
         content: str,
         type: str = "fact",
