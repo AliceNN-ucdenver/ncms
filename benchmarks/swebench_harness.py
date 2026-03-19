@@ -139,7 +139,9 @@ async def ingest_swebench(
         dream_cycle_enabled=True,
         # Phase 9: Query expansion disabled (Phase 10: 40K terms adds noise)
         dream_query_expansion_enabled=False,
-        # Phase 10: Cross-encoder reranking
+        # Phase 4: Intent classification (required for Phase 11 recall routing)
+        intent_classification_enabled=True,
+        # Phase 10: Cross-encoder reranking (selective by intent in Phase 11)
         reranker_enabled=True,
         reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
         # LLM config
