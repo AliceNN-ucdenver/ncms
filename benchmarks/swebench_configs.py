@@ -15,7 +15,7 @@ ACTR_SWEEP_WEIGHTS: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3, 0.4)
 TUNED_WEIGHTS = {
     "bm25": 0.6,
     "splade": 0.3,
-    "graph": 0.0,    # Phase 10: 7 experiments show graph signal adds noise
+    "graph": 0.3,    # Restored: stripping caused -9.8% AR regression
     "actr": 0.0,
     "hierarchy": 0.0,
 }

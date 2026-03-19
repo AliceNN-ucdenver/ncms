@@ -174,6 +174,8 @@ async def ingest_swebench(
             model_name=config.reranker_model,
             cache_dir=config.model_cache_dir,
         )
+        # Eagerly load model so first search doesn't pay load penalty
+        reranker._ensure_model()
         logger.info("Cross-encoder reranker enabled: %s", config.reranker_model)
 
     svc = MemoryService(

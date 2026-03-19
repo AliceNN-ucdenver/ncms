@@ -52,7 +52,7 @@ class NCMSConfig(BaseSettings):
     tier2_candidates: int = 20
     scoring_weight_bm25: float = 0.6   # Tuned: grid search on SciFact (2026-03-14)
     scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
-    scoring_weight_graph: float = 0.0  # Disabled: 7 SWE-bench runs show graph signal adds noise
+    scoring_weight_graph: float = 0.3  # Restored: graph signal helps baseline (+10% AR)
 
     # Graph expansion (Tier 1.5)
     graph_expansion_enabled: bool = True
