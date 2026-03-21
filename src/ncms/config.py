@@ -195,3 +195,16 @@ class NCMSConfig(BaseSettings):
     http_host: str = "0.0.0.0"
     http_port: int = 8080
     auth_token: str | None = None
+
+    # OpenTelemetry
+    otel_enabled: bool = False
+    otel_service_name: str = "ncms"
+    otel_endpoint: str | None = None  # Uses OTEL_EXPORTER_OTLP_ENDPOINT env var if not set
+    otel_protocol: str = "http/protobuf"  # or "grpc"
+
+    # Filesystem watcher
+    watch_enabled: bool = False
+    watch_debounce_seconds: float = 2.0
+    watch_exclude_patterns: str = "*.pyc,__pycache__,.git,.DS_Store,*.swp,*.swo,*~,*.tmp,.#*"
+    watch_default_importance: float = 6.0
+    watch_hash_persistence: bool = True

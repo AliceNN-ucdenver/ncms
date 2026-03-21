@@ -1,0 +1,115 @@
+# NCMS Helm Chart Values
+# Override these in your values.yaml or via --set flags
+
+replicaCount: 1
+
+image:
+  repository: ncms-nemoclaw
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Service mode: "api" (HTTP REST), "mcp" (stdio), "dashboard" (web UI + demo)
+mode: api
+
+# NCMS feature flags (map to NCMS_ environment variables)
+config:
+  dbPath: /data/.ncms/ncms.db
+  indexPath: /data/index
+
+  # Retrieval pipeline
+  spladeEnabled: false
+  spladeModel: "naver/splade-v3"
+  rerankerEnabled: false
+  rerankerModel: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+  # Knowledge structure
+  admissionEnabled: false
+  reconciliationEnabled: false
+  episodesEnabled: false
+  intentClassificationEnabled: false
+  dreamCycleEnabled: false
+
+  # LLM (for consolidation, contradiction detection)
+  llmModel: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+  llmApiBase: ""
+  consolidationEnabled: false
+
+  # Auth token for HTTP API
+  authToken: ""
+
+  # Model cache directory (pre-baked in image, or download at runtime)
+  modelCacheDir: ""
+
+  # Pipeline debug (emit candidate details in events)
+  pipelineDebug: false
+
+# HTTP API service
+service:
+  type: ClusterIP
+  port: 8080
+  # Dashboard port (only when mode=dashboard)
+  dashboardPort: 8420
+
+# Ingress
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt
+  hosts:
+    - host: ncms.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Persistent volume for SQLite database and Tantivy index
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+# Resource limits
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# Health check
+healthcheck:
+  enabled: true
+  path: /api/v1/health
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 10
+
+# Node selector, tolerations, affinity
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Pod annotations (e.g., for Prometheus scraping)
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+
+# OpenTelemetry
+otel:
+  enabled: false
+  endpoint: ""  # e.g., "http://otel-collector:4318"
+  serviceName: "ncms"
+  # OTLP protocol: "grpc" or "http/protobuf"
+  protocol: "http/protobuf"

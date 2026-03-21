@@ -617,6 +617,115 @@ def register_tools(
         deleted = await memory_svc.delete(memory_id)
         return {"deleted": deleted, "memory_id": memory_id}
 
+    # ── Filesystem watcher tools ────────────────────────────────────────
+
+    # Active watchers registry (shared across tool invocations)
+    _active_watchers: dict[str, object] = {}
+
+    @mcp.tool()
+    async def watch_directory(
+        path: str,
+        domain: str | None = None,
+        recursive: bool = True,
+        scan_only: bool = False,
+    ) -> dict[str, Any]:
+        """Watch a directory for file changes and auto-ingest into memory.
+
+        Monitors files for creation/modification, classifies domains
+        automatically based on directory names, file extensions, and path
+        patterns, then ingests into NCMS memory.
+
+        Args:
+            path: Directory path to watch.
+            domain: Override domain for all files (auto-classified if not set).
+            recursive: Watch subdirectories.
+            scan_only: If True, scan once and return without live watching.
+
+        Returns:
+            watch_id and initial scan statistics.
+        """
+        import uuid
+        from pathlib import Path as PathLib
+
+        from ncms.application.watch_service import WatchService
+
+        dir_path = PathLib(path)
+        if not dir_path.is_dir():
+            return {"error": f"Not a directory: {path}"}
+
+        watch_svc = WatchService(
+            memory_svc,
+            default_domain=domain,
+        )
+
+        if scan_only:
+            stats = await watch_svc.scan_directory(dir_path, recursive=recursive)
+            return {
+                "mode": "scan_only",
+                "path": path,
+                **stats.to_dict(),
+            }
+
+        # Live watching
+        try:
+            from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
+        except ImportError:
+            return {
+                "error": "watchdog not installed. "
+                "Install with: pip install ncms[watch]",
+            }
+
+        watch_id = uuid.uuid4().hex[:8]
+        watcher = FilesystemWatcher(watch_svc, debounce_seconds=2.0)
+        await watcher.start([(path, recursive)])
+        _active_watchers[watch_id] = watcher
+
+        stats = watcher.get_stats()
+        return {
+            "watch_id": watch_id,
+            "mode": "live",
+            "path": path,
+            "recursive": recursive,
+            "domain": domain or "auto-classified",
+            "initial_scan": stats.to_dict(),
+        }
+
+    @mcp.tool()
+    async def stop_watch(
+        watch_id: str = "",
+    ) -> dict[str, Any]:
+        """Stop a filesystem watcher.
+
+        Args:
+            watch_id: The watch ID returned by watch_directory.
+                If empty, stops all active watchers.
+
+        Returns:
+            Final statistics from the stopped watcher(s).
+        """
+        if watch_id and watch_id in _active_watchers:
+            watcher = _active_watchers.pop(watch_id)
+            await watcher.stop()  # type: ignore[union-attr]
+            stats = watcher.get_stats()  # type: ignore[union-attr]
+            return {
+                "stopped": watch_id,
+                **stats.to_dict(),
+            }
+        elif not watch_id:
+            # Stop all
+            results = {}
+            for wid, watcher in list(_active_watchers.items()):
+                await watcher.stop()  # type: ignore[union-attr]
+                stats = watcher.get_stats()  # type: ignore[union-attr]
+                results[wid] = stats.to_dict()
+            _active_watchers.clear()
+            return {"stopped_all": True, "watchers": results}
+        else:
+            return {
+                "error": f"Watch not found: {watch_id}",
+                "active_watches": list(_active_watchers.keys()),
+            }
+
     if consolidation_svc is not None:
 
         @mcp.tool()

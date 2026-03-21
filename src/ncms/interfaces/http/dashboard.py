@@ -451,8 +451,15 @@ def create_dashboard_app(
 
     # ── App ───────────────────────────────────────────────────────────────
 
+    async def prometheus_metrics(request: Request) -> Any:
+        """Prometheus metrics endpoint."""
+        from ncms.infrastructure.observability.metrics import metrics_endpoint
+
+        return await metrics_endpoint(request)
+
     routes = [
         Route("/", index),
+        Route("/metrics", prometheus_metrics),
         Route("/api/events/stream", event_stream),
         Route("/api/events", api_events),
         Route("/api/agents", api_agents),

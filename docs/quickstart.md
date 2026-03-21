@@ -112,9 +112,9 @@ Add NCMS hooks to `.claude/settings.json` for automatic knowledge persistence:
 - `Stop`: Knowledge from the completed task committed to NCMS
 - `PreCompact`: Full context dump before window compaction (critical &mdash; compaction destroys context)
 
-### GitHub Copilot (Planned)
+### GitHub Copilot
 
-> **Note:** Copilot hook integration is on the roadmap. The configuration below shows the intended shape once implemented.
+Add to your `.github/copilot-hooks.json` (or workspace `copilot-hooks.json`):
 
 ```json
 {
@@ -139,6 +139,11 @@ Add NCMS hooks to `.claude/settings.json` for automatic knowledge persistence:
 }
 ```
 
+**What happens:**
+- `sessionStart`: Previous session knowledge loaded automatically (same as Claude Code)
+- `sessionEnd`: Knowledge from the completed session committed to NCMS
+- `postToolUse`: Incremental knowledge capture after each tool invocation
+
 ### Any MCP-Compatible Agent (Cursor, etc.)
 
 Just connect to the MCP server:
@@ -151,12 +156,14 @@ uv run ncms serve
 
 ## MCP Tools & Resources
 
-NCMS exposes 10 tools and browsable resources via the Model Context Protocol:
+NCMS exposes 18 tools (+ 1 optional) and browsable resources via the Model Context Protocol:
 
 | Tool | Description |
 |------|-------------|
-| `search_memory` | BM25 + ACT-R scored search across all memories |
-| `store_memory` | Store knowledge with automatic indexing |
+| `search_memory` | BM25 + SPLADE + Graph + CE scored search |
+| `recall_memory` | Structured recall with episode/entity/causal context |
+| `store_memory` | Store knowledge with automatic entity extraction and indexing |
+| `delete_memory` | Remove a memory from store and all indexes |
 | `ask_knowledge` | Non-blocking ask routed to live agents |
 | `ask_knowledge_sync` | Blocking ask with surrogate fallback |
 | `announce_knowledge` | Broadcast changes to subscribed agents |
@@ -165,6 +172,13 @@ NCMS exposes 10 tools and browsable resources via the Model Context Protocol:
 | `list_domains` | List all knowledge domains and providers |
 | `get_snapshot` | Retrieve an agent's Knowledge Snapshot |
 | `load_knowledge` | Import files into memory (Matrix download) |
+| `get_current_state` | Look up current state of an entity |
+| `get_state_history` | View temporal chain of state transitions |
+| `list_episodes` | List open/closed memory episodes |
+| `get_episode` | View episode with all member fragments |
+| `watch_directory` | Watch directory for file changes with auto-domain classification |
+| `stop_watch` | Stop a filesystem watcher |
+| `run_consolidation` | *(optional)* Execute dream cycle + consolidation pass |
 
 **Resources:** `ncms://status`, `ncms://domains`, `ncms://agents`, `ncms://graph/entities`
 
@@ -279,9 +293,11 @@ All settings via environment variables with `NCMS_` prefix:
 | `NCMS_ACTR_DECAY` | `0.5` | Memory decay rate |
 | `NCMS_ACTR_NOISE` | `0.25` | Activation noise (sigma) |
 | `NCMS_ACTR_THRESHOLD` | `-2.0` | Retrieval activation threshold |
-| `NCMS_SCORING_WEIGHT_BM25` | `0.6` | BM25 weight in combined score |
-| `NCMS_SCORING_WEIGHT_ACTR` | `0.4` | ACT-R weight in combined score |
-| `NCMS_SCORING_WEIGHT_SPLADE` | `0.0` | SPLADE weight in combined score |
+| `NCMS_SCORING_WEIGHT_BM25` | `0.6` | BM25 weight in combined score (tuned on SciFact) |
+| `NCMS_SCORING_WEIGHT_ACTR` | `0.0` | ACT-R weight (activates after dream cycles) |
+| `NCMS_SCORING_WEIGHT_SPLADE` | `0.3` | SPLADE weight in combined score (tuned on SciFact) |
+| `NCMS_SCORING_WEIGHT_GRAPH` | `0.3` | Graph spreading activation weight |
+| `NCMS_SCORING_WEIGHT_CE` | `0.7` | Cross-encoder weight when reranker active |
 
 ### Entity Extraction
 
@@ -289,29 +305,31 @@ All settings via environment variables with `NCMS_` prefix:
 |----------|---------|-------------|
 | `NCMS_GLINER_MODEL` | `urchade/gliner_medium-v2.1` | GLiNER model for entity extraction |
 | `NCMS_GLINER_THRESHOLD` | `0.3` | Minimum confidence score for entities |
-| `NCMS_LABEL_DETECTION_MODEL` | `gpt-4o-mini` | LLM model for `ncms topics detect` |
-| `NCMS_LABEL_DETECTION_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_LABEL_DETECTION_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for `ncms topics detect` |
+| `NCMS_LABEL_DETECTION_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM/OpenAI-compatible endpoint |
 
 ### SPLADE Neural Retrieval
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NCMS_SPLADE_ENABLED` | `false` | Enable SPLADE sparse neural retrieval |
-| `NCMS_SPLADE_MODEL` | `prithivida/Splade_PP_en_v1` | SPLADE model (ONNX via fastembed) |
+| `NCMS_SPLADE_MODEL` | `naver/splade-v3` | SPLADE model (sentence-transformers SparseEncoder) |
 | `NCMS_SPLADE_TOP_K` | `50` | Number of SPLADE candidates per search |
+| `NCMS_RERANKER_ENABLED` | `false` | Enable cross-encoder reranking (Phase 10) |
+| `NCMS_RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model |
 
 ### LLM Features (Opt-in)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NCMS_LLM_MODEL` | `gpt-4o-mini` | Model for contradiction detection |
-| `NCMS_LLM_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_LLM_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | Model for contradiction detection |
+| `NCMS_LLM_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM/OpenAI-compatible endpoint |
 | `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | Enable contradiction detection at ingest |
 | `NCMS_CONTRADICTION_CANDIDATE_LIMIT` | `5` | Max memories to check for contradictions |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | Enable knowledge consolidation |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MIN_CLUSTER_SIZE` | `3` | Min memories per entity cluster |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `gpt-4o-mini` | LLM model for insight synthesis |
-| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | *(none)* | vLLM/OpenAI-compatible endpoint |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for insight synthesis |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM/OpenAI-compatible endpoint |
 | `NCMS_CONSOLIDATION_KNOWLEDGE_MAX_INSIGHTS_PER_RUN` | `5` | Max insights per consolidation run |
 
 ---

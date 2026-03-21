@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ncms.fullname" . }}
+  labels:
+    {{- include "ncms.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ncms.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      labels:
+        {{- include "ncms.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ncms
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - {{ .Values.mode }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            {{- if eq .Values.mode "dashboard" }}
+            - name: dashboard
+              containerPort: {{ .Values.service.dashboardPort }}
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: NCMS_DB_PATH
+              value: {{ .Values.config.dbPath | quote }}
+            - name: NCMS_INDEX_PATH
+              value: {{ .Values.config.indexPath | quote }}
+            - name: NCMS_SPLADE_ENABLED
+              value: {{ .Values.config.spladeEnabled | quote }}
+            - name: NCMS_SPLADE_MODEL
+              value: {{ .Values.config.spladeModel | quote }}
+            - name: NCMS_RERANKER_ENABLED
+              value: {{ .Values.config.rerankerEnabled | quote }}
+            - name: NCMS_RERANKER_MODEL
+              value: {{ .Values.config.rerankerModel | quote }}
+            - name: NCMS_ADMISSION_ENABLED
+              value: {{ .Values.config.admissionEnabled | quote }}
+            - name: NCMS_RECONCILIATION_ENABLED
+              value: {{ .Values.config.reconciliationEnabled | quote }}
+            - name: NCMS_EPISODES_ENABLED
+              value: {{ .Values.config.episodesEnabled | quote }}
+            - name: NCMS_INTENT_CLASSIFICATION_ENABLED
+              value: {{ .Values.config.intentClassificationEnabled | quote }}
+            - name: NCMS_DREAM_CYCLE_ENABLED
+              value: {{ .Values.config.dreamCycleEnabled | quote }}
+            - name: NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED
+              value: {{ .Values.config.consolidationEnabled | quote }}
+            - name: NCMS_PIPELINE_DEBUG
+              value: {{ .Values.config.pipelineDebug | quote }}
+            {{- if .Values.config.llmApiBase }}
+            - name: NCMS_LLM_MODEL
+              value: {{ .Values.config.llmModel | quote }}
+            - name: NCMS_LLM_API_BASE
+              value: {{ .Values.config.llmApiBase | quote }}
+            - name: NCMS_CONSOLIDATION_KNOWLEDGE_MODEL
+              value: {{ .Values.config.llmModel | quote }}
+            - name: NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE
+              value: {{ .Values.config.llmApiBase | quote }}
+            {{- end }}
+            {{- if .Values.config.authToken }}
+            - name: NCMS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ncms.fullname" . }}-auth
+                  key: token
+            {{- end }}
+            {{- if .Values.config.modelCacheDir }}
+            - name: NCMS_MODEL_CACHE_DIR
+              value: {{ .Values.config.modelCacheDir | quote }}
+            {{- end }}
+            {{- if .Values.otel.enabled }}
+            - name: NCMS_OTEL_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.serviceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | quote }}
+            {{- end }}
+          {{- if .Values.healthcheck.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.healthcheck.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.healthcheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthcheck.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthcheck.timeoutSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.healthcheck.path }}
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "ncms.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: ncms
+description: NeMo Cognitive Memory System - Vector-free persistent cognitive memory for AI agents
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ai
+  - agents
+  - memory
+  - cognitive
+  - knowledge-graph
+  - nemo
+  - mcp
+home: https://github.com/AliceNN-ucdenver/ncms
+maintainers:
+  - name: Shawn McCarthy
+    email: shawn@mccarthysoftware.com

@@ -361,6 +361,54 @@ class EventLog:
             data=results,
         ))
 
+    # ── Filesystem Watch Events ──────────────────────────────────────────
+
+    def watch_file_detected(
+        self,
+        path: str,
+        domain: str,
+        source: str,
+    ) -> None:
+        """Emit when a file change is detected by the watcher."""
+        self.emit(DashboardEvent(
+            type="watch.file_detected",
+            data={
+                "path": path,
+                "domain": domain,
+                "classification_source": source,
+            },
+        ))
+
+    def watch_file_ingested(
+        self,
+        path: str,
+        domain: str,
+        memories_created: int,
+    ) -> None:
+        """Emit after a watched file is successfully ingested."""
+        self.emit(DashboardEvent(
+            type="watch.file_ingested",
+            data={
+                "path": path,
+                "domain": domain,
+                "memories_created": memories_created,
+            },
+        ))
+
+    def watch_file_skipped(
+        self,
+        path: str,
+        reason: str,
+    ) -> None:
+        """Emit when a watched file is skipped (unchanged, unsupported, etc.)."""
+        self.emit(DashboardEvent(
+            type="watch.file_skipped",
+            data={
+                "path": path,
+                "reason": reason,
+            },
+        ))
+
     def memory_searched(
         self,
         query: str,

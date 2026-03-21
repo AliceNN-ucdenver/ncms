@@ -3,10 +3,17 @@
 Supports both Claude Code and GitHub Copilot hook events.
 Reads JSON from stdin, extracts knowledge, and commits to NCMS.
 
-Usage:
-    ncms-commit-hook --event stop --transcript /path/to/transcript
-    ncms-commit-hook --event session-end
+Claude Code events:
+    ncms-commit-hook --event stop
     ncms-commit-hook --event pre-compact --transcript /path/to/transcript
+
+GitHub Copilot events:
+    ncms-commit-hook --event session-end
+    ncms-commit-hook --event post-tool --tool-input
+    ncms-commit-hook --event file-changed
+
+Generic:
+    ncms-commit-hook --event error
 """
 
 from __future__ import annotations
@@ -111,7 +118,7 @@ async def _handle_event(
                 content=content,
                 memory_type="fact",
                 tags=[f"hook:{event}"],
-                source_agent=_detect_agent(stdin_data),
+                source_agent=_detect_agent(stdin_data, event),
                 project=project,
                 importance=7.0 if event == "pre-compact" else 5.0,
             )
@@ -152,14 +159,23 @@ def _extract_content(
     return None
 
 
-def _detect_agent(stdin_data: dict | None) -> str:
-    """Detect which coding agent is calling based on input shape."""
-    if not stdin_data:
+def _detect_agent(stdin_data: dict | None, event: str | None = None) -> str:
+    """Detect which coding agent is calling based on input shape and event type."""
+    if not stdin_data and not event:
         return "unknown-agent"
-    # Claude Code uses different keys than Copilot
-    if "CLAUDE_TRANSCRIPT_PATH" in str(stdin_data):
+
+    # Claude Code events
+    if event in ("stop", "pre-compact"):
         return "claude-code"
-    if "copilot" in str(stdin_data).lower():
+    # Copilot events
+    if event in ("session-end", "post-tool"):
+        return "github-copilot"
+
+    # Fallback: inspect stdin data shape
+    data_str = str(stdin_data) if stdin_data else ""
+    if "CLAUDE_TRANSCRIPT_PATH" in data_str:
+        return "claude-code"
+    if "copilot" in data_str.lower():
         return "github-copilot"
     return "coding-agent"
 

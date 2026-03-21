@@ -291,6 +291,300 @@ def load(
     asyncio.run(_load())
 
 
+@cli.command()
+@click.option("--db", default=None, help="Database path")
+@click.option("--index-path", default=None, help="Index path")
+@click.option("--batch-size", default=100, type=int, help="Batch size for re-indexing")
+def reindex(db: str | None, index_path: str | None, batch_size: int) -> None:
+    """Re-index existing memories for SPLADE sparse neural retrieval.
+
+    When SPLADE is enabled on an existing NCMS database, old memories
+    lack sparse vectors. This command re-indexes all memories so SPLADE
+    can participate in retrieval for the full corpus.
+
+    Also rebuilds the BM25 index if any documents are missing.
+
+    Examples:
+        ncms reindex
+        ncms reindex --batch-size 50
+    """
+    from rich.console import Console
+    from rich.progress import Progress
+
+    console = Console()
+
+    async def _reindex() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+
+        if not config.splade_enabled:
+            console.print(
+                "[yellow]SPLADE is not enabled.[/] Set NCMS_SPLADE_ENABLED=true "
+                "to enable SPLADE retrieval."
+            )
+            console.print("Proceeding with BM25-only reindex...")
+
+        store = SQLiteStore(db_path=config.db_path)
+        await store.initialize()
+        idx = TantivyEngine(path=index_path or config.index_path)
+        idx.initialize()
+
+        # Load SPLADE if enabled
+        splade = None
+        if config.splade_enabled:
+            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+            console.print("Loading SPLADE model...")
+            splade = SpladeEngine(
+                model_name=config.splade_model,
+                cache_dir=config.model_cache_dir,
+            )
+            console.print(f"[green]SPLADE loaded:[/] {config.splade_model}")
+
+        # Get all memories
+        memories = await store.list_memories(limit=1_000_000)
+        total = len(memories)
+        console.print(f"Found {total} memories to re-index.")
+
+        if total == 0:
+            console.print("[yellow]No memories to re-index.[/]")
+            await store.close()
+            return
+
+        bm25_indexed = 0
+        splade_indexed = 0
+        errors = 0
+
+        with Progress() as progress:
+            task = progress.add_task("Re-indexing...", total=total)
+
+            for i in range(0, total, batch_size):
+                batch = memories[i:i + batch_size]
+                for mem in batch:
+                    try:
+                        # BM25 re-index
+                        idx.add(
+                            doc_id=mem.id,
+                            content=mem.content,
+                            domains=mem.domains,
+                            tags=mem.tags,
+                        )
+                        bm25_indexed += 1
+
+                        # SPLADE re-index
+                        if splade is not None:
+                            splade.add(mem.id, mem.content)
+                            splade_indexed += 1
+
+                    except Exception:
+                        errors += 1
+
+                    progress.update(task, advance=1)
+
+        console.print(
+            f"\n[green]Re-index complete:[/]\n"
+            f"  BM25: {bm25_indexed} documents\n"
+            f"  SPLADE: {splade_indexed} documents\n"
+            f"  Errors: {errors}"
+        )
+        await store.close()
+
+    asyncio.run(_reindex())
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--domain", "-d", default=None, help="Override domain for all files.")
+@click.option("--recursive/--no-recursive", default=True, help="Watch subdirectories.")
+@click.option("--debounce", default=2.0, type=float, help="Debounce window in seconds.")
+@click.option("--exclude", default=None, help="Comma-separated exclude patterns.")
+@click.option("--importance", default=6.0, type=float, help="Default importance.")
+@click.option("--scan-only", is_flag=True, help="Scan once and exit (no live watching).")
+def watch(
+    paths: tuple[str, ...],
+    domain: str | None,
+    recursive: bool,
+    debounce: float,
+    exclude: str | None,
+    importance: float,
+    scan_only: bool,
+) -> None:
+    """Watch directories for file changes and auto-ingest into memory.
+
+    Monitors files for changes, classifies domains automatically, and
+    ingests new/modified files into NCMS memory via KnowledgeLoader.
+
+    Examples:
+        ncms watch docs/ -d documentation
+        ncms watch src/ docs/ --recursive
+        ncms watch . --scan-only
+        ncms watch docs/ --exclude "*.log,*.tmp"
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _watch() -> None:
+        from pathlib import Path
+
+        from ncms.application.graph_service import GraphService
+        from ncms.application.memory_service import MemoryService
+        from ncms.application.watch_service import WatchService
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        store = SQLiteStore(db_path=config.db_path)
+        await store.initialize()
+        index = TantivyEngine(path=config.index_path)
+        index.initialize()
+        graph = NetworkXGraph()
+
+        # Optional SPLADE
+        splade = None
+        if config.splade_enabled:
+            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+            splade = SpladeEngine(
+                model_name=config.splade_model,
+                cache_dir=config.model_cache_dir,
+            )
+
+        # Optional admission
+        admission = None
+        if config.admission_enabled:
+            from ncms.application.admission_service import AdmissionService
+
+            admission = AdmissionService(
+                store=store, index=index, graph=graph, config=config,
+            )
+
+        # Optional reconciliation
+        reconciliation = None
+        if config.reconciliation_enabled:
+            from ncms.application.reconciliation_service import ReconciliationService
+
+            reconciliation = ReconciliationService(store=store, config=config)
+
+        # Optional episodes
+        episode = None
+        if config.episodes_enabled:
+            from ncms.application.episode_service import EpisodeService
+
+            episode = EpisodeService(
+                store=store, index=index, config=config, splade=splade,
+            )
+
+        # Optional reranker
+        reranker = None
+        if config.reranker_enabled:
+            from ncms.infrastructure.reranking.cross_encoder_reranker import (
+                CrossEncoderReranker,
+            )
+
+            reranker = CrossEncoderReranker(
+                model_name=config.reranker_model,
+                cache_dir=config.model_cache_dir,
+            )
+
+        memory_svc = MemoryService(
+            store=store, index=index, graph=graph, config=config,
+            splade=splade, admission=admission,
+            reconciliation=reconciliation, episode=episode,
+            reranker=reranker,
+        )
+        await GraphService(store=store, graph=graph).rebuild_from_store()
+
+        exclude_patterns = None
+        if exclude:
+            exclude_patterns = [p.strip() for p in exclude.split(",") if p.strip()]
+
+        watch_svc = WatchService(
+            memory_svc,
+            default_domain=domain,
+            default_importance=importance,
+        )
+
+        if scan_only:
+            console.print("[bold]Scanning directories...[/]")
+            for p in paths:
+                path = Path(p)
+                if path.is_dir():
+                    await watch_svc.scan_directory(path, recursive=recursive)
+                else:
+                    console.print(f"[yellow]Skipping non-directory: {p}[/]")
+            stats = watch_svc.stats
+            console.print(
+                f"\n[green]Scan complete:[/] "
+                f"{stats.files_ingested} ingested, "
+                f"{stats.files_skipped_hash} unchanged, "
+                f"{stats.files_skipped_unsupported} unsupported, "
+                f"{stats.files_errored} errors, "
+                f"{stats.total_memories_created} memories created"
+            )
+            if stats.domains_detected:
+                console.print(
+                    f"[bold]Domains:[/] {', '.join(sorted(stats.domains_detected))}"
+                )
+            await store.close()
+            return
+
+        # Live watching mode
+        try:
+            from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
+        except ImportError:
+            console.print(
+                "[red]watchdog not installed. Run:[/]\n"
+                "  pip install ncms[watch]\n"
+                "  # or: pip install watchdog",
+                err=True,
+            )
+            await store.close()
+            raise SystemExit(1) from None
+
+        watcher = FilesystemWatcher(
+            watch_svc,
+            debounce_seconds=debounce,
+            exclude_patterns=exclude_patterns,
+        )
+
+        watch_paths = [(p, recursive) for p in paths]
+        console.print(f"[bold]Watching {len(paths)} path(s)...[/] (Ctrl+C to stop)")
+        for p in paths:
+            console.print(f"  [cyan]{p}[/] (recursive={recursive})")
+
+        await watcher.start(watch_paths)
+
+        try:
+            # Run until interrupted
+            while watcher.running:
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await watcher.stop()
+            stats = watcher.get_stats()
+            console.print(
+                f"\n[green]Watch stopped:[/] "
+                f"{stats.files_ingested} ingested, "
+                f"{stats.files_skipped_hash} unchanged, "
+                f"{stats.total_memories_created} memories created"
+            )
+            await store.close()
+
+    try:
+        asyncio.run(_watch())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Watcher stopped.[/]")
+
+
 @cli.group()
 def topics() -> None:
     """Manage domain-specific entity extraction labels.

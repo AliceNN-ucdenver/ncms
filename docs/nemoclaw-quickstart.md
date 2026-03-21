@@ -252,7 +252,7 @@ sandbox@my-assistant:~$ openclaw agent --agent main --local \
   --session-id test
 ```
 
-The agent now has access to all 15 NCMS memory tools. Try asking it to recall something:
+The agent now has access to all 18 NCMS memory tools. Try asking it to recall something:
 ```bash
 sandbox@my-assistant:~$ openclaw agent --agent main --local \
   -m "What do you remember about our authentication setup?" \

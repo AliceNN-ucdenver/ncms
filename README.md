@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/vectors-none_needed-purple" alt="No Vectors">
   <img src="https://img.shields.io/badge/external_deps-zero-orange" alt="Zero External Deps">
-  <img src="https://img.shields.io/badge/tests-719_passing-brightgreen" alt="719 Tests Passing">
+  <img src="https://img.shields.io/badge/tests-634_unit_passing-brightgreen" alt="634 Unit Tests Passing">
 </p>
 
 ---
@@ -241,25 +241,64 @@ uv run ncms serve
 
 The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128GB unified memory with room to spare, delivering sub-second LLM inference &mdash; orders of magnitude faster than CPU-based inference.
 
-## Roadmap
+## Completed Features
+
+**Core (Phases 0-11)**
+- [x] BM25 + SPLADE + Graph hybrid retrieval (nDCG@10=0.72 SciFact)
+- [x] Selective cross-encoder reranking (Phase 10, intent-aware)
+- [x] Per-query score normalization (Phase 9)
+- [x] Structured recall with episode/entity/causal context (Phase 11, +15.5% AR)
+- [x] 8-feature admission scoring with 3-way quality gate (Phase 1)
+- [x] Bitemporal state reconciliation (supports/refines/supersedes/conflicts) (Phase 2)
+- [x] 7-signal hybrid episode formation (Phase 3)
+- [x] Intent-aware retrieval with 7 intent classes (Phase 4)
+- [x] Hierarchical consolidation: episode summaries, state trajectories, recurring patterns (Phase 5)
+- [x] Dream cycles: rehearsal, PMI association learning, importance drift (Phase 8)
+- [x] ACT-R cognitive scoring with dream-learned association weights
+
+**Tools & Interfaces**
+- [x] 18 MCP tools (+1 optional consolidation) via FastMCP
+- [x] Claude Code hooks (`ncms-commit-hook`, `ncms-context-loader`)
+- [x] GitHub Copilot hooks (same binaries, Copilot event support)
+- [x] HTTP REST API with bearer token auth (22 endpoints)
+- [x] A2A JSON-RPC 2.0 bridge (agent discovery + task routing)
+- [x] CLI: `ncms serve|demo|dashboard|info|load|watch|reindex|topics|state|episodes`
+- [x] Observability dashboard (SSE + D3 graph + entity/episode/state views)
+
+**Ingestion & Monitoring**
+- [x] Filesystem watcher with auto-domain classification (`ncms watch`)
+- [x] Matrix-style knowledge loader (MD, JSON, YAML, CSV, HTML, DOCX, PPTX, PDF, XLSX)
+- [x] SPLADE reindex utility (`ncms reindex`)
+- [x] OpenTelemetry tracing integration (`pip install ncms[otel]`)
+- [x] Prometheus metrics endpoint (`/metrics`)
+
+**Deployment & Integration**
+- [x] NemoClaw integration (MCP config, OpenClaw skill, sandbox blueprint)
+- [x] NeMo Agent Toolkit `MemoryEditor` adapter (`ncms.integrations.nat_memory`)
+- [x] Helm chart for Kubernetes (`deployment/helm/`)
+- [x] All-in-one Docker image with pre-baked models
+- [x] docker-compose multi-agent hub (3 agents + shared NCMS)
 
 **Evaluation**
-- [x] Oracle ablation &mdash; dream-cycle-enhanced ACT-R evaluation (SWE-bench Django: Recall AR 0.2032, +15.5% over search)
+- [x] SciFact ablation: nDCG@10=0.7206, exceeds ColBERTv2 (+4.0%) and SPLADE++ (+1.5%)
+- [x] SWE-bench Django: Recall AR 0.2032, +15.5% over search; beats Mem0 and Letta on 3/4 metrics
+- [x] Dream cycle benchmark (SciFact, NFCorpus, ArguAna)
 
-**Ingestion**
-- [ ] Directory watcher &mdash; filesystem monitor with auto-domain classification
+## Roadmap (Post-v1)
 
-**Knowledge Bus & Agents**
-- [ ] Redis/NATS-backed transport for multi-process deployments
-- [ ] NeMo Agent Toolkit `MemoryEditor`/`MemoryManager` adapter
+**Distributed Infrastructure**
+- [ ] NATS/Redis-backed Knowledge Bus transport &mdash; pub/sub fanout across containers/machines, implementing existing `KnowledgeBusTransport` Protocol
+- [ ] Neo4j / FalkorDB graph backend &mdash; production-scale knowledge graphs (100M+ entities), implementing existing `KnowledgeGraph` Protocol
+- [ ] BM25-scored surrogate responses &mdash; upgrade keyword matching to BM25 scoring for better offline agent answer quality
 
-**Infrastructure**
-- [ ] Neo4j / FalkorDB graph backend for production-scale knowledge graphs
-- [ ] Docker container with Helm charts (NIM-compatible packaging)
+**Production Validation (requires real agent workloads)**
+- [ ] Simulated Agent Workday benchmark &mdash; 3-7 day simulated multi-agent workload for ACT-R validation on relational data with entity overlap
+- [ ] ACT-R weight crossover demonstration &mdash; show ACT-R weight becomes beneficial *with* dream-learned access patterns (deferred from Phase 8; needs differential access history, not static BEIR corpora)
+- [ ] Rehearsal Boost Rate measurement &mdash; validate ≥85% of rehearsed memories show activation increase
+- [ ] Superseded state demotion via dream decay &mdash; quantitative evaluation of stale-fact demotion through dream cycles
 
-**Dashboard**
-- [ ] Historical replay and time-travel debugging
-- [ ] Prometheus metrics and OpenTelemetry traces
+**Dashboard & Observability**
+- [ ] Historical replay and time-travel debugging &mdash; replay memory state at any point in time for pipeline debugging
 
 *See [completed milestones and V1 ablation results](docs/ncms_v1.md#completed-milestones-v1-to-project-oracle) for development history.*
 
