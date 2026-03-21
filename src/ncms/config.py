@@ -190,3 +190,8 @@ class NCMSConfig(BaseSettings):
 
     # MCP
     mcp_transport: str = "stdio"
+
+    # HTTP API
+    http_host: str = "0.0.0.0"
+    http_port: int = 8080
+    auth_token: str | None = None

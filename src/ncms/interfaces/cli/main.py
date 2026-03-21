@@ -23,10 +23,23 @@ def cli() -> None:
 @cli.command()
 @click.option("--db", default=None, help="Database path (default: ~/.ncms/ncms.db)")
 @click.option("--index", default=None, help="Index path (default: ~/.ncms/index)")
-def serve(db: str | None, index: str | None) -> None:
-    """Start the NCMS MCP server (stdio transport)."""
+@click.option(
+    "--transport", default="stdio", type=click.Choice(["stdio", "http"]),
+    help="Transport protocol",
+)
+@click.option("--host", default="0.0.0.0", help="HTTP bind address (http transport only)")
+@click.option("--port", default=8080, type=int, help="HTTP port (http transport only)")
+@click.option("--auth-token", default=None, help="Bearer token for HTTP auth")
+def serve(
+    db: str | None,
+    index: str | None,
+    transport: str,
+    host: str,
+    port: int,
+    auth_token: str | None,
+) -> None:
+    """Start the NCMS server (MCP stdio or HTTP REST)."""
     from ncms.config import NCMSConfig
-    from ncms.interfaces.mcp.server import run_server
 
     config = NCMSConfig()
     if db:
@@ -34,16 +47,30 @@ def serve(db: str | None, index: str | None) -> None:
     if index:
         config.index_path = index
 
-    click.echo("Starting NCMS MCP server...", err=True)
-    asyncio.run(run_server(config))
+    if transport == "http":
+        from ncms.interfaces.http.api import run_http_server
+
+        click.echo(f"Starting NCMS HTTP API server on {host}:{port}...", err=True)
+        asyncio.run(run_http_server(config=config, host=host, port=port, auth_token=auth_token))
+    else:
+        from ncms.interfaces.mcp.server import run_server
+
+        click.echo("Starting NCMS MCP server...", err=True)
+        asyncio.run(run_server(config))
 
 
 @cli.command()
-def demo() -> None:
-    """Run the interactive NCMS demo with 3 collaborative agents."""
-    from ncms.demo.run_demo import run_demo
+@click.option("--nemoclaw", is_flag=True, help="Run NemoClaw multi-agent demo")
+def demo(nemoclaw: bool) -> None:
+    """Run the interactive NCMS demo with collaborative agents."""
+    if nemoclaw:
+        from ncms.demo.run_nemoclaw_demo import run_nemoclaw_demo
 
-    asyncio.run(run_demo())
+        asyncio.run(run_nemoclaw_demo())
+    else:
+        from ncms.demo.run_demo import run_demo
+
+        asyncio.run(run_demo())
 
 
 @cli.command()

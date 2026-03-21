@@ -604,6 +604,19 @@ def register_tools(
             "metadata": episode_node.metadata,
         }
 
+    @mcp.tool()
+    async def delete_memory(memory_id: str) -> dict[str, Any]:
+        """Delete a memory from the store and all indexes.
+
+        Args:
+            memory_id: The ID of the memory to delete.
+
+        Returns:
+            deleted: Whether the memory was found and deleted.
+        """
+        deleted = await memory_svc.delete(memory_id)
+        return {"deleted": deleted, "memory_id": memory_id}
+
     if consolidation_svc is not None:
 
         @mcp.tool()

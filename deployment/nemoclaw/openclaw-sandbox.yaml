@@ -1,0 +1,20 @@
+version: 1
+
+filesystem_policy:
+  read_write:
+    - /sandbox
+    - /tmp
+  read_only:
+    - /usr/local/lib/python3.12
+
+network_policies:
+  # Inference through OpenShell gateway (default, no extra policy needed)
+  # DGX Spark direct access (optional, for consolidation/contradiction LLM)
+  dgx_spark:
+    endpoints:
+      - host: "spark-ee7d.local"
+        port: 8000
+        protocol: rest
+        tls: passthrough
+    authorized_binaries:
+      - python3

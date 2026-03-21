@@ -1,0 +1,107 @@
+# NCMS + NemoClaw All-in-One Docker Image
+#
+# A self-contained image for testing the complete NCMS + NemoClaw stack:
+# - NCMS with all features enabled (BM25, SPLADE, GLiNER, cross-encoder)
+# - MCP server (stdio) for OpenClaw integration
+# - HTTP REST API for multi-agent hub
+# - Dashboard with live NemoClaw demo (3 agents)
+# - Pre-downloaded models (no runtime network calls)
+#
+# Build:
+#   docker build -f Dockerfile.allinone -t ncms-nemoclaw:latest ../..
+#
+# Run (dashboard + demo):
+#   docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
+#
+# Run (HTTP API only):
+#   docker run -p 8080:8080 ncms-nemoclaw:latest ncms serve --transport http --port 8080
+#
+# Run (MCP server for OpenClaw):
+#   docker run -i ncms-nemoclaw:latest ncms serve
+
+FROM python:3.12-slim AS base
+
+# System dependencies for Tantivy (Rust bindings) and general build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+# Copy NCMS source
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
+
+# Install NCMS with all dependencies
+RUN uv sync --frozen
+
+# ── Model Download Stage ──────────────────────────────────────────────
+# Pre-download all ML models so the container works offline
+
+FROM base AS models
+
+# GLiNER entity extraction model (~209 MB)
+RUN uv run python -c "\
+from gliner import GLiNER; \
+GLiNER.from_pretrained('urchade/gliner_medium-v2.1')"
+
+# SPLADE v3 sparse neural model (~500 MB)
+RUN uv run python -c "\
+from sentence_transformers import SparseEncoder; \
+SparseEncoder('naver/splade-v3')"
+
+# Cross-encoder reranker model (~80 MB)
+RUN uv run python -c "\
+from sentence_transformers import CrossEncoder; \
+CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+
+# ── Final Image ───────────────────────────────────────────────────────
+
+FROM base AS final
+
+# Copy cached models from download stage
+COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
+
+# Copy deployment configs
+COPY deployment/nemoclaw/openclaw.json /app/openclaw.json
+COPY deployment/nemoclaw/skills/ /app/skills/
+COPY deployment/nemoclaw/openclaw-sandbox.yaml /app/openclaw-sandbox.yaml
+
+# Copy demo and interface code
+COPY src/ src/
+
+# Create data directories
+RUN mkdir -p /data/.ncms /data/index
+
+# Environment: enable all NCMS features
+ENV NCMS_DB_PATH=/data/.ncms/ncms.db \
+    NCMS_INDEX_PATH=/data/index \
+    NCMS_SPLADE_ENABLED=true \
+    NCMS_EPISODES_ENABLED=true \
+    NCMS_INTENT_CLASSIFICATION_ENABLED=true \
+    NCMS_RERANKER_ENABLED=true \
+    NCMS_ADMISSION_ENABLED=true \
+    NCMS_RECONCILIATION_ENABLED=true \
+    NCMS_DREAM_CYCLE_ENABLED=false
+
+# Expose ports:
+# 8420 - Dashboard (SSE + REST + demo visualization)
+# 8080 - HTTP REST API (multi-agent hub)
+EXPOSE 8420 8080
+
+# Health check against HTTP API
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8080/api/v1/health || exit 1
+
+# Default: run dashboard with NemoClaw demo + HTTP API
+# The entrypoint script starts both services
+COPY deployment/nemoclaw/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["demo"]

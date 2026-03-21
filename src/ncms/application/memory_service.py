@@ -1726,6 +1726,30 @@ class MemoryService:
     ) -> list[Memory]:
         return await self._store.list_memories(domain=domain, agent_id=agent_id, limit=limit)
 
+    async def delete(self, memory_id: str) -> bool:
+        """Delete a memory and remove it from all indexes.
+
+        Returns True if the memory existed and was deleted.
+        """
+        memory = await self._store.get_memory(memory_id)
+        if memory is None:
+            return False
+
+        # Remove from search indexes
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            self._index.remove(memory_id)
+
+        if self._splade is not None:
+            with contextlib.suppress(Exception):
+                self._splade.remove(memory_id)
+
+        # Remove from persistent store
+        await self._store.delete_memory(memory_id)
+
+        return True
+
     async def delete_memory(self, memory_id: str) -> None:
         self._index.remove(memory_id)
         if self._splade is not None:
