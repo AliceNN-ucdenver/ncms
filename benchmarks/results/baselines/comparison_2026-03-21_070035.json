@@ -1,0 +1,37 @@
+{
+  "letta": {
+    "system": "letta",
+    "embedding_model": "text-embedding-3-small",
+    "ingestion": {
+      "docs_ingested": 680,
+      "docs_total": 680,
+      "ingestion_seconds": 286.0996367931366
+    },
+    "metrics": {
+      "ar": {
+        "nDCG@10": 0.1411693550363008,
+        "MRR@10": 0.4276729559748428,
+        "Recall@10": 0.07867866811976416,
+        "Recall@100": 0.07867866811976416,
+        "num_queries": 159
+      },
+      "ttl": {
+        "accuracy": 0.7411764705882353,
+        "num_queries": 170
+      },
+      "cr": {
+        "temporal_mrr": 0.06164383561643835,
+        "nDCG@10": 0.11274470305764565,
+        "num_queries": 146
+      },
+      "lru": {
+        "nDCG@10": 0.12446326593023856,
+        "MRR@10": 0.5555555555555556,
+        "Recall@10": 0.02627293594892566,
+        "Recall@100": 0.02627293594892566,
+        "num_queries": 45
+      }
+    },
+    "total_seconds": 520.8994460105896
+  }
+}

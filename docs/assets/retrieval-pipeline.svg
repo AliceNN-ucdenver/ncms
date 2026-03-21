@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 680" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
     <linearGradient id="qGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#8b5cf6"/>
@@ -20,136 +20,147 @@
       <stop offset="0%" stop-color="#f59e0b"/>
       <stop offset="100%" stop-color="#d97706"/>
     </linearGradient>
+    <linearGradient id="t25Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#16a34a"/>
+    </linearGradient>
+    <linearGradient id="t3Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="t4Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
     <filter id="ds" x="-4%" y="-4%" width="108%" height="116%">
       <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.15"/>
     </filter>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
     </marker>
+    <marker id="arrowDown" viewBox="0 0 10 10" refX="5" refY="9" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="400" rx="12" fill="#0f172a"/>
+  <rect width="960" height="680" rx="12" fill="#0f172a"/>
 
   <!-- Title -->
   <text x="480" y="32" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Retrieval Pipeline</text>
-  <text x="480" y="50" text-anchor="middle" fill="#94a3b8" font-size="11">Intent-classified cognitive retrieval with graph expansion, dream-learned weights, and zero LLM at query time</text>
+  <text x="480" y="50" text-anchor="middle" fill="#94a3b8" font-size="11">7-tier intent-classified cognitive retrieval with graph expansion, dream-learned weights, cross-encoder reranking, and structured recall</text>
+
+  <!-- ═══════════════════ ROW 1 (y=68..253) ═══════════════════ -->
 
   <!-- Query Input -->
   <g filter="url(#ds)">
-    <rect x="12" y="70" width="95" height="185" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
-    <rect x="12" y="70" width="95" height="28" rx="10" fill="url(#qGrad)"/>
-    <rect x="12" y="90" width="95" height="8" fill="url(#qGrad)"/>
-    <text x="59" y="90" text-anchor="middle" fill="white" font-size="11" font-weight="600">Query</text>
-    <text x="59" y="118" text-anchor="middle" fill="#c4b5fd" font-size="20">"</text>
-    <text x="59" y="140" text-anchor="middle" fill="#94a3b8" font-size="9">connection</text>
-    <text x="59" y="154" text-anchor="middle" fill="#94a3b8" font-size="9">pooling config</text>
-    <text x="59" y="178" text-anchor="middle" fill="#c4b5fd" font-size="20">"</text>
-    <text x="59" y="240" text-anchor="middle" fill="#64748b" font-size="8">domain: db</text>
+    <rect x="12" y="68" width="95" height="185" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
+    <rect x="12" y="68" width="95" height="28" rx="10" fill="url(#qGrad)"/>
+    <rect x="12" y="88" width="95" height="8" fill="url(#qGrad)"/>
+    <text x="59" y="88" text-anchor="middle" fill="white" font-size="11" font-weight="600">Query</text>
+    <text x="59" y="116" text-anchor="middle" fill="#c4b5fd" font-size="20">&#x201C;</text>
+    <text x="59" y="138" text-anchor="middle" fill="#94a3b8" font-size="9">connection</text>
+    <text x="59" y="152" text-anchor="middle" fill="#94a3b8" font-size="9">pooling config</text>
+    <text x="59" y="176" text-anchor="middle" fill="#c4b5fd" font-size="20">&#x201D;</text>
+    <text x="59" y="238" text-anchor="middle" fill="#64748b" font-size="8">domain: db</text>
   </g>
 
   <!-- Arrow Q -> T0 -->
-  <line x1="107" y1="162" x2="125" y2="162" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="107" y1="160" x2="125" y2="160" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 
   <!-- Tier 0: Intent Classification -->
   <g filter="url(#ds)">
-    <rect x="130" y="70" width="150" height="185" rx="10" fill="#1e293b" stroke="#14b8a6" stroke-width="2"/>
-    <rect x="130" y="70" width="150" height="28" rx="10" fill="url(#t0Grad)"/>
-    <rect x="130" y="90" width="150" height="8" fill="url(#t0Grad)"/>
-    <text x="205" y="90" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 0: Intent</text>
-    <text x="205" y="115" text-anchor="middle" fill="#5eead4" font-size="10" font-weight="500">BM25 Exemplar Index</text>
-    <text x="205" y="135" text-anchor="middle" fill="#94a3b8" font-size="9">Query classification</text>
-    <text x="205" y="150" text-anchor="middle" fill="#94a3b8" font-size="9">Shapes downstream scoring</text>
-
+    <rect x="130" y="68" width="155" height="185" rx="10" fill="#1e293b" stroke="#14b8a6" stroke-width="2"/>
+    <rect x="130" y="68" width="155" height="28" rx="10" fill="url(#t0Grad)"/>
+    <rect x="130" y="88" width="155" height="8" fill="url(#t0Grad)"/>
+    <text x="207" y="88" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 0: Intent</text>
+    <text x="207" y="113" text-anchor="middle" fill="#5eead4" font-size="10" font-weight="500">BM25 Exemplar Index</text>
+    <text x="207" y="133" text-anchor="middle" fill="#94a3b8" font-size="9">Query classification</text>
+    <text x="207" y="148" text-anchor="middle" fill="#94a3b8" font-size="9">Shapes downstream scoring</text>
     <!-- Intent type pills -->
-    <rect x="142" y="165" width="58" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="171" y="175" text-anchor="middle" fill="#5eead4" font-size="6">fact_lookup</text>
-    <rect x="204" y="165" width="65" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="236" y="175" text-anchor="middle" fill="#5eead4" font-size="6">current_state</text>
-    <rect x="142" y="182" width="55" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="169" y="192" text-anchor="middle" fill="#5eead4" font-size="6">historical</text>
-    <rect x="201" y="182" width="68" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="235" y="192" text-anchor="middle" fill="#5eead4" font-size="6">event_recon</text>
-    <rect x="142" y="199" width="70" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="177" y="209" text-anchor="middle" fill="#5eead4" font-size="6">change_detect</text>
-    <rect x="216" y="199" width="52" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
-    <text x="242" y="209" text-anchor="middle" fill="#5eead4" font-size="6">strategic</text>
-
-    <text x="205" y="237" text-anchor="middle" fill="#14b8a6" font-size="10" font-weight="500">7 intent classes</text>
-    <text x="205" y="250" text-anchor="middle" fill="#64748b" font-size="8">~0.5ms</text>
+    <rect x="142" y="163" width="58" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="171" y="173" text-anchor="middle" fill="#5eead4" font-size="6">fact_lookup</text>
+    <rect x="204" y="163" width="65" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="236" y="173" text-anchor="middle" fill="#5eead4" font-size="6">current_state</text>
+    <rect x="142" y="180" width="55" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="169" y="190" text-anchor="middle" fill="#5eead4" font-size="6">historical</text>
+    <rect x="201" y="180" width="68" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="235" y="190" text-anchor="middle" fill="#5eead4" font-size="6">event_recon</text>
+    <rect x="142" y="197" width="70" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="177" y="207" text-anchor="middle" fill="#5eead4" font-size="6">change_detect</text>
+    <rect x="216" y="197" width="52" height="13" rx="6" fill="#134e4a" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="242" y="207" text-anchor="middle" fill="#5eead4" font-size="6">strategic</text>
+    <text x="207" y="235" text-anchor="middle" fill="#14b8a6" font-size="10" font-weight="500">7 intent classes</text>
+    <text x="207" y="248" text-anchor="middle" fill="#64748b" font-size="8">~0.5ms</text>
   </g>
 
   <!-- Arrow T0 -> T1 -->
-  <line x1="280" y1="162" x2="298" y2="162" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="285" y1="160" x2="303" y2="160" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 
   <!-- Tier 1: BM25 + SPLADE -->
   <g filter="url(#ds)">
-    <rect x="303" y="70" width="155" height="185" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
-    <rect x="303" y="70" width="155" height="28" rx="10" fill="url(#t1Grad)"/>
-    <rect x="303" y="90" width="155" height="8" fill="url(#t1Grad)"/>
-    <text x="380" y="90" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 1: BM25 + SPLADE</text>
-    <text x="380" y="115" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="500">Tantivy + Sparse Neural</text>
-    <text x="380" y="135" text-anchor="middle" fill="#94a3b8" font-size="9">Lexical + neural matching</text>
-    <text x="380" y="150" text-anchor="middle" fill="#94a3b8" font-size="9">RRF fusion scoring</text>
-    <text x="380" y="165" text-anchor="middle" fill="#94a3b8" font-size="9">Domain filtering</text>
-    <text x="380" y="195" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">50 candidates</text>
-    <rect x="328" y="210" width="105" height="4" rx="2" fill="#0ea5e9" opacity="0.5"/>
-    <text x="380" y="240" text-anchor="middle" fill="#64748b" font-size="8">~1ms</text>
+    <rect x="308" y="68" width="155" height="185" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
+    <rect x="308" y="68" width="155" height="28" rx="10" fill="url(#t1Grad)"/>
+    <rect x="308" y="88" width="155" height="8" fill="url(#t1Grad)"/>
+    <text x="385" y="88" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 1: BM25 + SPLADE</text>
+    <text x="385" y="113" text-anchor="middle" fill="#7dd3fc" font-size="10" font-weight="500">Tantivy + Sparse Neural</text>
+    <text x="385" y="133" text-anchor="middle" fill="#94a3b8" font-size="9">Lexical + neural matching</text>
+    <text x="385" y="148" text-anchor="middle" fill="#94a3b8" font-size="9">RRF fusion scoring</text>
+    <text x="385" y="163" text-anchor="middle" fill="#94a3b8" font-size="9">Domain filtering</text>
+    <text x="385" y="193" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">50 candidates</text>
+    <rect x="333" y="208" width="105" height="4" rx="2" fill="#0ea5e9" opacity="0.5"/>
+    <text x="385" y="238" text-anchor="middle" fill="#64748b" font-size="8">~1ms</text>
   </g>
 
   <!-- Arrow T1 -> T1.5 -->
-  <line x1="458" y1="162" x2="476" y2="162" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="463" y1="160" x2="481" y2="160" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 
   <!-- Tier 1.5: Graph Expansion -->
   <g filter="url(#ds)">
-    <rect x="481" y="70" width="165" height="185" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
-    <rect x="481" y="70" width="165" height="28" rx="10" fill="url(#t15Grad)"/>
-    <rect x="481" y="90" width="165" height="8" fill="url(#t15Grad)"/>
-    <text x="563" y="90" text-anchor="middle" fill="white" font-size="10" font-weight="600">Tier 1.5: Graph</text>
-    <text x="563" y="115" text-anchor="middle" fill="#f9a8d4" font-size="10" font-weight="500">NetworkX DiGraph</text>
-    <text x="563" y="135" text-anchor="middle" fill="#94a3b8" font-size="9">Entity traversal</text>
-    <text x="563" y="150" text-anchor="middle" fill="#94a3b8" font-size="9">Cross-memory discovery</text>
-    <text x="563" y="165" text-anchor="middle" fill="#67e8f9" font-size="9" font-weight="500">Dream-learned PMI weights</text>
-    <text x="563" y="195" text-anchor="middle" fill="#f472b6" font-size="10" font-weight="600">+novel candidates</text>
+    <rect x="486" y="68" width="160" height="185" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
+    <rect x="486" y="68" width="160" height="28" rx="10" fill="url(#t15Grad)"/>
+    <rect x="486" y="88" width="160" height="8" fill="url(#t15Grad)"/>
+    <text x="566" y="88" text-anchor="middle" fill="white" font-size="10" font-weight="600">Tier 1.5: Graph</text>
+    <text x="566" y="113" text-anchor="middle" fill="#f9a8d4" font-size="10" font-weight="500">NetworkX DiGraph</text>
+    <text x="566" y="133" text-anchor="middle" fill="#94a3b8" font-size="9">Entity traversal</text>
+    <text x="566" y="148" text-anchor="middle" fill="#94a3b8" font-size="9">Cross-memory discovery</text>
+    <text x="566" y="163" text-anchor="middle" fill="#67e8f9" font-size="9" font-weight="500">Dream-learned PMI weights</text>
+    <text x="566" y="193" text-anchor="middle" fill="#f472b6" font-size="10" font-weight="600">+novel candidates</text>
     <!-- Mini graph visualization -->
-    <circle cx="520" cy="225" r="4" fill="#ec4899" opacity="0.7"/>
-    <circle cx="540" cy="218" r="4" fill="#ec4899" opacity="0.7"/>
-    <circle cx="563" cy="230" r="3" fill="#f9a8d4" opacity="0.5"/>
-    <circle cx="585" cy="220" r="4" fill="#ec4899" opacity="0.7"/>
-    <circle cx="605" cy="228" r="4" fill="#ec4899" opacity="0.7"/>
-    <line x1="520" y1="225" x2="540" y2="218" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
-    <line x1="540" y1="218" x2="563" y2="230" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
-    <line x1="563" y1="230" x2="585" y2="220" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
-    <line x1="585" y1="220" x2="605" y2="228" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
-    <line x1="520" y1="225" x2="585" y2="220" stroke="#ec4899" stroke-width="0.8" opacity="0.3"/>
-    <line x1="540" y1="218" x2="605" y2="228" stroke="#ec4899" stroke-width="0.8" opacity="0.3"/>
+    <circle cx="523" cy="223" r="4" fill="#ec4899" opacity="0.7"/>
+    <circle cx="543" cy="216" r="4" fill="#ec4899" opacity="0.7"/>
+    <circle cx="566" cy="228" r="3" fill="#f9a8d4" opacity="0.5"/>
+    <circle cx="589" cy="218" r="4" fill="#ec4899" opacity="0.7"/>
+    <circle cx="609" cy="226" r="4" fill="#ec4899" opacity="0.7"/>
+    <line x1="523" y1="223" x2="543" y2="216" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
+    <line x1="543" y1="216" x2="566" y2="228" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
+    <line x1="566" y1="228" x2="589" y2="218" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
+    <line x1="589" y1="218" x2="609" y2="226" stroke="#ec4899" stroke-width="0.8" opacity="0.5"/>
+    <line x1="523" y1="223" x2="589" y2="218" stroke="#ec4899" stroke-width="0.8" opacity="0.3"/>
+    <line x1="543" y1="216" x2="609" y2="226" stroke="#ec4899" stroke-width="0.8" opacity="0.3"/>
   </g>
 
-  <!-- Arrow T1.5 -> T2 -->
-  <line x1="646" y1="162" x2="664" y2="162" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Arrow T1.5 -> T2 (to rightmost card on row 1) -->
+  <line x1="646" y1="160" x2="664" y2="160" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
 
-  <!-- Tier 2: ACT-R + Penalties -->
+  <!-- Tier 2: ACT-R Scoring -->
   <g filter="url(#ds)">
-    <rect x="669" y="70" width="275" height="185" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
-    <rect x="669" y="70" width="275" height="28" rx="10" fill="url(#t2Grad)"/>
-    <rect x="669" y="90" width="275" height="8" fill="url(#t2Grad)"/>
-    <text x="806" y="90" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 2: ACT-R Cognitive Scoring</text>
-    <text x="806" y="115" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="500">Recency + Frequency + Context</text>
-
+    <rect x="669" y="68" width="278" height="185" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="669" y="68" width="278" height="28" rx="10" fill="url(#t2Grad)"/>
+    <rect x="669" y="88" width="278" height="8" fill="url(#t2Grad)"/>
+    <text x="808" y="88" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 2: ACT-R Cognitive Scoring</text>
+    <text x="808" y="113" text-anchor="middle" fill="#fcd34d" font-size="10" font-weight="500">Recency + Frequency + Context</text>
     <!-- Left column: scoring signals -->
-    <text x="700" y="138" fill="#94a3b8" font-size="9">Base level (recency/freq)</text>
-    <text x="700" y="153" fill="#94a3b8" font-size="9">Spreading activation (PMI)</text>
-    <text x="700" y="168" fill="#94a3b8" font-size="9">Hierarchy bonus</text>
-
-    <!-- Right column: penalties (right-aligned to stay inside box) -->
-    <text x="928" y="138" text-anchor="end" fill="#fca5a5" font-size="8">Supersession penalty</text>
-    <text x="928" y="153" text-anchor="end" fill="#fca5a5" font-size="8">Conflict penalty</text>
-    <text x="928" y="168" text-anchor="end" fill="#86efac" font-size="8">+ Intent type match</text>
-
+    <text x="700" y="136" fill="#94a3b8" font-size="9">Base level (recency/freq)</text>
+    <text x="700" y="151" fill="#94a3b8" font-size="9">Spreading activation (PMI)</text>
+    <text x="700" y="166" fill="#94a3b8" font-size="9">Hierarchy bonus</text>
+    <!-- Right column: penalties -->
+    <text x="931" y="136" text-anchor="end" fill="#fca5a5" font-size="8">Supersession penalty</text>
+    <text x="931" y="151" text-anchor="end" fill="#fca5a5" font-size="8">Conflict penalty</text>
+    <text x="931" y="166" text-anchor="end" fill="#86efac" font-size="8">+ Intent type match</text>
     <!-- Formula -->
-    <rect x="685" y="182" width="245" height="28" rx="6" fill="#1a1a2e" stroke="#f59e0b" stroke-width="0.5" opacity="0.6"/>
-    <text x="807" y="200" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">A = ln(&#8721;t&#8315;&#x1D48;) + S_pmi + &#949; &#8722; P_sup &#8722; P_con + H</text>
-
+    <rect x="685" y="180" width="248" height="28" rx="6" fill="#1a1a2e" stroke="#f59e0b" stroke-width="0.5" opacity="0.6"/>
+    <text x="809" y="198" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">A = ln(&#8721;t&#8315;&#x1D48;) + S_pmi + &#949; &#8722; P_sup &#8722; P_con + H</text>
     <!-- Result bars -->
     <text x="690" y="225" fill="#94a3b8" font-size="7">1</text>
     <rect x="700" y="218" width="120" height="7" rx="3" fill="#22c55e" opacity="0.8"/>
@@ -157,38 +168,150 @@
     <rect x="700" y="230" width="95" height="7" rx="3" fill="#22c55e" opacity="0.6"/>
     <text x="690" y="249" fill="#94a3b8" font-size="7">3</text>
     <rect x="700" y="242" width="68" height="7" rx="3" fill="#f59e0b" opacity="0.5"/>
-
-    <text x="806" y="250" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="500">Ranked results</text>
   </g>
 
-  <!-- Formula bar at bottom -->
-  <rect x="12" y="278" width="936" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="32" y="299" fill="#e2e8f0" font-size="11" font-weight="500">Scoring:</text>
-  <text x="95" y="299" fill="#7dd3fc" font-size="10" font-family="'Fira Code', monospace">combined = bm25 * w_bm25 + splade * w_splade + activation * w_actr + graph * w_graph + hierarchy * w_hier</text>
-  <text x="32" y="317" fill="#94a3b8" font-size="9">Intent-classified | Dream-learned PMI associations | Supersession/conflict penalties | Hierarchy bonus | Zero LLM at query time</text>
+  <!-- ═══════════════════ CONNECTOR: Row 1 → Row 2 ═══════════════════ -->
+  <!-- Vertical arrow from Tier 2 bottom to row 2 -->
+  <path d="M 808 253 L 808 275 L 80 275 L 80 298" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="444" y="270" text-anchor="middle" fill="#475569" font-size="8" font-style="italic">scored candidates flow to normalization</text>
 
-  <!-- Feature status bar -->
-  <rect x="12" y="345" width="936" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
+  <!-- ═══════════════════ ROW 2 (y=303..488) ═══════════════════ -->
+
+  <!-- Tier 2.5: Normalization -->
+  <g filter="url(#ds)">
+    <rect x="12" y="303" width="155" height="185" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+    <rect x="12" y="303" width="155" height="28" rx="10" fill="url(#t25Grad)"/>
+    <rect x="12" y="323" width="155" height="8" fill="url(#t25Grad)"/>
+    <text x="89" y="323" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 2.5: Normalize</text>
+    <text x="89" y="348" text-anchor="middle" fill="#86efac" font-size="10" font-weight="500">Per-Query Min-Max</text>
+    <text x="89" y="368" text-anchor="middle" fill="#94a3b8" font-size="9">Each signal scaled to [0,1]</text>
+    <text x="89" y="383" text-anchor="middle" fill="#94a3b8" font-size="9">per query batch</text>
+    <!-- Signal labels -->
+    <rect x="28" y="398" width="42" height="14" rx="4" fill="#0c4a6e" stroke="#0ea5e9" stroke-width="0.5"/>
+    <text x="49" y="409" text-anchor="middle" fill="#7dd3fc" font-size="7">BM25</text>
+    <rect x="74" y="398" width="48" height="14" rx="4" fill="#0c4a6e" stroke="#0ea5e9" stroke-width="0.5"/>
+    <text x="98" y="409" text-anchor="middle" fill="#7dd3fc" font-size="7">SPLADE</text>
+    <rect x="28" y="416" width="42" height="14" rx="4" fill="#4a1942" stroke="#ec4899" stroke-width="0.5"/>
+    <text x="49" y="427" text-anchor="middle" fill="#f9a8d4" font-size="7">Graph</text>
+    <rect x="74" y="416" width="48" height="14" rx="4" fill="#450a0a" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="98" y="427" text-anchor="middle" fill="#fca5a5" font-size="7">CE</text>
+    <text x="89" y="454" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">Fixes scale mismatch</text>
+    <text x="89" y="468" text-anchor="middle" fill="#64748b" font-size="8">SPLADE (5-200) vs BM25 (1-15)</text>
+  </g>
+
+  <!-- Arrow T2.5 -> T3 -->
+  <line x1="167" y1="395" x2="185" y2="395" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Tier 3: Cross-Encoder -->
+  <g filter="url(#ds)">
+    <rect x="190" y="303" width="240" height="185" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+    <rect x="190" y="303" width="240" height="28" rx="10" fill="url(#t3Grad)"/>
+    <rect x="190" y="323" width="240" height="8" fill="url(#t3Grad)"/>
+    <text x="310" y="323" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 3: Cross-Encoder Rerank</text>
+    <text x="310" y="348" text-anchor="middle" fill="#fca5a5" font-size="10" font-weight="500">ms-marco-MiniLM-L-6-v2 (22M)</text>
+    <text x="310" y="366" text-anchor="middle" fill="#94a3b8" font-size="9">Selective by classified intent</text>
+    <!-- CE enabled intents -->
+    <text x="210" y="386" fill="#86efac" font-size="8" font-weight="500">&#x2713; CE enabled:</text>
+    <rect x="280" y="377" width="55" height="13" rx="6" fill="#14532d" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="307" y="387" text-anchor="middle" fill="#86efac" font-size="6">fact_lookup</text>
+    <rect x="339" y="377" width="48" height="13" rx="6" fill="#14532d" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="363" y="387" text-anchor="middle" fill="#86efac" font-size="6">pattern</text>
+    <rect x="391" y="377" width="28" height="13" rx="6" fill="#14532d" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="405" y="387" text-anchor="middle" fill="#86efac" font-size="6">strat</text>
+    <!-- CE skipped intents -->
+    <text x="210" y="406" fill="#fca5a5" font-size="8" font-weight="500">&#x2717; CE skipped:</text>
+    <rect x="280" y="397" width="60" height="13" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="310" y="407" text-anchor="middle" fill="#fca5a5" font-size="6">current_state</text>
+    <rect x="344" y="397" width="48" height="13" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="368" y="407" text-anchor="middle" fill="#fca5a5" font-size="6">historical</text>
+    <rect x="396" y="397" width="28" height="13" rx="6" fill="#450a0a" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="410" y="407" text-anchor="middle" fill="#fca5a5" font-size="6">chg</text>
+    <!-- Rationale -->
+    <text x="310" y="435" text-anchor="middle" fill="#94a3b8" font-size="8">Temporal queries skip CE:</text>
+    <text x="310" y="448" text-anchor="middle" fill="#94a3b8" font-size="8">CR -4.2%, LRU -28% when applied</text>
+    <text x="310" y="468" text-anchor="middle" fill="#ef4444" font-size="9" font-weight="500">top-50 &#8594; top-20</text>
+    <text x="310" y="482" text-anchor="middle" fill="#64748b" font-size="8">opt-in: NCMS_RERANKER_ENABLED</text>
+  </g>
+
+  <!-- Arrow T3 -> T4 -->
+  <line x1="430" y1="395" x2="448" y2="395" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Tier 4: Structured Recall -->
+  <g filter="url(#ds)">
+    <rect x="453" y="303" width="495" height="185" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+    <rect x="453" y="303" width="495" height="28" rx="10" fill="url(#t4Grad)"/>
+    <rect x="453" y="323" width="495" height="8" fill="url(#t4Grad)"/>
+    <text x="700" y="323" text-anchor="middle" fill="white" font-size="11" font-weight="600">Tier 4: Structured Recall</text>
+    <text x="700" y="348" text-anchor="middle" fill="#a5b4fc" font-size="10" font-weight="500">Intent-Specific Context Enrichment</text>
+
+    <!-- Left section: inputs -->
+    <text x="485" y="370" fill="#c7d2fe" font-size="9" font-weight="500">Inputs:</text>
+    <rect x="485" y="378" width="85" height="16" rx="4" fill="#312e81" stroke="#6366f1" stroke-width="0.5"/>
+    <text x="527" y="390" text-anchor="middle" fill="#a5b4fc" font-size="8">Search results</text>
+    <text x="574" y="390" fill="#64748b" font-size="8">+</text>
+    <rect x="582" y="378" width="85" height="16" rx="4" fill="#312e81" stroke="#6366f1" stroke-width="0.5"/>
+    <text x="624" y="390" text-anchor="middle" fill="#a5b4fc" font-size="8">Episode siblings</text>
+    <text x="671" y="390" fill="#64748b" font-size="8">+</text>
+    <rect x="679" y="378" width="100" height="16" rx="4" fill="#312e81" stroke="#6366f1" stroke-width="0.5"/>
+    <text x="729" y="390" text-anchor="middle" fill="#a5b4fc" font-size="8">Entity state snaps</text>
+
+    <!-- Middle section: enrichment -->
+    <text x="485" y="418" fill="#c7d2fe" font-size="9" font-weight="500">Each result enriched with:</text>
+    <rect x="485" y="425" width="95" height="14" rx="4" fill="#1e1b4b" stroke="#818cf8" stroke-width="0.5"/>
+    <text x="532" y="435" text-anchor="middle" fill="#c7d2fe" font-size="7">Entity states (current)</text>
+    <rect x="585" y="425" width="95" height="14" rx="4" fill="#1e1b4b" stroke="#818cf8" stroke-width="0.5"/>
+    <text x="632" y="435" text-anchor="middle" fill="#c7d2fe" font-size="7">Episode context</text>
+    <rect x="685" y="425" width="95" height="14" rx="4" fill="#1e1b4b" stroke="#818cf8" stroke-width="0.5"/>
+    <text x="732" y="435" text-anchor="middle" fill="#c7d2fe" font-size="7">Causal chains</text>
+
+    <!-- Right section: output -->
+    <text x="820" y="370" fill="#c7d2fe" font-size="9" font-weight="500">Output:</text>
+    <rect x="820" y="378" width="115" height="30" rx="6" fill="#312e81" stroke="#a5b4fc" stroke-width="1"/>
+    <text x="877" y="397" text-anchor="middle" fill="white" font-size="10" font-weight="600">RecallResult</text>
+
+    <!-- Performance callout -->
+    <rect x="485" y="455" width="155" height="24" rx="6" fill="#14532d" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="562" y="471" text-anchor="middle" fill="#86efac" font-size="10" font-weight="600">+15.5% AR over search</text>
+    <text x="700" y="471" fill="#94a3b8" font-size="8">nDCG@10 = 0.2032 (SWE-bench Django)</text>
+
+    <!-- Arrows showing expansion -->
+    <text x="700" y="484" text-anchor="middle" fill="#64748b" font-size="8">Siblings appended after primary results to expand without displacing BM25 ranking</text>
+  </g>
+
+  <!-- ═══════════════════ FORMULA BAR ═══════════════════ -->
+  <rect x="12" y="508" width="936" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="32" y="529" fill="#e2e8f0" font-size="11" font-weight="500">Scoring:</text>
+  <text x="95" y="529" fill="#7dd3fc" font-size="10" font-family="'Fira Code', monospace">combined = norm(bm25)*w_bm25 + norm(splade)*w_splade + norm(graph)*w_graph + act_r*w_actr + norm(ce)*w_ce</text>
+  <text x="32" y="547" fill="#94a3b8" font-size="9">Intent-classified | Dream-learned PMI | Supersession/conflict penalties | Per-query normalization | Selective CE reranking | Zero LLM at query time</text>
+
+  <!-- ═══════════════════ FEATURE STATUS BAR ═══════════════════ -->
+  <rect x="12" y="575" width="936" height="56" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
   <!-- Core row -->
-  <text x="32" y="363" fill="#64748b" font-size="9" font-weight="500">Core:</text>
-  <rect x="70" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="83" y="363" fill="#94a3b8" font-size="9">BM25</text>
-  <rect x="125" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="138" y="363" fill="#94a3b8" font-size="9">SPLADE</text>
-  <rect x="198" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="211" y="363" fill="#94a3b8" font-size="9">Graph Expansion</text>
-  <rect x="325" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="338" y="363" fill="#94a3b8" font-size="9">ACT-R Scoring</text>
-  <rect x="440" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="453" y="363" fill="#94a3b8" font-size="9">GLiNER NER</text>
-  <rect x="545" y="355" width="8" height="8" rx="2" fill="#22c55e"/>
-  <text x="558" y="363" fill="#94a3b8" font-size="9">Intent Classification</text>
+  <text x="32" y="595" fill="#64748b" font-size="9" font-weight="500">Core:</text>
+  <rect x="70" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="83" y="595" fill="#94a3b8" font-size="9">BM25</text>
+  <rect x="125" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="138" y="595" fill="#94a3b8" font-size="9">SPLADE</text>
+  <rect x="198" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="211" y="595" fill="#94a3b8" font-size="9">Graph Expansion</text>
+  <rect x="325" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="338" y="595" fill="#94a3b8" font-size="9">ACT-R Scoring</text>
+  <rect x="440" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="453" y="595" fill="#94a3b8" font-size="9">GLiNER NER</text>
+  <rect x="545" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="558" y="595" fill="#94a3b8" font-size="9">Intent Classification</text>
+  <rect x="690" y="587" width="8" height="8" rx="2" fill="#22c55e"/>
+  <text x="703" y="595" fill="#94a3b8" font-size="9">Score Normalization</text>
   <!-- Opt-in row -->
-  <text x="32" y="380" fill="#64748b" font-size="9" font-weight="500">Opt-in:</text>
-  <rect x="80" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="93" y="380" fill="#94a3b8" font-size="9">Contradiction Detection</text>
-  <rect x="260" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="273" y="380" fill="#94a3b8" font-size="9">Consolidation</text>
-  <rect x="380" y="372" width="8" height="8" rx="2" fill="#f59e0b"/>
-  <text x="393" y="380" fill="#94a3b8" font-size="9">Dream Cycles</text>
+  <text x="32" y="618" fill="#64748b" font-size="9" font-weight="500">Opt-in:</text>
+  <rect x="80" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="93" y="618" fill="#94a3b8" font-size="9">Contradiction Detection</text>
+  <rect x="260" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="273" y="618" fill="#94a3b8" font-size="9">Consolidation</text>
+  <rect x="380" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="393" y="618" fill="#94a3b8" font-size="9">Dream Cycles</text>
+  <rect x="495" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="508" y="618" fill="#94a3b8" font-size="9">Cross-Encoder Reranking</text>
+  <rect x="670" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
+  <text x="683" y="618" fill="#94a3b8" font-size="9">Structured Recall</text>
 </svg>

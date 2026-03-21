@@ -598,6 +598,36 @@ Seven architectural improvements were applied relative to the pre-tuning baselin
 
 6. **Consolidation is net neutral to slightly negative** on search metrics (AR drops -0.3% through 5A-5C) but provides the episode structure that recall requires for its +15.5% advantage.
 
+### 6.10 Baseline Comparison: NCMS vs. Mem0 vs. Letta
+
+To contextualize NCMS's SWE-bench Django results, we evaluate two widely-used agent memory systems on the same dataset and MemoryAgentBench competencies: Mem0, which combines vector embeddings (text-embedding-3-small) with entity graph extraction, and Letta (formerly MemGPT), which provides persistent conversational memory backed by vector similarity search.
+
+**Table 11. Three-System Comparison on SWE-bench Django (503 train / 170 test)**
+
+| Metric | NCMS (search) | NCMS (recall) | Mem0 | Letta |
+|--------|--------------|---------------|------|-------|
+| AR nDCG@10 | 0.1750 | **0.2031** | 0.1550 | 0.1412 |
+| TTL Accuracy | 0.6529 | — | 0.5941 | **0.7412** |
+| CR Temporal MRR | **0.0947** | — | 0.0150 | 0.0616 |
+| LRU nDCG@10 | **0.3540** | — | 0.1979 | 0.1245 |
+| Docs Ingested | 503/680 | — | 221/680 | 680/680 |
+
+Bold indicates best result per metric. NCMS (recall) uses the structured recall API (Section 6.9); all other columns use the standard search API.
+
+#### Key Findings
+
+1. **NCMS wins 3 of 4 metrics.** NCMS achieves the best results on Associative Recall, Conditional Recall, and Least Recently Used, while Letta wins TTL Accuracy. The recall API further extends the AR lead to 0.2031, the best result across all systems (+44% over Letta, +31% over Mem0).
+
+2. **Conditional Recall: 6.3x over Mem0, 1.5x over Letta.** CR temporal MRR measures the ability to retrieve the most recent version of contradictory or evolving information. NCMS's bitemporal state reconciliation and entity state tracking provide strong temporal ordering signal. Dense vector retrieval has no inherent temporal signal — embedding similarity is time-agnostic, explaining Mem0's CR of 0.0150.
+
+3. **LRU: 1.8x over Mem0, 2.8x over Letta.** LRU nDCG@10 measures cross-document association, where retrieving one document should surface related documents. NCMS's entity graph structure and spreading activation enable connections across documents that share entities, while vector systems treat each document independently in embedding space.
+
+4. **TTL gap explained by admission filtering.** Letta's TTL accuracy (0.7412) exceeds NCMS (0.6529) because Letta ingests all 680 documents while NCMS's admission scoring filters 177 documents below the persistence threshold, reducing coverage. This represents a deliberate trade-off: admission filtering improves retrieval precision (higher AR, CR, LRU) at the cost of recall coverage for time-sensitive queries. Disabling admission filtering would likely close the TTL gap at the expense of other metrics.
+
+5. **Mem0 ingestion loss.** Mem0 ingested only 221 of 680 documents (32.5%), with its memory extraction pipeline discarding or merging the remainder. This lossy extraction explains its lower scores across all four metrics. Mem0 was also 4.1x slower than NCMS (3,413s vs 830s for the full pipeline).
+
+6. **Zero OpenAI API dependency.** NCMS uses no external API calls for retrieval — BM25, SPLADE, and graph traversal all run locally. Both Mem0 and Letta require OpenAI text-embedding-3-small for vector embedding computation, adding latency, cost, and an external service dependency.
+
 ---
 
 ## 7. Conclusion
@@ -608,7 +638,7 @@ The research arc tells a coherent story. The initial ablation established compon
 
 The weight tuning revelation that ACT-R weight = 0 is optimal on static benchmarks (because all documents share identical access history) led to the final piece: dream cycles inspired by biological sleep consolidation. Dream rehearsal creates differential access patterns, PMI association learning provides data-driven entity weights for spreading activation, and importance drift adjusts memory salience from usage trends. Together, these three non-LLM passes transform ACT-R from a uniform-noise contributor into a potentially discriminative scoring signal.
 
-A subsequent tuning phase on SWE-bench Django (Section 6.9) confirmed these signals and revealed a new finding: structured recall with episode sibling expansion achieves Recall AR nDCG@10 = 0.2032, exceeding search AR (0.1759) by 15.5%. This demonstrates that graph-structural memory organization — grouping related memories into episodes and expanding them at retrieval time — provides retrieval value that flat BM25+SPLADE search cannot capture, without any dense vector computation.
+A subsequent tuning phase on SWE-bench Django (Section 6.9) confirmed these signals and revealed a new finding: structured recall with episode sibling expansion achieves Recall AR nDCG@10 = 0.2031, exceeding search AR (0.1750) by 16.1%. This demonstrates that graph-structural memory organization — grouping related memories into episodes and expanding them at retrieval time — provides retrieval value that flat BM25+SPLADE search cannot capture, without any dense vector computation. A three-system comparison against Mem0 and Letta (Section 6.10) further validates the architecture: NCMS wins 3 of 4 MemoryAgentBench competencies, with particularly strong advantages in Conditional Recall (6.3x over Mem0) and cross-document association (2.8x over Letta), both attributable to entity graph structure and bitemporal state tracking that vector-based systems lack.
 
 Empirical validation of dream cycles on SciFact (Section 6.8) produced a decisive negative result: nDCG@10 remained flat at 0.6843 across all six stages, with ACT-R's optimal weight remaining 0.0 throughout. Structural analysis revealed the root cause: SciFact's 5,183 independent abstracts produce 51,357 entities with zero graph edges. Transitioning to SWE-bench Django (Section 6.9) with six architectural improvements (graph-based BFS spreading activation, PMI-weighted edges, IDF entity matching, Jaccard normalization, signal separation, clique capping) produced the first positive signals: CR temporal MRR improved +5.8% through state trajectories, TTL accuracy improved +1.0% through episode summaries, and the ACT-R crossover point was reached for the first time (optimal weight = 0.2 at baseline). These pre-tuning results confirm that NCMS's cognitive features produce discriminative signal when the underlying data has relational structure, while identifying consolidation decay aggressiveness as the primary obstacle to sustained improvement across stages.
 
@@ -616,7 +646,7 @@ The system represents an 11-phase architecture validated by 719 tests, with comp
 
 Three key innovations distinguish NCMS: (1) the first application of ACT-R cognitive scoring to information retrieval, with dream cycles that create the temporal context ACT-R requires; (2) an embedded Knowledge Bus with snapshot surrogates that enables agents to share knowledge and answer questions even while offline; and (3) the empirical demonstration that graph-based retrieval requires specific, discriminative nodes (named entities) rather than generic bridges (keywords), a finding with broad implications for any system using knowledge graph expansion.
 
-Future work focuses on three directions: (1) improving recall coverage by optimizing episode formation signals to increase sibling expansion yield; (2) evaluating the recall API in production multi-agent deployments where the structured context (entity states, episode summaries, causal chains) provides actionable intelligence beyond ranked document lists; and (3) integration with agent orchestration frameworks. The Recall AR finding (0.2032, +15.5% over search) validates the core thesis that graph-structural memory organization provides retrieval value beyond what flat search or dense vectors can achieve.
+Future work focuses on three directions: (1) improving recall coverage by optimizing episode formation signals to increase sibling expansion yield; (2) evaluating the recall API in production multi-agent deployments where the structured context (entity states, episode summaries, causal chains) provides actionable intelligence beyond ranked document lists; and (3) integration with agent orchestration frameworks. The three-system comparison (Section 6.10) provides strong evidence for the core thesis: NCMS's Recall AR of 0.2031 exceeds both Mem0 (+31%) and Letta (+44%), its entity graph enables 6.3x better temporal recall than vector retrieval, and it achieves all of this with zero external API dependencies — validating that graph-structural memory organization provides retrieval value beyond what dense vectors can achieve.
 
 ---
 

@@ -176,6 +176,17 @@ NCMS achieves **nDCG@10 = 0.7206 on SciFact** — the BEIR dataset most aligned 
 
 On **SWE-bench Django** (503 documents, 170 test queries), structured recall achieves **Recall AR nDCG@10 = 0.2032**, exceeding search-only AR (0.1759) by **+15.5%** &mdash; demonstrating that episode sibling expansion surfaces relevant documents that BM25 alone misses. Dream cycle rehearsal (1x) provides a reproducible **+0.9% AR improvement** (0.1774), with TTL accuracy at **65.3%** through pure retrieval. [Full SWE-bench results](docs/paper.md#69-swe-bench-django-pre-tuning-baseline-results) in the paper.
 
+### Baseline Comparison (SWE-bench Django)
+
+Compared against [Mem0](https://github.com/mem0ai/mem0) and [Letta](https://github.com/letta-ai/letta) on SWE-bench Django (850 issues, 80/20 chronological split). NCMS wins 3 of 4 metrics with zero OpenAI API calls &mdash; Mem0 and Letta both use OpenAI `text-embedding-3-small` dense vectors.
+
+| Metric | NCMS | NCMS Recall | Mem0 | Letta |
+|--------|------|-------------|------|-------|
+| AR nDCG@10 | 0.1750 | **0.2031** | 0.1550 | 0.1412 |
+| TTL Accuracy | 0.6529 | &mdash; | 0.5941 | **0.7412** |
+| CR Temporal MRR | **0.0947** | &mdash; | 0.0150 | 0.0616 |
+| LRU nDCG@10 | **0.3540** | &mdash; | 0.1979 | 0.1245 |
+
 See the [full ablation study, weight tuning results, and completed milestones](docs/ncms_v1.md#v1-ablation-study) for methodology, per-dataset metrics, and development history.
 
 ---
