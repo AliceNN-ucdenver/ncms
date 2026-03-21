@@ -40,7 +40,7 @@ Three lines. Your agents now have persistent, searchable, shared memory with cog
 
 | Problem | Traditional Approach | NCMS |
 |---------|---------------------|------|
-| Memory retrieval | Dense vector similarity (lossy) | **BM25 + SPLADE + graph expansion + ACT-R cognitive scoring** (precise) |
+| Memory retrieval | Dense vector similarity (lossy) | **BM25 + SPLADE + graph expansion + cross-encoder + structured recall** (precise) |
 | Agent coordination | Polling shared files, explicit tool calls | **Embedded Knowledge Bus** (osmotic) |
 | Agent goes offline | Knowledge lost until restart | **Snapshot surrogate response** (always available) |
 | Dependencies | Vector DB + graph DB + message broker | **Zero. Single `pip install`.** |
@@ -89,6 +89,12 @@ Traditional memory systems compress documents into dense vectors, losing precisi
 **Tier 1.5 &mdash; Graph-Expanded Discovery.** Entity relationships in the knowledge graph discover related memories that search missed lexically. A query matching "connection pooling" also finds memories about "PostgreSQL replication" &mdash; because both share the `PostgreSQL` entity in the graph.
 
 **Tier 2 &mdash; ACT-R Cognitive Scoring.** Every memory has an activation level computed from access recency, frequency, and contextual relevance &mdash; the same math that models human memory in cognitive science. Dream-learned association strengths weight entity connections, and reconciliation penalties demote superseded or conflicted states.
+
+**Tier 2.5 &mdash; Score Normalization.** Per-query min-max normalization brings all signals (BM25, SPLADE, Graph) to [0,1] scale before combining. Without this, SPLADE (5-200 range) would dominate BM25 (1-15 range) despite lower configured weights.
+
+**Tier 3 &mdash; Selective Cross-Encoder Reranking.** A 22M-parameter cross-encoder (ms-marco-MiniLM-L-6-v2) reranks candidates &mdash; but only for fact lookup, pattern, and strategic reflection queries. State and temporal queries skip reranking to preserve chronological and causal ordering.
+
+**Tier 4 &mdash; Structured Recall.** The `recall()` method wraps the full pipeline and layers structured context on top: entity state snapshots, episode membership with sibling expansion, and causal chains from the HTMG. Episode siblings are appended *after* the primary ranked results, expanding the retrieval set without displacing BM25's ranking. One call returns what currently takes 5+ tool calls.
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
@@ -168,6 +174,8 @@ The agent lifecycle (`start → work → sleep → wake → shutdown`) ensures k
 
 NCMS achieves **nDCG@10 = 0.7206 on SciFact** — the BEIR dataset most aligned with factual knowledge retrieval — exceeding published ColBERTv2 (0.693, +4.0%) and SPLADE++ (0.710, +1.5%) without dense vectors or LLM at query time. Cross-domain validation on NFCorpus (biomedical) shows consistent improvement: **+10.0% over BM25** (0.3188 → 0.3506). Weight tuning across 108 ranking configs confirmed optimal weights (BM25=0.6, SPLADE=0.3, Graph=0.3, ACT-R=0.0), with ACT-R deferred to post-dream-cycle activation. The keyword bridge catastrophic failure (nDCG@10: 0.690 → 0.032) directly motivated the HTMG architecture.
 
+On **SWE-bench Django** (503 documents, 170 test queries), structured recall achieves **Recall AR nDCG@10 = 0.2032**, exceeding search-only AR (0.1759) by **+15.5%** &mdash; demonstrating that episode sibling expansion surfaces relevant documents that BM25 alone misses. Dream cycle rehearsal (1x) provides a reproducible **+0.9% AR improvement** (0.1774), with TTL accuracy at **65.3%** through pure retrieval. [Full SWE-bench results](docs/paper.md#69-swe-bench-django-pre-tuning-baseline-results) in the paper.
+
 See the [full ablation study, weight tuning results, and completed milestones](docs/ncms_v1.md#v1-ablation-study) for methodology, per-dataset metrics, and development history.
 
 ---
@@ -225,7 +233,7 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 ## Roadmap
 
 **Evaluation**
-- [ ] Oracle ablation &mdash; dream-cycle-enhanced ACT-R evaluation (baseline ablation complete, dream cycle evaluation pending)
+- [x] Oracle ablation &mdash; dream-cycle-enhanced ACT-R evaluation (SWE-bench Django: Recall AR 0.2032, +15.5% over search)
 
 **Ingestion**
 - [ ] Directory watcher &mdash; filesystem monitor with auto-domain classification

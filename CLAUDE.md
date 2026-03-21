@@ -103,10 +103,11 @@ src/ncms/
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
 │   ├── consolidation/abstract_synthesizer.py # LLM episode/trajectory/pattern synthesis (Phase 5)
+│   ├── reranking/cross_encoder_reranker.py  # Cross-encoder reranking (Phase 10, ms-marco-MiniLM-L-6-v2)
 │   └── observability/event_log.py # Ring buffer event log + NullEventLog + SSE subscribers
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
-│   ├── mcp/tools.py            # 14 MCP tools (+ run_consolidation)
+│   ├── mcp/tools.py            # 15 MCP tools (+ run_consolidation)
 │   ├── mcp/resources.py        # 5 MCP resources (ncms://...)
 │   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST + entity/episode APIs)
 │   ├── http/demo_runner.py     # Dashboard demo scenario runner
@@ -137,6 +138,9 @@ src/ncms/
 12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 13. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
 14. **Dream cycles** (Phase 8) — Offline rehearsal creating differential access patterns so ACT-R provides meaningful signal. Three non-LLM passes: (8A) search logging captures query→result associations, learned entity co-occurrence strengths via PMI feed into graph spreading activation (PMI-weighted edges traversed during BFS, rare co-occurrences get high weight); (8B) dream rehearsal selects top memories by 5-signal weighted score (centrality 0.40, staleness 0.30, importance 0.20, access_count 0.05, recency 0.05) and injects synthetic access records; importance drift compares recent vs older access rates and adjusts importance within ±drift_rate. Co-occurrence edge generation capped at 12 entities per memory (`cooccurrence_max_entities`) to limit hub-node inflation from generic entities. Integrated into consolidation pass. Feature-flagged off by default (`NCMS_DREAM_CYCLE_ENABLED=false`).
+15. **Per-query score normalization** (Phase 9) — Min-max normalization of all retrieval signals (BM25, SPLADE, Graph, CE) to [0,1] per query before combining. Fixes fundamental scale mismatch where SPLADE (5-200 range) dominated BM25 (1-15 range) despite lower configured weights. Applied in the scoring loop after all raw scores are collected.
+16. **Selective cross-encoder reranking** (Phase 10) — Cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`, 22M params) reranks RRF candidates. Applied selectively based on classified intent: enabled for `fact_lookup`, `pattern_lookup`, `strategic_reflection` where textual relevance helps; disabled for `current_state_lookup`, `historical_lookup`, `change_detection` where it destroys temporal ordering (CR -4.2%) and long-range connections (LRU -28%). Config: `NCMS_RERANKER_ENABLED`, `NCMS_RERANKER_MODEL`, `NCMS_RERANKER_TOP_K=50`, `NCMS_RERANKER_OUTPUT_K=20`, `NCMS_SCORING_WEIGHT_CE=0.7`.
+17. **Structured recall** (Phase 11) — `recall()` method wraps full `search()` pipeline and layers intent-specific structured context. Returns `RecallResult` with: (a) entity state snapshots (current values for all entities in the memory), (b) episode context (membership, sibling IDs, LLM summary), (c) causal chains (supersedes/superseded_by/derived_from/supports/conflicts_with edges). Episode siblings appended *after* primary results to expand retrieval set without displacing BM25 ranking. Achieves Recall AR nDCG@10=0.2032 on SWE-bench Django (+15.5% over search AR 0.1759). MCP tool: `recall_memory`. Models: `RecallResult`, `RecallContext`, `EntityStateSnapshot`, `EpisodeContext`, `CausalChain` in `domain/models.py`.
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -168,10 +172,11 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 ## Data Flow
 
 1. **Store**: Content → [admission scoring → 3-way quality gate: discard/ephemeral/persist] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → L1 atomic node (always) → [L2 entity_state node if state change/declaration detected, DERIVED_FROM edge to L1] → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode, links to L1]
-2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → weighted scoring (BM25 0.6 + SPLADE 0.3 + Graph 0.3 via BFS traversal with IDF-weighted entity matching and PMI-weighted edges) [+ ACT-R Jaccard spread if enabled + hierarchy bonus − reconciliation penalty on combined score] → ranked results → [search log for dream cycle PMI]
-3. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
-4. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
-5. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
+2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → per-query min-max normalization → weighted scoring (BM25 0.6 + SPLADE 0.3 + Graph 0.3 via BFS traversal with IDF-weighted entity matching and PMI-weighted edges) [+ ACT-R Jaccard spread if enabled + hierarchy bonus − reconciliation penalty on combined score] → [selective cross-encoder reranking for fact/pattern/reflection intents] → ranked results → [search log for dream cycle PMI]
+3. **Recall**: Query → full search pipeline (step 2) → intent classification → entity extraction → wrap results as RecallResults → [state/episode/change bonus results for non-fact intents] → merge (base first, bonus appended) → enrich all results with entity states + episode context + causal chains → RecallResult list
+4. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
+5. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
+6. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
 
 ## Database Schema (12 tables)
 
@@ -285,6 +290,11 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_DREAM_REHEARSAL_WEIGHT_RECENCY` | `0.05` | Recency weight in rehearsal selector |
 | `NCMS_DREAM_IMPORTANCE_DRIFT_WINDOW_DAYS` | `14` | Window for access rate comparison |
 | `NCMS_DREAM_IMPORTANCE_DRIFT_RATE` | `0.1` | Max importance adjustment per cycle |
+| `NCMS_RERANKER_ENABLED` | `false` | Enable cross-encoder reranking (Phase 10) |
+| `NCMS_RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model for reranking |
+| `NCMS_RERANKER_TOP_K` | `50` | Number of RRF candidates to rerank |
+| `NCMS_RERANKER_OUTPUT_K` | `20` | Number of results after reranking |
+| `NCMS_SCORING_WEIGHT_CE` | `0.7` | Cross-encoder weight when reranker active |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

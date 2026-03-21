@@ -84,10 +84,24 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
         logger.info(
             "Loading GLiNER model: %s on %s (first call only)", model_name, device,
         )
-        kwargs: dict[str, object] = {"map_location": device}
+        kwargs: dict[str, object] = {}
         if cache_dir:
             kwargs["cache_dir"] = cache_dir
-        _model = GLiNER.from_pretrained(model_name, **kwargs)
+
+        if device == "mps":
+            # GLiNER's from_pretrained with map_location="mps" fails on
+            # meta tensors. Load on CPU first, then move to MPS.
+            kwargs["map_location"] = "cpu"
+            _model = GLiNER.from_pretrained(model_name, **kwargs)
+            try:
+                import torch
+                _model.model = _model.model.to(torch.device("mps"))
+            except Exception:
+                logger.warning("Failed to move GLiNER to MPS, using CPU")
+        else:
+            kwargs["map_location"] = device
+            _model = GLiNER.from_pretrained(model_name, **kwargs)
+
         _model_name = model_name
         return _model
 

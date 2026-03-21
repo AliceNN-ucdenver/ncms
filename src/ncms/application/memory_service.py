@@ -18,7 +18,6 @@ from ncms.domain.entity_extraction import resolve_labels
 from ncms.domain.intent import IntentResult, QueryIntent, classify_intent
 from ncms.domain.models import (
     AccessRecord,
-    CausalChain,
     Entity,
     EntityStateSnapshot,
     EpisodeContext,
@@ -1812,14 +1811,17 @@ class MemoryService:
         limit: int = 10,
         agent_id: str | None = None,
     ) -> list[RecallResult]:
-        """Structured recall with intent-based routing and context enrichment.
+        """Structured recall: BM25 search base + intent-based context layering.
 
-        Unlike search() which returns flat ranked results, recall() routes
-        queries to specialized retrieval paths based on intent classification
-        and enriches each result with episode context, entity states, and
-        causal chain edges. One call returns what currently takes 5+ tool calls.
+        Always starts with the full search() pipeline (BM25+SPLADE+Graph+CE)
+        to guarantee recall ≥ search. Then layers intent-specific structured
+        results (entity states, episode expansions, causal chains) on top.
+        One call returns what currently takes 5+ tool calls.
         """
-        # Classify intent
+        # 1. Always run full search pipeline as the base
+        scored = await self.search(query, domain=domain, limit=limit)
+
+        # 2. Classify intent for context enrichment strategy
         intent_result: IntentResult | None = None
         if self._config.intent_classification_enabled:
             if self._intent_classifier is not None:
@@ -1828,7 +1830,7 @@ class MemoryService:
                 intent_result = classify_intent(query)
         intent = intent_result.intent if intent_result else QueryIntent.FACT_LOOKUP
 
-        # Extract entities from query for structured routing
+        # 3. Extract entities from query for structured lookups
         from ncms.infrastructure.extraction.gliner_extractor import (
             extract_entities_gliner,
         )
@@ -1853,64 +1855,84 @@ class MemoryService:
                 if existing:
                     context_entity_ids.append(existing.id)
 
-        # ── Intent-based routing ──────────────────────────────────────
-        if intent == QueryIntent.CURRENT_STATE_LOOKUP and context_entity_ids:
-            results = await self._recall_current_state(
-                query, context_entity_ids, domain, limit, intent,
+        # 4. Wrap search results as RecallResults (BM25 base — always present)
+        seen_memory_ids: set[str] = set()
+        base_results: list[RecallResult] = []
+        for sm in scored[:limit]:
+            seen_memory_ids.add(sm.memory.id)
+            base_results.append(
+                RecallResult(memory=sm, retrieval_path=intent.value)
             )
-        elif intent == QueryIntent.HISTORICAL_LOOKUP and context_entity_ids:
-            results = await self._recall_historical(
-                query, context_entity_ids, domain, limit, intent,
+
+        # 5. Layer intent-specific structured results (prepended as bonus)
+        bonus_results: list[RecallResult] = []
+        if context_entity_ids and intent in (
+            QueryIntent.CURRENT_STATE_LOOKUP,
+            QueryIntent.HISTORICAL_LOOKUP,
+            QueryIntent.CHANGE_DETECTION,
+        ):
+            bonus_results = await self._recall_structured_state(
+                context_entity_ids, intent, seen_memory_ids,
             )
         elif intent == QueryIntent.EVENT_RECONSTRUCTION:
-            results = await self._recall_episode_expansion(
-                query, domain, limit, intent,
+            bonus_results = await self._recall_episode_bonus(
+                scored, seen_memory_ids,
             )
-        elif intent == QueryIntent.CHANGE_DETECTION and context_entity_ids:
-            results = await self._recall_change_detection(
-                query, context_entity_ids, domain, limit, intent,
-            )
-        elif intent in (QueryIntent.PATTERN_LOOKUP, QueryIntent.STRATEGIC_REFLECTION):
-            results = await self._recall_hierarchical(
-                query, domain, limit, intent,
-            )
-        else:
-            # FACT_LOOKUP or fallback: use standard search + enrich
-            scored = await self.search(query, domain=domain, limit=limit)
-            results = await self._enrich_context(scored, intent.value, limit)
 
-        return results[:limit]
+        # 6. Merge: BM25 base first (preserves ranking), then bonus extras
+        merged = base_results + bonus_results
+        # Cap at limit but always keep all base results
+        merged = merged[:max(limit, len(base_results))]
 
-    # ── Recall routing helpers ────────────────────────────────────────
+        # 7. Enrich all results with episode, entity state, and causal context
+        return await self._enrich_existing_results(merged)
 
-    async def _recall_current_state(
+    # ── Recall bonus helpers (layered on top of BM25 base) ──────────
+
+    async def _recall_structured_state(
         self,
-        query: str,
         entity_ids: list[str],
-        domain: str | None,
-        limit: int,
         intent: QueryIntent,
+        seen_memory_ids: set[str],
     ) -> list[RecallResult]:
-        """CURRENT_STATE_LOOKUP: O(1) state graph lookup first, BM25 for context."""
+        """Fetch state-graph bonus results for state/historical/change intents.
+
+        Returns memories from entity state graph that BM25 may have missed.
+        These are prepended to BM25 results. Only includes memories NOT
+        already in the BM25 result set (seen_memory_ids).
+        """
         from ncms.domain.models import EntityStateMeta
 
-        state_results: list[RecallResult] = []
-        seen_memory_ids: set[str] = set()
+        bonus: list[RecallResult] = []
 
-        # Direct state lookup for each query entity
-        for eid in entity_ids[:10]:
-            all_states = await self._store.get_entity_states_by_entity(eid)
-            state_nodes = [s for s in all_states if s.is_current]
+        for eid in entity_ids[:5]:
+            try:
+                if intent == QueryIntent.CURRENT_STATE_LOOKUP:
+                    all_states = await self._store.get_entity_states_by_entity(eid)
+                    state_nodes = [s for s in all_states if s.is_current]
+                else:
+                    # HISTORICAL_LOOKUP or CHANGE_DETECTION — full history
+                    state_nodes = await self._store.get_state_history(
+                        eid, state_key=None,
+                    )
+            except Exception:
+                continue
+
             for sn in state_nodes:
                 if sn.memory_id in seen_memory_ids:
                     continue
-                seen_memory_ids.add(sn.memory_id)
                 memory = await self._store.get_memory(sn.memory_id)
                 if not memory:
                     continue
+                seen_memory_ids.add(sn.memory_id)
                 meta = EntityStateMeta.from_node(sn)
-                scored = ScoredMemory(memory=memory, bm25_score=1.0)
-                state_results.append(RecallResult(
+                scored = ScoredMemory(memory=memory, bm25_score=0.0)
+                path = {
+                    QueryIntent.CURRENT_STATE_LOOKUP: "state_lookup_bonus",
+                    QueryIntent.HISTORICAL_LOOKUP: "state_history_bonus",
+                    QueryIntent.CHANGE_DETECTION: "change_detection_bonus",
+                }.get(intent, "state_bonus")
+                bonus.append(RecallResult(
                     memory=scored,
                     context=RecallContext(
                         entity_states=[EntityStateSnapshot(
@@ -1922,223 +1944,57 @@ class MemoryService:
                             observed_at=sn.observed_at,
                         )],
                     ),
-                    retrieval_path="state_lookup",
+                    retrieval_path=path,
                 ))
 
-        # Fill remaining slots with BM25 context (no CE rerank)
-        if len(state_results) < limit:
-            bm25_results = await self.search(
-                query, domain=domain, limit=limit * 2,
-                intent_override="fact_lookup",
-            )
-            for sm in bm25_results:
-                if sm.memory.id not in seen_memory_ids and len(state_results) < limit:
-                    seen_memory_ids.add(sm.memory.id)
-                    state_results.append(RecallResult(
-                        memory=sm,
-                        retrieval_path="bm25_context",
-                    ))
+        return bonus
 
-        # Enrich all results with full context
-        return await self._enrich_existing_results(state_results)
-
-    async def _recall_historical(
+    async def _recall_episode_bonus(
         self,
-        query: str,
-        entity_ids: list[str],
-        domain: str | None,
-        limit: int,
-        intent: QueryIntent,
+        scored: list[ScoredMemory],
+        seen_memory_ids: set[str],
     ) -> list[RecallResult]:
-        """HISTORICAL_LOOKUP: state history chain + BM25 context."""
-        from ncms.domain.models import EntityStateMeta
+        """Expand episode abstracts from search results into member memories.
 
-        results: list[RecallResult] = []
-        seen_memory_ids: set[str] = set()
-
-        for eid in entity_ids[:5]:
-            history = await self._store.get_state_history(eid, state_key=None)
-            for sn in history:
-                if sn.memory_id in seen_memory_ids:
-                    continue
-                seen_memory_ids.add(sn.memory_id)
-                memory = await self._store.get_memory(sn.memory_id)
-                if not memory:
-                    continue
-                meta = EntityStateMeta.from_node(sn)
-                scored = ScoredMemory(memory=memory, bm25_score=0.5)
-                results.append(RecallResult(
-                    memory=scored,
-                    context=RecallContext(
-                        entity_states=[EntityStateSnapshot(
-                            entity_id=eid,
-                            entity_name=self._graph.get_entity_name(eid) or eid,
-                            state_key=meta.state_key or "",
-                            state_value=meta.state_value or "",
-                            is_current=sn.is_current,
-                            observed_at=sn.observed_at,
-                        )],
-                    ),
-                    retrieval_path="state_history",
-                ))
-
-        # Fill with BM25
-        if len(results) < limit:
-            bm25 = await self.search(query, domain=domain, limit=limit)
-            for sm in bm25:
-                if sm.memory.id not in seen_memory_ids and len(results) < limit:
-                    seen_memory_ids.add(sm.memory.id)
-                    results.append(RecallResult(
-                        memory=sm, retrieval_path="bm25_context",
-                    ))
-
-        return await self._enrich_existing_results(results)
-
-    async def _recall_episode_expansion(
-        self,
-        query: str,
-        domain: str | None,
-        limit: int,
-        intent: QueryIntent,
-    ) -> list[RecallResult]:
-        """EVENT_RECONSTRUCTION: search episode summaries, expand to members."""
-        # Search all memories (includes episode summaries indexed in BM25)
-        scored = await self.search(query, domain=domain, limit=limit * 3)
-
-        results: list[RecallResult] = []
-        seen_memory_ids: set[str] = set()
-
-        # Separate abstracts (episode summaries) from atomic results
+        For EVENT_RECONSTRUCTION: find episode summaries in the BM25 results,
+        expand via DERIVED_FROM/SUMMARIZES edges to find member memories that
+        BM25 may have missed. Returns only the bonus members not already in
+        the search results.
+        """
+        bonus: list[RecallResult] = []
         abstracts = [s for s in scored if "abstract" in (s.node_types or [])]
-        atomics = [s for s in scored if "abstract" not in (s.node_types or [])]
 
-        # Expand each abstract's members via nodes
-        for abstract in abstracts[:limit]:
-            if abstract.memory.id in seen_memory_ids:
-                continue
-            seen_memory_ids.add(abstract.memory.id)
-
+        for abstract in abstracts[:5]:
             nodes = await self._store.get_memory_nodes_for_memory(abstract.memory.id)
-            member_ids: list[str] = []
             for node in nodes:
-                edges = await self._store.get_graph_edges(node.id)
+                try:
+                    edges = await self._store.get_graph_edges(node.id)
+                except Exception:
+                    continue
                 for edge in edges:
                     if edge.edge_type in ("derived_from", "summarizes"):
-                        # edge.target_id is a node ID, get its memory_id
-                        target_node = await self._store.get_memory_node(edge.target_id)
-                        if target_node:
-                            member_ids.append(target_node.memory_id)
+                        try:
+                            target_node = await self._store.get_memory_node(
+                                edge.target_id,
+                            )
+                        except Exception:
+                            continue
+                        if not target_node:
+                            continue
+                        mid = target_node.memory_id
+                        if mid in seen_memory_ids:
+                            continue
+                        memory = await self._store.get_memory(mid)
+                        if not memory:
+                            continue
+                        seen_memory_ids.add(mid)
+                        sm = ScoredMemory(memory=memory, bm25_score=0.0)
+                        bonus.append(RecallResult(
+                            memory=sm,
+                            retrieval_path="episode_expansion_bonus",
+                        ))
 
-            results.append(RecallResult(
-                memory=abstract,
-                context=RecallContext(
-                    causal_chain=CausalChain(derived_from=member_ids),
-                ),
-                retrieval_path="episode_expansion",
-            ))
-
-        # Fill remaining with atomic results
-        for sm in atomics:
-            if sm.memory.id not in seen_memory_ids and len(results) < limit:
-                seen_memory_ids.add(sm.memory.id)
-                results.append(RecallResult(
-                    memory=sm, retrieval_path="bm25_context",
-                ))
-
-        return await self._enrich_existing_results(results)
-
-    async def _recall_change_detection(
-        self,
-        query: str,
-        entity_ids: list[str],
-        domain: str | None,
-        limit: int,
-        intent: QueryIntent,
-    ) -> list[RecallResult]:
-        """CHANGE_DETECTION: state transitions with before/after snapshots."""
-        from ncms.domain.models import EntityStateMeta
-
-        results: list[RecallResult] = []
-        seen_memory_ids: set[str] = set()
-
-        for eid in entity_ids[:5]:
-            history = await self._store.get_state_history(eid, state_key=None)
-            # Return transitions chronologically
-            for sn in history:
-                if sn.memory_id in seen_memory_ids:
-                    continue
-                seen_memory_ids.add(sn.memory_id)
-                memory = await self._store.get_memory(sn.memory_id)
-                if not memory:
-                    continue
-                meta = EntityStateMeta.from_node(sn)
-                # Build causal chain from supersession edges
-                supersedes: list[str] = []
-                superseded_by_list: list[str] = []
-                edges = await self._store.get_graph_edges(sn.id)
-                for edge in edges:
-                    if edge.edge_type == "supersedes":
-                        supersedes.append(edge.target_id)
-                    elif edge.edge_type == "superseded_by":
-                        superseded_by_list.append(edge.target_id)
-
-                scored = ScoredMemory(memory=memory, bm25_score=0.5)
-                results.append(RecallResult(
-                    memory=scored,
-                    context=RecallContext(
-                        entity_states=[EntityStateSnapshot(
-                            entity_id=eid,
-                            entity_name=self._graph.get_entity_name(eid) or eid,
-                            state_key=meta.state_key or "",
-                            state_value=meta.state_value or "",
-                            is_current=sn.is_current,
-                            observed_at=sn.observed_at,
-                        )],
-                        causal_chain=CausalChain(
-                            supersedes=supersedes,
-                            superseded_by=superseded_by_list,
-                        ),
-                    ),
-                    retrieval_path="change_detection",
-                ))
-                if len(results) >= limit:
-                    break
-
-        return results
-
-    async def _recall_hierarchical(
-        self,
-        query: str,
-        domain: str | None,
-        limit: int,
-        intent: QueryIntent,
-    ) -> list[RecallResult]:
-        """PATTERN_LOOKUP / STRATEGIC_REFLECTION: search abstracts, expand."""
-        scored = await self.search(query, domain=domain, limit=limit * 3)
-
-        results: list[RecallResult] = []
-        seen: set[str] = set()
-
-        # Prioritize abstracts (patterns, trajectories, insights)
-        abstracts = [s for s in scored if "abstract" in (s.node_types or [])]
-        atomics = [s for s in scored if "abstract" not in (s.node_types or [])]
-
-        for abstract in abstracts[:limit]:
-            if abstract.memory.id in seen:
-                continue
-            seen.add(abstract.memory.id)
-            results.append(RecallResult(
-                memory=abstract, retrieval_path="hierarchical_abstract",
-            ))
-
-        for sm in atomics:
-            if sm.memory.id not in seen and len(results) < limit:
-                seen.add(sm.memory.id)
-                results.append(RecallResult(
-                    memory=sm, retrieval_path="bm25_context",
-                ))
-
-        return await self._enrich_existing_results(results)
+        return bonus
 
     # ── Context enrichment ────────────────────────────────────────────
 

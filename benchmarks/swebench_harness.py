@@ -548,13 +548,14 @@ async def measure_ar_recall(
     rankings: dict[str, list[str]] = {}
     for qid, query_text in queries.items():
         results = await svc.recall(query=query_text, domain="django", limit=10)
+        # Primary results first (preserve BM25 ranking)
         doc_ids: list[str] = []
         for r in results:
-            # Primary result
             doc_id = state.mem_to_doc.get(r.memory.memory.id)
             if doc_id and doc_id not in doc_ids:
                 doc_ids.append(doc_id)
-            # Episode siblings expand the retrieval set
+        # Episode siblings appended AFTER all primary results
+        for r in results:
             if r.context.episode:
                 for sib_id in r.context.episode.sibling_ids:
                     sib_doc = state.mem_to_doc.get(sib_id)
@@ -622,11 +623,14 @@ async def measure_lru_recall(
     rankings: dict[str, list[str]] = {}
     for qid, query_text in lru_queries.items():
         results = await svc.recall(query=query_text, domain="django", limit=10)
+        # Primary results first (preserve BM25 ranking)
         doc_ids: list[str] = []
         for r in results:
             doc_id = state.mem_to_doc.get(r.memory.memory.id)
             if doc_id and doc_id not in doc_ids:
                 doc_ids.append(doc_id)
+        # Episode siblings appended AFTER all primary results
+        for r in results:
             if r.context.episode:
                 for sib_id in r.context.episode.sibling_ids:
                     sib_doc = state.mem_to_doc.get(sib_id)
