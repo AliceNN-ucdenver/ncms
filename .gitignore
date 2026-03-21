@@ -28,3 +28,4 @@ htmlcov/
 .coverage
 *.log
 .DS_Store
+openapi_letta.json
