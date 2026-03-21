@@ -83,6 +83,9 @@ dev = [
 ]
 bench = [
     "datasets>=2.0",
+    "letta>=0.16.6",
     "matplotlib>=3.8",
+    "mem0ai>=1.0.7",
+    "openai>=2.26.0",
     "tabulate>=0.9",
 ]

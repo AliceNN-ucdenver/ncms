@@ -13,7 +13,9 @@ We conduct a systematic ablation study with domain-specific entity label optimiz
 
 Building on the HTMG, we introduce *dream cycles*, a non-LLM offline consolidation system inspired by biological sleep consolidation. Dream rehearsal injects synthetic access records for high-value memories, PMI-based association learning populates spreading activation weights from search co-occurrence data, and importance drift adjusts memory salience based on access trends. This addresses a key finding from our ablation: ACT-R's temporal decay mechanism provides no signal on static benchmarks (where all documents share identical access history), but dream cycles create the differential access patterns that make cognitive scoring meaningful.
 
-The system is validated by 719 tests across 11 implementation phases, with comprehensive weight tuning across retrieval ranking, admission routing, and state reconciliation. To our knowledge, NCMS is the first system to apply ACT-R cognitive architecture principles to information retrieval scoring, the first to implement learned association strengths via PMI for spreading activation, and the first to demonstrate biologically-inspired sleep consolidation in an agent memory system.
+On the SWE-bench Django benchmark (850 real GitHub issues), a three-system comparison against Mem0 and Letta demonstrates that NCMS's structured recall with episode expansion achieves the best retrieval accuracy across all systems (AR nDCG@10 = 0.2031), with 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta, using zero external API calls.
+
+The system is validated by 751 tests across 11 implementation phases. To our knowledge, NCMS is the first system to apply ACT-R cognitive architecture principles to information retrieval scoring, the first to implement learned association strengths via PMI for spreading activation, and the first to demonstrate biologically-inspired sleep consolidation in an agent memory system.
 
 ---
 
@@ -46,7 +48,7 @@ A second key finding (that ACT-R's temporal decay provides zero signal on static
 - Comprehensive weight tuning across retrieval ranking (108 configs), admission routing (486 configs), and reconciliation penalties (16 configs)
 - A domain-adaptive entity extraction methodology using GLiNER zero-shot NER with systematic label taxonomy optimization
 - An embedded inter-agent Knowledge Bus with snapshot-based surrogate responses, enabling agents to share knowledge and answer questions even while offline
-- An open-source, zero-dependency implementation validated by 719 tests across 11 implementation phases
+- An open-source, zero-dependency implementation validated by 751 tests across 11 implementation phases
 
 ---
 
@@ -138,7 +140,7 @@ Despite significant advances in neural information retrieval, several gaps remai
 
 ### 4.1 System Architecture
 
-NCMS implements a four-tier retrieval pipeline:
+NCMS implements a multi-tier retrieval pipeline:
 
 **Tier 1: BM25 + SPLADE Hybrid Search.** Queries are processed simultaneously by a Tantivy (Rust) BM25 engine for exact lexical matching and a SPLADE sparse neural model for learned term expansion. Results are fused via Reciprocal Rank Fusion:
 
@@ -204,7 +206,7 @@ Extracted entities are stored in a NetworkX directed graph with bidirectional me
 
 1. **Spreading activation**: Entity overlap between query and candidate enables ACT-R spreading activation scoring
 2. **Graph expansion**: Entity neighbors of BM25/SPLADE hits are traversed to discover related memories
-3. **Knowledge enrichment**: Optional LLM-extracted keyword bridges connect entity subgraphs that share semantic themes
+3. **Structural connectivity**: Episode membership and entity state evolution provide principled cross-subgraph connections (see Section 4.5)
 
 ### 4.4 Domain-Specific Label Taxonomy Optimization
 
@@ -253,7 +255,7 @@ Superseded and conflicted states receive ACT-R mismatch penalties ($P_{\text{sup
 
 **Episode Formation.** A hybrid episode linker scores each incoming fragment against candidate episodes using 7 weighted signals:
 
-$$\mathrm{episode{\_}score}(f, e) = \sum_{s \in S} w_s \cdot \mathrm{signal}_s(f, e)$$
+$$\text{episode\_score}(f, e) = \sum_{s \in S} w_s \cdot \text{signal}_s(f, e)$$
 
 where the signals $S$ and default weights $w_s$ are: BM25 lexical match (0.20), SPLADE semantic match (0.20), entity overlap coefficient (0.25), domain overlap (0.15), temporal proximity (0.10), source agent match (0.05), and structured anchor bonus (0.05). Fragments join the highest-scoring episode above threshold (0.30), or create a new episode if they have sufficient entities (≥2) and no match exists. Episodes auto-close after 24 hours of inactivity.
 
@@ -263,7 +265,7 @@ Dream cycles implement three offline consolidation passes inspired by biological
 
 **Dream Rehearsal.** Memories eligible for rehearsal (access count ≥ 3) are scored by a 5-signal weighted selector:
 
-$$\mathrm{rehearsal{\_}score}(m) = 0.40 \cdot \hat{c}(m) + 0.30 \cdot \hat{s}(m) + 0.20 \cdot \hat{i}(m) + 0.05 \cdot \hat{a}(m) + 0.05 \cdot \hat{r}(m)$$
+$$\text{rehearsal\_score}(m) = 0.40 \cdot \hat{c}(m) + 0.30 \cdot \hat{s}(m) + 0.20 \cdot \hat{i}(m) + 0.05 \cdot \hat{a}(m) + 0.05 \cdot \hat{r}(m)$$
 
 where each signal is rank-normalized to $[0, 1]$: $\hat{c}(m)$ is the entity-graph PageRank centrality of entities linked to memory $m$, $\hat{s}(m)$ is staleness (days since last access, higher = more stale = higher priority), $\hat{i}(m)$ is the memory's importance score, $\hat{a}(m)$ is the total access count, and $\hat{r}(m)$ is inverse recency (time since last access). The top fraction (default 10%) of eligible memories receive synthetic access records with `accessing_agent="dream_rehearsal"`, boosting their base-level activation $B_i = \ln(\sum t_j^{-d})$ without changing the formula.
 
@@ -556,9 +558,9 @@ These findings motivate a transition from IR benchmarks to agent-native evaluati
 
 Evaluation will target MemoryAgentBench's four memory competencies: Associative Recall (AR), Time-To-Live (TTL), Least Recently Used (LRU), and Conditional Recall (CR). These competencies directly map to NCMS features: AR tests spreading activation and entity graph traversal, TTL tests ACT-R temporal decay, LRU tests access-frequency-based scoring, and CR tests state reconciliation and conditional retrieval. This evaluation framework will measure whether dream cycles create meaningful differential access patterns when the underlying data has the relational structure the architecture requires.
 
-### 6.9 SWE-bench Django: Pre-Tuning Baseline Results
+### 6.9 SWE-bench Django: Results
 
-The SWE-bench Django experiment (503 train / 170 test instances, chronological split at 2021) provides the first evaluation of NCMS's cognitive features on data with natural relational structure. Six architectural improvements were applied before this experiment: (1) real graph-based spreading activation with BFS traversal and per-hop decay, replacing the previous entity-set-overlap model; (2) PMI-weighted co-occurrence edges; (3) IDF-weighted entity matching; (4) separation of ACT-R spread (Jaccard) from graph spread (BFS+IDF+PMI); (5) Jaccard normalization for ACT-R spreading activation; and (6) co-occurrence clique capping at 12 entities per memory.
+The SWE-bench Django experiment (503 train / 170 test instances, chronological split at 2021) provides the first evaluation of NCMS's cognitive features on data with natural relational structure. Nine architectural improvements were applied relative to the initial SciFact experiments: graph-based BFS spreading activation with per-hop decay, PMI-weighted co-occurrence edges, IDF-weighted entity matching, ACT-R/graph signal separation, Jaccard normalization, co-occurrence clique capping, per-query min-max score normalization, selective cross-encoder reranking, and structured recall with episode expansion.
 
 **Table 9. SWE-bench Django Multi-Split Progression (Post-Tuning)**
 
@@ -584,11 +586,9 @@ The SWE-bench Django experiment (503 train / 170 test instances, chronological s
 
 #### Key Findings
 
-Seven architectural improvements were applied relative to the pre-tuning baseline (Section 6.9 prior): (1-6 as before) plus (7) per-query min-max score normalization fixing BM25/SPLADE scale mismatch, (8) selective cross-encoder reranking for fact/pattern/reflection intents, (9) structured recall with episode sibling expansion.
-
 1. **Recall AR = 0.2032 (+15.5% over search AR).** The structured recall method surfaces relevant documents that BM25 alone misses, by expanding episode siblings *after* preserving the primary BM25 ranking. This is the strongest retrieval signal in the system and the first empirical evidence that graph-structural memory organization outperforms flat retrieval.
 
-2. **TTL accuracy = 0.6529.** Test-time learning accuracy of 65.3% through pure retrieval (top-5 majority vote) with no task-specific fine-tuning, up from 57.1% pre-tuning.
+2. **TTL accuracy = 0.6529.** Test-time learning accuracy of 65.3% through pure retrieval (top-5 majority vote) with no task-specific fine-tuning.
 
 3. **Dream 1× AR = 0.1774 (+0.9%).** Dream rehearsal produces a small but reproducible improvement in retrieval accuracy, confirming that differential access patterns provide positive signal. Dream 3× regresses (AR=0.1754, CR=0.0907), indicating over-rehearsal concentrates PageRank and destroys temporal precision.
 
@@ -632,21 +632,13 @@ Bold indicates best result per metric. NCMS (recall) uses the structured recall 
 
 ## 7. Conclusion
 
-NCMS demonstrates that competitive information retrieval is achievable without dense vector embeddings, using a multi-signal pipeline that combines lexical search, sparse neural expansion, entity-graph traversal, and cognitive activation scoring. On the SciFact benchmark, NCMS achieves 0.7206 nDCG@10 after systematic weight tuning, outperforming published BM25 (+7.4%), dense retrieval (DPR +127%, ANCE +42%), and exceeding sparse neural systems (SPLADE v2/ColBERT v2 +4.0%, SPLADE++ +1.5%). Cross-domain validation on NFCorpus confirms these gains generalize to biomedical text (0.3506 nDCG@10, +9.6% SPLADE lift).
+NCMS demonstrates that competitive information retrieval is achievable without dense vector embeddings. On SciFact, a multi-signal pipeline (BM25 + SPLADE + entity graph) achieves 0.7206 nDCG@10 — exceeding published BM25 (+7.4%), ColBERT v2 (+4.0%), and SPLADE++ (+1.5%) — without computing a single embedding vector. On SWE-bench Django, a three-system comparison against Mem0 and Letta validates the architecture on real agent workloads: NCMS wins 3 of 4 MemoryAgentBench competencies, with 6.3x better temporal reasoning than Mem0 (CR) and 2.8x better cross-document association than Letta (LRU). Structured recall with episode expansion achieves Recall AR nDCG@10 = 0.2031 — the best retrieval accuracy across all systems, exceeding Mem0 by 31% and Letta by 44%.
 
-The research arc tells a coherent story. The initial ablation established component contributions: SPLADE fusion provides the largest lift, graph expansion adds consistent value, and ACT-R underperforms on static benchmarks. The catastrophic failure of keyword bridges (nDCG@10: 0.690 → 0.032) revealed that cross-subgraph connectivity requires structural rather than lexical connections. This motivated the HTMG architecture (typed memory nodes, bitemporal entity state tracking, 7-signal hybrid episode formation, and hierarchical abstraction synthesis), which provides principled structural connections where keyword bridges failed.
+The research arc followed a sequence of failures that shaped the architecture. The catastrophic failure of keyword bridges (nDCG@10: 0.690 → 0.032) revealed that graph connectivity requires specific, discriminative nodes rather than generic semantic bridges — motivating the HTMG's structural approach through episodes, entity states, and typed abstractions. The finding that ACT-R weight = 0 is optimal on static benchmarks (where all documents share identical access history) motivated dream cycles: biologically-inspired offline consolidation that creates the differential access patterns ACT-R requires. And the decisive negative result on SciFact (flat nDCG@10 across all dream stages, zero graph edges from 51K disconnected entities) confirmed the benchmark-architecture mismatch that necessitated evaluation on relational data like SWE-bench.
 
-The weight tuning revelation that ACT-R weight = 0 is optimal on static benchmarks (because all documents share identical access history) led to the final piece: dream cycles inspired by biological sleep consolidation. Dream rehearsal creates differential access patterns, PMI association learning provides data-driven entity weights for spreading activation, and importance drift adjusts memory salience from usage trends. Together, these three non-LLM passes transform ACT-R from a uniform-noise contributor into a potentially discriminative scoring signal.
+The system ships as an 11-phase architecture (751 tests, 12 SQLite tables) in a single `pip install` with zero external dependencies. Three innovations distinguish it: (1) the first application of ACT-R cognitive scoring to information retrieval; (2) dream cycles that create temporal context through rehearsal, PMI association learning, and importance drift; and (3) structured recall that layers episode context, entity states, and causal chains on top of search results — providing retrieval value that dense vectors fundamentally cannot.
 
-A subsequent tuning phase on SWE-bench Django (Section 6.9) confirmed these signals and revealed a new finding: structured recall with episode sibling expansion achieves Recall AR nDCG@10 = 0.2031, exceeding search AR (0.1750) by 16.1%. This demonstrates that graph-structural memory organization — grouping related memories into episodes and expanding them at retrieval time — provides retrieval value that flat BM25+SPLADE search cannot capture, without any dense vector computation. A three-system comparison against Mem0 and Letta (Section 6.10) further validates the architecture: NCMS wins 3 of 4 MemoryAgentBench competencies, with particularly strong advantages in Conditional Recall (6.3x over Mem0) and cross-document association (2.8x over Letta), both attributable to entity graph structure and bitemporal state tracking that vector-based systems lack.
-
-Empirical validation of dream cycles on SciFact (Section 6.8) produced a decisive negative result: nDCG@10 remained flat at 0.6843 across all six stages, with ACT-R's optimal weight remaining 0.0 throughout. Structural analysis revealed the root cause: SciFact's 5,183 independent abstracts produce 51,357 entities with zero graph edges. Transitioning to SWE-bench Django (Section 6.9) with six architectural improvements (graph-based BFS spreading activation, PMI-weighted edges, IDF entity matching, Jaccard normalization, signal separation, clique capping) produced the first positive signals: CR temporal MRR improved +5.8% through state trajectories, TTL accuracy improved +1.0% through episode summaries, and the ACT-R crossover point was reached for the first time (optimal weight = 0.2 at baseline). These pre-tuning results confirm that NCMS's cognitive features produce discriminative signal when the underlying data has relational structure, while identifying consolidation decay aggressiveness as the primary obstacle to sustained improvement across stages.
-
-The system represents an 11-phase architecture validated by 719 tests, with comprehensive tuning across retrieval ranking (108 configurations), admission routing (486 configurations), and reconciliation penalties (16 configurations). It ships as a single `pip install` with zero external dependencies, 12 SQLite tables, and a real-time observability dashboard, making production deployment of a sophisticated cognitive memory system accessible to any Python project.
-
-Three key innovations distinguish NCMS: (1) the first application of ACT-R cognitive scoring to information retrieval, with dream cycles that create the temporal context ACT-R requires; (2) an embedded Knowledge Bus with snapshot surrogates that enables agents to share knowledge and answer questions even while offline; and (3) the empirical demonstration that graph-based retrieval requires specific, discriminative nodes (named entities) rather than generic bridges (keywords), a finding with broad implications for any system using knowledge graph expansion.
-
-Future work focuses on three directions: (1) improving recall coverage by optimizing episode formation signals to increase sibling expansion yield; (2) evaluating the recall API in production multi-agent deployments where the structured context (entity states, episode summaries, causal chains) provides actionable intelligence beyond ranked document lists; and (3) integration with agent orchestration frameworks. The three-system comparison (Section 6.10) provides strong evidence for the core thesis: NCMS's Recall AR of 0.2031 exceeds both Mem0 (+31%) and Letta (+44%), its entity graph enables 6.3x better temporal recall than vector retrieval, and it achieves all of this with zero external API dependencies — validating that graph-structural memory organization provides retrieval value beyond what dense vectors can achieve.
+Future work focuses on improving episode formation to increase sibling expansion yield, evaluating structured recall in production multi-agent deployments, and investigating whether ACT-R's base-level activation can be made discriminative through longer-horizon dream cycles or alternative decay formulations.
 
 ---
 
@@ -674,7 +666,7 @@ To summarize the novel ideas introduced by this work:
 
 10. **Inter-agent knowledge sharing.** An embedded Knowledge Bus with domain-routed communication and snapshot-based surrogate responses, enabling agents to share knowledge and answer questions even while offline, without external message brokers or coordination infrastructure.
 
-11. **Zero-dependency agent memory.** A production-ready 11-phase architecture (719 tests, 12 SQLite tables) that integrates persistent storage, full-text search, knowledge graphs, cognitive scoring, memory hierarchy, dream cycles, inter-agent communication, and observability in a single `pip install` with no external infrastructure requirements.
+11. **Zero-dependency agent memory.** A production-ready 11-phase architecture (751 tests, 12 SQLite tables) that integrates persistent storage, full-text search, knowledge graphs, cognitive scoring, memory hierarchy, dream cycles, inter-agent communication, and observability in a single `pip install` with no external infrastructure requirements.
 
 12. **Per-query score normalization.** Min-max normalization of retrieval signals (BM25, SPLADE, Graph, CE) to [0,1] per query, fixing a fundamental scale mismatch where SPLADE (5-200 range) dominated BM25 (1-15 range) despite lower configured weights.
 
