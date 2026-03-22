@@ -1,0 +1,37 @@
+version: "1.0"
+name: ncms-sandbox-policy
+description: "Security policy for NCMS cognitive memory sandbox"
+
+filesystem:
+  read_only:
+    - /app/src
+    - /app/deployment
+    - /usr
+    - /lib
+    - /proc/self/status
+    - /dev/urandom
+  read_write:
+    - /app/data          # SQLite DB + Tantivy index
+    - /tmp
+    - /dev/null
+
+network:
+  allow:
+    # LLM inference endpoints
+    - host: "spark-ee7d.local"
+      port: 8000
+      protocol: tcp
+    - host: "host.docker.internal"
+      port: 11434
+      protocol: tcp
+    - host: "integrate.api.nvidia.com"
+      port: 443
+      protocol: tcp
+    # HuggingFace (model downloads if not baked in)
+    - host: "huggingface.co"
+      port: 443
+      protocol: tcp
+    - host: "cdn-lfs.huggingface.co"
+      port: 443
+      protocol: tcp
+  deny_all_other: true

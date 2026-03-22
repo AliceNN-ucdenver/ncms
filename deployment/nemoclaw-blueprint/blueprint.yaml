@@ -1,0 +1,67 @@
+version: "0.1.0"
+name: ncms-cognitive-memory
+description: >
+  NCMS Cognitive Memory System — persistent memory for AI agents with
+  hybrid BM25+SPLADE+Graph retrieval, Knowledge Bus, and autonomous
+  multi-agent design workflows.
+
+requires:
+  openshell: ">=0.1.0"
+  openclaw: ">=2026.3.0"
+
+profiles:
+  default:
+    description: "DGX Spark (Nemotron 3 Nano 30B)"
+    inference:
+      provider: vllm
+      endpoint: "http://spark-ee7d.local:8000/v1"
+      model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      context_window: 32768
+      max_output_tokens: 4096
+    env:
+      NCMS_LLM_MODEL: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      NCMS_LLM_API_BASE: "http://spark-ee7d.local:8000/v1"
+
+  ollama:
+    description: "Local Ollama (Qwen 3.5 35B MoE)"
+    inference:
+      provider: ollama
+      endpoint: "http://host.docker.internal:11434"
+      model: "qwen3.5:35b-a3b"
+      context_window: 32768
+      max_output_tokens: 4096
+    env:
+      NCMS_LLM_MODEL: "ollama_chat/qwen3.5:35b-a3b"
+      NCMS_LLM_API_BASE: ""
+
+  nim:
+    description: "NVIDIA NIM (cloud)"
+    inference:
+      provider: nvidia
+      endpoint: "https://integrate.api.nvidia.com/v1"
+      model: "nvidia/llama-3.1-nemotron-70b-instruct"
+      context_window: 131072
+      max_output_tokens: 4096
+    env:
+      NCMS_LLM_MODEL: "openai/nvidia/llama-3.1-nemotron-70b-instruct"
+      NCMS_LLM_API_BASE: "https://integrate.api.nvidia.com/v1"
+
+sandbox:
+  image: "ncms-nemoclaw:latest"
+  ports:
+    - "8420:8420"   # Dashboard
+    - "8080:8080"   # MCP HTTP
+  volumes:
+    - "ncms-data:/app/data"
+  policy: "policies/ncms-sandbox.yaml"
+
+skills:
+  - "skills/architect/architect.md"
+  - "skills/security/security.md"
+  - "skills/builder/builder.md"
+
+mcp:
+  servers:
+    ncms:
+      command: "uv run ncms serve"
+      description: "NCMS Cognitive Memory — store, search, recall, Knowledge Bus"

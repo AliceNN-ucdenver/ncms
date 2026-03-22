@@ -1,0 +1,9 @@
+[project]
+name = "ncms-nemoclaw-blueprint"
+version = "0.1.0"
+description = "NemoClaw Blueprint for NCMS Cognitive Memory System"
+requires-python = ">=3.12"
+dependencies = ["pyyaml>=6.0"]
+
+[project.scripts]
+ncms-blueprint = "orchestrator.runner:main"
