@@ -1,180 +1,409 @@
-"""NemoClaw Blueprint orchestrator for NCMS.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 
-Reads blueprint.yaml, resolves profiles, and manages the sandbox container
-lifecycle via Docker CLI (plan / apply / status / rollback).
+"""
+NemoClaw Blueprint Runner for NCMS
+
+Orchestrates NCMS sandbox lifecycle inside OpenShell (when available)
+or falls back to plain Docker. Compatible with the NemoClaw Blueprint
+Runner protocol:
+  - stdout lines PROGRESS:<0-100>:<label> for progress updates
+  - stdout line RUN_ID:<id> for run identifier
+  - exit code 0 = success, non-zero = failure
+
+Usage:
+  python runner.py plan [--profile default]
+  python runner.py apply [--profile default]
+  python runner.py status [--run-id <id>]
+  python runner.py rollback --run-id <id>
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import shutil
 import subprocess
 import sys
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
-CONTAINER_NAME = "ncms-nemoclaw"
 BLUEPRINT_DIR = Path(__file__).resolve().parent.parent
+STATE_DIR = Path.home() / ".nemoclaw" / "state" / "runs"
+
+# Profile name → NCMS env var mapping for Docker fallback
+PROFILE_ENV_MAP: dict[str, dict[str, str]] = {
+    "default": {
+        "NCMS_LLM_MODEL": "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "NCMS_LLM_API_BASE": "http://spark-ee7d.local:8000/v1",
+    },
+    "ollama": {
+        "NCMS_LLM_MODEL": "ollama_chat/qwen3.5:35b-a3b",
+        "NCMS_LLM_API_BASE": "",
+    },
+    "nim": {
+        "NCMS_LLM_MODEL": "openai/nvidia/llama-3.1-nemotron-70b-instruct",
+        "NCMS_LLM_API_BASE": "https://integrate.api.nvidia.com/v1",
+    },
+    "vllm": {
+        "NCMS_LLM_MODEL": "openai/nvidia/nemotron-3-nano-30b-a3b",
+        "NCMS_LLM_API_BASE": "http://localhost:8000/v1",
+    },
+}
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Protocol helpers
 # ---------------------------------------------------------------------------
 
 
-def _run(
-    cmd: list[str], *, check: bool = True, capture: bool = False,
-) -> subprocess.CompletedProcess:
-    """Run a shell command, printing it first."""
-    print(f"  $ {' '.join(cmd)}")
-    return subprocess.run(cmd, check=check, capture_output=capture, text=True)  # noqa: S603
+def log(msg: str) -> None:
+    print(msg, flush=True)
 
 
-def _container_running() -> bool:
-    result = _run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", CONTAINER_NAME],
-        check=False,
-        capture=True,
+def progress(pct: int, label: str) -> None:
+    print(f"PROGRESS:{pct}:{label}", flush=True)
+
+
+def emit_run_id() -> str:
+    rid = f"nc-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    print(f"RUN_ID:{rid}", flush=True)
+    return rid
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure detection
+# ---------------------------------------------------------------------------
+
+
+def run_cmd(
+    args: list[str],
+    *,
+    check: bool = True,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a command as an argv list (never shell=True)."""
+    return subprocess.run(args, check=check, capture_output=capture, text=True)  # noqa: S603
+
+
+def openshell_available() -> bool:
+    """Check if openshell CLI is installed."""
+    return shutil.which("openshell") is not None
+
+
+def docker_available() -> bool:
+    """Check if Docker CLI is available."""
+    return shutil.which("docker") is not None
+
+
+def container_running(name: str) -> bool:
+    result = run_cmd(
+        ["docker", "inspect", "-f", "{{.State.Running}}", name],
+        check=False, capture=True,
     )
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
-def _container_exists() -> bool:
-    result = _run(
-        ["docker", "inspect", CONTAINER_NAME],
-        check=False,
-        capture=True,
+def container_exists(name: str) -> bool:
+    result = run_cmd(
+        ["docker", "inspect", name],
+        check=False, capture=True,
     )
     return result.returncode == 0
 
 
 # ---------------------------------------------------------------------------
-# Core functions
+# Blueprint loading
 # ---------------------------------------------------------------------------
 
 
-def load_blueprint(path: Path) -> dict:
-    """Parse blueprint.yaml and return as dict."""
-    with path.open() as f:
+def load_blueprint() -> dict[str, Any]:
+    bp_path = Path(os.environ.get("NEMOCLAW_BLUEPRINT_PATH", str(BLUEPRINT_DIR)))
+    bp_file = bp_path / "blueprint.yaml"
+    if not bp_file.exists():
+        log(f"ERROR: blueprint.yaml not found at {bp_file}")
+        sys.exit(1)
+    with bp_file.open() as f:
         return yaml.safe_load(f)
 
 
-def resolve_profile(blueprint: dict, profile_name: str | None) -> dict:
-    """Return the selected profile config, defaulting to 'default'."""
-    profiles = blueprint.get("profiles", {})
-    name = profile_name or "default"
+def resolve_profile(blueprint: dict[str, Any], name: str) -> dict[str, Any]:
+    """Resolve a profile from the blueprint components."""
+    profiles: dict[str, Any] = (
+        blueprint.get("components", {}).get("inference", {}).get("profiles", {})
+    )
     if name not in profiles:
         available = ", ".join(profiles.keys())
-        print(f"Error: profile '{name}' not found. Available: {available}")
+        log(f"ERROR: Profile '{name}' not found. Available: {available}")
         sys.exit(1)
-    profile = profiles[name]
-    profile["_name"] = name
-    return profile
+    cfg = profiles[name]
+    cfg["_name"] = name
+    return cfg
 
 
-def action_plan(blueprint: dict, profile: dict) -> dict:
-    """Validate config and display the deployment plan."""
-    sandbox = blueprint.get("sandbox", {})
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+
+
+def action_plan(
+    profile: str,
+    blueprint: dict[str, Any],
+    *,
+    dry_run: bool = False,
+    endpoint_url: str | None = None,
+) -> dict[str, Any]:
+    """Plan: validate blueprint, check prerequisites, show deployment plan."""
+    rid = emit_run_id()
+    progress(10, "Validating blueprint")
+
+    inf_cfg = resolve_profile(blueprint, profile)
+    sandbox = blueprint.get("components", {}).get("sandbox", {})
+    sandbox_name = sandbox.get("name", "ncms-openclaw")
     image = sandbox.get("image", "ncms-nemoclaw:latest")
-    ports = sandbox.get("ports", [])
-    volumes = sandbox.get("volumes", [])
+    ports = sandbox.get("forward_ports", [])
     skills = blueprint.get("skills", [])
-    env_vars = profile.get("env", {})
+
+    endpoint = endpoint_url or inf_cfg.get("endpoint", "")
+    model = inf_cfg.get("model", "")
+
+    progress(20, "Checking prerequisites")
+    use_openshell = openshell_available()
+    if not use_openshell:
+        if not docker_available():
+            log("ERROR: Neither openshell nor docker found on PATH.")
+            sys.exit(1)
+        log("INFO: openshell not found — will use Docker fallback")
 
     plan = {
-        "profile": profile["_name"],
-        "description": profile.get("description", ""),
+        "run_id": rid,
+        "profile": profile,
+        "sandbox_name": sandbox_name,
         "image": image,
         "ports": ports,
-        "volumes": volumes,
         "skills": skills,
-        "env_vars": env_vars,
-        "inference": profile.get("inference", {}),
+        "inference": {
+            "provider": inf_cfg.get("provider_type", "openai"),
+            "model": model,
+            "endpoint": endpoint,
+        },
+        "backend": "openshell" if use_openshell else "docker",
+        "dry_run": dry_run,
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
-    print()
-    print("=== NemoClaw Blueprint Plan ===")
-    print()
-    print(f"  Profile:     {plan['profile']}")
-    print(f"  Description: {plan['description']}")
-    print(f"  Image:       {plan['image']}")
-    print(f"  Container:   {CONTAINER_NAME}")
-    print()
-    print("  Ports:")
-    for p in ports:
-        print(f"    - {p}")
-    print()
-    print("  Volumes:")
-    for v in volumes:
-        print(f"    - {v}")
-    print()
-    print("  Environment:")
-    for k, v in env_vars.items():
-        display = v if v else '""'
-        print(f"    {k}={display}")
-    print()
-    print("  Skills:")
-    for s in skills:
-        print(f"    - {s}")
-    print()
-    print("  Inference:")
-    inf = profile.get("inference", {})
-    print(f"    Provider: {inf.get('provider', 'unknown')}")
-    print(f"    Model:    {inf.get('model', 'unknown')}")
-    print(f"    Endpoint: {inf.get('endpoint', 'unknown')}")
-    print()
+    progress(50, "Plan ready")
 
+    log("")
+    log("=== NemoClaw Blueprint Plan ===")
+    log("")
+    log(f"  Profile:    {profile}")
+    log(f"  Backend:    {'OpenShell' if use_openshell else 'Docker (fallback)'}")
+    log(f"  Image:      {image}")
+    log(f"  Sandbox:    {sandbox_name}")
+    log(f"  Ports:      {', '.join(str(p) for p in ports)}")
+    log(f"  Model:      {model}")
+    log(f"  Endpoint:   {endpoint}")
+    log("")
+    log("  Skills:")
+    for s in skills:
+        log(f"    - {s}")
+    log("")
+
+    if dry_run:
+        log("  (dry-run — no changes applied)")
+
+    progress(100, "Plan complete")
     return plan
 
 
-def action_apply(blueprint: dict, profile: dict) -> None:
-    """Build the Docker image and run the container."""
-    sandbox = blueprint.get("sandbox", {})
+def action_apply(
+    profile: str,
+    blueprint: dict[str, Any],
+    *,
+    plan_path: str | None = None,
+    endpoint_url: str | None = None,
+) -> None:
+    """Apply: create sandbox + configure inference."""
+    rid = emit_run_id()
+    progress(5, "Loading plan")
+
+    inf_cfg = resolve_profile(blueprint, profile)
+    sandbox = blueprint.get("components", {}).get("sandbox", {})
+    sandbox_name = sandbox.get("name", "ncms-openclaw")
     image = sandbox.get("image", "ncms-nemoclaw:latest")
-    ports = sandbox.get("ports", [])
-    volumes = sandbox.get("volumes", [])
-    env_vars = profile.get("env", {})
+    ports = sandbox.get("forward_ports", [])
 
-    # Show the plan first
-    action_plan(blueprint, profile)
+    endpoint = endpoint_url or inf_cfg.get("endpoint", "")
+    model = inf_cfg.get("model", "")
+    provider_type = inf_cfg.get("provider_type", "openai")
+    provider_name = inf_cfg.get("provider_name", "ncms-inference")
+    credential_env = inf_cfg.get("credential_env")
+    credential_default: str = inf_cfg.get("credential_default", "")
 
-    # Stop existing container if running
-    if _container_exists():
-        print("Stopping existing container...")
-        _run(["docker", "rm", "-f", CONTAINER_NAME], check=False)
+    use_openshell = openshell_available()
 
-    # Build image from blueprint Dockerfile
+    if use_openshell:
+        _apply_openshell(
+            rid=rid,
+            sandbox_name=sandbox_name,
+            image=image,
+            ports=ports,
+            provider_type=provider_type,
+            provider_name=provider_name,
+            endpoint=endpoint,
+            model=model,
+            credential_env=credential_env,
+            credential_default=credential_default,
+            profile=profile,
+            inf_cfg=inf_cfg,
+        )
+    else:
+        _apply_docker(
+            rid=rid,
+            sandbox_name=sandbox_name,
+            image=image,
+            ports=ports,
+            profile=profile,
+            endpoint=endpoint,
+            model=model,
+        )
+
+    # Save run state
+    progress(90, "Saving run state")
+    state_dir = STATE_DIR / rid
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "plan.json").write_text(
+        json.dumps(
+            {
+                "run_id": rid,
+                "profile": profile,
+                "sandbox_name": sandbox_name,
+                "backend": "openshell" if use_openshell else "docker",
+                "inference": {
+                    "provider": provider_type,
+                    "model": model,
+                    "endpoint": endpoint,
+                },
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+            indent=2,
+        )
+    )
+
+    progress(100, "Apply complete")
+    log("")
+    log(f"Sandbox '{sandbox_name}' is ready.")
+    log("  Dashboard:  http://localhost:8420")
+    log("  MCP HTTP:   http://localhost:8080")
+    log(f"  Inference:  {provider_name} -> {model} @ {endpoint}")
+    log("")
+
+
+def _apply_openshell(
+    *,
+    rid: str,
+    sandbox_name: str,
+    image: str,
+    ports: list[int],
+    provider_type: str,
+    provider_name: str,
+    endpoint: str,
+    model: str,
+    credential_env: str | None,
+    credential_default: str,
+    profile: str,
+    inf_cfg: dict[str, Any],
+) -> None:
+    """Apply using OpenShell CLI (real NemoClaw path)."""
+    # Step 1: Create sandbox
+    progress(20, f"Creating sandbox {sandbox_name}")
+    create_args = [
+        "openshell", "sandbox", "create",
+        "--name", sandbox_name,
+        "--image", image,
+    ]
+    for port in ports:
+        create_args.extend(["--forward-port", str(port)])
+    run_cmd(create_args, check=False, capture=True)
+
+    # Step 2: Configure inference provider
+    progress(50, f"Configuring inference provider {provider_name}")
+    credential = ""
+    if credential_env:
+        credential = os.environ.get(credential_env, credential_default)
+
+    provider_args = [
+        "openshell", "provider", "create",
+        "--name", provider_name,
+        "--type", provider_type,
+    ]
+    if credential:
+        provider_args.extend(["--credential", f"OPENAI_API_KEY={credential}"])
+    if endpoint:
+        provider_args.extend(["--config", f"OPENAI_BASE_URL={endpoint}"])
+    run_cmd(provider_args, check=False, capture=True)
+
+    # Step 3: Set inference route
+    progress(70, "Setting inference route")
+    run_cmd(
+        ["openshell", "inference", "set", "--provider", provider_name, "--model", model],
+        check=False, capture=True,
+    )
+
+
+def _apply_docker(
+    *,
+    rid: str,
+    sandbox_name: str,
+    image: str,
+    ports: list[int],
+    profile: str,
+    endpoint: str,
+    model: str,
+) -> None:
+    """Apply using Docker CLI (fallback when openshell not available)."""
+    # Step 1: Build image if Dockerfile exists
     dockerfile = BLUEPRINT_DIR / "Dockerfile"
-    if not dockerfile.exists():
-        print(f"Error: Dockerfile not found at {dockerfile}")
-        sys.exit(1)
-
-    # Build context is the NCMS project root (two levels up from blueprint dir)
     project_root = BLUEPRINT_DIR.parent.parent
-    print("Building Docker image...")
-    _run([
-        "docker", "build",
-        "-f", str(dockerfile),
-        "-t", image,
-        str(project_root),
-    ])
 
-    # Run container
-    print()
-    print("Starting container...")
-    cmd = ["docker", "run", "-d", "--name", CONTAINER_NAME]
+    if dockerfile.exists():
+        progress(15, "Building Docker image")
+        log(f"Building {image} from {dockerfile}...")
+        run_cmd([
+            "docker", "build",
+            "-f", str(dockerfile),
+            "-t", image,
+            str(project_root),
+        ])
 
-    for p in ports:
-        cmd.extend(["-p", p])
+    # Step 2: Remove existing container
+    if container_exists(sandbox_name):
+        progress(30, "Removing existing container")
+        run_cmd(["docker", "rm", "-f", sandbox_name], check=False)
 
-    for v in volumes:
-        cmd.extend(["-v", v])
+    # Step 3: Run container
+    progress(50, "Starting container")
+    cmd: list[str] = ["docker", "run", "-d", "--name", sandbox_name]
 
-    for k, v in env_vars.items():
+    for port in ports:
+        cmd.extend(["-p", f"{port}:{port}"])
+
+    # Volume for persistent data
+    cmd.extend(["-v", "ncms-data:/app/data"])
+
+    # Profile-specific NCMS env vars
+    env_map = PROFILE_ENV_MAP.get(profile, PROFILE_ENV_MAP["default"])
+    for k, v in env_map.items():
         cmd.extend(["-e", f"{k}={v}"])
 
-    # Enable core NCMS features
-    for feature_env in [
+    # Core NCMS features
+    for feature in [
         "NCMS_SPLADE_ENABLED=true",
         "NCMS_EPISODES_ENABLED=true",
         "NCMS_INTENT_CLASSIFICATION_ENABLED=true",
@@ -182,85 +411,128 @@ def action_apply(blueprint: dict, profile: dict) -> None:
         "NCMS_ADMISSION_ENABLED=true",
         "NCMS_RECONCILIATION_ENABLED=true",
     ]:
-        cmd.extend(["-e", feature_env])
+        cmd.extend(["-e", feature])
+
+    # Pass through credentials if set
+    for env_key in ["OPENAI_API_KEY", "NVIDIA_API_KEY", "HF_TOKEN"]:
+        val = os.environ.get(env_key)
+        if val:
+            cmd.extend(["-e", f"{env_key}={val}"])
 
     cmd.append(image)
-    _run(cmd)
+    run_cmd(cmd)
 
-    print()
-    print("=== Container started ===")
-    print("  Dashboard: http://localhost:8420")
-    print("  MCP HTTP:  http://localhost:8080")
-    print()
+    progress(80, "Container started")
 
 
-def action_status() -> None:
-    """Show the container status."""
-    print()
-    print("=== NemoClaw Container Status ===")
-    print()
+def action_status(rid: str | None = None) -> None:
+    """Report current state of the most recent (or specified) run."""
+    emit_run_id()
 
-    if not _container_exists():
-        print("  Container not found. Run 'ncms-blueprint apply' first.")
+    if rid:
+        run_dir = STATE_DIR / rid
+    else:
+        if not STATE_DIR.exists():
+            log("No runs found.")
+            return
+        runs = sorted(STATE_DIR.iterdir(), reverse=True)
+        if not runs:
+            log("No runs found.")
+            return
+        run_dir = runs[0]
+
+    plan_file = run_dir / "plan.json"
+    if not plan_file.exists():
+        log(json.dumps({"run_id": run_dir.name, "status": "unknown"}))
         return
 
-    result = _run(
-        [
-            "docker", "inspect", "-f",
-            "Name: {{.Name}}\n"
-            "State: {{.State.Status}}\n"
-            "Running: {{.State.Running}}\n"
-            "Started: {{.State.StartedAt}}\n"
-            "Image: {{.Config.Image}}",
-            CONTAINER_NAME,
-        ],
-        capture=True,
-    )
-    if result.returncode == 0:
-        for line in result.stdout.strip().splitlines():
-            print(f"  {line}")
+    plan = json.loads(plan_file.read_text())
+    rolled_back = (run_dir / "rolled_back").exists()
 
-    print()
+    log("")
+    log("=== NemoClaw Run Status ===")
+    log("")
+    log(f"  Run ID:     {plan.get('run_id', 'unknown')}")
+    log(f"  Profile:    {plan.get('profile', 'unknown')}")
+    log(f"  Backend:    {plan.get('backend', 'unknown')}")
+    log(f"  Sandbox:    {plan.get('sandbox_name', 'unknown')}")
+    log(f"  Timestamp:  {plan.get('timestamp', 'unknown')}")
+    if rolled_back:
+        log("  Status:     ROLLED BACK")
+    else:
+        # Check if container is still running
+        sandbox_name = plan.get("sandbox_name", "ncms-openclaw")
+        if container_running(sandbox_name):
+            log("  Status:     RUNNING")
+        elif container_exists(sandbox_name):
+            log("  Status:     STOPPED")
+        else:
+            log("  Status:     REMOVED")
+    log("")
 
-    # Show port mappings
-    result = _run(
-        ["docker", "port", CONTAINER_NAME],
-        check=False,
-        capture=True,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        print("  Ports:")
-        for line in result.stdout.strip().splitlines():
-            print(f"    {line}")
-    print()
+    inf = plan.get("inference", {})
+    log("  Inference:")
+    log(f"    Provider: {inf.get('provider', 'unknown')}")
+    log(f"    Model:    {inf.get('model', 'unknown')}")
+    log(f"    Endpoint: {inf.get('endpoint', 'unknown')}")
+    log("")
 
-    # Show recent logs
-    print("  Recent logs:")
-    result = _run(
-        ["docker", "logs", "--tail", "10", CONTAINER_NAME],
-        check=False,
-        capture=True,
-    )
-    if result.returncode == 0:
-        for line in (result.stdout + result.stderr).strip().splitlines():
-            print(f"    {line}")
-    print()
+    # Show container logs if running via Docker
+    if plan.get("backend") == "docker":
+        sandbox_name = plan.get("sandbox_name", "ncms-openclaw")
+        if container_exists(sandbox_name):
+            log("  Recent logs:")
+            result = run_cmd(
+                ["docker", "logs", "--tail", "10", sandbox_name],
+                check=False, capture=True,
+            )
+            if result.returncode == 0:
+                for line in (result.stdout + result.stderr).strip().splitlines():
+                    log(f"    {line}")
+            log("")
 
 
-def action_rollback() -> None:
-    """Stop and remove the container."""
-    print()
-    print("=== NemoClaw Rollback ===")
-    print()
+def action_rollback(rid: str) -> None:
+    """Rollback a specific run: stop sandbox, clean up."""
+    emit_run_id()
 
-    if not _container_exists():
-        print("  No container to remove.")
-        return
+    run_dir = STATE_DIR / rid
+    if not run_dir.exists():
+        log(f"ERROR: Run {rid} not found.")
+        sys.exit(1)
 
-    print("  Stopping and removing container...")
-    _run(["docker", "rm", "-f", CONTAINER_NAME])
-    print("  Done.")
-    print()
+    plan_file = run_dir / "plan.json"
+    if not plan_file.exists():
+        log(f"ERROR: No plan.json for run {rid}.")
+        sys.exit(1)
+
+    plan = json.loads(plan_file.read_text())
+    sandbox_name = plan.get("sandbox_name", "ncms-openclaw")
+    backend = plan.get("backend", "docker")
+
+    if backend == "openshell":
+        progress(30, f"Stopping sandbox {sandbox_name}")
+        run_cmd(
+            ["openshell", "sandbox", "stop", sandbox_name],
+            check=False, capture=True,
+        )
+        progress(60, f"Removing sandbox {sandbox_name}")
+        run_cmd(
+            ["openshell", "sandbox", "remove", sandbox_name],
+            check=False, capture=True,
+        )
+    else:
+        progress(30, f"Removing container {sandbox_name}")
+        run_cmd(
+            ["docker", "rm", "-f", sandbox_name],
+            check=False, capture=True,
+        )
+
+    progress(90, "Cleaning up run state")
+    (run_dir / "rolled_back").write_text(datetime.now(UTC).isoformat())
+
+    progress(100, "Rollback complete")
+    log(f"Run {rid} rolled back.")
 
 
 # ---------------------------------------------------------------------------
@@ -269,46 +541,39 @@ def action_rollback() -> None:
 
 
 def main() -> None:
-    """CLI entry point for the NemoClaw Blueprint orchestrator."""
-    parser = argparse.ArgumentParser(
-        description="NemoClaw Blueprint orchestrator for NCMS",
-    )
+    parser = argparse.ArgumentParser(description="NemoClaw Blueprint Runner for NCMS")
+    parser.add_argument("action", choices=["plan", "apply", "status", "rollback"])
+    parser.add_argument("--profile", default="default")
+    parser.add_argument("--run-id", dest="run_id")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--json", action="store_true")
     parser.add_argument(
-        "action",
-        choices=["plan", "apply", "status", "rollback"],
-        help="Action to perform",
-    )
-    parser.add_argument(
-        "--profile",
+        "--endpoint-url",
+        dest="endpoint_url",
         default=None,
-        help="Deployment profile (default, ollama, nim)",
-    )
-    parser.add_argument(
-        "--blueprint",
-        default=None,
-        help="Path to blueprint.yaml (auto-detected if not set)",
+        help="Override endpoint URL for the selected profile",
     )
 
     args = parser.parse_args()
+    blueprint = load_blueprint()
 
-    # Locate blueprint.yaml
-    blueprint_path = Path(args.blueprint) if args.blueprint else BLUEPRINT_DIR / "blueprint.yaml"
-    if not blueprint_path.exists():
-        print(f"Error: blueprint.yaml not found at {blueprint_path}")
-        sys.exit(1)
-
-    blueprint = load_blueprint(blueprint_path)
-
-    if args.action == "status":
-        action_status()
+    if args.action == "plan":
+        action_plan(
+            args.profile, blueprint,
+            dry_run=args.dry_run, endpoint_url=args.endpoint_url,
+        )
+    elif args.action == "apply":
+        action_apply(
+            args.profile, blueprint,
+            endpoint_url=args.endpoint_url,
+        )
+    elif args.action == "status":
+        action_status(rid=args.run_id)
     elif args.action == "rollback":
-        action_rollback()
-    else:
-        profile = resolve_profile(blueprint, args.profile)
-        if args.action == "plan":
-            action_plan(blueprint, profile)
-        elif args.action == "apply":
-            action_apply(blueprint, profile)
+        if not args.run_id:
+            log("ERROR: --run-id is required for rollback")
+            sys.exit(1)
+        action_rollback(args.run_id)
 
 
 if __name__ == "__main__":

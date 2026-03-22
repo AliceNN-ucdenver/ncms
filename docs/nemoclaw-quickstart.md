@@ -2,50 +2,101 @@
 
 Get NCMS cognitive memory running inside NemoClaw in under 15 minutes.
 
-## Quick Start: All-in-One Docker (Fastest)
+## Quick Start: Blueprint Container (Recommended)
 
-The fastest way to try everything — dashboard, multi-agent demo, HTTP API — in a single container:
+The NemoClaw Blueprint container includes NCMS + NemoClaw CLI + OpenShell + pre-downloaded models + 3 agent skills:
 
 ```bash
 # Clone the repo
 git clone https://github.com/AliceNN-ucdenver/ncms.git
 cd ncms
 
-# Build the all-in-one image (includes GLiNER, SPLADE, cross-encoder models)
-docker build -f deployment/nemoclaw/Dockerfile.allinone -t ncms-nemoclaw:latest .
+# Build the blueprint image (~800 MB of ML models baked in)
+docker build -f deployment/nemoclaw-blueprint/Dockerfile \
+  -t ncms-nemoclaw:latest .
 
-# Run everything: Dashboard + HTTP API + NemoClaw 3-agent demo
-docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
+# Optional: include SPLADE v3 (gated model, needs HuggingFace token)
+docker build -f deployment/nemoclaw-blueprint/Dockerfile \
+  --build-arg HF_TOKEN=hf_xxxx -t ncms-nemoclaw:latest .
 ```
 
-Open http://localhost:8420 to see the dashboard with three agents (Code, Ops, Security) collaborating through the Knowledge Bus in real-time.
-
-### Other Modes
+### Run with an LLM Backend
 
 ```bash
-# HTTP REST API only (for multi-agent hub)
-docker run -p 8080:8080 ncms-nemoclaw:latest api
+# DGX Spark (Nemotron 3 Nano 30B)
+docker run -p 8420:8420 -p 8080:8080 \
+  -e NCMS_LLM_MODEL=openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+  -e NCMS_LLM_API_BASE=http://spark-ee7d.local:8000/v1 \
+  ncms-nemoclaw:latest
 
-# Terminal NemoClaw demo (Rich output, no browser needed)
-docker run -it ncms-nemoclaw:latest nemoclaw-demo
+# Ollama on host Mac (Qwen 3.5 35B MoE)
+docker run -p 8420:8420 -p 8080:8080 \
+  -e NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
+  ncms-nemoclaw:latest
 
-# MCP server (stdio, pipe to OpenClaw)
+# NVIDIA NIM (cloud, needs API key)
+docker run -p 8420:8420 -p 8080:8080 \
+  -e NCMS_LLM_MODEL=openai/nvidia/llama-3.1-nemotron-70b-instruct \
+  -e NCMS_LLM_API_BASE=https://integrate.api.nvidia.com/v1 \
+  -e NVIDIA_API_KEY=nvapi-xxxx \
+  ncms-nemoclaw:latest
+```
+
+- **Dashboard**: http://localhost:8420 (SSE events, D3 graph, time-travel replay)
+- **MCP HTTP API**: http://localhost:8080
+
+### Container Modes
+
+```bash
+# Default: MCP HTTP API + Dashboard
+docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
+
+# NemoClaw ND autonomous agent demo (3 LLM agents design imdb-identity-service)
+docker run -it ncms-nemoclaw:latest demo
+
+# MCP stdio server (pipe to OpenClaw)
 docker run -i ncms-nemoclaw:latest mcp
 
-# Interactive shell (explore the container)
-docker run -it ncms-nemoclaw:latest shell
+# Interactive shell (NemoClaw + OpenClaw + NCMS all on PATH)
+docker run -it -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest shell
+
+# Inside the shell:
+#   nemoclaw onboard               # NemoClaw setup wizard
+#   openclaw tui                   # OpenClaw chat interface
+#   uv run ncms demo --nemoclaw-nd # ND agent demo
+```
+
+### Blueprint Runner
+
+Use the runner to manage the sandbox lifecycle (auto-detects OpenShell, falls back to Docker):
+
+```bash
+cd deployment/nemoclaw-blueprint
+
+# Preview deployment plan
+python orchestrator/runner.py plan --profile default
+
+# Build + deploy container
+python orchestrator/runner.py apply --profile default
+
+# Check status
+python orchestrator/runner.py status
+
+# Rollback
+python orchestrator/runner.py rollback --run-id <id>
 ```
 
 ### What's Inside
 
-The all-in-one image bundles:
+The blueprint image bundles:
 - NCMS with all features enabled (BM25, SPLADE v3, GLiNER NER, cross-encoder reranking)
 - Pre-downloaded models (~800 MB, no runtime network calls)
-- HTTP REST API server (port 8080) with auth support
-- Observability dashboard (port 8420) with SSE event stream + D3 graph visualization
-- NemoClaw multi-agent demo (Code Agent, Ops Agent, Security Agent)
-- OpenClaw MCP config + skill file for NemoClaw sandbox integration
+- NemoClaw CLI + OpenShell for sandbox management
+- 3 OpenClaw agent skills (Architect, Security, Builder)
+- HTTP REST API server (port 8080) with health endpoint
+- Observability dashboard (port 8420) with SSE event stream + D3 graph + time-travel replay
 - Knowledge Bus with surrogate responses for offline agents
+- Security policy (filesystem + network allowlist)
 
 ### Persistent Data
 
@@ -53,8 +104,19 @@ Mount a volume to keep data across container restarts:
 
 ```bash
 docker run -p 8420:8420 -p 8080:8080 \
-  -v ncms-data:/data \
+  -v ncms-data:/app/data \
   ncms-nemoclaw:latest
+```
+
+---
+
+## Alternative: All-in-One Docker (Legacy)
+
+The simpler all-in-one image without NemoClaw/OpenShell:
+
+```bash
+docker build -f deployment/nemoclaw/Dockerfile.allinone -t ncms-allinone:latest .
+docker run -p 8420:8420 -p 8080:8080 ncms-allinone:latest
 ```
 
 ---

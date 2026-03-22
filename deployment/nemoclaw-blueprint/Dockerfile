@@ -1,24 +1,31 @@
 # NCMS NemoClaw Blueprint Container
 #
-# Multi-stage build: base -> models -> final
-# Runs both MCP server (HTTP) and Dashboard concurrently.
+# Multi-stage build: base → models → nemoclaw → final
+# Installs NemoClaw + OpenShell alongside NCMS for full blueprint orchestration.
 #
-# Build:
+# Build (basic — Docker fallback, no OpenShell):
 #   docker build -f deployment/nemoclaw-blueprint/Dockerfile -t ncms-nemoclaw:latest .
 #
-# Build with SPLADE (requires HuggingFace token):
+# Build with SPLADE (gated model, needs HuggingFace token):
 #   docker build -f deployment/nemoclaw-blueprint/Dockerfile \
 #     --build-arg HF_TOKEN=hf_xxxx -t ncms-nemoclaw:latest .
 #
 # Run:
 #   docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
+#   docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest shell
+#
+# Inside the container, NemoClaw + OpenShell are on PATH:
+#   nemoclaw onboard
+#   openshell term
+#   openclaw tui
 
-# ── Stage 1: Base ────────────────────────────────────────────────────────
+# ── Stage 1: Base (Python + NCMS) ─────────────────────────────────────────
 FROM python:3.12-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -30,22 +37,22 @@ WORKDIR /app
 # Copy NCMS source and install
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen --extra docs --extra dashboard
+RUN uv sync --frozen
 
-# ── Stage 2: Model Downloads ────────────────────────────────────────────
+# ── Stage 2: Model Downloads ──────────────────────────────────────────────
 FROM base AS models
 
-# GLiNER entity extraction model (~209 MB) — public
+# GLiNER entity extraction (~209 MB) — public
 RUN uv run python -c "\
 from gliner import GLiNER; \
 GLiNER.from_pretrained('urchade/gliner_medium-v2.1')"
 
-# Cross-encoder reranker model (~80 MB) — public
+# Cross-encoder reranker (~80 MB) — public
 RUN uv run python -c "\
 from sentence_transformers import CrossEncoder; \
 CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
 
-# SPLADE v3 sparse neural model (~500 MB) — gated, optional
+# SPLADE v3 (~500 MB) — gated, optional
 ARG HF_TOKEN=""
 RUN --mount=type=secret,id=env,required=false \
     export HF_TOKEN="${HF_TOKEN}" && \
@@ -61,8 +68,34 @@ SparseEncoder('naver/splade-v3')"; \
         echo "Skipping SPLADE download (no HF_TOKEN provided)"; \
     fi
 
-# ── Stage 3: Final Image ────────────────────────────────────────────────
+# ── Stage 3: NemoClaw + OpenShell ─────────────────────────────────────────
+FROM base AS nemoclaw
+
+# Install Node.js 22 (required by NemoClaw)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install NemoClaw from source (includes OpenShell)
+RUN git clone --depth 1 https://github.com/NVIDIA/NemoClaw.git /tmp/nemoclaw && \
+    cd /tmp/nemoclaw && \
+    npm install && \
+    npm run build && \
+    ln -sf /tmp/nemoclaw/dist/index.js /usr/local/bin/nemoclaw && \
+    chmod +x /usr/local/bin/nemoclaw
+
+# ── Stage 4: Final Image ──────────────────────────────────────────────────
 FROM base AS final
+
+# Install Node.js 22 runtime (for NemoClaw CLI)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy NemoClaw from build stage
+COPY --from=nemoclaw /tmp/nemoclaw /opt/nemoclaw
+RUN ln -sf /opt/nemoclaw/dist/index.js /usr/local/bin/nemoclaw && \
+    chmod +x /usr/local/bin/nemoclaw
 
 # Copy cached models from download stage
 COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
@@ -70,8 +103,10 @@ COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
 # Copy NCMS source (fresh copy for final image)
 COPY src/ src/
 
-# Copy skills into container
+# Copy blueprint skills and policies
 COPY deployment/nemoclaw-blueprint/skills/ /app/skills/
+COPY deployment/nemoclaw-blueprint/policies/ /app/policies/
+COPY deployment/nemoclaw-blueprint/blueprint.yaml /app/blueprint.yaml
 
 # Create data directories
 RUN mkdir -p /app/data/.ncms /app/data/index
@@ -89,7 +124,8 @@ ENV NCMS_DB_PATH=/app/data/.ncms/ncms.db \
     NCMS_RERANKER_ENABLED=true \
     NCMS_ADMISSION_ENABLED=true \
     NCMS_RECONCILIATION_ENABLED=true \
-    NCMS_DREAM_CYCLE_ENABLED=false
+    NCMS_DREAM_CYCLE_ENABLED=false \
+    NEMOCLAW_BLUEPRINT_PATH=/app
 
 EXPOSE 8420 8080
 
