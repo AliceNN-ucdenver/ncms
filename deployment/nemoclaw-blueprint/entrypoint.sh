@@ -27,9 +27,9 @@ case "$MODE" in
       sleep 1
     done
 
-    # Start dashboard with demo agents (foreground)
-    echo "Starting dashboard on :8420 (with demo agents)..."
-    uv run ncms dashboard --host 0.0.0.0 --port 8420 --no-open
+    # Start dashboard with ND agents (Architect, Security, Builder)
+    echo "Starting dashboard on :8420 (with ND agents)..."
+    uv run ncms dashboard --host 0.0.0.0 --port 8420 --no-open --nd
 
     # Cleanup on exit
     kill $API_PID 2>/dev/null || true

@@ -37,7 +37,7 @@ WORKDIR /app
 # Copy NCMS source and install
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
-RUN uv sync --frozen
+RUN uv sync --frozen --extra dashboard --extra docs
 
 # ── Stage 2: Model Downloads ──────────────────────────────────────────────
 FROM base AS models

@@ -85,10 +85,12 @@ def demo(nemoclaw: bool, nemoclaw_nd: bool) -> None:
 @click.option("--host", default="0.0.0.0", help="Bind address")
 @click.option("--port", default=8420, type=int, help="Port number")
 @click.option("--demo/--no-demo", "run_demo_flag", default=True, help="Run demo agents")
+@click.option("--nd", "nd_demo", is_flag=True, help="Run ND agents (Architect/Security/Builder)")
 @click.option("--open/--no-open", "open_browser", default=True, help="Open browser automatically")
 @click.option("--debug/--no-debug", "debug_flag", default=False, help="Emit candidate details")
 def dashboard(
-    host: str, port: int, run_demo_flag: bool, open_browser: bool, debug_flag: bool,
+    host: str, port: int, run_demo_flag: bool, nd_demo: bool,
+    open_browser: bool, debug_flag: bool,
 ) -> None:
     """Start the NCMS observability dashboard (web UI).
 
@@ -128,10 +130,13 @@ def dashboard(
         t.daemon = True
         t.start()
 
+    demo_mode = "nd" if nd_demo else ("classic" if run_demo_flag else None)
+
     try:
         asyncio.run(run_dashboard(
             host=host, port=port, run_demo=run_demo_flag,
             pipeline_debug=effective_debug,
+            demo_mode=demo_mode,
         ))
     except KeyboardInterrupt:
         click.echo("\nDashboard stopped.", err=True)

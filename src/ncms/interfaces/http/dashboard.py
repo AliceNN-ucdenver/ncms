@@ -525,6 +525,7 @@ async def run_dashboard(
     port: int = 8420,
     run_demo: bool = False,
     pipeline_debug: bool = False,
+    demo_mode: str | None = None,
 ) -> None:
     """Start the dashboard web server with full NCMS services.
 
@@ -533,6 +534,8 @@ async def run_dashboard(
         port: Port number.
         run_demo: If True, also run demo agents for instant visual activity.
         pipeline_debug: If True, emit candidate details in pipeline events.
+        demo_mode: "nd" for Architect/Security/Builder, "classic" for standard demo,
+            None to auto-select based on run_demo flag.
     """
     import uvicorn
 
@@ -646,7 +649,14 @@ async def run_dashboard(
 
     # Optionally run demo agents in background
     demo_task = None
-    if run_demo:
+    effective_mode = demo_mode if demo_mode else ("classic" if run_demo else None)
+    if effective_mode == "nd":
+        from ncms.interfaces.http.demo_runner_nd import run_nd_demo_loop
+
+        demo_task = asyncio.create_task(
+            run_nd_demo_loop(memory_svc, bus_svc, snapshot_svc, event_log)
+        )
+    elif effective_mode == "classic":
         from ncms.interfaces.http.demo_runner import run_demo_loop
 
         demo_task = asyncio.create_task(
