@@ -76,6 +76,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
+# Install OpenShell binary from NVIDIA/OpenShell releases
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64|amd64) ASSET="openshell-x86_64-unknown-linux-musl.tar.gz" ;; \
+      aarch64|arm64) ASSET="openshell-aarch64-unknown-linux-musl.tar.gz" ;; \
+      *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/NVIDIA/OpenShell/releases/latest/download/$ASSET" \
+      -o /tmp/openshell.tar.gz && \
+    tar xzf /tmp/openshell.tar.gz -C /tmp && \
+    install -m 755 /tmp/openshell /usr/local/bin/openshell && \
+    rm -f /tmp/openshell.tar.gz /tmp/openshell && \
+    openshell --version || echo "openshell installed"
+
 # Install NemoClaw from source
 # Entry point is bin/nemoclaw.js (no build step needed)
 RUN git clone --depth 1 https://github.com/NVIDIA/NemoClaw.git /tmp/nemoclaw && \
@@ -91,6 +105,9 @@ FROM base AS final
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
+
+# Copy OpenShell binary from build stage
+COPY --from=nemoclaw /usr/local/bin/openshell /usr/local/bin/openshell
 
 # Copy NemoClaw from build stage
 COPY --from=nemoclaw /tmp/nemoclaw /opt/nemoclaw
