@@ -76,13 +76,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install NemoClaw from source (includes OpenShell)
+# Install NemoClaw from source
+# Entry point is bin/nemoclaw.js (no build step needed)
 RUN git clone --depth 1 https://github.com/NVIDIA/NemoClaw.git /tmp/nemoclaw && \
     cd /tmp/nemoclaw && \
     npm install && \
-    npm run build && \
-    ln -sf /tmp/nemoclaw/dist/index.js /usr/local/bin/nemoclaw && \
-    chmod +x /usr/local/bin/nemoclaw
+    ln -sf /tmp/nemoclaw/bin/nemoclaw.js /usr/local/bin/nemoclaw && \
+    chmod +x /tmp/nemoclaw/bin/nemoclaw.js
 
 # ── Stage 4: Final Image ──────────────────────────────────────────────────
 FROM base AS final
@@ -94,8 +94,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 
 # Copy NemoClaw from build stage
 COPY --from=nemoclaw /tmp/nemoclaw /opt/nemoclaw
-RUN ln -sf /opt/nemoclaw/dist/index.js /usr/local/bin/nemoclaw && \
-    chmod +x /usr/local/bin/nemoclaw
+RUN ln -sf /opt/nemoclaw/bin/nemoclaw.js /usr/local/bin/nemoclaw && \
+    chmod +x /opt/nemoclaw/bin/nemoclaw.js
 
 # Copy cached models from download stage
 COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
