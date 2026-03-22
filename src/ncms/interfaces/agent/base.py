@@ -132,15 +132,25 @@ class KnowledgeAgent(ABC):
         question: str,
         domains: list[str],
         urgency: str = "important",
+        timeout_ms: int | None = None,
     ) -> KnowledgeResponse | None:
-        """Ask the knowledge network a question (blocking)."""
+        """Ask the knowledge network a question (blocking).
+
+        Args:
+            question: The question to ask.
+            domains: Target expertise domains.
+            urgency: Priority level.
+            timeout_ms: Override bus timeout (ms). Defaults to KnowledgeAsk.ttl_ms.
+        """
+        ttl = timeout_ms or 5000
         ask = KnowledgeAsk(
             from_agent=self.agent_id,
             question=question,
             domains=domains,
             urgency=urgency,  # type: ignore[arg-type]
+            ttl_ms=ttl,
         )
-        return await self._bus.ask_sync(ask)
+        return await self._bus.ask_sync(ask, timeout_ms=timeout_ms)
 
     async def announce_knowledge(
         self,

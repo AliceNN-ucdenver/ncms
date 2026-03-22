@@ -2,12 +2,14 @@
 
 Captures events from the Knowledge Bus and Memory Service.
 Subscribers receive events in real-time via async generators (for SSE streaming).
+Optionally persists events to SQLite for historical replay / time-travel debugging.
 Zero external dependencies — pure asyncio.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
@@ -59,12 +61,16 @@ class EventLog:
 
     Events are stored in a bounded deque (default 2000).
     SSE subscribers receive a copy of each event via an asyncio.Queue.
+    Optionally persists events to SQLite for time-travel replay.
     """
 
-    def __init__(self, max_events: int = 2000) -> None:
+    def __init__(self, max_events: int = 2000, db: object | None = None) -> None:
         self._events: deque[DashboardEvent] = deque(maxlen=max_events)
         self._subscribers: list[asyncio.Queue[DashboardEvent]] = []
         self._lock = asyncio.Lock()
+        self._db = db  # aiosqlite.Connection or None
+        self._write_queue: asyncio.Queue[DashboardEvent] = asyncio.Queue(maxsize=10000)
+        self._persist_task: asyncio.Task[None] | None = None
 
     def emit(self, event: DashboardEvent) -> None:
         """Append event to the log and notify all subscribers."""
@@ -78,6 +84,204 @@ class EventLog:
         # Remove overflowed subscribers
         for q in dead:
             self._subscribers.remove(q)
+        # Queue for SQLite persistence (non-blocking, drop on overflow)
+        if self._db is not None:
+            with contextlib.suppress(asyncio.QueueFull):
+                self._write_queue.put_nowait(event)
+
+    async def start_persistence(self) -> None:
+        """Background coroutine that drains the write queue into SQLite.
+
+        Call as an asyncio task. Batches up to 50 inserts at a time.
+        """
+        if self._db is None:
+            return
+        while True:
+            try:
+                # Wait for at least one event
+                event = await self._write_queue.get()
+                batch = [event]
+                # Drain up to 49 more without waiting
+                for _ in range(49):
+                    try:
+                        batch.append(self._write_queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                await self._persist_batch(batch)
+            except asyncio.CancelledError:
+                # Flush remaining
+                remaining: list[DashboardEvent] = []
+                while not self._write_queue.empty():
+                    try:
+                        remaining.append(self._write_queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                if remaining:
+                    await self._persist_batch(remaining)
+                return
+            except Exception:
+                logger.exception("Event persistence error")
+
+    async def _persist_batch(self, batch: list[DashboardEvent]) -> None:
+        """Insert a batch of events into the dashboard_events table."""
+        if not self._db or not batch:
+            return
+        try:
+            await self._db.executemany(
+                "INSERT OR IGNORE INTO dashboard_events"
+                " (id, timestamp, type, agent_id, data)"
+                " VALUES (?, ?, ?, ?, ?)",
+                [
+                    (
+                        e.id,
+                        e.timestamp,
+                        e.type,
+                        e.agent_id,
+                        json.dumps(e.data, default=str),
+                    )
+                    for e in batch
+                ],
+            )
+            await self._db.commit()
+        except Exception:
+            logger.exception("Failed to persist %d events", len(batch))
+
+    # ── In-Memory Persistent List ─────────────────────────────────────
+
+    @property
+    def event_count(self) -> int:
+        """Total number of events in the ring buffer."""
+        return len(self._events)
+
+    def get_all_events(self) -> list[DashboardEvent]:
+        """Return all events in the ring buffer (oldest first)."""
+        return list(self._events)
+
+    def get_events_in_range(
+        self,
+        start_ts: float | None = None,
+        end_ts: float | None = None,
+        limit: int = 500,
+    ) -> list[DashboardEvent]:
+        """Return events filtered by Unix timestamp range from the ring buffer.
+
+        Args:
+            start_ts: Minimum event timestamp (Unix epoch seconds), inclusive.
+            end_ts: Maximum event timestamp (Unix epoch seconds), inclusive.
+            limit: Maximum events to return.
+        """
+        from datetime import datetime as _dt
+
+        results: list[DashboardEvent] = []
+        for evt in self._events:
+            try:
+                evt_ts = _dt.fromisoformat(evt.timestamp).timestamp()
+            except (ValueError, TypeError):
+                continue
+            if start_ts is not None and evt_ts < start_ts:
+                continue
+            if end_ts is not None and evt_ts > end_ts:
+                continue
+            results.append(evt)
+            if len(results) >= limit:
+                break
+        return results
+
+    # ── Historical Queries ─────────────────────────────────────────────
+
+    async def query_events(
+        self,
+        after_seq: int = 0,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Return events after the given seq, ordered ascending.
+
+        Returns list of dicts with 'seq' plus all DashboardEvent fields.
+        """
+        if not self._db:
+            return []
+        cursor = await self._db.execute(
+            "SELECT seq, id, timestamp, type, agent_id, data"
+            " FROM dashboard_events"
+            " WHERE seq > ?"
+            " ORDER BY seq ASC LIMIT ?",
+            (after_seq, limit),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for seq, eid, ts, etype, agent_id, data_str in rows:
+            try:
+                data = json.loads(data_str) if data_str else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+            results.append({
+                "seq": seq,
+                "id": eid,
+                "timestamp": ts,
+                "type": etype,
+                "agent_id": agent_id,
+                "data": data,
+            })
+        return results
+
+    async def query_time_range(
+        self,
+        start: str,
+        end: str,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        """Return events within [start, end] ISO timestamps, ordered by seq."""
+        if not self._db:
+            return []
+        cursor = await self._db.execute(
+            "SELECT seq, id, timestamp, type, agent_id, data"
+            " FROM dashboard_events"
+            " WHERE timestamp >= ? AND timestamp <= ?"
+            " ORDER BY seq ASC LIMIT ?",
+            (start, end, limit),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for seq, eid, ts, etype, agent_id, data_str in rows:
+            try:
+                data = json.loads(data_str) if data_str else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+            results.append({
+                "seq": seq,
+                "id": eid,
+                "timestamp": ts,
+                "type": etype,
+                "agent_id": agent_id,
+                "data": data,
+            })
+        return results
+
+    async def event_count_persisted(self) -> int:
+        """Return total number of persisted events."""
+        if not self._db:
+            return 0
+        cursor = await self._db.execute(
+            "SELECT COUNT(*) FROM dashboard_events"
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def prune_old_events(self, retention_hours: int = 72) -> int:
+        """Delete events older than retention_hours. Returns count deleted."""
+        if not self._db:
+            return 0
+        cutoff = datetime.now(UTC).isoformat()
+        # Simple approach: delete by timestamp comparison
+        from datetime import timedelta
+        cutoff_dt = datetime.now(UTC) - timedelta(hours=retention_hours)
+        cutoff = cutoff_dt.isoformat()
+        cursor = await self._db.execute(
+            "DELETE FROM dashboard_events WHERE timestamp < ?",
+            (cutoff,),
+        )
+        await self._db.commit()
+        return cursor.rowcount or 0
 
     # ── Convenience emitters ──────────────────────────────────────────────
 

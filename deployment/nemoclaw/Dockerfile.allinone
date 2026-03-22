@@ -7,17 +7,28 @@
 # - Dashboard with live NemoClaw demo (3 agents)
 # - Pre-downloaded models (no runtime network calls)
 #
-# Build:
-#   docker build -f Dockerfile.allinone -t ncms-nemoclaw:latest ../..
+# Prerequisites:
+#   1. Accept SPLADE v3 license at https://huggingface.co/naver/splade-v3
+#   2. Create a HuggingFace token at https://huggingface.co/settings/tokens
+#
+# Build (option A — .env file with HF_TOKEN=hf_xxxx):
+#   docker build -f deployment/nemoclaw/Dockerfile.allinone \
+#     --secret id=env,src=.env \
+#     -t ncms-nemoclaw:latest .
+#
+# Build (option B — inline):
+#   docker build -f deployment/nemoclaw/Dockerfile.allinone \
+#     --build-arg HF_TOKEN=hf_xxxx \
+#     -t ncms-nemoclaw:latest .
 #
 # Run (dashboard + demo):
 #   docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
 #
 # Run (HTTP API only):
-#   docker run -p 8080:8080 ncms-nemoclaw:latest ncms serve --transport http --port 8080
+#   docker run -p 8080:8080 ncms-nemoclaw:latest api
 #
 # Run (MCP server for OpenClaw):
-#   docker run -i ncms-nemoclaw:latest ncms serve
+#   docker run -i ncms-nemoclaw:latest mcp
 
 FROM python:3.12-slim AS base
 
@@ -33,34 +44,48 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Copy NCMS source
-COPY pyproject.toml uv.lock ./
+# Copy NCMS source (README.md required by pyproject.toml readme field)
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ src/
 
-# Install NCMS with all dependencies
-RUN uv sync --frozen
+# Install NCMS with all dependencies (docs + dashboard extras)
+RUN uv sync --frozen --extra docs --extra dashboard
 
 # ── Model Download Stage ──────────────────────────────────────────────
-# Pre-download all ML models so the container works offline
+# Pre-download all ML models so the container works offline.
+# SPLADE v3 is a gated model — requires HuggingFace token with accepted license.
+# The token is only used at build time and NOT persisted in the final image.
 
 FROM base AS models
 
-# GLiNER entity extraction model (~209 MB)
+# GLiNER entity extraction model (~209 MB) — public, no token needed
 RUN uv run python -c "\
 from gliner import GLiNER; \
 GLiNER.from_pretrained('urchade/gliner_medium-v2.1')"
 
-# SPLADE v3 sparse neural model (~500 MB)
-RUN uv run python -c "\
+# SPLADE v3 sparse neural model (~500 MB) — gated, requires HF_TOKEN
+# Token read from mounted secret at build time, never persisted in image layers.
+# Usage: docker build --secret id=env,src=.env ...
+#    or: docker build --build-arg HF_TOKEN=hf_xxxx ...
+ARG HF_TOKEN=""
+RUN --mount=type=secret,id=env,required=false \
+    export HF_TOKEN="${HF_TOKEN}" && \
+    if [ -f /run/secrets/env ]; then . /run/secrets/env; fi && \
+    uv run python -c "\
+import os; \
+from huggingface_hub import login; \
+token = os.environ.get('HF_TOKEN', ''); \
+login(token=token) if token else None; \
 from sentence_transformers import SparseEncoder; \
 SparseEncoder('naver/splade-v3')"
 
-# Cross-encoder reranker model (~80 MB)
+# Cross-encoder reranker model (~80 MB) — public, no token needed
 RUN uv run python -c "\
 from sentence_transformers import CrossEncoder; \
 CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
 
 # ── Final Image ───────────────────────────────────────────────────────
+# NOTE: final stage does NOT inherit HF_TOKEN — it's only in the models stage
 
 FROM base AS final
 

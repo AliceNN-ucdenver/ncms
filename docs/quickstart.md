@@ -2,7 +2,72 @@
 
 Everything you need to install, configure, and integrate NCMS into your agent workflow.
 
-## Installation
+## Option A: Docker
+
+Run the full NCMS stack — dashboard, HTTP API, and NemoClaw demo — with all ML models pre-baked in a single image.
+
+### Prerequisites
+
+- Docker Desktop installed
+- HuggingFace account with access to naver/splade-v3 (gated model — accept license at https://huggingface.co/naver/splade-v3)
+- HuggingFace token (https://huggingface.co/settings/tokens)
+
+### Build
+
+```bash
+# Create .env with your HF token (for gated SPLADE model download)
+echo "HF_TOKEN=hf_your_token_here" > .env
+
+# Build the image (~789 MB of ML models baked in)
+docker build -f deployment/nemoclaw/Dockerfile.allinone \
+  --secret id=env,src=.env \
+  -t ncms-nemoclaw:latest .
+```
+
+### Run
+
+```bash
+# With DGX Spark (default LLM endpoint)
+docker run -p 8420:8420 -p 8080:8080 ncms-nemoclaw:latest
+
+# With Ollama on host Mac
+docker run -p 8420:8420 -p 8080:8080 \
+  -e NCMS_LLM_MODEL=ollama_chat/qwen3.5:35b-a3b \
+  -e NCMS_LLM_API_BASE=http://host.docker.internal:11434 \
+  ncms-nemoclaw:latest
+
+# With OpenAI
+docker run -p 8420:8420 -p 8080:8080 \
+  -e NCMS_LLM_MODEL=openai/gpt-4o-mini \
+  -e OPENAI_API_KEY=sk-xxxx \
+  ncms-nemoclaw:latest
+```
+
+### Access
+
+- **Dashboard**: http://localhost:8420
+- **MCP Server**: http://localhost:8080
+
+### Note about secrets
+
+All NCMS configuration has sensible defaults baked into the image. You only need environment variables for:
+- `HF_TOKEN` — build-time only (SPLADE gated model)
+- `OPENAI_API_KEY` — only if using OpenAI models
+- `NCMS_LLM_MODEL` / `NCMS_LLM_API_BASE` — to override the default LLM endpoint
+
+Other run modes:
+
+```bash
+docker run -p 8080:8080 ncms-nemoclaw:latest api        # HTTP API only
+docker run -i ncms-nemoclaw:latest mcp                   # MCP server (stdio)
+docker run -p 8420:8420 ncms-nemoclaw:latest dashboard   # Dashboard only
+```
+
+---
+
+## Option B: Local Development
+
+### Installation
 
 ```bash
 # With uv (recommended)
@@ -18,7 +83,7 @@ pip install "ncms[docs]"
 pip install "ncms[dashboard]"
 ```
 
-## Run the Demo
+### Run the Demo
 
 ```bash
 uv run ncms demo
@@ -383,4 +448,4 @@ src/ncms/
 
 **Clean Architecture.** Domain layer has zero infrastructure dependencies. Every infrastructure component implements a Protocol interface. Swap SQLite for Postgres, NetworkX for Neo4j, or AsyncIO for Redis Pub/Sub &mdash; no application code changes.
 
-**Embedded First.** Everything runs in-process with `pip install ncms`. No Docker. No Redis. No vector database. Scale up when you need to, not before.
+**Embedded First.** Everything runs in-process with `pip install ncms`. No Redis. No vector database. Docker available for all-in-one deployment with pre-baked models. Scale up when you need to, not before.

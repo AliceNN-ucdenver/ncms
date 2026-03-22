@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -165,6 +165,22 @@ CREATE TABLE IF NOT EXISTS association_strengths (
 );
 """
 
+# ── V5: Dashboard event persistence for time-travel replay ───────────────
+
+V5_TABLES = """
+-- Persistent dashboard events for historical replay / time-travel debugging
+CREATE TABLE IF NOT EXISTS dashboard_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    timestamp TEXT NOT NULL,
+    type TEXT NOT NULL,
+    agent_id TEXT,
+    data TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_devents_ts ON dashboard_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_devents_type ON dashboard_events(type);
+"""
+
 # Backward compat alias used by older code paths
 CREATE_TABLES = V1_TABLES
 
@@ -223,5 +239,15 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (4,),
+        )
+        await db.commit()
+        current_version = 4
+
+    if current_version < 5:
+        # V5: Dashboard event persistence for time-travel replay
+        await db.executescript(V5_TABLES)
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (5,),
         )
         await db.commit()

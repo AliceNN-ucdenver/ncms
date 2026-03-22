@@ -40,12 +40,14 @@ class TestV4Migration:
         row = await cursor.fetchone()
         assert row is not None
 
-    async def test_schema_version_is_4(self, phase8_store: SQLiteStore) -> None:
+    async def test_schema_version_is_current(self, phase8_store: SQLiteStore) -> None:
+        from ncms.infrastructure.storage.migrations import SCHEMA_VERSION
+
         cursor = await phase8_store.db.execute(
             "SELECT MAX(version) FROM schema_version"
         )
         row = await cursor.fetchone()
-        assert row[0] == 4
+        assert row[0] == SCHEMA_VERSION
 
 
 # ── Search Log CRUD ──────────────────────────────────────────────────

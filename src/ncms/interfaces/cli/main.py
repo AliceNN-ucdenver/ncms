@@ -61,9 +61,17 @@ def serve(
 
 @cli.command()
 @click.option("--nemoclaw", is_flag=True, help="Run NemoClaw multi-agent demo")
-def demo(nemoclaw: bool) -> None:
+@click.option(
+    "--nemoclaw-nd", "nemoclaw_nd", is_flag=True,
+    help="Run NemoClaw Non-Deterministic demo (LLM-powered agents)",
+)
+def demo(nemoclaw: bool, nemoclaw_nd: bool) -> None:
     """Run the interactive NCMS demo with collaborative agents."""
-    if nemoclaw:
+    if nemoclaw_nd:
+        from ncms.demo.nemoclaw_nd.run import run_nemoclaw_nd_demo
+
+        asyncio.run(run_nemoclaw_nd_demo())
+    elif nemoclaw:
         from ncms.demo.run_nemoclaw_demo import run_nemoclaw_demo
 
         asyncio.run(run_nemoclaw_demo())

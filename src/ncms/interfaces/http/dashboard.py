@@ -440,6 +440,44 @@ def create_dashboard_app(
         events = event_log.recent(limit)
         return JSONResponse([asdict(e) for e in events])
 
+    async def api_events_history(request: Request) -> JSONResponse:
+        """Return persisted events for time-travel replay.
+
+        Query params:
+          after_seq: cursor — return events after this seq (default 0 = all)
+          after: ISO timestamp — return events after this time
+          before: ISO timestamp — return events before this time
+          limit: max events to return (default 5000)
+        """
+        after_ts = request.query_params.get("after")
+        before_ts = request.query_params.get("before")
+        limit = int(request.query_params.get("limit", "5000"))
+
+        if after_ts or before_ts:
+            # Timestamp-based range query
+            events = await event_log.query_time_range(
+                start=after_ts or "1970-01-01T00:00:00",
+                end=before_ts or "2999-12-31T23:59:59",
+                limit=limit,
+            )
+            last_seq = events[-1]["seq"] if events else 0
+        else:
+            # Sequence-based cursor query (default)
+            after_seq = int(request.query_params.get("after_seq", "0"))
+            events = await event_log.query_events(after_seq=after_seq, limit=limit)
+            last_seq = events[-1]["seq"] if events else after_seq
+
+        return JSONResponse({
+            "events": events,
+            "last_seq": last_seq,
+            "count": len(events),
+        })
+
+    async def api_events_count(request: Request) -> JSONResponse:
+        """Return count of persisted events."""
+        count = await event_log.event_count_persisted()
+        return JSONResponse({"count": count})
+
     # ── SPA ───────────────────────────────────────────────────────────────
 
     async def index(request: Request) -> HTMLResponse:
@@ -462,6 +500,8 @@ def create_dashboard_app(
         Route("/metrics", prometheus_metrics),
         Route("/api/events/stream", event_stream),
         Route("/api/events", api_events),
+        Route("/api/events/history", api_events_history),
+        Route("/api/events/count", api_events_count),
         Route("/api/agents", api_agents),
         Route("/api/domains", api_domains),
         Route("/api/graph/entity/{entity_id}", api_graph_entity_detail),
@@ -504,13 +544,13 @@ async def run_dashboard(
     from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
     from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
-    # Create shared EventLog
-    event_log = EventLog(max_events=5000)
-
     # Wire up infrastructure with event_log
     config = NCMSConfig(db_path=":memory:", pipeline_debug=pipeline_debug)
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
+
+    # Create shared EventLog with SQLite persistence for time-travel replay
+    event_log = EventLog(max_events=5000, db=store.db)
     index = TantivyEngine()
     index.initialize()
     graph = NetworkXGraph()
@@ -601,6 +641,9 @@ async def run_dashboard(
 
     app = create_dashboard_app(memory_svc, bus_svc, event_log)
 
+    # Start event persistence background task for time-travel replay
+    persist_task = asyncio.create_task(event_log.start_persistence())
+
     # Optionally run demo agents in background
     demo_task = None
     if run_demo:
@@ -628,6 +671,7 @@ async def run_dashboard(
     try:
         await server.serve()
     finally:
+        persist_task.cancel()
         if demo_task:
             demo_task.cancel()
         await store.close()
