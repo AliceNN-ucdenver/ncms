@@ -125,6 +125,10 @@ COPY deployment/nemoclaw-blueprint/skills/ /app/skills/
 COPY deployment/nemoclaw-blueprint/policies/ /app/policies/
 COPY deployment/nemoclaw-blueprint/blueprint.yaml /app/blueprint.yaml
 
+# Copy governance-mesh knowledge files into container
+# These are the real architecture/security files the ND agents reason over
+COPY deployment/nemoclaw-blueprint/knowledge/ /app/knowledge/
+
 # Create data directories
 RUN mkdir -p /app/data/.ncms /app/data/index
 

@@ -1,0 +1,28 @@
+# Security Compliance Checklist
+
+checklist:
+  authentication:
+    - item: "Passwords hashed with bcrypt (cost >= 12)"
+      status: not_started
+    - item: "Session tokens use secure random generation"
+      status: not_started
+    - item: "MFA available for privileged accounts"
+      status: not_started
+
+  authorization:
+    - item: "Deny-by-default access control"
+      status: not_started
+    - item: "RBAC or ABAC implemented"
+      status: not_started
+
+  input_validation:
+    - item: "All inputs validated against schemas"
+      status: not_started
+    - item: "Parameterized queries for database access"
+      status: not_started
+
+  logging:
+    - item: "Security events logged"
+      status: not_started
+    - item: "PII masked in logs"
+      status: not_started

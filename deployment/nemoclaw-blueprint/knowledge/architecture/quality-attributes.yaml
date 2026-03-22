@@ -1,0 +1,18 @@
+# Quality Attribute Scenarios
+# Define measurable quality requirements
+
+scenarios:
+  - attribute: Performance
+    stimulus: "User submits request"
+    response: "System responds within SLA"
+    measure: "p95 < 200ms"
+
+  - attribute: Security
+    stimulus: "Unauthorized access attempt"
+    response: "System denies and logs attempt"
+    measure: "0 unauthorized access incidents"
+
+  - attribute: Availability
+    stimulus: "Component failure"
+    response: "System continues operating"
+    measure: "99.9% uptime"

@@ -23,51 +23,93 @@ logger = logging.getLogger(__name__)
 STEP_DELAY = 2.0  # seconds between phases for dashboard visibility
 
 # ── Governance-mesh knowledge files ──────────────────────────────────────
+# Resolve paths: container (/app/knowledge/) or host (~Documents/governance-mesh/)
 
+_CONTAINER_KNOWLEDGE = Path("/app/knowledge")
 _GOV_BASE = Path.home() / "Documents" / "governance-mesh"
 _APP_BASE = (
     _GOV_BASE / "platforms" / "imdb-lite" / "bars" / "imdb-lite-application"
 )
 
-KNOWLEDGE_FILES: list[tuple[str, list[str]]] = [
-    (str(_APP_BASE / "architecture" / "bar.arch.json"), ["architecture", "calm-model"]),
-    (
-        str(_APP_BASE / "architecture" / "ADRs" / "001-initial-architecture.md"),
-        ["architecture", "decisions"],
-    ),
-    (
-        str(_APP_BASE / "architecture" / "ADRs" / "002-mongodb-document-store.md"),
-        ["architecture", "decisions"],
-    ),
-    (
-        str(_APP_BASE / "architecture" / "ADRs" / "003-jwt-rbac-authentication.md"),
-        ["architecture", "decisions", "security"],
-    ),
-    (
-        str(_APP_BASE / "architecture" / "ADRs" / "004-mongodb-memory-server-testing.md"),
-        ["architecture", "decisions"],
-    ),
-    (
-        str(_APP_BASE / "architecture" / "quality-attributes.yaml"),
-        ["architecture", "quality"],
-    ),
-    (
-        str(_APP_BASE / "architecture" / "fitness-functions.yaml"),
-        ["architecture", "quality"],
-    ),
-    (
-        str(_GOV_BASE / ".caterpillar" / "prompts" / "architecture.md"),
-        ["architecture", "calm-model"],
-    ),
-    (str(_APP_BASE / "security" / "threat-model.yaml"), ["security", "threats"]),
-    (str(_APP_BASE / "security" / "security-controls.yaml"), ["security", "controls"]),
-    (str(_APP_BASE / "security" / "compliance-checklist.yaml"), ["security", "compliance"]),
-    (
-        str(_GOV_BASE / ".caterpillar" / "prompts" / "application-security.md"),
-        ["security", "threats", "controls"],
-    ),
-    (str(_APP_BASE / "app.yaml"), ["architecture", "identity-service"]),
-]
+
+def _resolve(container_path: str, host_path: str) -> str:
+    """Return container path if it exists, else host path."""
+    cp = _CONTAINER_KNOWLEDGE / container_path
+    if cp.exists():
+        return str(cp)
+    return host_path
+
+
+def _build_knowledge_files() -> list[tuple[str, list[str]]]:
+    """Build knowledge file list with container/host path resolution."""
+    return [
+        (
+            _resolve("architecture/bar.arch.json",
+                     str(_APP_BASE / "architecture" / "bar.arch.json")),
+            ["architecture", "calm-model"],
+        ),
+        (
+            _resolve("architecture/ADRs/001-initial-architecture.md",
+                     str(_APP_BASE / "architecture" / "ADRs" / "001-initial-architecture.md")),
+            ["architecture", "decisions"],
+        ),
+        (
+            _resolve("architecture/ADRs/002-mongodb-document-store.md",
+                     str(_APP_BASE / "architecture" / "ADRs" / "002-mongodb-document-store.md")),
+            ["architecture", "decisions"],
+        ),
+        (
+            _resolve("architecture/ADRs/003-jwt-rbac-authentication.md",
+                     str(_APP_BASE / "architecture" / "ADRs" / "003-jwt-rbac-authentication.md")),
+            ["architecture", "decisions", "security"],
+        ),
+        (
+            _resolve(
+                "architecture/ADRs/004-mongodb-memory-server-testing.md",
+                str(_APP_BASE / "architecture" / "ADRs" / "004-mongodb-memory-server-testing.md"),
+            ),
+            ["architecture", "decisions"],
+        ),
+        (
+            _resolve("architecture/quality-attributes.yaml",
+                     str(_APP_BASE / "architecture" / "quality-attributes.yaml")),
+            ["architecture", "quality"],
+        ),
+        (
+            _resolve("architecture/fitness-functions.yaml",
+                     str(_APP_BASE / "architecture" / "fitness-functions.yaml")),
+            ["architecture", "quality"],
+        ),
+        (
+            _resolve("prompts/architecture.md",
+                     str(_GOV_BASE / ".caterpillar" / "prompts" / "architecture.md")),
+            ["architecture", "calm-model"],
+        ),
+        (
+            _resolve("security/threat-model.yaml",
+                     str(_APP_BASE / "security" / "threat-model.yaml")),
+            ["security", "threats"],
+        ),
+        (
+            _resolve("security/security-controls.yaml",
+                     str(_APP_BASE / "security" / "security-controls.yaml")),
+            ["security", "controls"],
+        ),
+        (
+            _resolve("security/compliance-checklist.yaml",
+                     str(_APP_BASE / "security" / "compliance-checklist.yaml")),
+            ["security", "compliance"],
+        ),
+        (
+            _resolve("prompts/application-security.md",
+                     str(_GOV_BASE / ".caterpillar" / "prompts" / "application-security.md")),
+            ["security", "threats", "controls"],
+        ),
+        (
+            _resolve("app.yaml", str(_APP_BASE / "app.yaml")),
+            ["architecture", "identity-service"],
+        ),
+    ]
 
 
 async def run_nd_demo_loop(
@@ -92,8 +134,9 @@ async def run_nd_demo_loop(
     loader = KnowledgeLoader(memory_svc)
     total_memories = 0
     files_loaded = 0
+    knowledge_files = _build_knowledge_files()
 
-    for file_path, domains in KNOWLEDGE_FILES:
+    for file_path, domains in knowledge_files:
         p = Path(file_path)
         if not p.exists():
             logger.warning("Knowledge file not found, skipping: %s", p.name)

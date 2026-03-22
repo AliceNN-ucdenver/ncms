@@ -1,0 +1,11 @@
+# Security Controls
+# OWASP / NIST control mapping
+
+controls: []
+# Example:
+#   - id: CTL-001
+#     category: authentication
+#     owasp: A07
+#     description: "bcrypt password hashing with cost factor >= 12"
+#     implemented: false
+#     evidence: ""

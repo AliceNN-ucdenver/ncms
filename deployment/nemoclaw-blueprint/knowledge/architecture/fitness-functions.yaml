@@ -1,0 +1,21 @@
+# Architecture Fitness Functions
+# Automated quality gates for this application
+
+functions:
+  - name: complexity
+    description: "Cyclomatic complexity must not exceed threshold"
+    threshold: 10
+    tool: pmat
+    frequency: every_pr
+
+  - name: test_coverage
+    description: "Test coverage must meet minimum threshold"
+    threshold: 80
+    tool: coverage
+    frequency: every_pr
+
+  - name: dependency_freshness
+    description: "Dependencies must not be older than threshold"
+    threshold_days: 90
+    tool: pmat
+    frequency: weekly
