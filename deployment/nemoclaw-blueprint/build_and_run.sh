@@ -2,16 +2,18 @@
 # Build and run the NCMS NemoClaw Blueprint container.
 #
 # Usage:
-#   ./build_and_run.sh                        # Build + run with defaults (DGX Spark)
+#   ./build_and_run.sh                        # Build + run dashboard (DGX Spark)
 #   ./build_and_run.sh --profile ollama       # Build + run with Ollama
 #   ./build_and_run.sh --profile nim          # Build + run with NVIDIA NIM
 #   ./build_and_run.sh --hf-token hf_xxxx    # Build with SPLADE model
-#   ./build_and_run.sh --demo                 # Run ND agent demo instead of server
+#   ./build_and_run.sh --demo                 # Run ND agent demo instead of dashboard
 #   ./build_and_run.sh --shell                # Interactive shell
 #   ./build_and_run.sh --build-only           # Build image without running
-#   ./build_and_run.sh --env-file .env        # Load secrets from .env file
 #
-# Environment variables (or put in .env file):
+# The script auto-detects a .env file in the project root (../../.env).
+# Override with --env-file <path>.
+#
+# .env variables:
 #   HF_TOKEN          — HuggingFace token for SPLADE v3 (gated model, build-time)
 #   NVIDIA_API_KEY    — For NIM profile (runtime)
 #   OPENAI_API_KEY    — For custom OpenAI-compatible endpoints (runtime)
@@ -65,7 +67,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Load .env file if provided ────────────────────────────────────────────
+# ── Resolve paths ─────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DOCKERFILE="$SCRIPT_DIR/Dockerfile"
+
+# ── Auto-detect .env from project root ────────────────────────────────────
+if [ -z "$ENV_FILE" ] && [ -f "$PROJECT_ROOT/.env" ]; then
+  ENV_FILE="$PROJECT_ROOT/.env"
+  echo "Auto-detected .env at $ENV_FILE"
+fi
+
+# ── Load .env file ────────────────────────────────────────────────────────
 if [ -n "$ENV_FILE" ]; then
   if [ ! -f "$ENV_FILE" ]; then
     echo "ERROR: env file not found: $ENV_FILE"
@@ -78,11 +91,7 @@ if [ -n "$ENV_FILE" ]; then
   set +a
 fi
 
-# ── Resolve paths ─────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DOCKERFILE="$SCRIPT_DIR/Dockerfile"
-
+echo ""
 echo "=== NCMS NemoClaw Blueprint ==="
 echo ""
 echo "  Project:    $PROJECT_ROOT"
@@ -153,7 +162,7 @@ esac
 [ -n "$NVIDIA_API_KEY" ] && ENV_ARGS+=(-e "NVIDIA_API_KEY=$NVIDIA_API_KEY")
 [ -n "$HF_TOKEN" ] && ENV_ARGS+=(-e "HF_TOKEN=$HF_TOKEN")
 
-# Pass --env-file to Docker if provided (runtime secrets)
+# Pass --env-file to Docker for any additional vars
 if [ -n "$ENV_FILE" ]; then
   ENV_ARGS+=(--env-file "$ENV_FILE")
 fi
@@ -175,12 +184,14 @@ case "$MODE" in
     docker run -d "${RUN_ARGS[@]}" "$IMAGE"
     echo ""
     echo "=== Container started ==="
+    echo ""
     echo "  Dashboard:  http://localhost:8420"
     echo "  MCP HTTP:   http://localhost:8080"
     echo "  Profile:    $PROFILE"
     echo ""
     echo "  Logs:       docker logs -f $CONTAINER"
     echo "  Stop:       docker rm -f $CONTAINER"
+    echo ""
     ;;
   demo)
     docker run -it --rm "${RUN_ARGS[@]}" "$IMAGE" demo
