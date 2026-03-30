@@ -203,6 +203,30 @@ class NCMSHttpClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def read_document(self, document_id: str) -> dict[str, Any]:
+        """Fetch a document by ID.  Returns {document_id, title, content, ...}."""
+        resp = await self._client.get(f"/api/v1/documents/{document_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    # ── Agent trigger (auto-chain) ───────────────────────────────────────
+
+    async def trigger_agent(
+        self, agent_id: str, message: str, *, timeout: float = 600.0,
+    ) -> dict[str, Any]:
+        """Send a message to another agent's /generate endpoint via hub proxy.
+
+        Used by the verify node to auto-chain: researcher → PO → builder.
+        The long timeout (10 min) accommodates full LangGraph pipelines.
+        """
+        resp = await self._client.post(
+            f"/api/v1/agent/{agent_id}/chat",
+            json={"input_message": message},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     # ── Health ────────────────────────────────────────────────────────────
 
     async def health(self) -> dict[str, Any]:

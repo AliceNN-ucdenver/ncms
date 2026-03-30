@@ -129,10 +129,12 @@ class ResearchAgent:
         tavily_api_key: str,
         client: NCMSHttpClient,
         max_search_results: int = 5,
+        trigger_next_agent: bool = True,
     ) -> None:
         self.llm = llm
         self.hub_url = hub_url
         self.from_agent = from_agent
+        self.trigger_next_agent = trigger_next_agent
         self.tavily_api_key = tavily_api_key
         self.client = client
         self.max_search_results = max_search_results
@@ -368,7 +370,7 @@ class ResearchAgent:
     # ── Node 5: Verify (Debug — Pure Python) ──────────────────────────────
 
     async def verify(self, state: ResearchState) -> ResearchState:
-        """Debug node — verify the document exists. Remove after validation."""
+        """Verify publication and auto-trigger Product Owner if enabled."""
         topic = state["topic"]
         doc_id = state.get("document_id")
 
@@ -383,7 +385,19 @@ class ResearchAgent:
                 topic[:60],
             )
 
-        # Verify memory will be saved by auto_memory (log what we're returning)
+        # Auto-trigger Product Owner to create PRD from this research
+        if self.trigger_next_agent and doc_id:
+            try:
+                title = f"{topic} — Market Research Report"
+                logger.info("[research_agent] 🔗 Triggering product_owner with doc_id: %s", doc_id)
+                await self.client.trigger_agent(
+                    "product_owner",
+                    f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
+                )
+                logger.info("[research_agent] ✅ Product owner triggered successfully")
+            except Exception as e:
+                logger.warning("[research_agent] ⚠️ Failed to trigger product_owner: %s", e)
+
         logger.info(
             "[research_agent] Returning synthesis (%d chars) to auto_memory_agent for persistence",
             len(state.get("synthesis", "")),
@@ -411,6 +425,10 @@ class ResearchAgentConfig(FunctionBaseConfig, name="research_agent"):
         default=5,
         description="Max results per Tavily search query",
     )
+    trigger_next_agent: bool = Field(
+        default=True,
+        description="Auto-trigger product_owner after research completes",
+    )
 
 
 @register_function(config_type=ResearchAgentConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
@@ -436,6 +454,7 @@ async def research_agent_fn(
         tavily_api_key=tavily_api_key,
         client=client,
         max_search_results=config.max_search_results,
+        trigger_next_agent=config.trigger_next_agent,
     )
     graph = await agent.build_graph()
     logger.info("[research_agent] LangGraph pipeline ready")

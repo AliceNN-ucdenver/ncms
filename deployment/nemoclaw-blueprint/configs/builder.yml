@@ -1,10 +1,11 @@
-# Builder Agent — plain ReAct with native tool calling and RCTRO prompt
+# Builder Agent — LangGraph deterministic implementation design pipeline
+# read_document → ask_experts → synthesize_design → publish_design → verify
 
 llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 16384
     model_kwargs:
@@ -28,65 +29,21 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: builder
     domains: [identity-service, implementation]
-    subscribe_to: [architecture, security, threats, controls, product, requirements]
+    subscribe_to: [architecture, security, product, requirements]
 
 functions:
-  ask_knowledge:
-    _type: ask_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: builder
-    timeout_ms: 120000
-
-  writedesign:
-    _type: writedesign
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: builder
-
-  builder_agent:
-    _type: tool_calling_agent
+  design_agent:
+    _type: design_agent
     llm_name: spark_llm
-    tool_names: [ask_knowledge, writedesign]
-    verbose: true
-    handle_tool_errors: true
-    description: >
-      You are the implementation architect for the IMDB Lite project.
-      You produce detailed coding implementation designs that a developer
-      or coding agent can follow to build the service.
-
-      Your capabilities:
-      - ask_knowledge with domains "architecture,decisions": Consults the
-        Architect agent who has ADRs (technology choices, trade-offs),
-        CALM model specs (service boundaries, infrastructure-as-code),
-        and quality attribute scenarios. The Architect will cite specific
-        ADR numbers and CALM constraints in their response.
-      - ask_knowledge with domains "security,threats": Consults the Security
-        agent who has STRIDE threat models (per-component threats with attack
-        vectors, impact, likelihood), OWASP control mappings (A01-A10 with
-        mitigations), and compliance requirements (NIST, GDPR). The Security
-        agent will cite threat IDs and OWASP categories.
-      - writedesign: Publishes your implementation design to the shared
-        document store where it can be reviewed or sent to a coding agent.
-
-      Workflow — follow these steps for every design request:
-        1. ask_knowledge domains "architecture,decisions" — get ADRs and patterns
-        2. ask_knowledge domains "security,threats" — get threats and controls
-        3. writedesign — compile all expert input into the design
-
-      Your design document MUST be a TypeScript/Node.js implementation plan.
-      Include: project structure, API endpoints with request/response types,
-      TypeScript interfaces, database schemas, authentication middleware,
-      security control implementations, environment config, error handling,
-      testing strategy, and deployment config. Include code snippets.
-
-      Do NOT write an ADR. Write an implementation design that references
-      the ADRs, threat IDs, and OWASP categories the experts provided.
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: builder
 
 workflow:
   _type: auto_memory_agent
-  inner_agent_name: builder_agent
+  inner_agent_name: design_agent
   memory_name: ncms_store
   llm_name: spark_llm
-  description: "Builder agent with native tool calling and RCTRO prompt"
+  description: "Builder with deterministic LangGraph implementation design pipeline"
   retrieve_memory_for_every_response: false
   save_user_messages_to_memory: true
   save_ai_messages_to_memory: true

@@ -53,7 +53,7 @@ function renderDocuments() {
         const escapedTitle = (doc.title || 'Untitled').replace(/'/g, "\\'").replace(/"/g, '&quot;');
         html += `<div class="document-actions">
           <a class="document-download-btn" href="${escapeHtml(doc.url || '#')}" target="_blank" download>Download</a>
-          <button class="doc-action-btn send-to-builder" onclick="sendDocToBuilder('${doc.document_id}', '${escapedTitle}')">📐 Send to Builder</button>
+          ${getDocRouteButtons(doc, escapedTitle)}
           ${doc.plan_id ? `<button class="document-plan-link" onclick="showApprovalForPlan('${escapeHtml(doc.plan_id)}')">View Plan</button>` : ''}
         </div>`;
       }
@@ -87,6 +87,36 @@ function toggleDocContent(docId) {
     doc._expanded = !doc._expanded;
     renderDocuments();
   }
+}
+
+function getDocRouteButtons(doc, escapedTitle) {
+  const agent = (doc.from_agent || '').toLowerCase();
+  const id = doc.document_id;
+  let buttons = '';
+  if (agent === 'researcher') {
+    buttons += `<button class="doc-action-btn send-to-po" onclick="sendDocToAgent('product_owner', '${id}', '${escapedTitle}', 'Create a PRD based on this market research')">📋 Send to Product Owner</button>`;
+  }
+  if (agent === 'researcher' || agent === 'product_owner') {
+    buttons += `<button class="doc-action-btn send-to-builder" onclick="sendDocToAgent('builder', '${id}', '${escapedTitle}', 'Create a detailed implementation design based on this PRD')">📐 Send to Builder</button>`;
+  }
+  if (agent === 'builder') {
+    buttons += `<button class="doc-action-btn send-to-architect" onclick="sendDocToAgent('architect', '${id}', '${escapedTitle}', 'Review this implementation design for architectural compliance')">🏗️ Send to Architect</button>`;
+    buttons += `<button class="doc-action-btn send-to-security" onclick="sendDocToAgent('security', '${id}', '${escapedTitle}', 'Review this implementation design for security compliance')">🔒 Send to Security</button>`;
+  }
+  return buttons;
+}
+
+function sendDocToAgent(agentId, docId, title, prompt) {
+  if (typeof openAgentChat === 'function') {
+    openAgentChat(agentId);
+  }
+  setTimeout(() => {
+    const input = document.getElementById('chat-overlay-input');
+    if (input) {
+      input.value = prompt + ': "' + title + '" (doc_id: ' + docId + '). Use ask_knowledge to consult domain experts, then publish your output document.';
+      input.focus();
+    }
+  }, 300);
 }
 
 function sendDocToBuilder(docId, title) {

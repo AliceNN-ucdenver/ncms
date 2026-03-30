@@ -1,10 +1,11 @@
-# Product Owner Agent — plain ReAct with native tool calling
+# Product Owner Agent — LangGraph deterministic PRD pipeline
+# read_document → ask_experts → synthesize_prd → publish_prd → verify_and_trigger
 
 llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 16384
     model_kwargs:
@@ -34,60 +35,19 @@ memory:
         domains: [product, requirements]
 
 functions:
-  web_search:
-    _type: web_search
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-
-  ask_knowledge:
-    _type: ask_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-    timeout_ms: 120000
-
-  writeprd:
-    _type: writeprd
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-
-  po_agent:
-    _type: tool_calling_agent
+  prd_agent:
+    _type: prd_agent
     llm_name: spark_llm
-    tool_names: [web_search, ask_knowledge, writeprd]
-    verbose: true
-    handle_tool_errors: true
-    description: >
-      You are the product owner for the IMDB Lite project.
-
-      Your capabilities:
-      - web_search: Search the live web via Tavily for current industry
-        standards, best practices, security guidelines, technology trends,
-        and reference architectures. Returns titles, URLs, and content
-        snippets from real sources.
-      - ask_knowledge: Query the team's shared knowledge base for existing
-        architectural decisions, threat models, and compliance requirements
-        that should inform the PRD.
-      - writeprd: Publish a Product Requirements Document to the shared
-        document store where the Builder and other agents can access it.
-
-      Your PRDs should include:
-      - Problem statement and scope
-      - Functional requirements with acceptance criteria
-      - Non-functional requirements (performance, scalability, compliance)
-      - Security requirements grounded in OWASP/NIST standards
-      - Risk matrix with likelihood, impact, and mitigations
-      - References with URLs from your web research
-
-      Workflow: ALWAYS call web_search first, then call writeprd with the
-      full PRD in markdown. Every request MUST end with writeprd.
-      NEVER give a final text answer without calling writeprd.
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: product_owner
+    trigger_next_agent: true
 
 workflow:
   _type: auto_memory_agent
-  inner_agent_name: po_agent
+  inner_agent_name: prd_agent
   memory_name: ncms_store
   llm_name: spark_llm
-  description: "Product owner agent with native tool calling"
+  description: "Product owner with deterministic LangGraph PRD pipeline"
   retrieve_memory_for_every_response: false
   save_user_messages_to_memory: true
   save_ai_messages_to_memory: true

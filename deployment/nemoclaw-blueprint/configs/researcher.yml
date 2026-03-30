@@ -5,7 +5,7 @@ llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 16384
     model_kwargs:
@@ -38,6 +38,7 @@ functions:
     hub_url: "http://host.docker.internal:9080"
     from_agent: researcher
     max_search_results: 5
+    trigger_next_agent: true
 
 workflow:
   _type: auto_memory_agent
