@@ -1,9 +1,14 @@
 # Multi-Agent Software Delivery Pipeline
-### From research to implementation design in one autonomous pass — grounded in memory that actually works
 
-Most agent memory systems retrieve the wrong context at the wrong time. NCMS does not. Its vector-free hybrid retrieval — BM25 lexical search, SPLADE v3 sparse neural expansion, and graph spreading activation — achieves nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines with zero dense embeddings and zero external API calls. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. We plugged that memory into a four-agent software delivery pipeline, running on a single DGX Spark with only 3B active parameters, and built the whole thing in under two weeks.
+> **NCMS + NeMo Agent Toolkit + NemoClaw**
+> Four AI agents research, consult domain experts, and produce implementation designs autonomously.
+> Built in under two weeks. Running on commodity hardware. Grounded in memory that actually works.
 
-The Security agent cites specific threat IDs (THR-001, THR-002) and NIST control references from its seeded STRIDE model. The Architect references CALM governance patterns and ADR decisions from seeded knowledge files. The Builder consults both experts in parallel via native tool calling, then produces implementation designs with per-STRIDE-category mitigations. Every agent runs in its own NemoClaw kernel-isolated sandbox. Every LLM call is traced end-to-end through Phoenix OpenTelemetry. This is not a demo — it is a working pipeline that produces auditable artifacts.
+---
+
+Most agent memory systems retrieve the wrong context at the wrong time. NCMS does not. Its vector-free hybrid retrieval combines BM25 lexical search, SPLADE v3 sparse neural expansion (a learned model that predicts which additional terms are semantically relevant to a query, expanding "JWT" into related terms like "token", "authentication", "bearer" without needing dense vector embeddings), and graph spreading activation. This pipeline achieves nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines with zero dense embeddings and zero external API calls. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. We plugged that memory into a four-agent software delivery pipeline, running on a single DGX Spark with only 3B active parameters, and built the whole thing in under two weeks.
+
+The Security agent cites specific threat IDs (THR-001, THR-002) and NIST control references from its seeded STRIDE model. The Architect references CALM governance patterns and ADR decisions from seeded knowledge files. The Builder consults both experts in parallel via native tool calling, then produces implementation designs with per-STRIDE-category mitigations. Every agent runs in its own NemoClaw kernel-isolated sandbox. Every LLM call is traced through Phoenix OpenTelemetry. This is not a demo. It is a working pipeline that produces auditable artifacts.
 
 > **NCMS vs. the field — SWE-bench Django (850 real GitHub issues)**
 >
@@ -22,7 +27,7 @@ The breakthrough wasn't a model upgrade or an infrastructure change. It was a si
 
 > ***"Don't just tell the agent what to do — tell it what it knows."***
 
-When we added knowledge-aware prompts — describing that the Security agent has access to STRIDE threat models with specific threat IDs, that the Architect has ADRs and CALM specifications — the same 3B-active-parameter model went from producing generic responses to citing THR-001, NIST IA-2(1), and OWASP ASVS v5.0 control sections. No model change. No fine-tuning. Just better prompts. The agents always had the capability; they just didn't know they had the knowledge to cite.
+When we added knowledge-aware prompts that describe what each agent has access to (STRIDE threat models with specific threat IDs for Security, ADRs and CALM specifications for the Architect), the same 3B-active-parameter model went from producing generic responses to citing THR-001, NIST IA-2(1), and OWASP ASVS v5.0 control sections. No model change. No fine-tuning. Just better prompts. The agents always had the capability; they just didn't know they had the knowledge to cite.
 
 ## What You Are Building
 
