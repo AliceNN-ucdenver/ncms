@@ -2,9 +2,9 @@
 
 ---
 
-One message. Three documents. Ten minutes.
+One message. Four documents. Ten minutes.
 
-A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across three specialized agents. The Researcher runs 5 parallel web searches and synthesizes a 9KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 15KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces an 18KB TypeScript implementation design with actual project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, and per-STRIDE-category mitigations. Four LLM calls total. Everything runs on a single DGX Spark with 3B active parameters.
+A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across six specialized agents. The Researcher runs 5 parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 7.6KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, produces an initial implementation design, then submits it for structured review. Round 1: Architect scored 78%, Security scored 72% -- below the 80% threshold. The Builder revised, addressing each reviewer's feedback explicitly. Round 2: Architect 85%, Security 92% -- APPROVED at 89% average. The final 27.8KB TypeScript implementation design includes actual project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, per-STRIDE-category mitigations, and revision markers. Everything runs on a single DGX Spark with 3B active parameters.
 
 The memory layer underneath is NCMS -- vector-free hybrid retrieval combining BM25 (Tantivy/Rust), SPLADE v3 sparse neural expansion, and graph spreading activation. nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. Zero dense embeddings. Zero external API calls. Everything runs locally.
 
@@ -33,14 +33,14 @@ When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, 
 
 Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline. LangGraph enforces the deterministic workflow. Fire-and-forget bus announcements trigger downstream agents automatically. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
 
-| Agent | Type | Pipeline | Tools / Nodes |
-|-------|------|----------|---------------|
-| **Researcher** | LangGraph | plan > search (5 parallel) > synthesize > publish > trigger PO | Tavily, publish_document |
-| **Product Owner** | LangGraph | read_document > ask_experts (parallel) > synthesize_prd > publish > trigger Builder | read_document, bus_ask, publish_document |
-| **Builder** | LangGraph | read_document > ask_experts (parallel) > synthesize_design > publish | read_document, bus_ask, publish_document |
-| **Architect** | tool_calling_agent | Answer from seeded knowledge | announce_knowledge |
-| **Security** | tool_calling_agent | Answer from seeded knowledge | announce_knowledge |
-| **Human** | Dashboard UI | Approve, review, chat | -- |
+| Agent | Type | Pipeline |
+|-------|------|----------|
+| **Researcher** | LangGraph | plan > search (5x parallel) > synthesize > publish > trigger PO |
+| **Product Owner** | LangGraph | read_document > ask_experts (parallel) > synthesize_prd > publish > trigger Builder |
+| **Builder** | LangGraph | read_document > ask_experts > synthesize > publish > review loop (revise until 80%+) |
+| **Architect** | LangGraph | classify > search_memory > [synthesize_answer \| structured_review] |
+| **Security** | LangGraph | classify > search_memory > [synthesize_answer \| structured_review] |
+| **Human** | Dashboard UI | Header badge with approval count |
 
 ![Multi-Agent Pipeline](assets/multi-agent-pipeline.svg)
 
@@ -50,20 +50,23 @@ Five specialized AI agents coordinate through a shared knowledge bus to execute 
 |-------|-----------|--------|
 | **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph -- nDCG@10 = 0.7206 |
 | **Orchestration** | LangGraph | Deterministic pipelines for Researcher, PO, Builder |
-| **Experts** | NAT tool_calling_agent | Architect + Security answer from seeded knowledge |
+| **Experts** | LangGraph (dual-mode) | Architect + Security: classify > search_memory > answer or structured_review |
 | **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 256K context on DGX Spark (128GB) |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
 | **Research** | Tavily | Live web search for Researcher (5 parallel queries) |
 | **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
 
-### Three Documents, One Prompt
+### Four Documents, One Prompt
 
-| Document | Agent | Size | Key References |
-|----------|-------|------|---------------|
-| Market Research Report | Researcher | 9KB | NIST (5), OAuth (3), web sources |
-| PRD | Product Owner | 15KB | ADR, STRIDE, CALM, OWASP, NIST, PKCE, RS256 |
-| Implementation Design | Builder | 18KB | JWT (17), TypeScript (3), interface (5), RS256 (3) |
+| Document | Agent | Size | Key Details |
+|----------|-------|------|-------------|
+| Market Research Report | Researcher | 11KB | 5 parallel Tavily searches, 25 results synthesized |
+| PRD | Product Owner | 7.6KB | Grounded in research + architect/security expert input |
+| Implementation Design v1 | Builder | 11.6KB | Initial design from PRD + expert consultation |
+| Implementation Design v2 | Builder | 27.8KB | Revised after review, approved at 89% (Architect 85%, Security 92%) |
+
+A separate Design Review Report is also published with both reviewers' scores and structured feedback.
 
 ---
 
@@ -94,7 +97,7 @@ When prompted with a research topic, the Researcher:
 4. **Publish** -- Publishes the report to the hub's document store
 5. **Trigger** -- Fires a bus announcement that automatically triggers the Product Owner
 
-**What we observed:** 25 results from 5 parallel Tavily searches. The Researcher produced a 9KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes. The report included specific citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications found via live web search.
+**What we observed:** 25 results from 5 parallel Tavily searches. The Researcher produced an 11KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes. The report included specific citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications found via live web search.
 
 ### Phase 3: PRD Creation (Product Owner LangGraph)
 
@@ -102,26 +105,46 @@ The Product Owner runs a deterministic LangGraph pipeline: **read_document > ask
 
 Triggered automatically by the Researcher's bus announcement, the Product Owner:
 
-1. **Read Document** -- Reads the 9KB research report from the document store
+1. **Read Document** -- Reads the 11KB research report from the document store
 2. **Ask Experts (parallel)** -- Issues parallel `bus_ask` calls to the Architect and Security agents simultaneously
 3. **Synthesize PRD** -- Compiles research findings and expert input into a structured PRD
 4. **Publish** -- Publishes the PRD to the hub's document store
 5. **Trigger** -- Fires a bus announcement that automatically triggers the Builder
 
-**What we observed:** The Product Owner read the full 9KB research document, then received 2.4KB of architecture input (ADR decisions, CALM governance patterns, system design principles) and 3KB of security input (STRIDE threat categories with specific threat IDs, OWASP ASVS control mappings, NIST compliance requirements). The resulting 15KB PRD included explicit references to ADR-001 through ADR-003, all six STRIDE threat categories with mitigations, CALM model governance patterns, OWASP ASVS v5.0 controls, NIST SP 800-63B authentication assurance levels, PKCE authorization code flows, and RS256 asymmetric JWT signing. This is not generic LLM output -- every reference traces back to seeded knowledge or live web research.
+**What we observed:** The Product Owner read the full 11KB research document, then received architecture input (ADR decisions, CALM governance patterns, system design principles) and security input (STRIDE threat categories with specific threat IDs, OWASP ASVS control mappings, NIST compliance requirements). The resulting 7.6KB PRD included explicit references to ADR-001 through ADR-003, all six STRIDE threat categories with mitigations, CALM model governance patterns, OWASP ASVS v5.0 controls, NIST SP 800-63B authentication assurance levels, PKCE authorization code flows, and RS256 asymmetric JWT signing. This is not generic LLM output -- every reference traces back to seeded knowledge or live web research.
 
 ### Phase 4: Implementation Design (Builder LangGraph)
 
-The Builder runs a deterministic LangGraph pipeline: **read_document > ask_experts (parallel) > synthesize_design > publish**.
+The Builder runs a deterministic LangGraph pipeline: **read_document > ask_experts > synthesize > publish > review loop (revise until 80%+)**.
 
 Triggered automatically by the Product Owner's bus announcement, the Builder:
 
-1. **Read Document** -- Reads the 15KB PRD from the document store
-2. **Ask Experts (parallel)** -- Issues parallel `bus_ask` calls to the Architect and Security agents
+1. **Read Document** -- Reads the 7.6KB PRD from the document store
+2. **Ask Experts** -- Issues `bus_ask` calls to the Architect and Security agents
 3. **Synthesize Design** -- Compiles the PRD and expert input into a TypeScript implementation design
-4. **Publish** -- Publishes the design document to the hub's document store
+4. **Publish** -- Publishes the initial design document to the hub's document store
+5. **Review Loop** -- Sends the design to Architect and Security for structured review. If average score < 80%, revises using explicit feedback and resubmits. Max 5 iterations, then accepts as-is.
 
-**What we observed:** The Builder read the full 15KB PRD, then received 6.6KB of architecture input (JWT strategy patterns, NestJS module structure, interface contracts, middleware design) and 384 bytes of security confirmation (threat model alignment). The resulting 18KB TypeScript implementation design included actual project structure with `jwt.strategy.ts`, `auth.middleware.ts`, `token.service.ts`, interface definitions, NestJS module organization, per-STRIDE-category mitigations, RS256 signing configuration, PKCE flow implementation, and a three-phase delivery plan. The design referenced JWT concepts 17 times, TypeScript patterns 3 times, interface contracts 5 times, and RS256 signing 3 times.
+**What we observed:** The Builder read the full 7.6KB PRD, consulted experts, and produced an initial 11.6KB implementation design. It then submitted the design for structured review:
+
+- **Round 1:** Architect scored 78%, Security scored 72% -- average 75%, below the 80% threshold. The Builder revised, addressing each reviewer's missing items separately with `<!-- Rev 1: Addressed change -->` markers.
+- **Round 2:** Architect scored 85%, Security scored 92% -- average 89%, APPROVED.
+
+The final 27.8KB TypeScript implementation design included actual project structure with `jwt.strategy.ts`, `auth.middleware.ts`, `token.service.ts`, interface definitions, NestJS module organization, per-STRIDE-category mitigations, RS256 signing configuration, PKCE flow implementation, and a three-phase delivery plan. A separate Design Review Report was published with both rounds of scores, severity ratings, covered items, missing items, and required changes.
+
+### Expert Agent Pipeline (Architect & Security)
+
+The Architect and Security agents are now LangGraph pipelines with a dual-mode design based on the Looking Glass governance framework from maintainability.ai (Oraculum architecture review):
+
+1. **Classify** -- String matching determines if the incoming request is a knowledge question or a design review
+2. **Search Memory** -- NCMS recall with domain filtering (Architect gets ADRs/CALM, Security gets STRIDE/OWASP)
+3. **Two synthesis paths:**
+   - **Knowledge answer** -- Cites specific ADRs, threat IDs, NIST controls, OWASP sections
+   - **Structured review** -- Returns SCORE (0-100), SEVERITY, COVERED, MISSING, CHANGES
+
+**Architecture reviews evaluate:** CALM model compliance, ADR compliance, fitness functions, quality attributes, component boundaries.
+
+**Security reviews evaluate:** OWASP Top 10, STRIDE threat compliance, security controls, secrets management, transport security.
 
 ### Phase 5: Observability
 
@@ -328,7 +351,7 @@ Open http://localhost:8420 and click the **Researcher** card to open the chat ov
 The Researcher's LangGraph pipeline activates:
 1. **Plan** -- generates 5 parallel search queries
 2. **Search** -- executes all 5 Tavily searches in parallel (25 results total)
-3. **Synthesize** -- compiles a 9KB market research report
+3. **Synthesize** -- compiles an 11KB market research report
 4. **Publish** -- document appears in the sidebar
 5. **Trigger** -- bus announcement fires, Product Owner activates automatically
 
