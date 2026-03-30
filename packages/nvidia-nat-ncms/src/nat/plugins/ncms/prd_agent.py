@@ -392,6 +392,16 @@ class PRDAgent:
             title = f"{topic} — PRD"
             logger.info("[prd_agent] 🔗 Triggering builder (async) with doc_id: %s", doc_id)
 
+            # Announce handoff so it's visible in the dashboard
+            try:
+                await self.client.bus_announce(
+                    content=f"🔗 Handing off to Builder → Create implementation design from PRD (doc_id: {doc_id})",
+                    domains=["product", "implementation"],
+                    from_agent=self.from_agent,
+                )
+            except Exception:
+                pass
+
             async def _trigger() -> None:
                 try:
                     await self.client.trigger_agent(

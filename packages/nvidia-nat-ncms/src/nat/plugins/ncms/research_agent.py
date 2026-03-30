@@ -392,6 +392,16 @@ class ResearchAgent:
             title = f"{topic} — Market Research Report"
             logger.info("[research_agent] 🔗 Triggering product_owner (async) with doc_id: %s", doc_id)
 
+            # Announce handoff so it's visible in the dashboard
+            try:
+                await self.client.bus_announce(
+                    content=f"🔗 Handing off to Product Owner → Create PRD from research (doc_id: {doc_id})",
+                    domains=["research", "product"],
+                    from_agent=self.from_agent,
+                )
+            except Exception:
+                pass
+
             async def _trigger() -> None:
                 try:
                     await self.client.trigger_agent(
