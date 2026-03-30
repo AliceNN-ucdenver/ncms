@@ -27,11 +27,11 @@ When we added knowledge-aware prompts that describe what each agent has access t
 
 > ***"Don't let the LLM decide the workflow -- let the graph enforce it."***
 
-When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. The result: 4 LLM calls produce 42KB of grounded documentation, every time, with no retries and no dead loops.
+When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. The result: one message produces 4 documents (11KB research, 7.6KB PRD, 27.8KB implementation design approved at 89%), every time, with no dead loops.
 
 ## What You Are Building
 
-Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline. LangGraph enforces the deterministic workflow. Fire-and-forget bus announcements trigger downstream agents automatically. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
+Six specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in review loop. LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically -- each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
 
 | Agent | Type | Pipeline |
 |-------|------|----------|
@@ -72,7 +72,7 @@ A separate Design Review Report is also published with both reviewers' scores an
 
 ## How the Pipeline Works
 
-This is not a chatbot. It is a deterministic software delivery pipeline where LangGraph enforces the workflow and the LLM generates content within that structure. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume automatically via fire-and-forget bus announcements.
+This is not a chatbot. It is a deterministic software delivery pipeline where LangGraph enforces the workflow for all six agents and the LLM generates content within that structure. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume automatically via bus announcements to `trigger-{agent_id}` domains.
 
 ![Pipeline Phases](assets/pipeline-phases.svg)
 
@@ -172,14 +172,14 @@ All agents generated complete traces during the test run -- full visibility into
 - **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output. The 256K context window provides ample room for the prompt, retrieved knowledge, and generation.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000` rather than through the NemoClaw `inference.local` proxy. The proxy imposes a 60-second timeout that is insufficient for large document synthesis. Direct connection eliminates this bottleneck.
 - **Thinking mode off:** `enable_thinking: false` keeps thinking-mode tokens from consuming the context budget. Valuable for open-ended reasoning, but wasteful in structured pipelines where the agent's job is to call specific tools in sequence.
-- **Pipeline orchestration:** LangGraph enforces deterministic workflows for the three pipeline agents (Researcher, Product Owner, Builder). The Architect and Security experts use NAT `tool_calling_agent` since they respond to queries rather than driving workflows.
-- **Handoff mechanism:** Fire-and-forget bus announcements trigger downstream agents. When the Researcher publishes a document, the bus announcement includes the document ID. The Product Owner's LangGraph pipeline picks up the trigger and begins its own deterministic sequence. No polling. No shared state. No orchestrator.
+- **Pipeline orchestration:** LangGraph enforces deterministic workflows for all six agents. The Architect and Security experts use dual-mode LangGraph pipelines (classify > search_memory > answer or structured_review).
+- **Handoff mechanism:** Triggers use `bus_announce` to domain `trigger-{agent_id}` instead of HTTP proxy calls. Each agent's SSE listener detects the trigger announcement and self-calls `/generate` inside its own sandbox. No port forward dependency. No polling. No shared state. No orchestrator.
 
 ### Agent Sandboxing
 
 - **Isolation:** Each agent runs in its own NemoClaw kernel-isolated k3s pod, fully network-isolated
 - **Proxy:** All outbound traffic routes through the OpenShell proxy at `10.200.0.1:3128`
-- **LLM routing:** Expert agents (Architect, Security) can use NemoClaw's built-in `inference.local` proxy. LangGraph pipeline agents bypass this to avoid the 60-second timeout.
+- **LLM routing:** All agents are LangGraph pipelines. LangGraph agents bypass NemoClaw's `inference.local` proxy to avoid the 60-second timeout, connecting directly to `spark-ee7d.local:8000`.
 - **Secrets:** External API keys (e.g. `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded in config files. Only the Researcher sandbox receives the Tavily provider.
 - **Network policies:** Hub connections, PyPI, and HuggingFace access require explicit rules in `policies/openclaw-sandbox.yaml`. Private IP endpoints require interactive approval via `openshell term`.
 
@@ -187,7 +187,7 @@ All agents generated complete traces during the test run -- full visibility into
 
 - **NCMS** provides persistent shared memory across all agents via an HTTP API on `:9080`
 - **Hybrid retrieval:** BM25 (Tantivy/Rust) for lexical precision + SPLADE v3 for semantic expansion + NetworkX graph spreading activation. No dense vectors, no embedding API calls.
-- **Integration:** Expert agents use `auto_memory_agent` to connect to NCMS. When a pipeline agent issues a `bus_ask`, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
+- **Integration:** Expert agents use NCMS recall with domain filtering. When a pipeline agent issues a `bus_ask`, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
 - **Knowledge seeding:** Expert agents load curated domain knowledge at startup:
   - `knowledge/architecture/` -- ADRs, CALM model specifications
   - `knowledge/security/` -- STRIDE threat models, OWASP control mappings
@@ -238,7 +238,7 @@ openshell inference set --no-verify --provider dgx-spark \
 
 After this, any sandbox can reach the LLM at `https://inference.local/v1` and NemoClaw handles the routing transparently. The `--no-verify` flag skips TLS verification for the local endpoint.
 
-**Important:** LangGraph pipeline agents (Researcher, Product Owner, Builder) bypass `inference.local` and connect directly to `spark-ee7d.local:8000` to avoid the proxy's 60-second timeout. The inference provider is still needed for the expert agents (Architect, Security) that use NAT's `tool_calling_agent`.
+**Important:** All agents are now LangGraph pipelines and connect directly to `spark-ee7d.local:8000` to avoid the proxy's 60-second timeout. The inference provider is still configured for compatibility but all agents bypass it in practice.
 
 ### Step 2: Deploy vLLM with 256K Context
 
@@ -257,6 +257,8 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
 ```
 
 The model supports up to 1M context tokens. At 256K (`--max-model-len 262144`), the model (~15GB) uses less than 1% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly.
+
+**Note:** For 512K-1M context, add `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` as an environment variable to the docker command (e.g., `-e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`) and increase `--max-model-len` accordingly. Tested and working on the 128GB Spark for single-user workloads.
 
 ### Step 3: One-Command Deploy
 
@@ -293,8 +295,8 @@ Each agent gets the same treatment:
 
 | Step | Sandbox | Agent | Type | Port |
 |------|---------|-------|------|------|
-| 2/5 | ncms-architect | Architect | tool_calling_agent | 8001 |
-| 3/5 | ncms-security | Security | tool_calling_agent | 8002 |
+| 2/5 | ncms-architect | Architect | LangGraph (dual-mode) | 8001 |
+| 3/5 | ncms-security | Security | LangGraph (dual-mode) | 8002 |
 | 4/5 | ncms-builder | Builder | LangGraph | 8003 |
 | 5/5 | ncms-researcher | Researcher | LangGraph | 8004 |
 
@@ -360,25 +362,29 @@ The Researcher's LangGraph pipeline activates:
 No further human interaction is required. The pipeline chains automatically:
 
 **Product Owner activates** (triggered by Researcher's bus announcement):
-- Reads the 9KB research report
+- Reads the 11KB research report
 - Issues parallel `bus_ask` calls to Architect and Security
-- Receives 2.4KB architecture input + 3KB security input
-- Synthesizes and publishes a 15KB PRD
+- Receives architecture + security expert input
+- Synthesizes and publishes a 7.6KB PRD
 - Fires bus announcement, Builder activates automatically
 
 **Builder activates** (triggered by Product Owner's bus announcement):
-- Reads the 15KB PRD
-- Issues parallel `bus_ask` calls to Architect and Security
-- Receives 6.6KB architecture input + 384 bytes security confirmation
-- Synthesizes and publishes an 18KB TypeScript implementation design
+- Reads the 7.6KB PRD
+- Consults Architect and Security experts
+- Synthesizes and publishes an 11.6KB initial implementation design
+- Submits for structured review: Round 1 (Architect 78%, Security 72% -- revise)
+- Revises with explicit feedback, resubmits: Round 2 (Architect 85%, Security 92% -- APPROVED at 89%)
+- Publishes final 27.8KB implementation design + Design Review Report
 
 ### 3. Review the Artifacts
 
-Three documents appear in the Documents sidebar:
+Four documents appear in the Documents sidebar, plus a Design Review Report:
 
-1. **Market Research Report** (9KB) -- NIST standards, OAuth 2.0 PKCE, passkey adoption, web sources
-2. **PRD** (15KB) -- ADR references, STRIDE threat mitigations, CALM governance, OWASP controls, NIST compliance, PKCE flows, RS256 signing
-3. **Implementation Design** (18KB) -- TypeScript project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, NestJS modules, per-STRIDE mitigations, three-phase delivery plan
+1. **Market Research Report** (11KB) -- 5 parallel Tavily searches, 25 results synthesized
+2. **PRD** (7.6KB) -- Grounded in research + architect/security expert input
+3. **Implementation Design v1** (11.6KB) -- Initial design from PRD + expert consultation
+4. **Implementation Design v2** (27.8KB) -- Revised after review, approved at 89% (Architect 85%, Security 92%)
+5. **Design Review Report** -- Both rounds of scores, severity ratings, covered/missing items, required changes
 
 ### 4. Inspect Traces
 
@@ -403,7 +409,7 @@ This sends the research prompt programmatically and the auto-chain executes with
 Each agent is configured via YAML files in `deployment/nemoclaw-blueprint/configs/`. Key configuration patterns:
 
 - **LangGraph agents** (Researcher, Product Owner, Builder) define deterministic node graphs. Each node executes one step. The LLM generates content within each node; the graph enforces sequence and parallelism.
-- **Expert agents** (Architect, Security) use NAT `tool_calling_agent` with `use_native_tool_calling: true`. They respond to `bus_ask` queries rather than driving workflows.
+- **Expert agents** (Architect, Security) use LangGraph dual-mode pipelines. They classify incoming requests as knowledge questions or design reviews, search NCMS memory with domain filtering, and produce either grounded knowledge answers or structured reviews (SCORE/SEVERITY/COVERED/MISSING/CHANGES).
 - `max_tokens: 32768` -- enables rich, detailed output for document synthesis
 - Direct Spark URL (`spark-ee7d.local:8000`) for LangGraph agents bypasses the NemoClaw proxy 60-second timeout
 - Single-word tool names (`writeprd`, `writedesign`, not `write_prd`) -- NAT's text parser sometimes bolds multi-word names, breaking tool dispatch
@@ -450,9 +456,9 @@ functions:
 
 - **Researcher** -- LangGraph pipeline with Tavily web search. No seeded knowledge. Produces research reports.
 - **Product Owner** -- LangGraph pipeline that reads research documents and consults experts. Produces PRDs. Triggers Builder.
-- **Builder** -- LangGraph pipeline that reads PRDs and consults experts. Produces implementation designs. Terminal node in the chain.
-- **Architect** -- NAT `tool_calling_agent` with seeded ADRs, CALM model, quality attribute scenarios. Answers `bus_ask` queries.
-- **Security** -- NAT `tool_calling_agent` with seeded STRIDE threat models, OWASP controls. Answers `bus_ask` queries.
+- **Builder** -- LangGraph pipeline that reads PRDs, consults experts, produces implementation designs, and runs a review loop (revise until 80%+ average from reviewers, max 5 iterations).
+- **Architect** -- LangGraph dual-mode pipeline with seeded ADRs, CALM model, quality attribute scenarios. Classifies requests as knowledge questions or design reviews. Knowledge answers cite ADRs and CALM specs. Structured reviews return SCORE/SEVERITY/COVERED/MISSING/CHANGES.
+- **Security** -- LangGraph dual-mode pipeline with seeded STRIDE threat models, OWASP controls. Classifies requests as knowledge questions or design reviews. Knowledge answers cite threat IDs and OWASP sections. Structured reviews evaluate OWASP Top 10, STRIDE compliance, secrets management, transport security.
 - Each agent traces to a separate Phoenix project.
 
 ### Network Policy Reference
@@ -679,19 +685,15 @@ The plugin uses namespace packages (no `__init__.py` in `nat/` or `nat/plugins/`
 
 ## What's Next
 
-The auto-chaining pipeline runs end-to-end. These are the next areas of investment:
+The auto-chaining pipeline runs end-to-end with a review loop. These are the next areas of investment:
 
-### Review Loop
+### 512K-1M Context
 
-The pipeline currently produces three documents in a forward-only chain. The next step is a review loop: the Architect and Security agents review the Builder's implementation design, score it against ADR compliance and STRIDE coverage, provide structured feedback, and the Builder iterates until the design exceeds an 80% quality threshold. This closes the loop between expert knowledge and implementation output.
+The current pipeline uses 256K context. Nemotron Nano supports up to 1M tokens. The model supports this via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (tested, works on the 128GB Spark). Pushing to 512K or 1M would enable feeding the full research report, PRD, and all expert consultations into a single Builder context for richer, more coherent implementation designs.
 
-### Coding Agent
+### Nemotron Super 120B
 
-A sixth agent that takes the Builder's 18KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this -- the coding agent would consume them as specifications. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
-
-### Model Experiments
-
-**Nemotron Super 120B-A12B-NVFP4** is the next experiment. At 120B total / 12B active parameters (4x Nano's active compute) with NVIDIA's FP4 quantization, it fits on the DGX Spark (~60GB model, ~68GB for KV cache). Expected improvements: richer expert consultations, more detailed implementation designs, and more reliable multi-step reasoning. Requires NVIDIA driver 590+ for NVFP4 support. The vLLM command:
+**Nemotron Super 120B-A12B-NVFP4** is the next model experiment. At 120B total / 12B active parameters (4x Nano's active compute) with NVIDIA's FP4 quantization, it fits on the DGX Spark (~60GB model, ~68GB for KV cache). Expected improvements: richer expert consultations, more detailed implementation designs, and more reliable multi-step reasoning. Requires NVIDIA driver 590+ for NVFP4 support. The vLLM command:
 
 ```bash
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
@@ -713,9 +715,13 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
 | **Nemotron Super 120B-A12B** | **12B** | **~60GB** | **~68GB** | **Yes -- next experiment** |
 | Qwen 3.5 Coder 32B | 32B (dense) | ~32GB (FP8) | ~96GB | Yes |
 
-### 1M Context
+### Coding Agent
 
-The current pipeline uses 256K context. Nemotron Nano supports up to 1M tokens. Pushing to `--max-model-len 1048576` would enable massive document synthesis -- feeding the full research report, PRD, and all expert consultations into a single Builder context for richer, more coherent implementation designs. At 1M context, KV cache usage increases but remains feasible on the 128GB Spark for single-user workloads.
+A seventh agent that takes the Builder's 27.8KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this -- the coding agent would consume them as specifications. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
+
+### Looking Glass Full Oraculum Integration
+
+The current expert review pipeline uses a simplified version of the Looking Glass governance framework. The next step is full Oraculum integration for 4-pillar governance reviews (architecture, security, operations, compliance) with richer scoring rubrics and cross-pillar dependency analysis.
 
 ### Platform Capabilities
 
