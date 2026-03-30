@@ -223,12 +223,12 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --host 0.0.0.0 \
     --port 8000 \
     --trust-remote-code \
-    --max-model-len 65536 \
+    --max-model-len 262144 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder
 ```
 
-- `--max-model-len 65536` &mdash; 64K context window (model ~60GB, leaves ~68GB for KV cache)
+- `--max-model-len 262144` &mdash; 256K context window, the model's max_position_embeddings limit (model ~60GB, KV cache <0.3% on 128GB Spark)
 - `--enable-auto-tool-choice` + `--tool-call-parser qwen3_coder` &mdash; enables native tool calling for NAT agents. Nemotron Nano uses `<tool_call><function=name>` format parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param is present; regular chat completions unaffected
 
 **Point NCMS at the Spark:**

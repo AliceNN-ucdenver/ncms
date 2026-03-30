@@ -340,7 +340,7 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --host 0.0.0.0 \
     --port 8000 \
     --trust-remote-code \
-    --max-model-len 65536 \
+    --max-model-len 262144 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder
 
@@ -354,8 +354,8 @@ curl http://spark-ee7d.local:8000/v1/chat/completions \
 ```
 
 **vLLM flags:**
-- `--max-model-len 65536` — 64K context window (model ~60GB, leaves ~68GB for KV cache on 128GB Spark)
-- `--enable-auto-tool-choice` — required for NAT `use_native_tool_calling: true` (agents send `tool_choice: "auto"`)
+- `--max-model-len 262144` — 256K context window, the model's max_position_embeddings limit (model ~60GB, KV cache <0.3% on 128GB Spark)
+- `--enable-auto-tool-choice` — required for structured tool calling via OpenAI-compatible API
 - `--tool-call-parser qwen3_coder` — Nemotron Nano uses `<tool_call><function=name>` format, parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param present in request; regular chat completions unaffected
 
 Enable LLM features via Spark:
