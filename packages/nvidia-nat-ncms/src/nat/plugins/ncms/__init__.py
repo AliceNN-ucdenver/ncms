@@ -15,5 +15,6 @@ from nat.plugins.ncms import tools as _tools  # noqa: F401
 from nat.plugins.ncms import research_agent as _research_agent  # noqa: F401
 from nat.plugins.ncms import prd_agent as _prd_agent  # noqa: F401
 from nat.plugins.ncms import design_agent as _design_agent  # noqa: F401
+from nat.plugins.ncms import expert_agent as _expert_agent  # noqa: F401
 
 __all__ = ["NCMSMemoryConfig", "NCMSMemoryEditor"]

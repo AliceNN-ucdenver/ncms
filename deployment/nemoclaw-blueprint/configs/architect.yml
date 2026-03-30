@@ -1,10 +1,11 @@
-# Architect Agent — tool_calling_agent for LLM-powered expert synthesis
+# Architect Agent — LangGraph expert with dual-mode (knowledge + review)
+# classify → search_memory → [synthesize_answer | structured_review]
 
 llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 32768
     model_kwargs:
@@ -28,78 +29,26 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: architect
     domains: [architecture, calm-model, quality, decisions]
-    subscribe_to: [security, identity-service, implementation]
+    subscribe_to: [security, identity-service, implementation, trigger-architect]
     knowledge_paths:
       - path: /sandbox/knowledge/architecture/
         domains: [architecture, decisions]
 
 functions:
-  ask_knowledge:
-    _type: ask_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: architect
-    timeout_ms: 120000
-
-  announce_knowledge:
-    _type: announce_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: architect
-
-  architect_agent:
-    _type: tool_calling_agent
+  architect_expert:
+    _type: architect_expert
     llm_name: spark_llm
-    tool_names: [announce_knowledge]
-    verbose: true
-    handle_tool_errors: true
-    description: >
-      You are the architecture expert for the IMDB Lite project.
-
-      Your knowledge base contains:
-      - Architecture Decision Records (ADRs): technology choices, trade-offs,
-        rationale (e.g. ADR-001 SOA with CALM, ADR-002 MongoDB, ADR-003 JWT RBAC)
-      - CALM (Common Architecture Language Model) specifications: service
-        boundaries, component interactions, infrastructure-as-code patterns
-      - Quality attribute scenarios: performance targets, scalability,
-        maintainability, observability standards
-      - C4 architecture diagrams: context, container, component levels
-
-      You handle TWO types of requests:
-
-      1. KNOWLEDGE QUESTIONS — When asked about architecture decisions, patterns,
-         or recommendations:
-         - Cite specific ADRs by number
-         - Reference CALM model constraints
-         - State quality attribute implications
-         - Be concise and actionable
-
-      2. DESIGN REVIEWS — When asked to review or score an implementation design:
-         Evaluate against your knowledge using these criteria:
-         - CALM Model Compliance: does the design match documented service
-           boundaries, component relationships, and containment hierarchies?
-         - ADR Compliance: does the design follow accepted ADRs? Violations are
-           HIGH severity. Check technology choices, communication patterns,
-           data storage, authentication approaches.
-         - Fitness Function Validation: complexity management, test coverage,
-           performance budgets (N+1 queries, pagination, async), dependencies.
-         - Quality Attribute Verification: availability (health checks, graceful
-           shutdown), latency (hot paths, caching), throughput (pooling, rate
-           limiting), scalability (stateless, externalized config).
-         - Component Boundary Analysis: coupling, cohesion, API clarity, data ownership.
-
-         Respond in EXACTLY this format:
-         SCORE: [0-100]
-         SEVERITY: [Critical|High|Medium|Low]
-         COVERED: [what the design addresses, citing specific ADRs]
-         MISSING: [gaps that need addressing]
-         CHANGES: [numbered list of specific actionable changes]
-
-      Do NOT call any tools. Answer directly from your knowledge.
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: architect
 
 workflow:
   _type: auto_memory_agent
-  inner_agent_name: architect_agent
+  inner_agent_name: architect_expert
   memory_name: ncms_store
   llm_name: spark_llm
-  description: "Architect agent with reasoning-driven responses"
+  description: "Architect expert with LangGraph dual-mode (knowledge questions + design reviews)"
+  retrieve_memory_for_every_response: false
+  save_user_messages_to_memory: true
+  save_ai_messages_to_memory: true
   search_params:
     top_k: 10

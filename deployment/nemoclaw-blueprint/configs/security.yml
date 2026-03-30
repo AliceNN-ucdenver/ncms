@@ -1,10 +1,11 @@
-# Security Agent — tool_calling_agent for LLM-powered expert synthesis
+# Security Agent — LangGraph expert with dual-mode (knowledge + review)
+# classify → search_memory → [synthesize_answer | structured_review]
 
 llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 32768
     model_kwargs:
@@ -28,81 +29,26 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: security
     domains: [security, threats, compliance, controls]
-    subscribe_to: [architecture, identity-service, implementation]
+    subscribe_to: [architecture, identity-service, implementation, trigger-security]
     knowledge_paths:
       - path: /sandbox/knowledge/security/
-        domains: [security, threats, controls]
+        domains: [security, threats]
 
 functions:
-  ask_knowledge:
-    _type: ask_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: security
-    timeout_ms: 120000
-
-  announce_knowledge:
-    _type: announce_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: security
-
-  security_agent:
-    _type: tool_calling_agent
+  security_expert:
+    _type: security_expert
     llm_name: spark_llm
-    tool_names: [announce_knowledge]
-    verbose: true
-    handle_tool_errors: true
-    description: >
-      You are the security expert for the IMDB Lite project.
-
-      Your knowledge base contains:
-      - STRIDE threat models with specific threat IDs (THR-001 Spoofing,
-        THR-002 Tampering, etc.) including attack vectors, impact ratings,
-        likelihood assessments, and existing controls per component
-      - OWASP Top 10 control mappings (A01:2021 Broken Access Control,
-        A07:2021 Identification Failures, etc.) with recommended mitigations
-      - Security control matrices: password hashing (bcrypt/Argon2), token
-        validation, session management, rate limiting, encryption standards
-      - NIST SP 800-63B compliance mappings, GDPR requirements
-
-      You handle TWO types of requests:
-
-      1. KNOWLEDGE QUESTIONS — When asked about security threats, controls,
-         or recommendations:
-         - Cite specific threat IDs (THR-001, THR-002)
-         - Reference OWASP categories by number (A01:2021, A07:2021)
-         - State risk levels with likelihood and impact
-         - Recommend specific mitigations
-         - Identify residual risks
-
-      2. DESIGN REVIEWS — When asked to review or score an implementation design:
-         Evaluate against your knowledge using these criteria:
-         - OWASP Top 10 Pattern Detection: broken access control, cryptographic
-           failures, injection, insecure design, misconfiguration.
-         - STRIDE Threat Model Compliance: verify documented threats (THR-001,
-           THR-002, etc.) have corresponding mitigations. Unmitigated threats
-           are HIGH severity.
-         - Security Controls Verification: authentication, authorization, input
-           validation, encryption (at rest and transit), audit logging —
-           confirm implemented without bypass mechanisms.
-         - Secrets Management: no hardcoded credentials, proper env var or
-           vault usage.
-         - Transport Security: TLS enforcement, secure cookies, HSTS, cert
-           validation.
-
-         Respond in EXACTLY this format:
-         SCORE: [0-100]
-         SEVERITY: [Critical|High|Medium|Low]
-         COVERED: [what the design addresses, citing threat IDs]
-         MISSING: [gaps that need addressing]
-         CHANGES: [numbered list of specific actionable changes]
-
-      Do NOT call any tools. Answer directly from your knowledge.
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: security
 
 workflow:
   _type: auto_memory_agent
-  inner_agent_name: security_agent
+  inner_agent_name: security_expert
   memory_name: ncms_store
   llm_name: spark_llm
-  description: "Security agent with LLM-powered expert synthesis"
+  description: "Security expert with LangGraph dual-mode (knowledge questions + design reviews)"
+  retrieve_memory_for_every_response: false
+  save_user_messages_to_memory: true
+  save_ai_messages_to_memory: true
   search_params:
     top_k: 10

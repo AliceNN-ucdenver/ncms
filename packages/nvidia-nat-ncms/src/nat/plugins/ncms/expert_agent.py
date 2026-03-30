@@ -1,0 +1,553 @@
+# SPDX-License-Identifier: Apache-2.0
+"""LangGraph-based expert agent for NAT/NCMS.
+
+Deterministic pipeline with conditional routing:
+  classify → search_memory → [synthesize_answer | structured_review]
+
+Used by BOTH architect and security expert agents. The constructor takes
+domain-specific prompts as parameters; NAT registration creates two configs.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections.abc import AsyncGenerator
+from typing import TypedDict
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langgraph.graph import END, START, StateGraph
+from pydantic import Field
+
+from nat.builder.builder import Builder
+from nat.builder.framework_enum import LLMFrameworkEnum
+from nat.builder.function_info import FunctionInfo
+from nat.cli.register_workflow import register_function
+from nat.data_models.component_ref import LLMRef
+from nat.data_models.function import FunctionBaseConfig
+
+from .http_client import NCMSHttpClient
+
+logger = logging.getLogger(__name__)
+
+
+# ── State ─────────────────────────────────────────────────────────────────────
+
+
+class ExpertState(TypedDict):
+    """Graph state for the expert pipeline."""
+
+    input: str  # Original question or review request
+    request_type: str  # "question" or "review"
+    memory_context: str  # Retrieved from NCMS memory
+    response: str  # Final response
+    messages: list[BaseMessage]  # LangGraph compat
+
+
+# ── Prompts (architect) ─────────────────────────────────────────────────────
+
+ARCHITECT_KNOWLEDGE_PROMPT = """\
+You are the architecture expert for the IMDB Lite project. You provide expert \
+guidance grounded in your knowledge of Architecture Decision Records (ADRs), \
+CALM (Common Architecture Language Model) specifications, quality attribute \
+scenarios, and C4 architecture diagrams.
+
+Your knowledge base contains:
+- ADRs documenting technology choices, trade-offs, and rationale (SOA with CALM, \
+MongoDB document store, JWT with inline RBAC)
+- CALM specifications defining service boundaries, component interactions, \
+containment hierarchies, and infrastructure-as-code patterns
+- Quality attribute scenarios for performance, scalability, maintainability, \
+and observability
+- C4 diagrams at context, container, and component levels
+
+When answering:
+- Cite specific ADRs by number when referencing decisions
+- Reference CALM model constraints for service boundaries
+- State quality attribute implications (latency, throughput, availability)
+- Be concise and actionable
+
+RETRIEVED KNOWLEDGE:
+{memory_context}
+
+QUESTION:
+{input}"""
+
+ARCHITECT_REVIEW_PROMPT = """\
+You are performing an architecture review of an implementation design. Compare \
+the design against your knowledge of ADRs, CALM models, fitness functions, and \
+quality attributes.
+
+Evaluate using the Oraculum governance framework:
+
+1. CALM Model Compliance: Does the design match documented service boundaries, \
+component relationships, containment hierarchies? Identify phantom components \
+(documented but missing) and undocumented components (in design but not in CALM).
+
+2. ADR Compliance: Does the design follow accepted Architecture Decision Records? \
+Check technology choices, communication patterns, data storage, authentication. \
+ADR violations are HIGH severity.
+
+3. Fitness Function Validation: Complexity management, test coverage provisions, \
+performance budgets (N+1 queries, pagination, async patterns), dependency management.
+
+4. Quality Attribute Verification: Availability (health checks, graceful shutdown), \
+latency (hot path optimization, caching), throughput (connection pooling, rate \
+limiting), scalability (stateless design, externalized config).
+
+5. Component Boundary Analysis: Coupling patterns, cohesion, API clarity, data ownership.
+
+Severity: Critical (systemic failure risk), High (significant drift/ADR violation), \
+Medium (moderate gaps), Low (minor inconsistencies).
+
+RETRIEVED KNOWLEDGE:
+{memory_context}
+
+DESIGN TO REVIEW:
+{input}
+
+Respond in EXACTLY this format:
+SCORE: [0-100]
+SEVERITY: [Critical|High|Medium|Low]
+COVERED: [what the design addresses correctly, citing specific ADRs by number]
+MISSING: [what needs to be added or changed]
+CHANGES: [numbered list of specific actionable changes]"""
+
+# ── Prompts (security) ──────────────────────────────────────────────────────
+
+SECURITY_KNOWLEDGE_PROMPT = """\
+You are the security expert for the IMDB Lite project. You provide expert \
+guidance grounded in your knowledge of STRIDE threat models, OWASP Top 10 \
+control mappings, security control matrices, and compliance requirements.
+
+Your knowledge base contains:
+- STRIDE threat models with specific threat IDs (THR-001 Spoofing, THR-002 \
+Tampering, etc.) including attack vectors, impact, likelihood, and controls
+- OWASP Top 10 mappings (A01:2021 Broken Access Control, A07:2021 \
+Identification Failures) with recommended mitigations
+- Security control matrices: password hashing (bcrypt/Argon2), token validation, \
+session management, rate limiting, encryption standards
+- NIST SP 800-63B compliance mappings, GDPR requirements
+
+When answering:
+- Cite specific threat IDs (THR-001, THR-002) when referencing threats
+- Reference OWASP categories by number (A01:2021, A07:2021)
+- State risk levels with likelihood and impact
+- Recommend specific mitigations
+- Identify residual risks
+
+RETRIEVED KNOWLEDGE:
+{memory_context}
+
+QUESTION:
+{input}"""
+
+SECURITY_REVIEW_PROMPT = """\
+You are performing a security review of an implementation design. Compare \
+the design against your knowledge of threat models, OWASP controls, and \
+security standards.
+
+Evaluate using the Oraculum governance framework:
+
+1. OWASP Top 10 Pattern Detection: Broken access control (A01), cryptographic \
+failures (A02), injection (A03), insecure design (A04), misconfiguration (A05).
+
+2. STRIDE Threat Model Compliance: Verify documented threats (THR-001 Spoofing, \
+THR-002 Tampering, etc.) have corresponding mitigations. Unmitigated threats \
+are HIGH severity.
+
+3. Security Controls Verification: Authentication, authorization, input validation, \
+encryption (at rest and transit), audit logging. Confirm implemented without \
+bypass mechanisms.
+
+4. Secrets Management: No hardcoded credentials. Proper env var or vault usage.
+
+5. Transport Security: TLS enforcement, secure cookie settings (HttpOnly, \
+SameSite=Strict, Secure), HSTS headers, certificate validation.
+
+6. Dependency Security: Known vulnerabilities, supply chain risks.
+
+Severity: Critical (exploitable vulnerability, hardcoded secrets), High (OWASP \
+patterns, unmitigated threats), Medium (misconfiguration, incomplete controls), \
+Low (documentation gaps).
+
+RETRIEVED KNOWLEDGE:
+{memory_context}
+
+DESIGN TO REVIEW:
+{input}
+
+Respond in EXACTLY this format:
+SCORE: [0-100]
+SEVERITY: [Critical|High|Medium|Low]
+COVERED: [what the design addresses, citing specific threat IDs]
+MISSING: [what needs to be added or changed]
+CHANGES: [numbered list of specific actionable changes]"""
+
+
+# ── Review detection pattern ────────────────────────────────────────────────
+
+_REVIEW_PATTERN = re.compile(
+    r"SCORE|IMPLEMENTATION DESIGN TO REVIEW|(?:review|evaluate)\s+.*design",
+    re.IGNORECASE,
+)
+
+
+# ── Agent ─────────────────────────────────────────────────────────────────────
+
+
+class ExpertAgent:
+    """Deterministic LangGraph expert pipeline with conditional routing.
+
+    Nodes: classify -> search_memory -> [synthesize_answer | structured_review]
+    LLM called once (synthesis or review). classify and search_memory are pure Python.
+    """
+
+    def __init__(
+        self,
+        llm: BaseChatModel,
+        hub_url: str,
+        from_agent: str,
+        client: NCMSHttpClient,
+        primary_domain: str,
+        knowledge_prompt: str,
+        review_prompt: str,
+    ) -> None:
+        self.llm = llm
+        self.hub_url = hub_url
+        self.from_agent = from_agent
+        self.client = client
+        self.primary_domain = primary_domain
+        self.knowledge_prompt = knowledge_prompt
+        self.review_prompt = review_prompt
+
+    async def build_graph(self) -> StateGraph:
+        """Build and compile the expert pipeline with conditional routing."""
+        graph = StateGraph(ExpertState)
+
+        graph.add_node("classify", self.classify)
+        graph.add_node("search_memory", self.search_memory)
+        graph.add_node("synthesize_answer", self.synthesize_answer)
+        graph.add_node("structured_review", self.structured_review)
+
+        graph.add_edge(START, "classify")
+        graph.add_edge("classify", "search_memory")
+        graph.add_conditional_edges("search_memory", self.route)
+        graph.add_edge("synthesize_answer", END)
+        graph.add_edge("structured_review", END)
+
+        compiled = graph.compile()
+        logger.info(
+            "[expert_agent:%s] Graph compiled: classify -> search_memory -> [answer|review]",
+            self.from_agent,
+        )
+        return compiled
+
+    # ── Node 1: Classify (Pure Python) ───────────────────────────────────
+
+    async def classify(self, state: ExpertState) -> ExpertState:
+        """Classify the input as a question or a review request. No LLM."""
+        input_text = state["input"]
+
+        if _REVIEW_PATTERN.search(input_text):
+            state["request_type"] = "review"
+        else:
+            state["request_type"] = "question"
+
+        logger.info(
+            "[expert_agent:%s] Classified as: %s",
+            self.from_agent,
+            state["request_type"],
+        )
+        return state
+
+    # ── Node 2: Search Memory (Pure Python) ──────────────────────────────
+
+    async def search_memory(self, state: ExpertState) -> ExpertState:
+        """Retrieve relevant memories from NCMS. No LLM."""
+        input_text = state["input"]
+
+        try:
+            results = await self.client.recall_memory(
+                query=input_text,
+                domain=self.primary_domain,
+                limit=10,
+            )
+        except Exception as e:
+            logger.warning(
+                "[expert_agent:%s] Memory recall failed: %s",
+                self.from_agent,
+                e,
+            )
+            results = []
+
+        # Format results into context string
+        parts = []
+        for i, r in enumerate(results):
+            content = r.get("content", "") if isinstance(r, dict) else str(r)
+            parts.append(f"[{i + 1}] {content[:1000]}")
+
+        context = "\n\n".join(parts) if parts else "No relevant knowledge found."
+        state["memory_context"] = context
+
+        logger.info(
+            "[expert_agent:%s] Retrieved %d memory results (%d chars)",
+            self.from_agent,
+            len(results),
+            len(context),
+        )
+        return state
+
+    # ── Conditional router ───────────────────────────────────────────────
+
+    def route(self, state: ExpertState) -> str:
+        """Route to synthesize_answer or structured_review based on classification."""
+        return "synthesize_answer" if state["request_type"] == "question" else "structured_review"
+
+    # ── Node 3a: Synthesize Answer (LLM) ─────────────────────────────────
+
+    async def synthesize_answer(self, state: ExpertState) -> ExpertState:
+        """LLM answers the question grounded in retrieved knowledge."""
+        input_text = state["input"]
+        memory_context = state["memory_context"]
+
+        logger.info(
+            "[expert_agent:%s] Synthesizing answer for question",
+            self.from_agent,
+        )
+
+        prompt = self.knowledge_prompt.format(
+            memory_context=memory_context,
+            input=input_text,
+        )
+
+        try:
+            response = await self.llm.ainvoke([
+                SystemMessage(content="You are a domain expert. Answer grounded in the retrieved knowledge."),
+                HumanMessage(content=prompt),
+            ])
+            state["response"] = response.content
+            logger.info(
+                "[expert_agent:%s] Answer synthesized: %d chars",
+                self.from_agent,
+                len(state["response"]),
+            )
+        except Exception as e:
+            logger.error("[expert_agent:%s] Answer synthesis failed: %s", self.from_agent, e)
+            state["response"] = (
+                f"Expert answer generation failed ({e}). "
+                f"Retrieved context:\n{memory_context}"
+            )
+
+        return state
+
+    # ── Node 3b: Structured Review (LLM) ─────────────────────────────────
+
+    async def structured_review(self, state: ExpertState) -> ExpertState:
+        """LLM produces a structured SCORE/SEVERITY/COVERED/MISSING/CHANGES review."""
+        input_text = state["input"]
+        memory_context = state["memory_context"]
+
+        logger.info(
+            "[expert_agent:%s] Performing structured review",
+            self.from_agent,
+        )
+
+        prompt = self.review_prompt.format(
+            memory_context=memory_context,
+            input=input_text,
+        )
+
+        try:
+            response = await self.llm.ainvoke([
+                SystemMessage(
+                    content=(
+                        "You are a domain expert performing a structured review. "
+                        "Follow the output format exactly."
+                    ),
+                ),
+                HumanMessage(content=prompt),
+            ])
+            state["response"] = response.content
+            logger.info(
+                "[expert_agent:%s] Review complete: %d chars",
+                self.from_agent,
+                len(state["response"]),
+            )
+        except Exception as e:
+            logger.error("[expert_agent:%s] Structured review failed: %s", self.from_agent, e)
+            state["response"] = (
+                f"SCORE: 0\n"
+                f"SEVERITY: Critical\n"
+                f"COVERED: Review generation failed ({e})\n"
+                f"MISSING: Unable to evaluate\n"
+                f"CHANGES: 1. Retry review with working LLM endpoint"
+            )
+
+        return state
+
+
+# ── NAT Registration ──────────────────────────────────────────────────────────
+
+
+class ArchitectExpertConfig(FunctionBaseConfig, name="architect_expert"):
+    """Configuration for the architect expert agent."""
+
+    llm_name: LLMRef = Field(..., description="LLM to use for answer synthesis and reviews")
+    hub_url: str = Field(
+        default="http://host.docker.internal:9080",
+        description="NCMS Hub URL for memory recall",
+    )
+    from_agent: str = Field(
+        default="architect",
+        description="Agent ID for logging and attribution",
+    )
+
+
+@register_function(config_type=ArchitectExpertConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
+async def architect_expert_fn(
+    config: ArchitectExpertConfig, builder: Builder
+) -> AsyncGenerator[FunctionInfo, None]:
+    """Build the architect expert LangGraph pipeline and register as a NAT function."""
+    logger.info("[expert_agent:architect] Initializing architect expert agent")
+
+    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    client = NCMSHttpClient(hub_url=config.hub_url)
+
+    agent = ExpertAgent(
+        llm=llm,
+        hub_url=config.hub_url,
+        from_agent=config.from_agent,
+        client=client,
+        primary_domain="architecture",
+        knowledge_prompt=ARCHITECT_KNOWLEDGE_PROMPT,
+        review_prompt=ARCHITECT_REVIEW_PROMPT,
+    )
+    graph = await agent.build_graph()
+    logger.info("[expert_agent:architect] LangGraph pipeline ready")
+
+    async def _expert(input_message: str) -> str:
+        """Run the expert pipeline and return the response.
+
+        Called by auto_memory_agent. The returned string gets saved to NCMS
+        memory automatically by the auto_memory wrapper.
+
+        Args:
+            input_message: The question or design review request.
+
+        Returns:
+            The expert answer or structured review.
+        """
+        logger.info("[expert_agent:architect] === Starting expert pipeline ===")
+        logger.info("[expert_agent:architect] Input: %s", input_message[:200])
+
+        result = await graph.ainvoke({
+            "input": input_message,
+            "request_type": "",
+            "memory_context": "",
+            "response": "",
+            "messages": [HumanMessage(content=input_message)],
+        })
+
+        response = result.get("response", "No response generated.")
+
+        logger.info("[expert_agent:architect] === Pipeline complete ===")
+        logger.info("[expert_agent:architect] Response: %d chars", len(response))
+
+        return response
+
+    try:
+        yield FunctionInfo.from_fn(
+            _expert,
+            description=(
+                "Architecture expert agent. Answers questions about ADRs, CALM "
+                "models, quality attributes, and C4 diagrams grounded in retrieved "
+                "knowledge. Performs structured architecture reviews with "
+                "SCORE/SEVERITY/COVERED/MISSING/CHANGES format."
+            ),
+        )
+    finally:
+        await client.close()
+        logger.info("[expert_agent:architect] Cleaned up HTTP client")
+
+
+class SecurityExpertConfig(FunctionBaseConfig, name="security_expert"):
+    """Configuration for the security expert agent."""
+
+    llm_name: LLMRef = Field(..., description="LLM to use for answer synthesis and reviews")
+    hub_url: str = Field(
+        default="http://host.docker.internal:9080",
+        description="NCMS Hub URL for memory recall",
+    )
+    from_agent: str = Field(
+        default="security",
+        description="Agent ID for logging and attribution",
+    )
+
+
+@register_function(config_type=SecurityExpertConfig, framework_wrappers=[LLMFrameworkEnum.LANGCHAIN])
+async def security_expert_fn(
+    config: SecurityExpertConfig, builder: Builder
+) -> AsyncGenerator[FunctionInfo, None]:
+    """Build the security expert LangGraph pipeline and register as a NAT function."""
+    logger.info("[expert_agent:security] Initializing security expert agent")
+
+    llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    client = NCMSHttpClient(hub_url=config.hub_url)
+
+    agent = ExpertAgent(
+        llm=llm,
+        hub_url=config.hub_url,
+        from_agent=config.from_agent,
+        client=client,
+        primary_domain="security",
+        knowledge_prompt=SECURITY_KNOWLEDGE_PROMPT,
+        review_prompt=SECURITY_REVIEW_PROMPT,
+    )
+    graph = await agent.build_graph()
+    logger.info("[expert_agent:security] LangGraph pipeline ready")
+
+    async def _expert(input_message: str) -> str:
+        """Run the expert pipeline and return the response.
+
+        Called by auto_memory_agent. The returned string gets saved to NCMS
+        memory automatically by the auto_memory wrapper.
+
+        Args:
+            input_message: The question or design review request.
+
+        Returns:
+            The expert answer or structured review.
+        """
+        logger.info("[expert_agent:security] === Starting expert pipeline ===")
+        logger.info("[expert_agent:security] Input: %s", input_message[:200])
+
+        result = await graph.ainvoke({
+            "input": input_message,
+            "request_type": "",
+            "memory_context": "",
+            "response": "",
+            "messages": [HumanMessage(content=input_message)],
+        })
+
+        response = result.get("response", "No response generated.")
+
+        logger.info("[expert_agent:security] === Pipeline complete ===")
+        logger.info("[expert_agent:security] Response: %d chars", len(response))
+
+        return response
+
+    try:
+        yield FunctionInfo.from_fn(
+            _expert,
+            description=(
+                "Security expert agent. Answers questions about STRIDE threat "
+                "models, OWASP Top 10, security controls, and compliance "
+                "requirements grounded in retrieved knowledge. Performs structured "
+                "security reviews with SCORE/SEVERITY/COVERED/MISSING/CHANGES format."
+            ),
+        )
+    finally:
+        await client.close()
+        logger.info("[expert_agent:security] Cleaned up HTTP client")
