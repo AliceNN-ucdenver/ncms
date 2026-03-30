@@ -385,18 +385,24 @@ class PRDAgent:
                 topic[:60],
             )
 
-        # Trigger builder agent if configured
+        # Trigger builder agent (fire-and-forget — don't block the return)
         if self.trigger_next_agent and doc_id:
+            import asyncio
+
             title = f"{topic} — PRD"
-            logger.info("[prd_agent] Triggering builder with PRD doc_id: %s", doc_id)
-            try:
-                await self.client.trigger_agent(
-                    "builder",
-                    f'Create implementation design based on PRD: "{title}" (doc_id: {doc_id})',
-                )
-                logger.info("[prd_agent] Builder triggered successfully")
-            except Exception as e:
-                logger.warning("[prd_agent] Failed to trigger builder: %s", e)
+            logger.info("[prd_agent] 🔗 Triggering builder (async) with doc_id: %s", doc_id)
+
+            async def _trigger() -> None:
+                try:
+                    await self.client.trigger_agent(
+                        "builder",
+                        f'Create implementation design based on PRD: "{title}" (doc_id: {doc_id})',
+                    )
+                    logger.info("[prd_agent] ✅ Builder triggered successfully")
+                except Exception as e:
+                    logger.warning("[prd_agent] ⚠️ Failed to trigger builder: %s", e)
+
+            asyncio.create_task(_trigger())
 
         # Verify memory will be saved by auto_memory (log what we're returning)
         logger.info(

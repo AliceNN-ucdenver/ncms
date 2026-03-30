@@ -385,18 +385,24 @@ class ResearchAgent:
                 topic[:60],
             )
 
-        # Auto-trigger Product Owner to create PRD from this research
+        # Auto-trigger Product Owner (fire-and-forget — don't block the return)
         if self.trigger_next_agent and doc_id:
-            try:
-                title = f"{topic} — Market Research Report"
-                logger.info("[research_agent] 🔗 Triggering product_owner with doc_id: %s", doc_id)
-                await self.client.trigger_agent(
-                    "product_owner",
-                    f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
-                )
-                logger.info("[research_agent] ✅ Product owner triggered successfully")
-            except Exception as e:
-                logger.warning("[research_agent] ⚠️ Failed to trigger product_owner: %s", e)
+            import asyncio
+
+            title = f"{topic} — Market Research Report"
+            logger.info("[research_agent] 🔗 Triggering product_owner (async) with doc_id: %s", doc_id)
+
+            async def _trigger() -> None:
+                try:
+                    await self.client.trigger_agent(
+                        "product_owner",
+                        f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
+                    )
+                    logger.info("[research_agent] ✅ Product owner triggered successfully")
+                except Exception as e:
+                    logger.warning("[research_agent] ⚠️ Failed to trigger product_owner: %s", e)
+
+            asyncio.create_task(_trigger())
 
         logger.info(
             "[research_agent] Returning synthesis (%d chars) to auto_memory_agent for persistence",
