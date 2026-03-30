@@ -226,18 +226,23 @@ Address EVERY item listed under MISSING and CHANGES to improve this score.
 
 ## Revision Instructions
 
-1. For each MISSING item from BOTH reviewers, add the missing content to \
-the appropriate section of the design.
-2. For each numbered CHANGES item, modify the relevant section. Add a \
-markdown comment after the change: <!-- Rev {iteration}: Addressed arch/sec change #N -->
-3. Keep everything listed under COVERED — do not remove working content.
-4. If the architecture score is below 80%, pay special attention to ADR \
-compliance, CALM model alignment, and quality attribute patterns.
-5. If the security score is below 80%, pay special attention to STRIDE \
-threat mitigations, OWASP controls, and token management.
+1. For each MISSING item from BOTH reviewers, ADD new content to the \
+appropriate section. Do NOT remove existing content to make room.
+2. For each numbered CHANGES item, IMPROVE the relevant section by adding \
+detail, code snippets, or configuration. Mark with: <!-- Rev {iteration}: change #N -->
+3. PRESERVE everything listed under COVERED — do not remove, shorten, or \
+summarize working content.
+4. If the architecture score is below 80%, add ADR compliance details, \
+CALM model alignment, quality attribute patterns, and fitness function gates.
+5. If the security score is below 80%, add STRIDE threat mitigations with \
+specific threat IDs, OWASP control implementations, and token management details.
 
-Output the COMPLETE revised design — not a diff. Include all original \
-sections plus the additions.
+CRITICAL: The revised design must IMPROVE compliance, not reduce content. \
+Add sections, code examples, and implementation details. The output should \
+be at least as detailed as the input — ideally more detailed with the \
+addressed feedback incorporated as new subsections or enhanced code snippets.
+
+Output the COMPLETE revised design. Include ALL original sections plus additions.
 """
 
 
@@ -431,16 +436,16 @@ class DesignAgent:
         logger.info("[design_agent] Synthesizing design for: %s", topic[:100])
 
         prd_content = state.get("source_content", "") or ""
-        if len(prd_content) > 40000:
-            prd_content = prd_content[:40000] + "\n\n[... truncated for context window ...]"
+        if len(prd_content) > 80000:
+            prd_content = prd_content[:80000] + "\n\n[... truncated for context window ...]"
 
         expert_input = state.get("expert_input", {})
         architect_input = expert_input.get("architect", "") or "(no architect input available)"
         security_input = expert_input.get("security", "") or "(no security input available)"
-        if len(architect_input) > 8000:
-            architect_input = architect_input[:8000] + "\n[... truncated ...]"
-        if len(security_input) > 8000:
-            security_input = security_input[:8000] + "\n[... truncated ...]"
+        if len(architect_input) > 15000:
+            architect_input = architect_input[:15000] + "\n[... truncated ...]"
+        if len(security_input) > 15000:
+            security_input = security_input[:15000] + "\n[... truncated ...]"
 
         if not prd_content:
             prd_content = "(no PRD document provided — design from topic description only)"
@@ -532,50 +537,62 @@ class DesignAgent:
     # -- Node 5: Request Review (Pure Python) --------------------------------
 
     async def request_review(self, state: DesignState) -> DesignState:
-        """Send design to architect + security for structured review. No LLM."""
+        """Send design to architect + security for structured review. No LLM.
+
+        Both reviews run in parallel. If either fails, it's retried once
+        before falling back to a default score. This ensures the revision
+        step always has feedback from BOTH reviewers.
+        """
         design = state["design"]
         iteration = state.get("iteration", 0)
         logger.info("[design_agent] Requesting review (round %d)", iteration + 1)
 
-        # Truncate design for review prompt
-        design_for_review = design[:30000] if len(design) > 30000 else design
+        # Truncate design for review prompt (generous with 512K context)
+        design_for_review = design[:60000] if len(design) > 60000 else design
 
-        async def _review_architect() -> tuple[int, str]:
-            try:
-                prompt = ARCHITECTURE_REVIEW_PROMPT.format(design_content=design_for_review)
-                result = await self.client.bus_ask(
-                    question=prompt,
-                    domains=["architecture", "decisions"],
-                    from_agent=self.from_agent,
-                    timeout_ms=180000,
-                )
-                answer = result.get("answer", "") or result.get("content", "")
-                score = self._parse_score(answer)
-                logger.info("[design_agent] Architect review: %d%% (%d chars)", score, len(answer))
-                return score, answer
-            except Exception as e:
-                logger.warning("[design_agent] Architect review failed: %s", e)
-                return 50, f"Review failed: {e}"
+        async def _review_single(
+            prompt: str, domains: list[str], label: str,
+        ) -> tuple[int, str]:
+            """Run a single review with one retry on failure."""
+            for attempt in range(2):  # max 2 attempts
+                try:
+                    result = await self.client.bus_ask(
+                        question=prompt,
+                        domains=domains,
+                        from_agent=self.from_agent,
+                        timeout_ms=240000,  # 4 minutes
+                    )
+                    answer = result.get("answer", "") or result.get("content", "")
+                    if not answer or len(answer) < 20:
+                        raise ValueError(f"Empty or too-short response: {len(answer)} chars")
+                    score = self._parse_score(answer)
+                    logger.info(
+                        "[design_agent] %s review: %d%% (%d chars) [attempt %d]",
+                        label, score, len(answer), attempt + 1,
+                    )
+                    return score, answer
+                except Exception as e:
+                    if attempt == 0:
+                        logger.warning(
+                            "[design_agent] %s review failed (attempt 1), retrying: %s",
+                            label, e,
+                        )
+                        await asyncio.sleep(2)  # Brief pause before retry
+                    else:
+                        logger.warning(
+                            "[design_agent] %s review failed after 2 attempts: %s",
+                            label, e,
+                        )
+                        return 50, f"Review failed after 2 attempts: {e}"
+            return 50, "Review failed"  # Unreachable but satisfies type checker
 
-        async def _review_security() -> tuple[int, str]:
-            try:
-                prompt = SECURITY_REVIEW_PROMPT.format(design_content=design_for_review)
-                result = await self.client.bus_ask(
-                    question=prompt,
-                    domains=["security", "threats"],
-                    from_agent=self.from_agent,
-                    timeout_ms=180000,
-                )
-                answer = result.get("answer", "") or result.get("content", "")
-                score = self._parse_score(answer)
-                logger.info("[design_agent] Security review: %d%% (%d chars)", score, len(answer))
-                return score, answer
-            except Exception as e:
-                logger.warning("[design_agent] Security review failed: %s", e)
-                return 50, f"Review failed: {e}"
+        arch_prompt = ARCHITECTURE_REVIEW_PROMPT.format(design_content=design_for_review)
+        sec_prompt = SECURITY_REVIEW_PROMPT.format(design_content=design_for_review)
 
+        # Run both reviews in parallel, each with internal retry
         (arch_score, arch_feedback), (sec_score, sec_feedback) = await asyncio.gather(
-            _review_architect(), _review_security(),
+            _review_single(arch_prompt, ["architecture", "decisions"], "Architect"),
+            _review_single(sec_prompt, ["security", "threats"], "Security"),
         )
 
         state["review_scores"] = {"architect": arch_score, "security": sec_score}
@@ -622,8 +639,8 @@ class DesignAgent:
             pass
 
         original = state["design"]
-        if len(original) > 30000:
-            original = original[:30000] + "\n\n[... truncated ...]"
+        if len(original) > 80000:
+            original = original[:80000] + "\n\n[... truncated ...]"
 
         prompt = REVISE_DESIGN_PROMPT.format(
             original_design=original,

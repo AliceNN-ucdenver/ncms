@@ -340,7 +340,7 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --host 0.0.0.0 \
     --port 8000 \
     --trust-remote-code \
-    --max-model-len 262144 \
+    --max-model-len 524288 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder
 
@@ -354,7 +354,7 @@ curl http://spark-ee7d.local:8000/v1/chat/completions \
 ```
 
 **vLLM flags:**
-- `--max-model-len 262144` — 256K context window, the model's max_position_embeddings limit (model ~60GB, KV cache <0.3% on 128GB Spark)
+- `--max-model-len 524288` — 512K context window (requires `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` env var; model ~60GB, KV cache <0.5% on 128GB Spark). Model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling.
 - `--enable-auto-tool-choice` — required for structured tool calling via OpenAI-compatible API
 - `--tool-call-parser qwen3_coder` — Nemotron Nano uses `<tool_call><function=name>` format, parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param present in request; regular chat completions unaffected
 
