@@ -62,7 +62,7 @@ NCMS_DASHBOARD_PORT="${NCMS_DASHBOARD_PORT:-8420}"
 PHOENIX_PORT="${PHOENIX_PORT:-6006}"
 
 # Sandbox names (RFC 1123)
-AGENT_SANDBOXES=("ncms-architect" "ncms-security" "ncms-builder" "ncms-product-owner")
+AGENT_SANDBOXES=("ncms-architect" "ncms-security" "ncms-builder" "ncms-product-owner" "ncms-researcher")
 
 # Agent config: agent_id|nat_config|knowledge_dir
 # knowledge_dir is relative to SCRIPT_DIR/knowledge/
@@ -71,6 +71,7 @@ AGENT_CONFIGS=(
   "security|configs/security.yml|security"
   "builder|configs/builder.yml|"
   "product_owner|configs/product_owner.yml|product-owner"
+  "researcher|configs/researcher.yml|"
 )
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -212,7 +213,7 @@ teardown() {
   fi
 
   # Stop agent port forwards
-  for port in 8001 8002 8003 8004; do
+  for port in 8001 8002 8003 8004 8005; do
     openshell forward stop "$port" 2>/dev/null || true
   done
 
@@ -335,7 +336,7 @@ setup_agent_sandbox() {
 
   # Attach providers based on agent needs
   local providers=()
-  if [ "$agent_id" = "product_owner" ] && [ -n "${TAVILY_API_KEY:-}" ]; then
+  if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "researcher" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
     providers+=(tavily)
   fi
   create_sandbox "$sandbox_name" ${providers[@]+"${providers[@]}"}
@@ -421,6 +422,7 @@ setup_agent_sandbox() {
     security)       agent_port=8002 ;;
     builder)        agent_port=8003 ;;
     product_owner)  agent_port=8004 ;;
+    researcher)     agent_port=8005 ;;
     *)              agent_port=8000 ;;
   esac
 
@@ -564,7 +566,7 @@ main() {
     local count
     count=$(curl -sf "http://localhost:${NCMS_HUB_PORT}/api/v1/health" 2>/dev/null \
       | python3 -c 'import sys,json; print(json.load(sys.stdin).get("agent_count",0))' 2>/dev/null || echo 0)
-    if [ "$count" -ge 4 ]; then
+    if [ "$count" -ge 5 ]; then
       ok "All 3 agents connected"
       break
     fi

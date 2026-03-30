@@ -12,5 +12,6 @@ from nat.plugins.ncms.editor import NCMSMemoryEditor
 # Import to trigger decorator registration
 from nat.plugins.ncms import register as _register  # noqa: F401
 from nat.plugins.ncms import tools as _tools  # noqa: F401
+from nat.plugins.ncms import research_agent as _research_agent  # noqa: F401
 
 __all__ = ["NCMSMemoryConfig", "NCMSMemoryEditor"]

@@ -492,7 +492,7 @@ def create_api_app(
     # Proxies chat requests to NAT agents' /generate endpoint.
     # Avoids CORS issues (dashboard and hub share the same origin).
     # Agent port mapping: architect=8001, security=8002, builder=8003
-    _AGENT_PORTS = {"architect": 8001, "security": 8002, "builder": 8003, "product_owner": 8004}
+    _AGENT_PORTS = {"architect": 8001, "security": 8002, "builder": 8003, "product_owner": 8004, "researcher": 8005}
 
     async def agent_chat(request: Request) -> JSONResponse:
         import httpx as _httpx
