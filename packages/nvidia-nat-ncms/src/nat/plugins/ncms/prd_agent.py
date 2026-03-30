@@ -276,17 +276,17 @@ class PRDAgent:
 
         # Truncate inputs to fit context window
         source_content = state.get("source_content", "")
-        if len(source_content) > 15000:
-            source_content = source_content[:15000] + "\n\n[... truncated for context window ...]"
+        if len(source_content) > 40000:
+            source_content = source_content[:40000] + "\n\n[... truncated for context window ...]"
 
         expert = state.get("expert_input", {})
         architect_input = expert.get("architect", "No architect input available.")
-        if len(architect_input) > 3000:
-            architect_input = architect_input[:3000] + "\n\n[... truncated ...]"
+        if len(architect_input) > 8000:
+            architect_input = architect_input[:8000] + "\n\n[... truncated ...]"
 
         security_input = expert.get("security", "No security input available.")
-        if len(security_input) > 3000:
-            security_input = security_input[:3000] + "\n\n[... truncated ...]"
+        if len(security_input) > 8000:
+            security_input = security_input[:8000] + "\n\n[... truncated ...]"
 
         if not source_content:
             source_content = "No source document provided. Generate PRD from topic and expert input."

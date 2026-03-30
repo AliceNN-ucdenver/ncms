@@ -6,7 +6,7 @@ llms:
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
     base_url: "https://inference.local/v1"
     api_key: "dummy"
-    max_tokens: 16384
+    max_tokens: 32768
     model_kwargs:
       extra_body:
         chat_template_kwargs:

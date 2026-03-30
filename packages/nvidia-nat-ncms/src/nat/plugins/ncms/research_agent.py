@@ -308,8 +308,8 @@ class ResearchAgent:
 
         search_text = "\n".join(parts)
         # Truncate to fit context window (~20K chars for search content)
-        if len(search_text) > 20000:
-            search_text = search_text[:20000] + "\n\n[... truncated for context window ...]"
+        if len(search_text) > 40000:
+            search_text = search_text[:40000] + "\n\n[... truncated for context window ...]"
 
         prompt = SYNTHESIZE_PROMPT.format(topic=topic, search_results=search_text)
 

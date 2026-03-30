@@ -266,16 +266,16 @@ class DesignAgent:
 
         # Truncate inputs to fit context window
         prd_content = state.get("source_content", "") or ""
-        if len(prd_content) > 15000:
-            prd_content = prd_content[:15000] + "\n\n[... truncated for context window ...]"
+        if len(prd_content) > 40000:
+            prd_content = prd_content[:40000] + "\n\n[... truncated for context window ...]"
 
         expert_input = state.get("expert_input", {})
         architect_input = expert_input.get("architect", "") or "(no architect input available)"
         security_input = expert_input.get("security", "") or "(no security input available)"
-        if len(architect_input) > 3000:
-            architect_input = architect_input[:3000] + "\n[... truncated ...]"
-        if len(security_input) > 3000:
-            security_input = security_input[:3000] + "\n[... truncated ...]"
+        if len(architect_input) > 8000:
+            architect_input = architect_input[:8000] + "\n[... truncated ...]"
+        if len(security_input) > 8000:
+            security_input = security_input[:8000] + "\n[... truncated ...]"
 
         if not prd_content:
             prd_content = "(no PRD document provided — design from topic description only)"
