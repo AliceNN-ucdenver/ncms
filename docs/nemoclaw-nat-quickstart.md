@@ -1,8 +1,4 @@
-# Multi-Agent Software Delivery Pipeline
-
-> **NCMS + NeMo Agent Toolkit + NemoClaw**
-> Four AI agents research, consult domain experts, and produce implementation designs autonomously.
-> Built in under two weeks. Running on commodity hardware. Grounded in memory that actually works.
+![Multi-Agent Software Delivery Pipeline](assets/banner.svg)
 
 ---
 
