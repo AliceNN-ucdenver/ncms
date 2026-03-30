@@ -37,6 +37,8 @@ functions:
     llm_name: spark_llm
     hub_url: "http://host.docker.internal:9080"
     from_agent: builder
+    quality_threshold: 80
+    max_iterations: 5
 
 workflow:
   _type: auto_memory_agent
