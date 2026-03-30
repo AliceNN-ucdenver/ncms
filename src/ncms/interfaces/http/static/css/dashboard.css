@@ -3137,6 +3137,56 @@
   background: rgba(248, 113, 113, 0.25) !important;
 }
 
+/* Human header badge */
+.human-header-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  font-size: 11px;
+  margin-right: 8px;
+}
+.human-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.human-dot.online {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+}
+.human-dot.offline {
+  background: #64748b;
+}
+.human-label {
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.human-approval-count {
+  color: var(--accent-amber);
+  cursor: pointer;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(210, 153, 34, 0.1);
+  transition: background 0.2s;
+}
+.human-approval-count:hover {
+  background: rgba(210, 153, 34, 0.25);
+}
+.human-approval-count.pulse {
+  animation: pulse-amber 2s infinite;
+}
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(210, 153, 34, 0); }
+}
+
 .trace-link {
   font-size: 10px;
   opacity: 0.4;

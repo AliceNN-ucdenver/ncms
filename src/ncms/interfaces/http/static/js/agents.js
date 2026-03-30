@@ -274,15 +274,50 @@ function activityItemHTML(event) {
 
 // ── Agent Rendering ──────────────────────────────────────────────────
 function renderAgents() {
-  const agents = Object.values(state.agents);
+  const allAgents = Object.values(state.agents);
   const panel = document.getElementById('agents-area');
 
-  if (agents.length === 0) {
+  // Filter human out of the main grid — it goes in the header
+  const agents = allAgents.filter(a => a.agent_id !== 'human');
+  const human = allAgents.find(a => a.agent_id === 'human');
+
+  if (agents.length === 0 && !human) {
     panel.innerHTML = '<div class="waiting-message">Waiting for agents to connect...</div>';
-    return;
+  } else if (agents.length === 0) {
+    panel.innerHTML = '<div class="waiting-message">Waiting for agents to connect...</div>';
+  } else {
+    panel.innerHTML = agents.map(a => agentColumnHTML(a)).join('');
   }
 
-  panel.innerHTML = agents.map(a => agentColumnHTML(a)).join('');
+  // Render human badge in header
+  renderHumanBadge(human);
+}
+
+function renderHumanBadge(human) {
+  let badge = document.getElementById('human-badge');
+  if (!badge) {
+    // Create badge container in the header stats bar
+    const statsBar = document.getElementById('stats-bar');
+    if (!statsBar) return;
+    badge = document.createElement('div');
+    badge.id = 'human-badge';
+    badge.className = 'human-header-badge';
+    statsBar.insertBefore(badge, statsBar.firstChild);
+  }
+
+  const isOnline = human && human.status === 'online';
+  const pendingCount = state.approvals
+    ? state.approvals.filter(a => a.status === 'pending').length
+    : 0;
+  const pendingClass = pendingCount > 0 ? 'pulse' : '';
+
+  badge.innerHTML = `
+    <span class="human-dot ${isOnline ? 'online' : 'offline'}"></span>
+    <span class="human-label">Human</span>
+    <span class="human-approval-count ${pendingClass}" onclick="toggleApprovalPanel(event)" title="View approvals">
+      ${pendingCount > 0 ? pendingCount + ' pending' : 'No approvals'}
+    </span>
+  `;
 }
 
 function agentColumnHTML(agent) {
