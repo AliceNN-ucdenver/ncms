@@ -2,39 +2,45 @@
 
 ---
 
-Most agent memory systems retrieve the wrong context at the wrong time. NCMS does not. Its vector-free hybrid retrieval combines BM25 lexical search, SPLADE v3 sparse neural expansion (a learned model that predicts which additional terms are semantically relevant to a query, expanding "JWT" into related terms like "token", "authentication", "bearer" without needing dense vector embeddings), and graph spreading activation. This pipeline achieves nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines with zero dense embeddings and zero external API calls. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. We plugged that memory into a four-agent software delivery pipeline, running on a single DGX Spark with only 3B active parameters, and built the whole thing in under two weeks.
+One message. Three documents. Ten minutes.
 
-The Security agent cites specific threat IDs (THR-001, THR-002) and NIST control references from its seeded STRIDE model. The Architect references CALM governance patterns and ADR decisions from seeded knowledge files. The Builder consults both experts in parallel via native tool calling, then produces implementation designs with per-STRIDE-category mitigations. Every agent runs in its own NemoClaw kernel-isolated sandbox. Every LLM call is traced through Phoenix OpenTelemetry. This is not a demo. It is a working pipeline that produces auditable artifacts.
+A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across three specialized agents. The Researcher runs 5 parallel web searches and synthesizes a 9KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 15KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces an 18KB TypeScript implementation design with actual project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, and per-STRIDE-category mitigations. Four LLM calls total. Everything runs on a single DGX Spark with 3B active parameters.
 
-> **NCMS vs. the field — SWE-bench Django (850 real GitHub issues)**
+The memory layer underneath is NCMS -- vector-free hybrid retrieval combining BM25 (Tantivy/Rust), SPLADE v3 sparse neural expansion, and graph spreading activation. nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. Zero dense embeddings. Zero external API calls. Everything runs locally.
+
+> **NCMS vs. the field -- SWE-bench Django (850 real GitHub issues)**
 >
 > | Metric | NCMS | Mem0 | Letta | What it measures |
 > |--------|------|------|-------|------------------|
 > | **Temporal Reasoning** (nDCG@10) | **0.1217** | 0.0194 | 0.0421 | Finding the right version of a fact over time |
 > | **Cross-Document Association** (nDCG@10) | **0.2031** | 0.0614 | 0.0718 | Connecting related information across files |
 > | **Recall AR** (nDCG@10) | **0.2031** | 0.0614 | 0.0718 | Overall structured recall quality |
-> | **SciFact Retrieval** (nDCG@10) | **0.7206** | — | — | Raw retrieval accuracy on scientific claims |
+> | **SciFact Retrieval** (nDCG@10) | **0.7206** | -- | -- | Raw retrieval accuracy on scientific claims |
 >
 > Zero vector databases. Zero embedding API calls. Everything runs locally.
 
-### The Insight That Changed Everything
+### The Two Insights That Changed Everything
 
-The breakthrough wasn't a model upgrade or an infrastructure change. It was a single realization:
-
-> ***"Don't just tell the agent what to do — tell it what it knows."***
+> ***"Don't just tell the agent what to do -- tell it what it knows."***
 
 When we added knowledge-aware prompts that describe what each agent has access to (STRIDE threat models with specific threat IDs for Security, ADRs and CALM specifications for the Architect), the same 3B-active-parameter model went from producing generic responses to citing THR-001, NIST IA-2(1), and OWASP ASVS v5.0 control sections. No model change. No fine-tuning. Just better prompts. The agents always had the capability; they just didn't know they had the knowledge to cite.
 
+> ***"Don't let the LLM decide the workflow -- let the graph enforce it."***
+
+When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. The result: 4 LLM calls produce 42KB of grounded documentation, every time, with no retries and no dead loops.
+
 ## What You Are Building
 
-Four specialized AI agents coordinate through a shared knowledge bus to execute a research-to-design pipeline. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
+Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline. LangGraph enforces the deterministic workflow. Fire-and-forget bus announcements trigger downstream agents automatically. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
 
-| Agent | Role | Knowledge Seeds | Tools | Port |
-|-------|------|-----------------|-------|------|
-| **Product Owner** | Live web research, PRD authoring | PRD templates, product methodology | web_search, ask_knowledge, writeprd | 8004 |
-| **Builder** | Consults experts, produces designs | *(learns by asking experts)* | ask_knowledge, writedesign | 8003 |
-| **Architect** | ADRs, CALM governance, system design | ADR-001..003, CALM model, C4 diagrams | announce_knowledge *(answers via auto-memory)* | 8001 |
-| **Security** | STRIDE threats, OWASP, compliance | STRIDE threat model, OWASP controls | announce_knowledge *(answers via auto-memory)* | 8002 |
+| Agent | Type | Pipeline | Tools / Nodes |
+|-------|------|----------|---------------|
+| **Researcher** | LangGraph | plan > search (5 parallel) > synthesize > publish > trigger PO | Tavily, publish_document |
+| **Product Owner** | LangGraph | read_document > ask_experts (parallel) > synthesize_prd > publish > trigger Builder | read_document, bus_ask, publish_document |
+| **Builder** | LangGraph | read_document > ask_experts (parallel) > synthesize_design > publish | read_document, bus_ask, publish_document |
+| **Architect** | tool_calling_agent | Answer from seeded knowledge | announce_knowledge |
+| **Security** | tool_calling_agent | Answer from seeded knowledge | announce_knowledge |
+| **Human** | Dashboard UI | Approve, review, chat | -- |
 
 ![Multi-Agent Pipeline](assets/multi-agent-pipeline.svg)
 
@@ -42,82 +48,92 @@ Four specialized AI agents coordinate through a shared knowledge bus to execute 
 
 | Layer | Technology | Detail |
 |-------|-----------|--------|
-| **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph — nDCG@10 = 0.7206 |
-| **Agents** | NVIDIA NeMo Agent Toolkit | Native tool calling, RCTRO prompts, `react_agent` |
-| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 65K context on DGX Spark (128GB) |
+| **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph -- nDCG@10 = 0.7206 |
+| **Orchestration** | LangGraph | Deterministic pipelines for Researcher, PO, Builder |
+| **Experts** | NAT tool_calling_agent | Architect + Security answer from seeded knowledge |
+| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 256K context on DGX Spark (128GB) |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
-| **Research** | Tavily | Live web search for Product Owner |
+| **Research** | Tavily | Live web search for Researcher (5 parallel queries) |
 | **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
+
+### Three Documents, One Prompt
+
+| Document | Agent | Size | Key References |
+|----------|-------|------|---------------|
+| Market Research Report | Researcher | 9KB | NIST (5), OAuth (3), web sources |
+| PRD | Product Owner | 15KB | ADR, STRIDE, CALM, OWASP, NIST, PKCE, RS256 |
+| Implementation Design | Builder | 18KB | JWT (17), TypeScript (3), interface (5), RS256 (3) |
 
 ---
 
 ## How the Pipeline Works
 
-This is not a chatbot. It is a software delivery pipeline where AI agents play distinct roles in a structured workflow. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume.
+This is not a chatbot. It is a deterministic software delivery pipeline where LangGraph enforces the workflow and the LLM generates content within that structure. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume automatically via fire-and-forget bus announcements.
 
 ![Pipeline Phases](assets/pipeline-phases.svg)
 
-### :one: Knowledge Seeding
+### Phase 1: Knowledge Seeding
 
-Before any work begins, agents load domain knowledge into the NCMS memory store:
+Before any work begins, expert agents load domain knowledge into the NCMS memory store:
 
 - **Architect** seeds ADRs (Architecture Decision Records), CALM model specifications, and quality attribute scenarios
-- **Security** seeds STRIDE threat models, OWASP control mappings, and compliance matrices
-- **Product Owner** loads PRD templates and product methodology guides
+- **Security** seeds STRIDE threat models with specific threat IDs (THR-001, THR-002), OWASP control mappings, and compliance matrices
 
-This knowledge becomes searchable by any agent through the knowledge bus — the foundation that turns generic LLM reasoning into domain-grounded expert responses.
+This knowledge becomes searchable by any agent through the knowledge bus. When downstream agents issue `bus_ask` calls, the experts search the shared store with hybrid retrieval and ground their LLM responses in retrieved facts. This is the foundation that turns generic LLM reasoning into domain-grounded expert responses.
 
-### :two: Research & PRD
+### Phase 2: Research (Researcher LangGraph)
 
-When you ask the Product Owner to research a topic, it:
+The Researcher agent runs a deterministic LangGraph pipeline: **plan > search (5 parallel) > synthesize > publish > trigger PO**.
 
-1. Searches the live web via **Tavily** for current best practices, industry standards, and security guidelines
-2. Synthesizes findings into a **structured PRD** — problem statement, goals, user stories, technical constraints, security requirements, and references with source URLs
+When prompted with a research topic, the Researcher:
 
-> **Observed:** The PO published a 3.0KB PRD covering:
-> - Passwordless magic link authentication, JWT with RSA-256/ECDSA signing
-> - Scope-based access control (`watchlist:read`, `movie:search`, `profile:read`)
-> - Redis-backed token revocation, AES-256-GCM encryption at rest, rate limiting
-> - Citations: **NIST 800-63B** authentication assurance levels, **OWASP ASVS v5.0** controls (ASVS2 Authentication, ASVS3 Authorization)
-> - Five-step system architecture flow and explicit non-goals (a sign the agent understood the project's "lite" scope from seeded knowledge)
+1. **Plan** -- Generates 5 parallel search queries covering different angles of the topic
+2. **Search** -- Executes all 5 Tavily web searches in parallel, collecting results
+3. **Synthesize** -- Compiles all search results into a structured market research report
+4. **Publish** -- Publishes the report to the hub's document store
+5. **Trigger** -- Fires a bus announcement that automatically triggers the Product Owner
 
-### :three: Expert Consultation & Design
+**What we observed:** 25 results from 5 parallel Tavily searches. The Researcher produced a 9KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes. The report included specific citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications found via live web search.
 
-Click **"Send to Builder"** on any PRD. The Builder consults expert agents through the knowledge bus — issuing **parallel tool calls** to the Architect and Security agent simultaneously (NAT's native tool calling lets the LLM emit multiple function calls in a single response).
+### Phase 3: PRD Creation (Product Owner LangGraph)
 
-> **Observed — Architect response:**
-> - RBAC enforcement with role hierarchy (ADMIN > STAFF > USER)
-> - CALM infrastructure-as-code governance, SOA integration patterns
-> - bcrypt password hashing, compliance alignment with NIST/OWASP ASVS/STRIDE
-> - Referenced all six STRIDE categories with specific mitigations
+The Product Owner runs a deterministic LangGraph pipeline: **read_document > ask_experts (parallel) > synthesize_prd > publish > trigger Builder**.
 
-> **Observed — Security response:**
-> - **THR-001** (Spoofing via JWT forgery) — mitigated by short-lived tokens + revocation lists
-> - **THR-002** (Tampering via NoSQL injection) — mitigated by parameterized queries
-> - NIST control references: **IA-2(1)**, **SC-13(1)**
-> - This is domain knowledge from the seeded STRIDE threat model, not generic LLM output
+Triggered automatically by the Researcher's bus announcement, the Product Owner:
 
-The Builder compiled all expert input into a **2.1KB implementation design** organized as a three-phase delivery plan:
+1. **Read Document** -- Reads the 9KB research report from the document store
+2. **Ask Experts (parallel)** -- Issues parallel `bus_ask` calls to the Architect and Security agents simultaneously
+3. **Synthesize PRD** -- Compiles research findings and expert input into a structured PRD
+4. **Publish** -- Publishes the PRD to the hub's document store
+5. **Trigger** -- Fires a bus announcement that automatically triggers the Builder
 
-| Phase | Focus | Key Elements |
-|-------|-------|-------------|
-| 1 | Core Authentication | Registration, JWT, roles |
-| 2 | Security Enhancements | Revocation, audit logging, rate limiting |
-| 3 | Compliance & Hardening | CSP, CORS, security headers, testing |
+**What we observed:** The Product Owner read the full 9KB research document, then received 2.4KB of architecture input (ADR decisions, CALM governance patterns, system design principles) and 3KB of security input (STRIDE threat categories with specific threat IDs, OWASP ASVS control mappings, NIST compliance requirements). The resulting 15KB PRD included explicit references to ADR-001 through ADR-003, all six STRIDE threat categories with mitigations, CALM model governance patterns, OWASP ASVS v5.0 controls, NIST SP 800-63B authentication assurance levels, PKCE authorization code flows, and RS256 asymmetric JWT signing. This is not generic LLM output -- every reference traces back to seeded knowledge or live web research.
 
-Per-STRIDE-category mitigations included: RS256 asymmetric signing (spoofing), input validation + parameterized queries (tampering), AES-256 + PII minimization (information disclosure), CDN DDoS + circuit breakers (availability).
+### Phase 4: Implementation Design (Builder LangGraph)
 
-### :four: Observability & Human Oversight
+The Builder runs a deterministic LangGraph pipeline: **read_document > ask_experts (parallel) > synthesize_design > publish**.
 
-Every agent generates **Phoenix OpenTelemetry traces**. The NCMS dashboard provides full visibility:
+Triggered automatically by the Product Owner's bus announcement, the Builder:
 
-- Real-time **SSE event feeds** on each agent card
-- **Document publishing** notifications in the sidebar
-- **Phoenix trace links** for debugging LLM reasoning
-- **Direct chat** with any agent from the dashboard
+1. **Read Document** -- Reads the 15KB PRD from the document store
+2. **Ask Experts (parallel)** -- Issues parallel `bus_ask` calls to the Architect and Security agents
+3. **Synthesize Design** -- Compiles the PRD and expert input into a TypeScript implementation design
+4. **Publish** -- Publishes the design document to the hub's document store
 
-All four agents generated complete traces during the test run — full visibility into every LLM call, tool invocation, and knowledge bus interaction.
+**What we observed:** The Builder read the full 15KB PRD, then received 6.6KB of architecture input (JWT strategy patterns, NestJS module structure, interface contracts, middleware design) and 384 bytes of security confirmation (threat model alignment). The resulting 18KB TypeScript implementation design included actual project structure with `jwt.strategy.ts`, `auth.middleware.ts`, `token.service.ts`, interface definitions, NestJS module organization, per-STRIDE-category mitigations, RS256 signing configuration, PKCE flow implementation, and a three-phase delivery plan. The design referenced JWT concepts 17 times, TypeScript patterns 3 times, interface contracts 5 times, and RS256 signing 3 times.
+
+### Phase 5: Observability
+
+Every agent generates Phoenix OpenTelemetry traces throughout the pipeline. The NCMS dashboard provides full visibility:
+
+- Real-time **SSE event feeds** on each agent card showing bus announcements and document publications
+- **Document publishing** notifications in the sidebar with the full chain visible (Research Report > PRD > Implementation Design)
+- **Phoenix trace links** for debugging LLM reasoning at each pipeline node
+- **Bus announcement logs** showing the fire-and-forget triggers that chain the pipeline
+- **Direct chat** with any agent from the dashboard for ad-hoc queries
+
+All agents generated complete traces during the test run -- full visibility into every LLM call, tool invocation, knowledge bus interaction, and inter-agent handoff.
 
 ---
 
@@ -127,29 +143,32 @@ All four agents generated complete traces during the test run — full visibilit
 
 ### LLM Infrastructure
 
-- **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass
-- **Serving:** NGC vLLM container on a DGX Spark (128GB memory, 65K context window)
+- **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass. The model supports up to 1M context tokens.
+- **Serving:** NGC vLLM container on a DGX Spark (128GB memory). Configured with `--max-model-len 262144` (256K context window). At 256K, the model uses less than 1% of available KV cache on the 128GB Spark, leaving substantial headroom.
 - **Tool call parser:** `--tool-call-parser qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
-- **Thinking mode off:** `tool_calling_agent` with `enable_thinking: false` keeps thinking-mode tokens from consuming the context budget. Valuable for open-ended reasoning, but wasteful in structured pipelines where the agent's job is to call specific tools in sequence.
+- **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output. The 256K context window provides ample room for the prompt, retrieved knowledge, and generation.
+- **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000` rather than through the NemoClaw `inference.local` proxy. The proxy imposes a 60-second timeout that is insufficient for large document synthesis. Direct connection eliminates this bottleneck.
+- **Thinking mode off:** `enable_thinking: false` keeps thinking-mode tokens from consuming the context budget. Valuable for open-ended reasoning, but wasteful in structured pipelines where the agent's job is to call specific tools in sequence.
+- **Pipeline orchestration:** LangGraph enforces deterministic workflows for the three pipeline agents (Researcher, Product Owner, Builder). The Architect and Security experts use NAT `tool_calling_agent` since they respond to queries rather than driving workflows.
+- **Handoff mechanism:** Fire-and-forget bus announcements trigger downstream agents. When the Researcher publishes a document, the bus announcement includes the document ID. The Product Owner's LangGraph pipeline picks up the trigger and begins its own deterministic sequence. No polling. No shared state. No orchestrator.
 
 ### Agent Sandboxing
 
 - **Isolation:** Each agent runs in its own NemoClaw kernel-isolated k3s pod, fully network-isolated
 - **Proxy:** All outbound traffic routes through the OpenShell proxy at `10.200.0.1:3128`
-- **LLM routing:** NemoClaw's built-in `inference.local` proxy forwards to the configured inference provider transparently
-- **Secrets:** External API keys (e.g. `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded in config files. Only the Product Owner sandbox receives the Tavily provider.
+- **LLM routing:** Expert agents (Architect, Security) can use NemoClaw's built-in `inference.local` proxy. LangGraph pipeline agents bypass this to avoid the 60-second timeout.
+- **Secrets:** External API keys (e.g. `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded in config files. Only the Researcher sandbox receives the Tavily provider.
 - **Network policies:** Hub connections, PyPI, and HuggingFace access require explicit rules in `policies/openclaw-sandbox.yaml`. Private IP endpoints require interactive approval via `openshell term`.
 
 ### Shared Memory Layer
 
 - **NCMS** provides persistent shared memory across all agents via an HTTP API on `:9080`
 - **Hybrid retrieval:** BM25 (Tantivy/Rust) for lexical precision + SPLADE v3 for semantic expansion + NetworkX graph spreading activation. No dense vectors, no embedding API calls.
-- **Integration:** Each NAT agent uses `auto_memory_agent` to connect to NCMS. When an agent asks the knowledge bus a question, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
+- **Integration:** Expert agents use `auto_memory_agent` to connect to NCMS. When a pipeline agent issues a `bus_ask`, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
 - **Knowledge seeding:** Expert agents load curated domain knowledge at startup:
-  - `knowledge/architecture/` — ADRs, CALM model specifications
-  - `knowledge/security/` — STRIDE threat models, OWASP control mappings
-  - `knowledge/product-owner/` — PRD templates, product methodology guides
-  - Builder has no knowledge files; it learns by asking experts
+  - `knowledge/architecture/` -- ADRs, CALM model specifications
+  - `knowledge/security/` -- STRIDE threat models, OWASP control mappings
+  - Researcher, Product Owner, and Builder have no knowledge files; they learn by querying experts and consuming documents
 
 ---
 
@@ -157,22 +176,22 @@ All four agents generated complete traces during the test run — full visibilit
 
 Before you start:
 
-1. **macOS with Docker Desktop** — running and healthy.
+1. **macOS with Docker Desktop** -- running and healthy.
 2. **NemoClaw installed and onboarded:**
    ```bash
    curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
    openshell gateway start
    ```
-3. **DGX Spark or other vLLM endpoint** — serving a model accessible from your network. This guide uses a DGX Spark at `spark-ee7d.local:8000` running Nemotron-3-Nano-30B via the NGC vLLM container.
-4. **HF_TOKEN** — a HuggingFace token with access to gated models (SPLADE v3 requires it).
-5. **TAVILY_API_KEY** — a Tavily API key for the Product Owner's web search. Get one at tavily.com.
+3. **DGX Spark or other vLLM endpoint** -- serving a model accessible from your network. This guide uses a DGX Spark at `spark-ee7d.local:8000` running Nemotron-3-Nano-30B via the NGC vLLM container.
+4. **HF_TOKEN** -- a HuggingFace token with access to gated models (SPLADE v3 requires it).
+5. **TAVILY_API_KEY** -- a Tavily API key for the Researcher's web search. Get one at tavily.com.
 6. **A `.env` file** in the project root (`~/ncms/.env`) with your keys:
    ```bash
    HF_TOKEN=hf_your_token_here
    TAVILY_API_KEY=tvly-your_key_here
    ```
    The setup script auto-loads this file. No need to export variables manually.
-7. **Python 3.12+ with uv** — the NCMS build toolchain:
+7. **Python 3.12+ with uv** -- the NCMS build toolchain:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
@@ -196,9 +215,27 @@ openshell inference set --no-verify --provider dgx-spark \
 
 After this, any sandbox can reach the LLM at `https://inference.local/v1` and NemoClaw handles the routing transparently. The `--no-verify` flag skips TLS verification for the local endpoint.
 
-If you are using a different model or endpoint, substitute your values. The agent configs reference the model by name, so update `configs/*.yml` if your model name differs.
+**Important:** LangGraph pipeline agents (Researcher, Product Owner, Builder) bypass `inference.local` and connect directly to `spark-ee7d.local:8000` to avoid the proxy's 60-second timeout. The inference provider is still needed for the expert agents (Architect, Security) that use NAT's `tool_calling_agent`.
 
-### Step 2: One-Command Deploy
+### Step 2: Deploy vLLM with 256K Context
+
+```bash
+sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-nano \
+  -p 8000:8000 \
+  -v /root/.cache/huggingface:/root/.cache/huggingface \
+  nvcr.io/nvidia/vllm:26.01-py3 \
+  vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --host 0.0.0.0 --port 8000 \
+    --trust-remote-code \
+    --max-model-len 262144 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder
+```
+
+The model supports up to 1M context tokens. At 256K (`--max-model-len 262144`), the model (~15GB) uses less than 1% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly.
+
+### Step 3: One-Command Deploy
 
 ```bash
 cd deployment/nemoclaw-blueprint
@@ -207,47 +244,42 @@ cd deployment/nemoclaw-blueprint
 
 That is the happy path. Here is what happens under the hood:
 
-**Step 0 — Environment and Providers**
+**Step 0 -- Environment and Providers**
 
 - Loads `~/ncms/.env` (API keys, endpoint overrides).
-- Creates the `tavily` OpenShell provider from `TAVILY_API_KEY` (idempotent — skips if already exists). This injects the key into the Product Owner's sandbox as an environment variable.
+- Creates the `tavily` OpenShell provider from `TAVILY_API_KEY` (idempotent -- skips if already exists). This injects the key into the Researcher's sandbox as an environment variable.
 
-**Step 1/5 — NCMS Hub and Phoenix (Docker)**
+**Step 1/5 -- NCMS Hub and Phoenix (Docker)**
 
 - Builds the `ncms-hub` Docker image: Python 3.12 + NCMS + pre-downloaded models (GLiNER 209MB, cross-encoder 80MB, SPLADE 500MB if HF_TOKEN provided).
 - Starts two containers via `docker-compose.hub.yaml`:
-  - `ncms-hub` — NCMS HTTP API on `:9080` + Dashboard on `:8420`
-  - `phoenix` — Arize Phoenix tracing UI on `:6006`
+  - `ncms-hub` -- NCMS HTTP API on `:9080` + Dashboard on `:8420`
+  - `phoenix` -- Arize Phoenix tracing UI on `:6006`
 - Waits up to 180 seconds for the hub health endpoint to respond.
 
-**Steps 2-5 — Agent Sandboxes (NemoClaw + NAT)**
+**Steps 2-5 -- Agent Sandboxes (NemoClaw)**
 
 Each agent gets the same treatment:
 
 - Creates a NemoClaw sandbox from the `openclaw` template with the network policy.
-- Attaches providers as needed (the Product Owner gets the `tavily` provider).
+- Attaches providers as needed (the Researcher gets the `tavily` provider).
 - Uploads NCMS source code (`src/`, `pyproject.toml`, `uv.lock`) into `/sandbox/ncms/`.
-- Uploads the `nvidia-nat-ncms` plugin into `/sandbox/nvidia-nat-ncms/`.
-- Uploads the agent's NAT config and domain knowledge files.
-- Installs NCMS via `uv sync`, then installs NAT packages (`nvidia-nat-core`, `nvidia-nat-langchain`, `nvidia-nat-opentelemetry`).
-- Installs the NAT-NCMS plugin as an editable package.
-- Starts the NAT agent via `nat start fastapi --config_file /sandbox/configs/<agent>.yml --host 0.0.0.0 --port <port>`.
-- Sets up an `openshell forward` mapping `localhost:<port>` to the sandbox.
+- Uploads agent code, LangGraph pipelines (for Researcher/PO/Builder), and domain knowledge files.
+- Installs NCMS via `uv sync`, then installs agent dependencies.
+- Starts the agent process and sets up `openshell forward` for port access.
 
-| Step | Sandbox | Agent | Port |
-|------|---------|-------|------|
-| 2/5 | ncms-architect | architect | 8001 |
-| 3/5 | ncms-security | security | 8002 |
-| 4/5 | ncms-builder | builder | 8003 |
-| 5/5 | ncms-product-owner | product_owner | 8004 |
+| Step | Sandbox | Agent | Type | Port |
+|------|---------|-------|------|------|
+| 2/5 | ncms-architect | Architect | tool_calling_agent | 8001 |
+| 3/5 | ncms-security | Security | tool_calling_agent | 8002 |
+| 4/5 | ncms-builder | Builder | LangGraph | 8003 |
+| 5/5 | ncms-researcher | Researcher | LangGraph | 8004 |
 
-**Final step:** Polls the hub health endpoint waiting for all 4 agents to register, with a 60-second timeout.
+**Final step:** Polls the hub health endpoint waiting for all agents to register, with a 60-second timeout.
 
-### Step 3: Approve Network Connections
+### Step 4: Approve Network Connections
 
-This is where the real adventure begins.
-
-NemoClaw sandboxes are fully network-isolated. Every outbound connection goes through the OpenShell proxy. Static YAML policies work for public HTTPS endpoints like PyPI, GitHub, and HuggingFace. Private IP endpoints are a different story — the OpenShell proxy requires interactive approval regardless of what the YAML says.
+NemoClaw sandboxes are fully network-isolated. Every outbound connection goes through the OpenShell proxy. Static YAML policies work for public HTTPS endpoints like PyPI, GitHub, and HuggingFace. Private IP endpoints are a different story -- the OpenShell proxy requires interactive approval regardless of what the YAML says.
 
 Open a second terminal and run:
 
@@ -266,10 +298,10 @@ Type `y` and hit enter. You will need to approve connections for:
 
 - **Each sandbox** connecting to the hub (`host.docker.internal:9080`)
 - **Each sandbox** connecting to Phoenix tracing (`host.docker.internal:6006`)
-- **Each binary** that makes the connection (`python3.13`, `curl`, `nat`)
-- **DGX Spark** if not routed through `inference.local` (`spark-ee7d.local:8000`)
+- **Each binary** that makes the connection (`python3.13`, `curl`)
+- **DGX Spark** connections from LangGraph agents (`spark-ee7d.local:8000`)
 
-With four agent sandboxes, expect a burst of approval prompts during initial setup. Keep the terminal open for the entire process.
+With five agent sandboxes, expect a burst of approval prompts during initial setup. Keep the terminal open for the entire process.
 
 ### Rebuild from Scratch
 
@@ -285,48 +317,59 @@ This destroys all sandboxes and Docker containers, then runs the full setup agai
 
 ## Testing the Pipeline
 
-This is the end-to-end workflow from research to design document. These steps mirror the test run that produced the results described above.
+This is the end-to-end workflow from research to implementation design. One message triggers the entire auto-chaining pipeline.
 
-### 1. Start the Product Owner Research
+### 1. Trigger the Research Pipeline
 
-Open http://localhost:8420 and click the **Product Owner** card to open the chat overlay. Type:
+Open http://localhost:8420 and click the **Researcher** card to open the chat overlay. Type:
 
-> Research modern identity service patterns including OAuth 2.0, passkeys, and zero-trust authentication. Create a PRD.
+> Research modern identity service patterns including OAuth 2.0, passkeys, and zero-trust authentication.
 
-The Product Owner will:
-1. Call `web_search` (Tavily) to research current authentication best practices.
-2. Call `web_search` again for security-specific standards.
-3. Call `writeprd` to compile findings into a PRD.
+The Researcher's LangGraph pipeline activates:
+1. **Plan** -- generates 5 parallel search queries
+2. **Search** -- executes all 5 Tavily searches in parallel (25 results total)
+3. **Synthesize** -- compiles a 9KB market research report
+4. **Publish** -- document appears in the sidebar
+5. **Trigger** -- bus announcement fires, Product Owner activates automatically
 
-**Expected result:** A PRD appears in the Documents sidebar covering OAuth 2.0 PKCE, JWT management, MFA, Argon2 hashing, RBAC, token revocation, and social login integration. In our test run, the PRD was 1.9KB and cited NIST SP 800-63B, OWASP, and OAuth 2.0 PKCE specifications found via live web search.
+### 2. Watch the Auto-Chain
 
-### 2. Send the PRD to the Builder
+No further human interaction is required. The pipeline chains automatically:
 
-Click **"Send to Builder"** on the PRD in the Documents sidebar. This triggers the Builder's design workflow.
+**Product Owner activates** (triggered by Researcher's bus announcement):
+- Reads the 9KB research report
+- Issues parallel `bus_ask` calls to Architect and Security
+- Receives 2.4KB architecture input + 3KB security input
+- Synthesizes and publishes a 15KB PRD
+- Fires bus announcement, Builder activates automatically
 
-**Expected result:** The Builder issues parallel `ask_knowledge` calls to the Architect and Security agents. In our test run:
-- The Architect returned JWT Bearer Token patterns, stateless design principles, and three-tier RBAC (viewer/reviewer/admin) with role embedding in JWT claims.
-- The Security agent returned token lifecycle management (15-30 minute expiry), relay party architecture considerations, MFA strategy, and STRIDE threat mitigations.
+**Builder activates** (triggered by Product Owner's bus announcement):
+- Reads the 15KB PRD
+- Issues parallel `bus_ask` calls to Architect and Security
+- Receives 6.6KB architecture input + 384 bytes security confirmation
+- Synthesizes and publishes an 18KB TypeScript implementation design
 
-### 3. Review the Design Document
+### 3. Review the Artifacts
 
-The Builder publishes a design document to the document store. It appears in the Documents sidebar alongside the originating PRD.
+Three documents appear in the Documents sidebar:
 
-**Expected result:** A comprehensive implementation design. In our test run, the 3.6KB design included Mermaid flow diagrams, step-by-step middleware validation, STRIDE threat mitigations (spoofing, tampering, elevation-of-privilege), token lifecycle management, and a future-proofing section with an Auth0/Cognito migration path.
+1. **Market Research Report** (9KB) -- NIST standards, OAuth 2.0 PKCE, passkey adoption, web sources
+2. **PRD** (15KB) -- ADR references, STRIDE threat mitigations, CALM governance, OWASP controls, NIST compliance, PKCE flows, RS256 signing
+3. **Implementation Design** (18KB) -- TypeScript project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, NestJS modules, per-STRIDE mitigations, three-phase delivery plan
 
 ### 4. Inspect Traces
 
-Open Phoenix at http://localhost:6006. Each agent traces to a separate project (`ncms-architect`, `ncms-security`, `ncms-builder`, `ncms-product-owner`). You can follow the full reasoning chain — every LLM call, tool invocation, and knowledge bus interaction is captured.
+Open Phoenix at http://localhost:6006. Each agent traces to a separate project. You can follow the full reasoning chain across the pipeline -- every LLM call, tool invocation, knowledge bus interaction, and inter-agent handoff is captured.
 
 ### Scripted Trigger (Alternative)
 
-You can also trigger a design cycle from the command line:
+You can also trigger the pipeline from the command line:
 
 ```bash
 ./setup_nemoclaw.sh --trigger
 ```
 
-This simulates the builder's design process without going through the dashboard UI.
+This sends the research prompt programmatically and the auto-chain executes without the dashboard UI.
 
 ---
 
@@ -334,25 +377,26 @@ This simulates the builder's design process without going through the dashboard 
 
 ### Agent Configs
 
-Each agent is configured via a NAT YAML file in `deployment/nemoclaw-blueprint/configs/`. All agents share common patterns:
+Each agent is configured via YAML files in `deployment/nemoclaw-blueprint/configs/`. Key configuration patterns:
 
-- `use_native_tool_calling: true` — agents use the LLM's native function calling instead of ReAct text parsing. This is more reliable and avoids the bold-formatting problem where LLMs emit `**tool_name**` instead of `tool_name`.
-- `max_tokens: 16384` — all agents set this explicitly (vLLM serves with `--max-model-len 65536`, leaving headroom for the prompt).
-- `react_agent` as the base agent type — simpler and more reliable than the `reasoning_agent` wrapper for tool-calling workflows.
-- Single-word tool names (`writeprd`, `writedesign`, not `write_prd` or `write_design`) — NAT's text parser sometimes bolds multi-word names, breaking tool dispatch.
+- **LangGraph agents** (Researcher, Product Owner, Builder) define deterministic node graphs. Each node executes one step. The LLM generates content within each node; the graph enforces sequence and parallelism.
+- **Expert agents** (Architect, Security) use NAT `tool_calling_agent` with `use_native_tool_calling: true`. They respond to `bus_ask` queries rather than driving workflows.
+- `max_tokens: 32768` -- enables rich, detailed output for document synthesis
+- Direct Spark URL (`spark-ee7d.local:8000`) for LangGraph agents bypasses the NemoClaw proxy 60-second timeout
+- Single-word tool names (`writeprd`, `writedesign`, not `write_prd`) -- NAT's text parser sometimes bolds multi-word names, breaking tool dispatch
 
 ### Builder Config (`configs/builder.yml`)
 
-The Builder uses the RCTRO prompt format (Role, Context, Task, Requirements, Output):
+The Builder's LangGraph pipeline uses the RCTRO prompt format (Role, Context, Task, Requirements, Output) at each node:
 
 ```yaml
 llms:
   spark_llm:
     _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "https://inference.local/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
-    max_tokens: 16384
+    max_tokens: 32768
 
 memory:
   ncms_store:
@@ -363,72 +407,30 @@ memory:
     subscribe_to: [architecture, security, threats, controls, product, requirements]
 
 functions:
-  ask_knowledge:
+  read_document:
+    _type: read_document
+    hub_url: "http://host.docker.internal:9080"
+
+  bus_ask:
     _type: ask_knowledge
     hub_url: "http://host.docker.internal:9080"
     from_agent: builder
     timeout_ms: 120000
 
-  writedesign:
+  publish_document:
     _type: writedesign
     hub_url: "http://host.docker.internal:9080"
     from_agent: builder
-
-  builder_agent:
-    _type: react_agent
-    llm_name: spark_llm
-    tool_names: [ask_knowledge, writedesign]
-    use_native_tool_calling: true
-    max_iterations: 6
-    description: >
-      Role: You are a software builder who creates implementation designs.
-      Context: You consult expert agents (architect, security) and use PRDs ...
-      Task: For every design request, follow these steps exactly:
-        1. ask_knowledge -- query domains "architecture,decisions"
-        2. ask_knowledge -- query domains "security,threats"
-        3. writedesign -- compile expert input into a design document
-      Requirements: Every design MUST include architecture + security input.
-      Output: A published design document in the document store.
 ```
-
-### Product Owner Config (`configs/product_owner.yml`)
-
-The Product Owner has web search via Tavily and publishes PRDs:
-
-```yaml
-functions:
-  web_search:
-    _type: web_search
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-
-  ask_knowledge:
-    _type: ask_knowledge
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-    timeout_ms: 120000
-
-  writeprd:
-    _type: writeprd
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: product_owner
-
-  po_agent:
-    _type: react_agent
-    llm_name: spark_llm
-    tool_names: [web_search, ask_knowledge, writeprd]
-    use_native_tool_calling: true
-    max_iterations: 6
-```
-
-The `TAVILY_API_KEY` is injected into the sandbox environment by the OpenShell `tavily` provider — no hardcoded keys in config files.
 
 ### Agent Differences
 
-- **Architect and Security** have `knowledge_paths` and both `ask_knowledge` + `announce_knowledge` (domain experts that can cross-consult).
-- **Builder** has `ask_knowledge` + `writedesign` (consults experts, produces design docs).
-- **Product Owner** has `web_search` + `ask_knowledge` + `writeprd` (researches via Tavily, produces PRDs).
-- Each agent traces to a separate Phoenix project (`ncms-architect`, `ncms-security`, `ncms-builder`, `ncms-product-owner`).
+- **Researcher** -- LangGraph pipeline with Tavily web search. No seeded knowledge. Produces research reports.
+- **Product Owner** -- LangGraph pipeline that reads research documents and consults experts. Produces PRDs. Triggers Builder.
+- **Builder** -- LangGraph pipeline that reads PRDs and consults experts. Produces implementation designs. Terminal node in the chain.
+- **Architect** -- NAT `tool_calling_agent` with seeded ADRs, CALM model, quality attribute scenarios. Answers `bus_ask` queries.
+- **Security** -- NAT `tool_calling_agent` with seeded STRIDE threat models, OWASP controls. Answers `bus_ask` queries.
+- Each agent traces to a separate Phoenix project.
 
 ### Network Policy Reference
 
@@ -437,16 +439,16 @@ The policy file at `deployment/nemoclaw-blueprint/policies/openclaw-sandbox.yaml
 | Policy Name | Host | Port | Purpose |
 |------------|------|------|---------|
 | `ncms_hub` | host.docker.internal | 9080 | Hub API + Bus + SSE |
-| `dgx_spark` | spark-ee7d.local | 8000 | LLM inference (direct) |
+| `dgx_spark` | spark-ee7d.local | 8000 | LLM inference (direct, bypasses proxy timeout) |
 | `phoenix` | host.docker.internal | 6006 | Tracing (OpenTelemetry) |
 | `python_packages` | pypi.org, files.pythonhosted.org | 443 | pip/uv installs |
 | `nvidia_packages` | pypi.nvidia.com | 443 | NAT packages |
 | `huggingface` | huggingface.co, cdn-lfs.huggingface.co | 443 | Model downloads |
-| `tavily` | api.tavily.com | 443 | Web search (Product Owner) |
+| `tavily` | api.tavily.com | 443 | Web search (Researcher) |
 | `claude_code` | api.anthropic.com | 443 | Claude Code (if using) |
 | `github` | github.com, api.github.com | 443 | Git operations |
 
-For private IP endpoints (`host.docker.internal`, `spark-ee7d.local`), use `access: full` with `allowed_ips` and explicit binary paths. The wildcard binary `{ path: "-" }` is supposed to match any binary but does not always work for private IPs — list specific binaries as well.
+For private IP endpoints (`host.docker.internal`, `spark-ee7d.local`), use `access: full` with `allowed_ips` and explicit binary paths. The wildcard binary `{ path: "-" }` is supposed to match any binary but does not always work for private IPs -- list specific binaries as well.
 
 ### Config File Locations
 
@@ -455,12 +457,12 @@ deployment/nemoclaw-blueprint/
   configs/
     architect.yml          # Architect agent NAT config
     security.yml           # Security agent NAT config
-    builder.yml            # Builder agent NAT config
-    product_owner.yml      # Product Owner agent NAT config
+    builder.yml            # Builder LangGraph config
+    product_owner.yml      # Product Owner LangGraph config
+    researcher.yml         # Researcher LangGraph config
   knowledge/
     architecture/          # ADRs, CALM model
     security/              # Threat model, OWASP
-    product-owner/         # PRD template, product methodology
   policies/
     openclaw-sandbox.yaml  # Network policy for all sandboxes
   docker-compose.hub.yaml  # Hub + Phoenix Docker Compose
@@ -475,20 +477,17 @@ deployment/nemoclaw-blueprint/
 
 **Cause:** Some models emit markdown bold around tool names in their ReAct output. NAT's text parser fails to match the bolded name to a registered tool.
 
-**Fix:** All agent configs now use `use_native_tool_calling: true` and single-word tool names (`writeprd`, `writedesign`). If you still see this, check that the agent config has native tool calling enabled and that tool names contain no underscores or special characters.
+**Fix:** Expert agent configs use `use_native_tool_calling: true` and single-word tool names. LangGraph agents avoid this problem entirely since tool dispatch is graph-driven, not text-parsed.
 
 ### Agent times out or hangs
 
-**Cause:** vLLM not running or not reachable from the sandbox.
+**Cause:** vLLM not running, not reachable from the sandbox, or the NemoClaw proxy 60-second timeout cutting off long synthesis operations.
 
 **Fix:** Verify vLLM is healthy:
 ```bash
 curl http://spark-ee7d.local:8000/health
 ```
-From inside a sandbox, the agent reaches the LLM through `inference.local`. Check the NemoClaw inference config:
-```bash
-openshell inference show
-```
+For LangGraph agents, ensure configs point directly to `spark-ee7d.local:8000` rather than `inference.local` to bypass the proxy timeout.
 
 ### Documents don't appear in the sidebar
 
@@ -498,11 +497,20 @@ openshell inference show
 ```bash
 docker logs ncms-hub 2>&1 | grep document
 ```
-Verify the agent's `writeprd` or `writedesign` tool call completed successfully in the Phoenix trace.
+Verify the agent's publish tool call completed successfully in the Phoenix trace.
+
+### Auto-chain doesn't trigger downstream agents
+
+**Cause:** Bus announcement not reaching the next agent, or the receiving agent's trigger listener not running.
+
+**Fix:** Check that the publishing agent's bus announcement completed in the Phoenix trace. Verify the downstream agent is registered and subscribed to the correct domains in the hub health endpoint:
+```bash
+curl http://localhost:9080/api/v1/health
+```
 
 ### Tavily web search fails
 
-**Cause:** `TAVILY_API_KEY` not injected into the Product Owner's sandbox.
+**Cause:** `TAVILY_API_KEY` not injected into the Researcher's sandbox.
 
 **Fix:** Verify the provider exists and the key is set:
 ```bash
@@ -513,7 +521,7 @@ If the tavily provider is missing, create it:
 openshell provider create --name tavily --type generic \
   --credential "TAVILY_API_KEY=your_key_here"
 ```
-Then rebuild the product owner sandbox so it picks up the provider.
+Then rebuild the researcher sandbox so it picks up the provider.
 
 ### "Failed to fetch" in dashboard chat
 
@@ -566,7 +574,7 @@ These pull from `pypi.org` and `files.pythonhosted.org`.
 
 **Fix:** Use `nat start fastapi` instead of `nat serve`. The setup script already does this.
 
-### Multiple NAT processes fighting for a port
+### Multiple processes fighting for a port
 
 **Cause:** Previous agent process was not killed before starting a new one.
 
@@ -580,13 +588,15 @@ Then restart the agent or run `./setup_nemoclaw.sh --rebuild`.
 
 ### Known Quirks
 
-1. **Architect always needs manual approval.** Security, builder, and product owner tend to auto-approve after the first time, but the architect sandbox has stale state in the gateway database that persists across restarts.
+1. **Architect always needs manual approval.** Security, builder, and other sandboxes tend to auto-approve after the first time, but the architect sandbox has stale state in the gateway database that persists across restarts.
 
 2. **Gateway restart wipes approvals.** If you restart the NemoClaw gateway (`openshell gateway restart`), all interactive approvals are lost. The sandboxes will need re-approval on their next connection attempt.
 
 3. **Stale sandbox names.** If a sandbox name was previously denied, the gateway DB keeps the deny state. Restarting the gateway clears this. If you see persistent 403 errors after creating a sandbox with a previously-used name, restart the gateway.
 
-4. **`openshell forward` maps same port only.** You cannot map `localhost:9000` to sandbox port `8000`. Each agent listens on a unique port (8001/8002/8003/8004) so the forwards work 1:1.
+4. **`openshell forward` maps same port only.** You cannot map `localhost:9000` to sandbox port `8000`. Each agent listens on a unique port so the forwards work 1:1.
+
+5. **NemoClaw proxy 60-second timeout.** The `inference.local` proxy has a hardcoded 60-second timeout. LangGraph synthesis nodes that generate large documents (15-18KB) can exceed this. Solution: connect LangGraph agents directly to the Spark URL.
 
 ---
 
@@ -594,11 +604,11 @@ Then restart the agent or run `./setup_nemoclaw.sh --rebuild`.
 
 ```bash
 # Full lifecycle
-./setup_nemoclaw.sh                     # Full setup (hub + 4 sandboxes)
+./setup_nemoclaw.sh                     # Full setup (hub + agent sandboxes)
 ./setup_nemoclaw.sh --rebuild           # Teardown everything, then full setup
 ./setup_nemoclaw.sh --status            # Show status of all components
 ./setup_nemoclaw.sh --teardown          # Remove everything (sandboxes + Docker)
-./setup_nemoclaw.sh --trigger           # Trigger builder design cycle via bus
+./setup_nemoclaw.sh --trigger           # Trigger research pipeline (auto-chains to PRD + design)
 ./setup_nemoclaw.sh --skip-hub          # Only create agent sandboxes (hub already running)
 
 # NemoClaw management
@@ -611,7 +621,7 @@ openshell provider list                 # Check providers (tavily, dgx-spark)
 
 # Agent debugging
 ssh openshell-ncms-architect 'tail -f /tmp/ncms-nat-agent.log'       # Stream agent logs
-ssh openshell-ncms-product-owner 'tail -f /tmp/ncms-nat-agent.log'   # Product owner logs
+ssh openshell-ncms-researcher 'tail -f /tmp/ncms-nat-agent.log'      # Researcher logs
 ssh openshell-ncms-builder 'pgrep -fa python'                         # Check running processes
 ssh openshell-ncms-security 'curl -s localhost:8002/health'           # Agent health check
 
@@ -631,56 +641,63 @@ INFERENCE_MODEL=my-org/my-model \
 
 The glue between NAT and NCMS lives in `packages/nvidia-nat-ncms/`. It is a NAT plugin that registers these components:
 
-- **`ncms_memory`** — A `MemoryEditor` that stores and searches memories via the NCMS Hub HTTP API. Handles agent registration, SSE subscription, and knowledge file loading on startup.
-- **`ask_knowledge`** — A tool that sends questions through the Knowledge Bus to domain experts and returns their answers. Supports comma-separated domain targeting.
-- **`announce_knowledge`** — A tool that broadcasts information to all subscribed agents.
-- **`web_search`** — A tool that calls the Tavily API for web search results. Uses the `TAVILY_API_KEY` environment variable injected by the OpenShell provider.
-- **`writeprd`** — A tool that publishes a PRD to the hub's document store, triggering an SSE event for the dashboard.
-- **`writedesign`** — A tool that publishes a design document to the hub's document store.
+- **`ncms_memory`** -- A `MemoryEditor` that stores and searches memories via the NCMS Hub HTTP API. Handles agent registration, SSE subscription, and knowledge file loading on startup.
+- **`ask_knowledge`** / **`bus_ask`** -- A tool that sends questions through the Knowledge Bus to domain experts and returns their answers. Supports comma-separated domain targeting.
+- **`announce_knowledge`** -- A tool that broadcasts information to all subscribed agents.
+- **`web_search`** -- A tool that calls the Tavily API for web search results. Uses the `TAVILY_API_KEY` environment variable injected by the OpenShell provider.
+- **`read_document`** -- A tool that reads a published document from the hub's document store by ID.
+- **`writeprd`** -- A tool that publishes a PRD to the hub's document store, triggering an SSE event for the dashboard.
+- **`writedesign`** -- A tool that publishes a design document to the hub's document store.
+- **`publish_document`** -- Generic document publishing tool used by LangGraph pipeline nodes.
 
-The plugin uses namespace packages (no `__init__.py` in `nat/` or `nat/plugins/`). Only `nat/plugins/ncms/__init__.py` exists, which imports the registration decorators. This is critical — adding `__init__.py` files in the wrong places shadows the core NAT package and breaks everything.
+The plugin uses namespace packages (no `__init__.py` in `nat/` or `nat/plugins/`). Only `nat/plugins/ncms/__init__.py` exists, which imports the registration decorators. This is critical -- adding `__init__.py` files in the wrong places shadows the core NAT package and breaks everything.
 
 ---
 
 ## What's Next
 
-The pipeline runs end-to-end. These are the next areas of investment:
+The auto-chaining pipeline runs end-to-end. These are the next areas of investment:
+
+### Review Loop
+
+The pipeline currently produces three documents in a forward-only chain. The next step is a review loop: the Architect and Security agents review the Builder's implementation design, score it against ADR compliance and STRIDE coverage, provide structured feedback, and the Builder iterates until the design exceeds an 80% quality threshold. This closes the loop between expert knowledge and implementation output.
+
+### Coding Agent
+
+A sixth agent that takes the Builder's 18KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this -- the coding agent would consume them as specifications. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
 
 ### Model Experiments
 
-The current pipeline runs on Nemotron Nano 30B (3B active parameters). The results are strong — real web research, multi-agent coordination, domain-grounded designs — but the model doesn't always cite specific ADR numbers or produce language-specific code snippets. Larger models should close this gap.
-
-**Nemotron Super 120B-A12B-NVFP4** is the next experiment. At 120B total / 12B active parameters with NVIDIA's FP4 quantization, it fits on the DGX Spark (~60GB model, ~68GB for KV cache) and provides 4x the active compute. Expected improvements: explicit ADR citations by number, CALM model references, TypeScript code snippets in designs, and more reliable multi-step tool calling. The vLLM command:
+**Nemotron Super 120B-A12B-NVFP4** is the next experiment. At 120B total / 12B active parameters (4x Nano's active compute) with NVIDIA's FP4 quantization, it fits on the DGX Spark (~60GB model, ~68GB for KV cache). Expected improvements: richer expert consultations, more detailed implementation designs, and more reliable multi-step reasoning. Requires NVIDIA driver 590+ for NVFP4 support. The vLLM command:
 
 ```bash
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-super \
   -p 8000:8000 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 \
     --host 0.0.0.0 --port 8000 \
     --trust-remote-code \
-    --max-model-len 65536 \
+    --max-model-len 262144 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder
 ```
 
-**Qwen 3.5 Coder (various sizes)** is a potential alternative for code-heavy output. The 32B variant fits easily; the 80B variant would require FP8 quantization (~80GB, leaving ~48GB for KV cache — tight but feasible for single-agent workloads). Qwen models have excellent tool calling compliance and may not need `enable_thinking: false`.
-
 | Model | Active Params | Memory (FP4/FP8) | KV Cache | Fit on 128GB Spark? |
 |-------|--------------|-------------------|----------|-------------------|
 | Nemotron Nano 30B (current) | 3B | ~15GB | ~113GB | Easy |
-| **Nemotron Super 120B-A12B** | **12B** | **~60GB** | **~68GB** | **Yes — next experiment** |
+| **Nemotron Super 120B-A12B** | **12B** | **~60GB** | **~68GB** | **Yes -- next experiment** |
 | Qwen 3.5 Coder 32B | 32B (dense) | ~32GB (FP8) | ~96GB | Yes |
-| Qwen 3.5 Coder 80B | 80B (dense) | ~80GB (FP8) | ~48GB | Tight — single user only |
 
-No agent config changes are needed when switching models — just update the vLLM serve command and the `model_name` in each agent's YAML config.
+### 1M Context
+
+The current pipeline uses 256K context. Nemotron Nano supports up to 1M tokens. Pushing to `--max-model-len 1048576` would enable massive document synthesis -- feeding the full research report, PRD, and all expert consultations into a single Builder context for richer, more coherent implementation designs. At 1M context, KV cache usage increases but remains feasible on the 128GB Spark for single-user workloads.
 
 ### Platform Capabilities
 
-- **Human approval workflows** — The dashboard supports agent chat, but structured approve/reject/modify flows for PRDs before they reach the Builder are not yet wired up. This is the path to human-in-the-loop governance.
-- **CrewAI StorageBackend integration** — CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
-- **Automated proxy approval** — NemoClaw issue #326 tracks the request for static policy to work with private IPs without interactive approval. When that lands, the setup becomes truly one-command with zero manual steps.
-- **Multi-pipeline orchestration** — Running multiple pipelines concurrently (e.g., identity service + payment service) with cross-pipeline knowledge sharing through the bus.
-- **Production hardening** — mTLS between agents and hub, secret rotation for API keys, pod-level resource limits, and horizontal scaling of the hub.
-- **Coding agent integration** — A fifth agent that takes the Builder's implementation design and generates actual TypeScript source code, tests, and Dockerfiles. The design documents are already structured for this — the coding agent would consume them as specifications.
+- **Human approval workflows** -- The dashboard supports agent chat, but structured approve/reject/modify flows for PRDs and designs are not yet wired up. This is the path to human-in-the-loop governance.
+- **CrewAI StorageBackend integration** -- CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
+- **Automated proxy approval** -- NemoClaw issue #326 tracks the request for static policy to work with private IPs without interactive approval. When that lands, the setup becomes truly one-command with zero manual steps.
+- **Multi-pipeline orchestration** -- Running multiple pipelines concurrently (e.g., identity service + payment service) with cross-pipeline knowledge sharing through the bus.
+- **Production hardening** -- mTLS between agents and hub, secret rotation for API keys, pod-level resource limits, and horizontal scaling of the hub.
