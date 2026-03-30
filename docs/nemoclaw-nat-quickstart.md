@@ -1,29 +1,53 @@
 # Multi-Agent Software Delivery Pipeline
+### From research to implementation design in one autonomous pass — grounded in memory that actually works
 
-**Four AI agents that research, design, and review a microservice — with shared persistent memory, kernel-level sandboxing, web search, document publishing, and full LLM observability. Running on commodity hardware.**
+Most agent memory systems retrieve the wrong context at the wrong time. NCMS does not. Its vector-free hybrid retrieval — BM25 lexical search, SPLADE v3 sparse neural expansion, and graph spreading activation — achieves nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines with zero dense embeddings and zero external API calls. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. We plugged that memory into a four-agent software delivery pipeline, running on a single DGX Spark with only 3B active parameters, and built the whole thing in under two weeks.
 
-## Executive Summary
+The Security agent cites specific threat IDs (THR-001, THR-002) and NIST control references from its seeded STRIDE model. The Architect references CALM governance patterns and ADR decisions from seeded knowledge files. The Builder consults both experts in parallel via native tool calling, then produces implementation designs with per-STRIDE-category mitigations. Every agent runs in its own NemoClaw kernel-isolated sandbox. Every LLM call is traced end-to-end through Phoenix OpenTelemetry. This is not a demo — it is a working pipeline that produces auditable artifacts.
 
-This system replaces manual research-to-design handoffs with an autonomous agent pipeline. A Product Owner agent searches the live web for current industry standards, synthesizes a PRD, and hands it to a Builder agent that consults domain experts — an Architect and a Security specialist — in parallel. The entire pipeline runs on a single DGX Spark (128GB) using Nemotron Nano 30B, a mixture-of-experts model with only 3B active parameters, inside kernel-isolated sandboxes with explicit network policies. In our test run, the Security agent cited specific threat IDs (THR-001, THR-002) and NIST control references (IA-2(1), SC-13(1)) from its seeded STRIDE threat model — not generic LLM knowledge, but grounded domain expertise. The Builder produced a three-phase implementation plan with per-STRIDE-category mitigations, all with zero human intervention between phases.
+> **NCMS vs. the field — SWE-bench Django (850 real GitHub issues)**
+>
+> | Metric | NCMS | Mem0 | Letta | What it measures |
+> |--------|------|------|-------|------------------|
+> | **Temporal Reasoning** (nDCG@10) | **0.1217** | 0.0194 | 0.0421 | Finding the right version of a fact over time |
+> | **Cross-Document Association** (nDCG@10) | **0.2031** | 0.0614 | 0.0718 | Connecting related information across files |
+> | **Recall AR** (nDCG@10) | **0.2031** | 0.0614 | 0.0718 | Overall structured recall quality |
+> | **SciFact Retrieval** (nDCG@10) | **0.7206** | — | — | Raw retrieval accuracy on scientific claims |
+>
+> Zero vector databases. Zero embedding API calls. Everything runs locally.
 
-This guide covers the real setup process, including the parts that fight back.
+### The Insight That Changed Everything
 
----
+The breakthrough wasn't a model upgrade or an infrastructure change. It was a single realization:
+
+> ***"Don't just tell the agent what to do — tell it what it knows."***
+
+When we added knowledge-aware prompts — describing that the Security agent has access to STRIDE threat models with specific threat IDs, that the Architect has ADRs and CALM specifications — the same 3B-active-parameter model went from producing generic responses to citing THR-001, NIST IA-2(1), and OWASP ASVS v5.0 control sections. No model change. No fine-tuning. Just better prompts. The agents always had the capability; they just didn't know they had the knowledge to cite.
 
 ## What You Are Building
 
-Four specialized agents work together through a research-to-design pipeline, coordinated by a shared knowledge bus and observable through a real-time dashboard.
+Four specialized AI agents coordinate through a shared knowledge bus to execute a research-to-design pipeline. A real-time dashboard gives you full visibility into every agent interaction, document artifact, and LLM trace.
 
-| Agent | Role | Domains | Tools | Port |
-|-------|------|---------|-------|------|
-| **Architect** | ADRs, CALM model, system design | architecture, calm-model, quality, decisions | ask_knowledge, announce_knowledge | 8001 |
-| **Security** | OWASP threats, STRIDE, compliance | security, threats, compliance, controls | ask_knowledge, announce_knowledge | 8002 |
-| **Builder** | Creates implementation designs from PRDs | identity-service, implementation | ask_knowledge, writedesign | 8003 |
-| **Product Owner** | Researches topics, creates PRDs | product, requirements, research | web_search, ask_knowledge, writeprd | 8004 |
-
-The Product Owner researches topics via Tavily web search and publishes PRDs. The Builder consults the Architect and Security agents using native tool calling — in parallel — then produces design documents. NCMS provides BM25 + SPLADE v3 hybrid retrieval as the shared memory layer. NVIDIA NeMo Agent Toolkit (NAT) provides the agent framework. Every agent runs in its own NemoClaw kernel-isolated sandbox with explicit network policies. Phoenix OpenTelemetry tracing gives you full LLM observability per agent.
+| Agent | Role | Knowledge Seeds | Tools | Port |
+|-------|------|-----------------|-------|------|
+| **Product Owner** | Live web research, PRD authoring | PRD templates, product methodology | web_search, ask_knowledge, writeprd | 8004 |
+| **Builder** | Consults experts, produces designs | *(learns by asking experts)* | ask_knowledge, writedesign | 8003 |
+| **Architect** | ADRs, CALM governance, system design | ADR-001..003, CALM model, C4 diagrams | ask_knowledge, announce_knowledge | 8001 |
+| **Security** | STRIDE threats, OWASP, compliance | STRIDE threat model, OWASP controls | ask_knowledge, announce_knowledge | 8002 |
 
 ![Multi-Agent Pipeline](assets/multi-agent-pipeline.svg)
+
+### Built With
+
+| Layer | Technology | Detail |
+|-------|-----------|--------|
+| **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph — nDCG@10 = 0.7206 |
+| **Agents** | NVIDIA NeMo Agent Toolkit | Native tool calling, RCTRO prompts, `react_agent` |
+| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 65K context on DGX Spark (128GB) |
+| **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
+| **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
+| **Research** | Tavily | Live web search for Product Owner |
+| **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
 
 ---
 

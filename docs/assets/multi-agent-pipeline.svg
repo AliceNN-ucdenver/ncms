@@ -1,250 +1,270 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
-    <!-- Gradient backgrounds -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#0a0e1a;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#1a1040;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="hubGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#2a1a4a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1a0e3a;stop-opacity:1" />
+    <linearGradient id="hubGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1240;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#120e30;stop-opacity:0.6" />
     </linearGradient>
     <linearGradient id="poGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a3a2a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0e2a1a;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="archGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1a2a4a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#0e1a3a;stop-opacity:1" />
-    </linearGradient>
-    <linearGradient id="secGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4a1a1a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#3a0e0e;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#14332a" />
+      <stop offset="100%" style="stop-color:#0a2018" />
     </linearGradient>
     <linearGradient id="buildGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#3a2a1a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#2a1a0e;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#33250e" />
+      <stop offset="100%" style="stop-color:#221a08" />
     </linearGradient>
-    <linearGradient id="humanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#2a2a3a;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#1a1a2a;stop-opacity:1" />
+    <linearGradient id="archGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#142040" />
+      <stop offset="100%" style="stop-color:#0e1530" />
     </linearGradient>
-    <!-- Glow filter -->
+    <linearGradient id="secGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3a1418" />
+      <stop offset="100%" style="stop-color:#280c10" />
+    </linearGradient>
+    <linearGradient id="sandboxGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0e1020" />
+      <stop offset="100%" style="stop-color:#16122a" />
+    </linearGradient>
+    <linearGradient id="glowLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:0.9" />
+    </linearGradient>
+
     <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feGaussianBlur stdDeviation="4" result="blur" />
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <filter id="softGlow">
       <feGaussianBlur stdDeviation="2" result="blur" />
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <!-- Arrow marker -->
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#bb80ff" opacity="0.8"/>
+    <filter id="boxGlow">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="blur" in2="SourceGraphic" operator="over"/>
+    </filter>
+
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#4ade80" opacity="0.9"/>
     </marker>
-    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4ade80" opacity="0.8"/>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f59e0b" opacity="0.9"/>
     </marker>
-    <marker id="arrowOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" opacity="0.8"/>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#60a5fa" opacity="0.9"/>
     </marker>
-    <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171" opacity="0.8"/>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#f87171" opacity="0.9"/>
     </marker>
-    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#60a5fa" opacity="0.8"/>
+    <marker id="arrowAmberReturn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" opacity="0.7"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="800" fill="url(#bgGrad)" rx="12"/>
+  <rect width="1200" height="700" fill="url(#bgGrad)" rx="12"/>
 
-  <!-- Title -->
-  <text x="600" y="45" text-anchor="middle" fill="#bb80ff" font-size="22" font-weight="700" filter="url(#softGlow)">NCMS Multi-Agent Orchestration Pipeline</text>
-  <text x="600" y="68" text-anchor="middle" fill="#8b8b9e" font-size="12">NeMo Cognitive Memory System + NeMo Agent Toolkit + NemoClaw Sandboxes</text>
+  <!-- ════════════════════ NCMS KNOWLEDGE HUB (background layer) ════════════════════ -->
+  <rect x="80" y="120" width="1040" height="340" rx="20" fill="url(#hubGrad)" stroke="#7c5cbf" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.8"/>
 
-  <!-- ═══════════════════ KNOWLEDGE HUB (center) ═══════════════════ -->
-  <rect x="420" y="300" width="360" height="200" rx="16" fill="url(#hubGrad)" stroke="#bb80ff" stroke-width="2" opacity="0.95"/>
-  <text x="600" y="330" text-anchor="middle" fill="#bb80ff" font-size="16" font-weight="700">NCMS Knowledge Hub</text>
-  <text x="600" y="350" text-anchor="middle" fill="#8b8b9e" font-size="10">:9080 — Memory + Bus + Documents</text>
+  <!-- Hub label top-left -->
+  <text x="110" y="150" fill="#bb80ff" font-size="14" font-weight="700" filter="url(#softGlow)">NCMS Knowledge Hub</text>
+  <text x="110" y="168" fill="#8b7bae" font-size="10">BM25 (Tantivy/Rust) + SPLADE v3 Sparse Neural + Graph Spreading Activation</text>
+  <text x="110" y="183" fill="#6b5b8e" font-size="10">nDCG@10 = 0.7206 on SciFact  |  Zero Vector DBs  |  Zero External API Calls</text>
 
-  <!-- Hub internals -->
-  <rect x="440" y="365" width="100" height="35" rx="6" fill="#1a1040" stroke="#7c5cbf" stroke-width="1"/>
-  <text x="490" y="387" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Memory Store</text>
-  <text x="490" y="398" text-anchor="middle" fill="#8b8b9e" font-size="8">BM25 + SPLADE</text>
+  <!-- Hub internal chips along bottom of hub area -->
+  <rect x="195" y="415" width="105" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="247" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">Memory Store</text>
 
-  <rect x="550" y="365" width="100" height="35" rx="6" fill="#1a1040" stroke="#7c5cbf" stroke-width="1"/>
-  <text x="600" y="387" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Knowledge Bus</text>
-  <text x="600" y="398" text-anchor="middle" fill="#8b8b9e" font-size="8">SSE + Ask/Announce</text>
+  <rect x="315" y="415" width="105" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="367" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">Knowledge Bus</text>
 
-  <rect x="660" y="365" width="100" height="35" rx="6" fill="#1a1040" stroke="#7c5cbf" stroke-width="1"/>
-  <text x="710" y="387" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Document Store</text>
-  <text x="710" y="398" text-anchor="middle" fill="#8b8b9e" font-size="8">PRDs + Designs</text>
+  <rect x="435" y="415" width="115" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="492" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">Knowledge Graph</text>
 
-  <!-- Knowledge Graph -->
-  <rect x="440" y="410" width="155" height="35" rx="6" fill="#1a1040" stroke="#7c5cbf" stroke-width="1"/>
-  <text x="517" y="432" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Knowledge Graph</text>
-  <text x="517" y="443" text-anchor="middle" fill="#8b8b9e" font-size="8">NetworkX + Entities</text>
+  <rect x="565" y="415" width="105" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="617" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">Document Store</text>
 
-  <!-- Dashboard -->
-  <rect x="605" y="410" width="155" height="35" rx="6" fill="#1a1040" stroke="#7c5cbf" stroke-width="1"/>
-  <text x="682" y="432" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Dashboard</text>
-  <text x="682" y="443" text-anchor="middle" fill="#8b8b9e" font-size="8">:8420 — SPA + SSE</text>
+  <rect x="685" y="415" width="95" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="732" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">Dashboard</text>
 
-  <!-- Hub badge -->
-  <rect x="440" y="455" width="320" height="30" rx="6" fill="#0e0820" stroke="#4a3680" stroke-width="1"/>
-  <text x="600" y="474" text-anchor="middle" fill="#8b8b9e" font-size="9">SQLite (WAL) + Tantivy (Rust BM25) + SPLADE v3 Neural + ACT-R Scoring</text>
+  <rect x="795" y="415" width="85" height="28" rx="6" fill="#12102a" stroke="#5a4a8a" stroke-width="1"/>
+  <text x="837" y="434" text-anchor="middle" fill="#c4b5fd" font-size="9" font-weight="600">ACT-R</text>
 
-  <!-- ═══════════════════ AGENTS ═══════════════════ -->
+  <!-- ════════════════════ TITLE ════════════════════ -->
+  <text x="600" y="42" text-anchor="middle" fill="#e2d5ff" font-size="22" font-weight="700" filter="url(#softGlow)">Multi-Agent Software Delivery Pipeline</text>
+  <text x="600" y="65" text-anchor="middle" fill="#8b7bae" font-size="12">Research to Implementation Design  |  4 Agents  |  Shared Persistent Memory  |  Full Observability</text>
 
-  <!-- ARCHITECT (top left) -->
-  <rect x="40" y="100" width="230" height="160" rx="12" fill="url(#archGrad)" stroke="#60a5fa" stroke-width="1.5"/>
-  <circle cx="65" cy="125" r="12" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.5"/>
-  <text x="65" y="130" text-anchor="middle" fill="#60a5fa" font-size="14">A</text>
-  <text x="90" y="130" fill="#60a5fa" font-size="14" font-weight="700">Architect</text>
-  <text x="195" y="130" fill="#3b82f6" font-size="9" opacity="0.7">:8001</text>
-  <rect x="55" y="140" width="60" height="18" rx="4" fill="#1e3a5f"/>
-  <text x="85" y="153" text-anchor="middle" fill="#93c5fd" font-size="8">architecture</text>
-  <rect x="120" y="140" width="50" height="18" rx="4" fill="#1e3a5f"/>
-  <text x="145" y="153" text-anchor="middle" fill="#93c5fd" font-size="8">decisions</text>
-  <rect x="175" y="140" width="45" height="18" rx="4" fill="#1e3a5f"/>
-  <text x="197" y="153" text-anchor="middle" fill="#93c5fd" font-size="8">quality</text>
-  <line x1="55" y1="168" x2="255" y2="168" stroke="#2a4a6a" stroke-width="0.5"/>
-  <text x="55" y="183" fill="#8babc5" font-size="9">Seeds: ADR-001..003, CALM model,</text>
-  <text x="55" y="195" fill="#8babc5" font-size="9">quality attributes, C4 diagrams</text>
-  <text x="55" y="212" fill="#5b8bb5" font-size="9" font-style="italic">Tools: ask_knowledge</text>
-  <text x="55" y="225" fill="#5b8bb5" font-size="9" font-style="italic">LLM: Nemotron Nano 30B</text>
-  <text x="55" y="248" fill="#3b6a9f" font-size="8">NemoClaw Sandbox</text>
-
-  <!-- SECURITY (top right) -->
-  <rect x="930" y="100" width="230" height="160" rx="12" fill="url(#secGrad)" stroke="#f87171" stroke-width="1.5"/>
-  <circle cx="955" cy="125" r="12" fill="#5f1e1e" stroke="#f87171" stroke-width="1.5"/>
-  <text x="955" y="130" text-anchor="middle" fill="#f87171" font-size="14">S</text>
-  <text x="980" y="130" fill="#f87171" font-size="14" font-weight="700">Security</text>
-  <text x="1085" y="130" fill="#ef4444" font-size="9" opacity="0.7">:8002</text>
-  <rect x="945" y="140" width="50" height="18" rx="4" fill="#5f1e1e"/>
-  <text x="970" y="153" text-anchor="middle" fill="#fca5a5" font-size="8">security</text>
-  <rect x="1000" y="140" width="45" height="18" rx="4" fill="#5f1e1e"/>
-  <text x="1022" y="153" text-anchor="middle" fill="#fca5a5" font-size="8">threats</text>
-  <rect x="1050" y="140" width="55" height="18" rx="4" fill="#5f1e1e"/>
-  <text x="1077" y="153" text-anchor="middle" fill="#fca5a5" font-size="8">compliance</text>
-  <line x1="945" y1="168" x2="1145" y2="168" stroke="#6a2a2a" stroke-width="0.5"/>
-  <text x="945" y="183" fill="#c58b8b" font-size="9">Seeds: STRIDE threat model,</text>
-  <text x="945" y="195" fill="#c58b8b" font-size="9">OWASP controls, security matrix</text>
-  <text x="945" y="212" fill="#b55b5b" font-size="9" font-style="italic">Tools: ask_knowledge</text>
-  <text x="945" y="225" fill="#b55b5b" font-size="9" font-style="italic">LLM: Nemotron Nano 30B</text>
-  <text x="945" y="248" fill="#9f3b3b" font-size="8">NemoClaw Sandbox</text>
-
-  <!-- PRODUCT OWNER (left) -->
-  <rect x="40" y="360" width="230" height="180" rx="12" fill="url(#poGrad)" stroke="#4ade80" stroke-width="1.5"/>
-  <circle cx="65" cy="385" r="12" fill="#1e5f3a" stroke="#4ade80" stroke-width="1.5"/>
-  <text x="65" y="390" text-anchor="middle" fill="#4ade80" font-size="14">P</text>
-  <text x="90" y="390" fill="#4ade80" font-size="14" font-weight="700">Product Owner</text>
-  <text x="195" y="390" fill="#22c55e" font-size="9" opacity="0.7">:8004</text>
-  <rect x="55" y="400" width="50" height="18" rx="4" fill="#1e5f3a"/>
-  <text x="80" y="413" text-anchor="middle" fill="#86efac" font-size="8">product</text>
-  <rect x="110" y="400" width="65" height="18" rx="4" fill="#1e5f3a"/>
-  <text x="142" y="413" text-anchor="middle" fill="#86efac" font-size="8">requirements</text>
-  <rect x="180" y="400" width="50" height="18" rx="4" fill="#1e5f3a"/>
-  <text x="205" y="413" text-anchor="middle" fill="#86efac" font-size="8">research</text>
-  <line x1="55" y1="425" x2="255" y2="425" stroke="#2a6a4a" stroke-width="0.5"/>
-  <text x="55" y="440" fill="#8bc5ab" font-size="9">Researches via Tavily web search</text>
-  <text x="55" y="452" fill="#8bc5ab" font-size="9">Publishes PRD documents</text>
-  <text x="55" y="469" fill="#5bb58b" font-size="9" font-style="italic">Tools: web_search, writeprd</text>
-  <text x="55" y="482" fill="#5bb58b" font-size="9" font-style="italic">LLM: Nemotron Nano 30B</text>
-  <text x="55" y="500" fill="#4a8b6b" font-size="8">Tavily API + NemoClaw Sandbox</text>
-  <text x="55" y="528" fill="#3b9f6b" font-size="8">NemoClaw Sandbox</text>
-
-  <!-- BUILDER (right) -->
-  <rect x="930" y="360" width="230" height="180" rx="12" fill="url(#buildGrad)" stroke="#f59e0b" stroke-width="1.5"/>
-  <circle cx="955" cy="385" r="12" fill="#5f3a1e" stroke="#f59e0b" stroke-width="1.5"/>
-  <text x="955" y="390" text-anchor="middle" fill="#f59e0b" font-size="14">B</text>
-  <text x="980" y="390" fill="#f59e0b" font-size="14" font-weight="700">Builder</text>
-  <text x="1085" y="390" fill="#d97706" font-size="9" opacity="0.7">:8003</text>
-  <rect x="945" y="400" width="75" height="18" rx="4" fill="#5f3a1e"/>
-  <text x="982" y="413" text-anchor="middle" fill="#fde68a" font-size="8">identity-service</text>
-  <rect x="1025" y="400" width="75" height="18" rx="4" fill="#5f3a1e"/>
-  <text x="1062" y="413" text-anchor="middle" fill="#fde68a" font-size="8">implementation</text>
-  <line x1="945" y1="425" x2="1145" y2="425" stroke="#6a4a2a" stroke-width="0.5"/>
-  <text x="945" y="440" fill="#c5ab8b" font-size="9">Consults architect + security</text>
-  <text x="945" y="452" fill="#c5ab8b" font-size="9">Creates TypeScript impl designs</text>
-  <text x="945" y="469" fill="#b58b5b" font-size="9" font-style="italic">Tools: ask_knowledge, writedesign</text>
-  <text x="945" y="482" fill="#b58b5b" font-size="9" font-style="italic">LLM: Nemotron Nano 30B</text>
-  <text x="945" y="500" fill="#8b6b4a" font-size="8">RCTRO Prompt Format</text>
-  <text x="945" y="528" fill="#9f6b3b" font-size="8">NemoClaw Sandbox</text>
-
-  <!-- HUMAN (bottom center) -->
-  <rect x="460" y="560" width="280" height="90" rx="12" fill="url(#humanGrad)" stroke="#a78bfa" stroke-width="1.5"/>
-  <circle cx="485" cy="585" r="12" fill="#2a2a4a" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="485" y="590" text-anchor="middle" fill="#a78bfa" font-size="14">H</text>
-  <text x="510" y="590" fill="#a78bfa" font-size="14" font-weight="700">Human</text>
-  <rect x="475" y="600" width="80" height="18" rx="4" fill="#2a2a4a"/>
-  <text x="515" y="613" text-anchor="middle" fill="#c4b5fd" font-size="8">human-approval</text>
-  <text x="475" y="637" fill="#8b8bab" font-size="9">Dashboard UI: Chat, Approvals, Documents</text>
-
-  <!-- ═══════════════════ FLOW ARROWS ═══════════════════ -->
-
-  <!-- Step 1: Architect seeds knowledge -->
-  <path d="M 155 260 Q 155 310 420 350" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowBlue)" opacity="0.7"/>
-  <rect x="200" y="278" width="130" height="20" rx="4" fill="#0e1a3a" opacity="0.9"/>
-  <text x="265" y="292" text-anchor="middle" fill="#60a5fa" font-size="9" font-weight="600">1  Seeds ADRs + Patterns</text>
-
-  <!-- Step 2: Security seeds knowledge -->
-  <path d="M 1045 260 Q 1045 310 780 350" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrowRed)" opacity="0.7"/>
-  <rect x="850" y="278" width="140" height="20" rx="4" fill="#3a0e0e" opacity="0.9"/>
-  <text x="920" y="292" text-anchor="middle" fill="#f87171" font-size="9" font-weight="600">2  Seeds Threat Model</text>
-
-  <!-- Step 3: PO searches web + publishes PRD -->
-  <path d="M 270 430 L 420 400" fill="none" stroke="#4ade80" stroke-width="2" marker-end="url(#arrowGreen)" filter="url(#softGlow)"/>
-  <rect x="290" y="398" width="120" height="20" rx="4" fill="#0e2a1a" opacity="0.9"/>
-  <text x="350" y="412" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="600">3  Publishes PRD</text>
+  <!-- ════════════════════ PHASE 1: PRODUCT OWNER ════════════════════ -->
 
   <!-- Tavily cloud -->
-  <rect x="40" y="560" width="140" height="50" rx="10" fill="#0e2a1a" stroke="#22c55e" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="110" y="583" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">Tavily Search</text>
-  <text x="110" y="598" text-anchor="middle" fill="#3b9f6b" font-size="9">api.tavily.com</text>
-  <path d="M 110 560 L 110 540 L 155 510" fill="none" stroke="#4ade80" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#arrowGreen)" opacity="0.6"/>
+  <rect x="100" y="88" width="90" height="30" rx="8" fill="#0a1a14" stroke="#22c55e" stroke-width="1" stroke-dasharray="3,2" opacity="0.7"/>
+  <text x="145" y="107" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="600">Tavily</text>
+  <path d="M 145 118 L 160 200" fill="none" stroke="#4ade80" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
 
-  <!-- Step 4: Human reviews + clicks Send to Builder -->
-  <path d="M 600 560 L 600 500" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
-  <rect x="530" y="522" width="140" height="20" rx="4" fill="#1a1040" opacity="0.9"/>
-  <text x="600" y="536" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="600">4  Reviews + Delegates</text>
+  <!-- PO Box -->
+  <rect x="110" y="210" width="180" height="170" rx="14" fill="url(#poGrad)" stroke="#4ade80" stroke-width="2" filter="url(#softGlow)"/>
+  <circle cx="138" cy="237" r="14" fill="#1a4a32" stroke="#4ade80" stroke-width="2"/>
+  <text x="138" y="242" text-anchor="middle" fill="#4ade80" font-size="15" font-weight="700">PO</text>
+  <text x="162" y="242" fill="#4ade80" font-size="13" font-weight="700">Product Owner</text>
+  <line x1="125" y1="258" x2="275" y2="258" stroke="#2a5a3a" stroke-width="0.5"/>
+  <text x="125" y="276" fill="#86efac" font-size="10">Live web research</text>
+  <text x="125" y="292" fill="#86efac" font-size="10">PRD authoring</text>
+  <text x="125" y="312" fill="#5bb58b" font-size="9" font-style="italic">Tools: web_search, writeprd</text>
+  <text x="125" y="328" fill="#5bb58b" font-size="9" font-style="italic">ask_knowledge</text>
+  <rect x="125" y="345" width="150" height="22" rx="5" fill="#0e2218" stroke="#2a5a3a" stroke-width="0.5"/>
+  <text x="200" y="360" text-anchor="middle" fill="#3a8a5a" font-size="8">Port 8004</text>
 
-  <!-- Step 5: Builder asks architect -->
-  <path d="M 930 430 Q 600 200 270 180" fill="none" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrowOrange)" opacity="0.6"/>
-  <rect x="540" y="195" width="130" height="20" rx="4" fill="#2a1a0e" opacity="0.9"/>
-  <text x="605" y="209" text-anchor="middle" fill="#f59e0b" font-size="9" font-weight="600">5a  Asks Architect</text>
+  <!-- PRD Document artifact -->
+  <rect x="320" y="265" width="70" height="50" rx="6" fill="#0e1a14" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="355" y="285" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">PRD</text>
+  <text x="355" y="300" text-anchor="middle" fill="#3a8a5a" font-size="7">Document</text>
 
-  <!-- Step 5b: Builder asks security -->
-  <path d="M 1045 360 Q 1045 280 1045 260" fill="none" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrowOrange)" opacity="0.6"/>
-  <rect x="1050" y="295" width="120" height="20" rx="4" fill="#2a1a0e" opacity="0.9"/>
-  <text x="1110" y="309" text-anchor="middle" fill="#f59e0b" font-size="9" font-weight="600">5b  Asks Security</text>
+  <!-- Arrow: PO -> PRD -->
+  <path d="M 290 295 L 318 290" fill="none" stroke="#4ade80" stroke-width="2" marker-end="url(#arrowGreen)" filter="url(#softGlow)"/>
 
-  <!-- Step 6: Builder publishes design -->
-  <path d="M 930 460 L 780 440" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowOrange)" filter="url(#softGlow)"/>
-  <rect x="810" y="448" width="130" height="20" rx="4" fill="#2a1a0e" opacity="0.9"/>
-  <text x="875" y="462" text-anchor="middle" fill="#f59e0b" font-size="9" font-weight="600">6  Publishes Design</text>
+  <!-- Arrow: PRD -> Builder -->
+  <path d="M 390 290 L 450 295" fill="none" stroke="#4ade80" stroke-width="2" marker-end="url(#arrowGreen)" filter="url(#softGlow)"/>
+  <text x="420" y="280" text-anchor="middle" fill="#4ade80" font-size="8" font-weight="600">Send to Builder</text>
 
-  <!-- DGX Spark -->
-  <rect x="460" y="700" width="280" height="55" rx="10" fill="#0e1020" stroke="#7c5cbf" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="600" y="722" text-anchor="middle" fill="#bb80ff" font-size="11" font-weight="600">DGX Spark  —  Nemotron Nano 30B</text>
-  <text x="600" y="740" text-anchor="middle" fill="#6b5b9e" font-size="9">vLLM + qwen3_coder tool calling  |  128 GB  |  65K context</text>
-  <path d="M 600 700 L 600 660" fill="none" stroke="#7c5cbf" stroke-width="1" stroke-dasharray="4,2" opacity="0.4"/>
+  <!-- ════════════════════ PHASE 2: BUILDER ════════════════════ -->
 
-  <!-- Phoenix -->
-  <rect x="220" y="700" width="140" height="55" rx="10" fill="#0e1020" stroke="#7c5cbf" stroke-width="1" stroke-dasharray="4,2"/>
-  <text x="290" y="722" text-anchor="middle" fill="#bb80ff" font-size="11" font-weight="600">Phoenix Tracing</text>
-  <text x="290" y="740" text-anchor="middle" fill="#6b5b9e" font-size="9">OpenTelemetry  :6006</text>
+  <rect x="460" y="225" width="200" height="160" rx="14" fill="url(#buildGrad)" stroke="#f59e0b" stroke-width="2" filter="url(#softGlow)"/>
+  <circle cx="490" cy="252" r="14" fill="#4a3010" stroke="#f59e0b" stroke-width="2"/>
+  <text x="490" y="257" text-anchor="middle" fill="#f59e0b" font-size="14" font-weight="700">B</text>
+  <text x="514" y="257" fill="#f59e0b" font-size="13" font-weight="700">Builder</text>
+  <line x1="475" y1="273" x2="645" y2="273" stroke="#5a4a2a" stroke-width="0.5"/>
+  <text x="475" y="291" fill="#fde68a" font-size="10">Consults experts in parallel</text>
+  <text x="475" y="307" fill="#fde68a" font-size="10">Compiles design document</text>
+  <text x="475" y="327" fill="#b58b5b" font-size="9" font-style="italic">Tools: ask_knowledge</text>
+  <text x="475" y="343" fill="#b58b5b" font-size="9" font-style="italic">writedesign</text>
+  <rect x="475" y="355" width="170" height="22" rx="5" fill="#1a1408" stroke="#5a4a2a" stroke-width="0.5"/>
+  <text x="560" y="370" text-anchor="middle" fill="#8a6a3a" font-size="8">RCTRO Prompts  |  Port 8003</text>
+
+  <!-- PARALLEL label -->
+  <rect x="690" y="218" width="80" height="22" rx="6" fill="#2a1a0e" stroke="#f59e0b" stroke-width="1" opacity="0.9"/>
+  <text x="730" y="233" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">PARALLEL</text>
+
+  <!-- ════════════════════ PHASE 3: ARCHITECT (top) ════════════════════ -->
+
+  <rect x="780" y="140" width="195" height="130" rx="14" fill="url(#archGrad)" stroke="#60a5fa" stroke-width="2" filter="url(#softGlow)"/>
+  <circle cx="808" cy="167" r="14" fill="#1a2a4a" stroke="#60a5fa" stroke-width="2"/>
+  <text x="808" y="172" text-anchor="middle" fill="#60a5fa" font-size="14" font-weight="700">A</text>
+  <text x="832" y="172" fill="#60a5fa" font-size="13" font-weight="700">Architect</text>
+  <line x1="795" y1="188" x2="960" y2="188" stroke="#2a4060" stroke-width="0.5"/>
+  <text x="795" y="206" fill="#93c5fd" font-size="10">ADRs, CALM governance</text>
+  <text x="795" y="222" fill="#93c5fd" font-size="10">System design patterns</text>
+  <text x="795" y="242" fill="#5b8bb5" font-size="9" font-style="italic">Seeds: ADRs, CALM, C4</text>
+  <rect x="795" y="250" width="165" height="14" rx="4" fill="#0e1830"/>
+  <text x="877" y="260" text-anchor="middle" fill="#3b6a9f" font-size="7">Port 8001</text>
+
+  <!-- ════════════════════ PHASE 3: SECURITY (bottom) ════════════════════ -->
+
+  <rect x="780" y="310" width="195" height="130" rx="14" fill="url(#secGrad)" stroke="#f87171" stroke-width="2" filter="url(#softGlow)"/>
+  <circle cx="808" cy="337" r="14" fill="#4a1a1a" stroke="#f87171" stroke-width="2"/>
+  <text x="808" y="342" text-anchor="middle" fill="#f87171" font-size="14" font-weight="700">S</text>
+  <text x="832" y="342" fill="#f87171" font-size="13" font-weight="700">Security</text>
+  <line x1="795" y1="358" x2="960" y2="358" stroke="#5a2020" stroke-width="0.5"/>
+  <text x="795" y="376" fill="#fca5a5" font-size="10">STRIDE threats, OWASP</text>
+  <text x="795" y="392" fill="#fca5a5" font-size="10">THR-001, THR-002, NIST refs</text>
+  <text x="795" y="412" fill="#b55b5b" font-size="9" font-style="italic">Seeds: STRIDE, OWASP</text>
+  <rect x="795" y="420" width="165" height="14" rx="4" fill="#200e10"/>
+  <text x="877" y="430" text-anchor="middle" fill="#9f3b3b" font-size="7">Port 8002</text>
+
+  <!-- Arrow: Builder -> Architect -->
+  <path d="M 660 270 Q 720 200 778 195" fill="none" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrowBlue)" filter="url(#softGlow)"/>
+
+  <!-- Arrow: Builder -> Security -->
+  <path d="M 660 340 Q 720 370 778 365" fill="none" stroke="#f87171" stroke-width="2" marker-end="url(#arrowRed)" filter="url(#softGlow)"/>
+
+  <!-- Return arrows (dashed) -->
+  <path d="M 780 218 Q 730 250 662 280" fill="none" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowAmberReturn)" opacity="0.6"/>
+  <path d="M 780 388 Q 730 365 662 340" fill="none" stroke="#fca5a5" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowAmberReturn)" opacity="0.6"/>
+
+  <!-- ════════════════════ PHASE 4: DESIGN OUTPUT ════════════════════ -->
+
+  <rect x="1020" y="265" width="80" height="55" rx="8" fill="#1a1408" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1060" y="288" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700">Design</text>
+  <text x="1060" y="305" text-anchor="middle" fill="#b58b3b" font-size="8">Document</text>
+
+  <!-- Arrow: Builder -> Design Doc -->
+  <!-- Route through gap between Architect and Security -->
+  <path d="M 660 305 L 700 305 Q 760 305 770 295 L 780 285 Q 790 275 810 275 L 870 275 Q 980 275 1018 285" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)" filter="url(#softGlow)"/>
+  <text x="940" y="260" text-anchor="middle" fill="#f59e0b" font-size="8" font-weight="600">Publishes</text>
+
+  <!-- ════════════════════ NEMOCLAW SANDBOXES BAR ════════════════════ -->
+
+  <rect x="80" y="510" width="860" height="60" rx="12" fill="url(#sandboxGrad)" stroke="#5a4a7a" stroke-width="1"/>
+  <text x="100" y="535" fill="#9b8bbe" font-size="12" font-weight="700">NemoClaw Sandboxes</text>
+  <text x="100" y="555" fill="#6b5b8e" font-size="9">Kernel-level isolation  |  Explicit network policies  |  OpenShell proxy</text>
+
+  <!-- Individual sandbox boxes -->
+  <rect x="340" y="520" width="85" height="38" rx="6" fill="#0a1a14" stroke="#4ade80" stroke-width="1"/>
+  <text x="382" y="540" text-anchor="middle" fill="#4ade80" font-size="8" font-weight="600">PO</text>
+  <text x="382" y="552" text-anchor="middle" fill="#2a6a4a" font-size="7">sandbox</text>
+
+  <rect x="440" y="520" width="85" height="38" rx="6" fill="#1a1408" stroke="#f59e0b" stroke-width="1"/>
+  <text x="482" y="540" text-anchor="middle" fill="#f59e0b" font-size="8" font-weight="600">Builder</text>
+  <text x="482" y="552" text-anchor="middle" fill="#8a6a3a" font-size="7">sandbox</text>
+
+  <rect x="540" y="520" width="85" height="38" rx="6" fill="#0e1830" stroke="#60a5fa" stroke-width="1"/>
+  <text x="582" y="540" text-anchor="middle" fill="#60a5fa" font-size="8" font-weight="600">Architect</text>
+  <text x="582" y="552" text-anchor="middle" fill="#3b6a9f" font-size="7">sandbox</text>
+
+  <rect x="640" y="520" width="85" height="38" rx="6" fill="#200e10" stroke="#f87171" stroke-width="1"/>
+  <text x="682" y="540" text-anchor="middle" fill="#f87171" font-size="8" font-weight="600">Security</text>
+  <text x="682" y="552" text-anchor="middle" fill="#9f3b3b" font-size="7">sandbox</text>
+
+  <!-- ════════════════════ PHOENIX OBSERVABILITY ════════════════════ -->
+
+  <rect x="960" y="510" width="180" height="60" rx="12" fill="#0e1020" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="1050" y="535" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">Phoenix Tracing</text>
+  <text x="1050" y="553" text-anchor="middle" fill="#6b5b8e" font-size="9">OpenTelemetry  |  :6006</text>
+
+  <!-- Dotted lines from agents down to sandboxes -->
+  <path d="M 200 380 L 382 520" fill="none" stroke="#4ade80" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
+  <path d="M 560 385 L 482 520" fill="none" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
+  <path d="M 877 270 L 582 520" fill="none" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
+  <path d="M 877 440 L 682 520" fill="none" stroke="#f87171" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
+
+  <!-- ════════════════════ DGX SPARK BAR ════════════════════ -->
+
+  <rect x="80" y="590" width="1060" height="50" rx="10" fill="#08060e" stroke="#3a2a5a" stroke-width="1"/>
+  <text x="600" y="614" text-anchor="middle" fill="#bb80ff" font-size="13" font-weight="700" filter="url(#softGlow)">DGX Spark  |  Nemotron Nano 30B  |  256 Experts, 3B Active Params  |  128GB  |  65K Context  |  vLLM + qwen3_coder</text>
+  <text x="600" y="632" text-anchor="middle" fill="#5a4a7a" font-size="9">3B Active Params  |  DGX Spark  |  Zero Vector DBs</text>
+
+  <!-- ════════════════════ FLOW PHASE LABELS ════════════════════ -->
+
+  <rect x="155" y="470" width="80" height="20" rx="5" fill="#0e2218" stroke="#4ade80" stroke-width="1" opacity="0.8"/>
+  <text x="195" y="484" text-anchor="middle" fill="#4ade80" font-size="9" font-weight="700">Phase 1-2</text>
+
+  <rect x="510" y="470" width="100" height="20" rx="5" fill="#1a1408" stroke="#f59e0b" stroke-width="1" opacity="0.8"/>
+  <text x="560" y="484" text-anchor="middle" fill="#f59e0b" font-size="9" font-weight="700">Phase 3</text>
+
+  <rect x="835" y="470" width="100" height="20" rx="5" fill="#12102a" stroke="#a78bfa" stroke-width="1" opacity="0.8"/>
+  <text x="885" y="484" text-anchor="middle" fill="#a78bfa" font-size="9" font-weight="700">Phase 4</text>
+
+  <!-- Human oversight callout -->
+  <rect x="1020" y="170" width="110" height="55" rx="8" fill="#16142a" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="1075" y="192" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="700">Human</text>
+  <text x="1075" y="207" text-anchor="middle" fill="#7b6bae" font-size="8">Review + Approve</text>
+  <text x="1075" y="219" text-anchor="middle" fill="#7b6bae" font-size="8">Dashboard Chat</text>
 
   <!-- Legend -->
-  <rect x="840" y="700" width="320" height="55" rx="10" fill="#0e1020" stroke="#3a3a4a" stroke-width="1"/>
-  <text x="860" y="720" fill="#8b8b9e" font-size="9">Pipeline Flow:</text>
-  <line x1="940" y1="716" x2="970" y2="716" stroke="#4ade80" stroke-width="2"/>
-  <text x="975" y="720" fill="#4ade80" font-size="9">PO → PRD</text>
-  <line x1="1040" y1="716" x2="1070" y2="716" stroke="#f59e0b" stroke-width="2"/>
-  <text x="1075" y="720" fill="#f59e0b" font-size="9">Builder → Design</text>
-  <line x1="860" y1="740" x2="890" y2="740" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="6,3"/>
-  <text x="895" y="744" fill="#60a5fa" font-size="9">Knowledge Seeding</text>
-  <line x1="1020" y1="740" x2="1050" y2="740" stroke="#a78bfa" stroke-width="1.5"/>
-  <text x="1055" y="744" fill="#a78bfa" font-size="9">Human Oversight</text>
+  <rect x="80" y="655" width="1060" height="35" rx="8" fill="#08060e" stroke="#2a2a3a" stroke-width="0.5"/>
+  <line x1="120" y1="675" x2="150" y2="675" stroke="#4ade80" stroke-width="2"/>
+  <text x="155" y="679" fill="#4ade80" font-size="9">Research + PRD</text>
+  <line x1="270" y1="675" x2="300" y2="675" stroke="#f59e0b" stroke-width="2"/>
+  <text x="305" y="679" fill="#f59e0b" font-size="9">Build + Design</text>
+  <line x1="420" y1="675" x2="450" y2="675" stroke="#60a5fa" stroke-width="2"/>
+  <text x="455" y="679" fill="#60a5fa" font-size="9">Architecture</text>
+  <line x1="555" y1="675" x2="585" y2="675" stroke="#f87171" stroke-width="2"/>
+  <text x="590" y="679" fill="#f87171" font-size="9">Security</text>
+  <line x1="665" y1="675" x2="695" y2="675" stroke="#93c5fd" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="700" y="679" fill="#8b8b9e" font-size="9">Expert Response</text>
+  <line x1="810" y1="675" x2="840" y2="675" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="845" y="679" fill="#a78bfa" font-size="9">Observability</text>
+  <text x="1000" y="679" fill="#5a4a6a" font-size="8">Built in &lt;2 weeks</text>
 </svg>
