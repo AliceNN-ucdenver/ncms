@@ -4,7 +4,7 @@
 
 ## Executive Summary
 
-This system replaces manual research-to-design handoffs with an autonomous agent pipeline. A Product Owner agent searches the live web for current industry standards, synthesizes a PRD, and hands it to a Builder agent that consults domain experts — an Architect and a Security specialist — in parallel. The entire pipeline runs on a single DGX Spark (128GB) using Nemotron Nano 30B, a mixture-of-experts model with only 3B active parameters, inside kernel-isolated sandboxes with explicit network policies. In our test run, the pipeline produced a production-grade authentication service design — complete with NIST SP 800-63B compliance, STRIDE threat mitigations, and an Auth0/Cognito migration path — with zero human intervention between phases.
+This system replaces manual research-to-design handoffs with an autonomous agent pipeline. A Product Owner agent searches the live web for current industry standards, synthesizes a PRD, and hands it to a Builder agent that consults domain experts — an Architect and a Security specialist — in parallel. The entire pipeline runs on a single DGX Spark (128GB) using Nemotron Nano 30B, a mixture-of-experts model with only 3B active parameters, inside kernel-isolated sandboxes with explicit network policies. In our test run, the Security agent cited specific threat IDs (THR-001, THR-002) and NIST control references (IA-2(1), SC-13(1)) from its seeded STRIDE threat model — not generic LLM knowledge, but grounded domain expertise. The Builder produced a three-phase implementation plan with per-STRIDE-category mitigations, all with zero human intervention between phases.
 
 This guide covers the real setup process, including the parts that fight back.
 
@@ -39,7 +39,7 @@ Before any work begins, agents load domain knowledge into the NCMS memory store.
 
 When you ask the Product Owner to research a topic, it searches the live web via Tavily to find current best practices, industry standards, and security guidelines. It synthesizes the research into a PRD using a structured template — problem statement, goals, user stories, technical constraints, security requirements, and references with source URLs.
 
-**What we observed:** The Product Owner searched for current authentication best practices and returned results covering NIST SP 800-63B, OWASP authentication guidelines, and OAuth 2.0 PKCE. It published a 1.9KB PRD covering OAuth 2.0 Authorization Code with PKCE, JWT management, MFA, Argon2 password hashing, RBAC, token revocation, and social login integration. The PRD appeared in the dashboard's Documents sidebar within seconds of publication.
+**What we observed:** The Product Owner searched for current authentication best practices and published a 3.0KB PRD covering passwordless magic link authentication, JWT with RSA-256/ECDSA signing, scope-based access control (`watchlist:read`, `movie:search`, `profile:read`), Redis-backed token revocation, AES-256-GCM credential encryption at rest, and rate limiting. The PRD cited NIST 800-63B authentication assurance levels and specific OWASP ASVS v5.0 controls (ASVS2 for Authentication, ASVS3 for Authorization). It included a five-step system architecture flow and explicit non-goals — a sign the agent understood the project's "lite" scope from its seeded knowledge.
 
 ### Phase 3 — Implementation Design
 
@@ -47,10 +47,10 @@ Click "Send to Builder" on any PRD. The Builder receives the design request and 
 
 **What we observed:** The Builder consulted both experts in parallel via native tool calling:
 
-- **Architect** synthesized: JWT Bearer Tokens, stateless design, three-tier RBAC (viewer/reviewer/admin), role embedding in JWT claims.
-- **Security** synthesized: token lifecycle management (15-30 minute expiry), relay party architecture considerations, MFA strategy, and STRIDE threat mitigations.
+- **Architect** synthesized: RBAC enforcement with role hierarchy (ADMIN > STAFF > USER), CALM infrastructure-as-code governance, SOA integration patterns, bcrypt password hashing, and compliance alignment with NIST/OWASP ASVS/STRIDE. The architect referenced all six STRIDE categories with specific mitigations for each.
+- **Security** synthesized with specific threat IDs: THR-001 (Spoofing via JWT forgery — mitigated by short-lived tokens + revocation lists), THR-002 (Tampering via NoSQL injection — mitigated by parameterized queries), with NIST control references (IA-2(1), SC-13(1)). This is domain knowledge from the seeded STRIDE threat model, not generic LLM output.
 
-The Builder compiled all expert input into a 3.6KB implementation design with Mermaid flow diagrams, step-by-step middleware validation logic, STRIDE threat mitigations (spoofing, tampering, elevation-of-privilege), token lifecycle management, and future-proofing with an Auth0/Cognito migration path. The design document published to the document store and appeared in the dashboard alongside the originating PRD.
+The Builder compiled all expert input into a 2.1KB implementation design organized as a three-phase delivery plan: Phase 1 (Core Authentication — registration, JWT, roles), Phase 2 (Security Enhancements — revocation, audit logging, rate limiting), Phase 3 (Compliance and Hardening — CSP, CORS, security headers, testing). The design included specific mitigations for spoofing (RS256 asymmetric signing), tampering (input validation + parameterized queries), information disclosure (AES-256 + PII minimization), and availability (CDN DDoS + circuit breakers).
 
 ### Phase 4 — Observability and Human Oversight
 
