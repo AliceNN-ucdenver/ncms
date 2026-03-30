@@ -193,17 +193,19 @@
     <text x="65" y="240" text-anchor="middle" fill="#e2e8f0" font-size="7.5" font-weight="500">Nemotron Nano</text>
     <text x="65" y="253" text-anchor="middle" fill="#e2e8f0" font-size="7.5" font-weight="500">30B (3B active)</text>
     <text x="65" y="272" text-anchor="middle" fill="#64748b" font-size="7">qwen3_coder parser</text>
-    <text x="65" y="287" text-anchor="middle" fill="#64748b" font-size="7">65K ctx | 128GB</text>
+    <text x="65" y="287" text-anchor="middle" fill="#64748b" font-size="7">256K ctx | 128GB</text>
     <text x="65" y="305" text-anchor="middle" fill="#76b900" font-size="7" font-weight="500">:8000</text>
   </g>
 
   <!-- DGX Spark connections -->
-  <!-- Spark to Hub (solid, internal) -->
-  <line x1="115" y1="255" x2="130" y2="255" stroke="#76b900" stroke-width="1.2" opacity="0.6"/>
-  <!-- Spark to agents (dashed, through inference.local) -->
-  <line x1="65" y1="185" x2="65" y2="140" stroke="#76b900" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.4"/>
-  <line x1="65" y1="140" x2="75" y2="100" stroke="#76b900" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.4"/>
-  <text x="30" y="137" fill="#64748b" font-size="6.5">inference.local</text>
+  <!-- Spark to Hub (solid arrow into hub boundary) -->
+  <line x1="115" y1="255" x2="155" y2="255" stroke="#76b900" stroke-width="1.5" opacity="0.7"/>
+  <polygon points="150,250 160,255 150,260" fill="#76b900" opacity="0.7"/>
+  <text x="138" y="248" fill="#76b900" font-size="6" font-weight="500">LLM</text>
+  <!-- Spark to agents (dashed, through sandbox proxy) -->
+  <line x1="65" y1="185" x2="65" y2="145" stroke="#76b900" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+  <line x1="65" y1="145" x2="140" y2="100" stroke="#76b900" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+  <text x="20" y="140" fill="#76b900" font-size="6.5" font-weight="500">direct :8000</text>
 
   <!-- ════════════════════════════════════════ -->
   <!-- External Services (Right)                -->
@@ -244,10 +246,10 @@
     <text x="455" y="449" text-anchor="middle" fill="#94a3b8" font-size="8">Browser / CLI</text>
   </g>
 
-  <!-- User to Dashboard -->
-  <line x1="455" y1="410" x2="455" y2="375" stroke="#e2e8f0" stroke-width="1" opacity="0.5"/>
-  <polygon points="455,378 451,385 459,385" fill="#e2e8f0" opacity="0.5"/>
-  <text x="468" y="396" fill="#64748b" font-size="7">:8420</text>
+  <!-- User to Hub (Dashboard) -->
+  <line x1="455" y1="410" x2="455" y2="378" stroke="#e2e8f0" stroke-width="1" opacity="0.5"/>
+  <polygon points="455,380 451,387 459,387" fill="#e2e8f0" opacity="0.5"/>
+  <text x="468" y="400" fill="#64748b" font-size="7">:8420</text>
 
   <!-- ════════════════════════════════════════ -->
   <!-- Legend                                    -->
