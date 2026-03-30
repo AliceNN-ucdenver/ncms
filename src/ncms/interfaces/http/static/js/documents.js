@@ -37,10 +37,22 @@ function renderDocuments() {
 
     for (const doc of docs) {
       const isExpanded = doc._expanded === true;
+      const versionMatch = (doc.title || '').match(/\b(v\d+)\b/);
+      const versionBadge = versionMatch
+        ? `<span class="doc-version-badge">${versionMatch[1]}</span>`
+        : '';
+      const reviewMatch = (doc.title || '').match(/Review Report/i);
+      const reviewBadge = reviewMatch
+        ? `<span class="doc-review-badge">Review</span>`
+        : '';
+
       html += `<div class="document-card">
         <div class="document-card-header" onclick="toggleDocContent('${doc.document_id}')">
           <span class="document-title">${escapeHtml(doc.title || 'Untitled')}</span>
-          <span class="document-time">${formatTime(doc.created_at || '')}</span>
+          <span style="display:flex;gap:4px;align-items:center">
+            ${versionBadge}${reviewBadge}
+            <span class="document-time">${formatTime(doc.created_at || '')}</span>
+          </span>
         </div>`;
 
       if (isExpanded) {

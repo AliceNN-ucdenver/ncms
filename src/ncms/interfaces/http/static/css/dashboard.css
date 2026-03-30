@@ -3187,6 +3187,30 @@
   50% { box-shadow: 0 0 0 8px rgba(210, 153, 34, 0); }
 }
 
+/* Document version badges */
+.doc-version-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(124, 77, 255, 0.2);
+  color: #b090ff;
+  border: 1px solid rgba(124, 77, 255, 0.3);
+  letter-spacing: 0.5px;
+}
+.doc-review-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--accent-amber);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+  letter-spacing: 0.5px;
+}
+
 .trace-link {
   font-size: 10px;
   opacity: 0.4;

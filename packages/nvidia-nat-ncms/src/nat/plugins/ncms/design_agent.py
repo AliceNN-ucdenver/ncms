@@ -196,22 +196,48 @@ CHANGES: [specific actionable changes required, numbered]
 """
 
 REVISE_DESIGN_PROMPT = """\
-You are revising an implementation design based on expert review feedback.
+You are revising an implementation design to address expert review feedback.
+The design was scored by two domain experts. You MUST improve BOTH scores.
 
-ORIGINAL DESIGN:
+CURRENT DESIGN (being revised):
 {original_design}
 
-ARCHITECTURE REVIEW (Score: {arch_score}%):
+---
+
+## Reviewer 1: ARCHITECTURE (Score: {arch_score}% — target: 80%+)
+
+The architect evaluates CALM model compliance, ADR adherence, fitness \
+functions, quality attributes, and component boundaries. Address EVERY \
+item listed under MISSING and CHANGES to improve this score.
+
 {arch_feedback}
 
-SECURITY REVIEW (Score: {sec_score}%):
+---
+
+## Reviewer 2: SECURITY (Score: {sec_score}% — target: 80%+)
+
+The security expert evaluates OWASP Top 10 coverage, STRIDE threat model \
+compliance, security controls, secrets management, and transport security. \
+Address EVERY item listed under MISSING and CHANGES to improve this score.
+
 {sec_feedback}
 
-Task: Revise the implementation design to address ALL items listed under \
-MISSING and CHANGES in both reviews. Maintain everything listed under COVERED. \
-The revised design must be a complete, standalone document — not a diff.
+---
 
-Output the complete revised design in the same markdown format as the original.
+## Revision Instructions
+
+1. For each MISSING item from BOTH reviewers, add the missing content to \
+the appropriate section of the design.
+2. For each numbered CHANGES item, modify the relevant section. Add a \
+markdown comment after the change: <!-- Rev {iteration}: Addressed arch/sec change #N -->
+3. Keep everything listed under COVERED — do not remove working content.
+4. If the architecture score is below 80%, pay special attention to ADR \
+compliance, CALM model alignment, and quality attribute patterns.
+5. If the security score is below 80%, pay special attention to STRIDE \
+threat mitigations, OWASP controls, and token management.
+
+Output the COMPLETE revised design — not a diff. Include all original \
+sections plus the additions.
 """
 
 
@@ -458,13 +484,26 @@ class DesignAgent:
         topic = state["topic"]
         design = state["design"]
         iteration = state.get("iteration", 0)
-        suffix = f" (rev {iteration})" if iteration > 0 else ""
-        logger.info("[design_agent] Publishing design document: %d chars%s", len(design), suffix)
+        version = f"v{iteration + 1}"
+        scores = state.get("review_scores", {})
+        suffix = f" ({version})" if iteration > 0 else ""
+
+        # Prepend version header to the design content
+        score_line = ""
+        if scores:
+            score_line = (
+                f"\n> **Review Status:** Architect {scores.get('architect', '?')}% | "
+                f"Security {scores.get('security', '?')}% | "
+                f"Round {iteration + 1}\n"
+            )
+        versioned_design = f"<!-- Version: {version} | Round: {iteration + 1} -->\n{score_line}\n{design}"
+
+        logger.info("[design_agent] Publishing design document: %d chars %s", len(design), version)
 
         try:
             result = await self.client.publish_document(
-                content=design,
-                title=f"{topic} — Implementation Design{suffix}",
+                content=versioned_design,
+                title=f"{topic[:80]} — Implementation Design {version}",
                 from_agent=self.from_agent,
                 format="markdown",
             )
@@ -475,7 +514,7 @@ class DesignAgent:
             try:
                 await self.client.bus_announce(
                     content=(
-                        f"Implementation design published{suffix}: {topic[:60]}\n"
+                        f"Implementation design published {version}: {topic[:60]}\n"
                         f"Document ID: {doc_id} | Size: {len(design)} chars"
                     ),
                     domains=["implementation", "identity-service"],
@@ -592,6 +631,7 @@ class DesignAgent:
             arch_feedback=feedback.get("architect", "No feedback"),
             sec_score=scores.get("security", 0),
             sec_feedback=feedback.get("security", "No feedback"),
+            iteration=iteration,
         )
 
         try:
