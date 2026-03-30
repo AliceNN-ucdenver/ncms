@@ -148,11 +148,8 @@
     <rect x="178" y="56" width="104" height="36" rx="5" fill="#0f1528" stroke="#4ade80" stroke-width="1" stroke-opacity="0.6"/>
     <text x="230" y="72" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="9" font-weight="600">ask_experts</text>
 
-    <!-- Parallel arrows to Architect + Security labels -->
-    <line x1="210" y1="92" x2="196" y2="104" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="164" y="115" fill="#93c5fd" font-family="system-ui, sans-serif" font-size="8">Architect</text>
-    <line x1="250" y1="92" x2="264" y2="104" stroke="#ef4444" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="256" y="115" fill="#fca5a5" font-family="system-ui, sans-serif" font-size="8">Security</text>
+    <!-- Parallel expert labels (inline) -->
+    <text x="230" y="86" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="7">&#x2191; Architect + Security &#x2191;</text>
 
     <!-- Arrow -->
     <line x1="282" y1="74" x2="304" y2="74" stroke="#4ade80" stroke-width="1.2" stroke-opacity="0.5"/>
@@ -178,21 +175,11 @@
     <rect x="538" y="60" width="72" height="28" rx="5" fill="#0f1528" stroke="#4ade80" stroke-width="1" stroke-opacity="0.6"/>
     <text x="574" y="78" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="9" font-weight="600">trigger</text>
 
-    <!-- Output artifact -->
-    <rect x="626" y="56" width="72" height="36" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="662" y="71" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">15KB PRD</text>
-
-    <!-- Tags row -->
-    <rect x="50" y="100" width="38" height="14" rx="3" fill="#1e293b"/>
-    <text x="69" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">ADR</text>
-    <rect x="92" y="100" width="50" height="14" rx="3" fill="#1e293b"/>
-    <text x="117" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">STRIDE</text>
-    <rect x="146" y="100" width="44" height="14" rx="3" fill="#1e293b"/>
-    <text x="168" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">CALM</text>
-    <rect x="194" y="100" width="38" height="14" rx="3" fill="#1e293b"/>
-    <text x="213" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">NIST</text>
-    <rect x="236" y="100" width="42" height="14" rx="3" fill="#1e293b"/>
-    <text x="257" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">PKCE</text>
+    <!-- Output artifact + tags together -->
+    <rect x="626" y="52" width="76" height="44" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="664" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">15KB PRD</text>
+    <text x="664" y="82" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="7">ADR STRIDE CALM</text>
+    <text x="664" y="92" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="7">NIST PKCE RS256</text>
   </g>
 
   <!-- Auto-trigger connector 3->4 -->
@@ -222,11 +209,8 @@
     <rect x="178" y="56" width="104" height="36" rx="5" fill="#0f1528" stroke="#fbbf24" stroke-width="1" stroke-opacity="0.6"/>
     <text x="230" y="72" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="9" font-weight="600">ask_experts</text>
 
-    <!-- Parallel arrows to Architect + Security labels -->
-    <line x1="210" y1="92" x2="196" y2="104" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="164" y="115" fill="#93c5fd" font-family="system-ui, sans-serif" font-size="8">Architect</text>
-    <line x1="250" y1="92" x2="264" y2="104" stroke="#ef4444" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="256" y="115" fill="#fca5a5" font-family="system-ui, sans-serif" font-size="8">Security</text>
+    <!-- Parallel expert labels (inline) -->
+    <text x="230" y="86" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="7">&#x2191; Architect + Security &#x2191;</text>
 
     <!-- Arrow -->
     <line x1="282" y1="74" x2="304" y2="74" stroke="#fbbf24" stroke-width="1.2" stroke-opacity="0.5"/>
@@ -252,18 +236,11 @@
     <rect x="548" y="60" width="62" height="28" rx="5" fill="#0f1528" stroke="#fbbf24" stroke-width="1" stroke-opacity="0.6"/>
     <text x="579" y="78" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="9" font-weight="600">verify</text>
 
-    <!-- Output artifact -->
-    <rect x="626" y="52" width="72" height="44" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="662" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">18KB TS</text>
-    <text x="662" y="80" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">Design</text>
-
-    <!-- Tags row -->
-    <rect x="50" y="100" width="34" height="14" rx="3" fill="#1e293b"/>
-    <text x="67" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">JWT</text>
-    <rect x="88" y="100" width="62" height="14" rx="3" fill="#1e293b"/>
-    <text x="119" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">interfaces</text>
-    <rect x="154" y="100" width="66" height="14" rx="3" fill="#1e293b"/>
-    <text x="187" y="110" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="7">middleware</text>
+    <!-- Output artifact + tags together -->
+    <rect x="626" y="52" width="76" height="44" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="664" y="66" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">18KB Design</text>
+    <text x="664" y="80" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="7">JWT interfaces</text>
+    <text x="664" y="90" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="7">TypeScript middleware</text>
   </g>
 
   <!-- Connector arrow 4->5 -->
