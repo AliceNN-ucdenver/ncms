@@ -127,29 +127,33 @@ All four agents generated complete traces during the test run — full visibilit
 
 ## Architecture
 
+![Architecture Context](assets/architecture-context.svg)
+
 ### LLM Infrastructure
 
-The pipeline runs on Nemotron Nano 30B — a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass — served via the NGC vLLM container on a DGX Spark with 128GB of memory and a 65K context window. Two configuration choices were critical:
+- **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass
+- **Serving:** NGC vLLM container on a DGX Spark (128GB memory, 65K context window)
+- **Tool call parser:** `--tool-call-parser qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
+- **Thinking mode off:** `tool_calling_agent` with `enable_thinking: false` keeps thinking-mode tokens from consuming the context budget. Valuable for open-ended reasoning, but wasteful in structured pipelines where the agent's job is to call specific tools in sequence.
 
-- **`--tool-call-parser qwen3_coder`** — Nemotron Nano emits tool calls in a `<tool_call><function=name>` format. The `qwen3_coder` parser is the correct match. Other parsers (including `hermes`) silently fail to parse tool calls, causing agents to loop without acting.
-- **`tool_calling_agent` with `enable_thinking: false`** — Structured tool calls without thinking-mode tokens consuming the context budget. Thinking mode is valuable for open-ended reasoning, but for structured pipelines where the agent's job is to call specific tools in sequence, it wastes tokens and increases latency.
+### Agent Sandboxing
 
-### Networking and Sandboxes
-
-NemoClaw sandboxes are fully network-isolated k3s pods. All traffic goes through the OpenShell proxy at `10.200.0.1:3128`. LLM calls route through NemoClaw's built-in `inference.local` proxy, which forwards to your configured inference provider. External API keys (like `TAVILY_API_KEY`) are injected into sandboxes via OpenShell providers — no hardcoded secrets in configuration files. Everything else (hub connections, PyPI, HuggingFace) needs explicit policy rules in `policies/openclaw-sandbox.yaml`.
+- **Isolation:** Each agent runs in its own NemoClaw kernel-isolated k3s pod, fully network-isolated
+- **Proxy:** All outbound traffic routes through the OpenShell proxy at `10.200.0.1:3128`
+- **LLM routing:** NemoClaw's built-in `inference.local` proxy forwards to the configured inference provider transparently
+- **Secrets:** External API keys (e.g. `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded in config files. Only the Product Owner sandbox receives the Tavily provider.
+- **Network policies:** Hub connections, PyPI, and HuggingFace access require explicit rules in `policies/openclaw-sandbox.yaml`. Private IP endpoints require interactive approval via `openshell term`.
 
 ### Shared Memory Layer
 
-NCMS provides the shared persistent memory that makes agent collaboration possible. When agents store knowledge, it is indexed in BM25 (via Tantivy) and optionally SPLADE v3 sparse neural retrieval, then linked in a NetworkX knowledge graph. When an agent asks the knowledge bus a question, the domain expert searches this shared store with hybrid retrieval — lexical precision from BM25, semantic expansion from SPLADE — and grounds its LLM response in retrieved facts rather than hallucinating.
-
-### Knowledge Seeding
-
-Each expert agent loads curated domain knowledge at startup:
-
-- `knowledge/architecture/` — ADRs, CALM model specifications
-- `knowledge/security/` — STRIDE threat models, OWASP control mappings
-- `knowledge/product-owner/` — PRD templates, product methodology guides
-- Builder has no knowledge files — it learns by asking experts
+- **NCMS** provides persistent shared memory across all agents via an HTTP API on `:9080`
+- **Hybrid retrieval:** BM25 (Tantivy/Rust) for lexical precision + SPLADE v3 for semantic expansion + NetworkX graph spreading activation. No dense vectors, no embedding API calls.
+- **Integration:** Each NAT agent uses `auto_memory_agent` to connect to NCMS. When an agent asks the knowledge bus a question, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
+- **Knowledge seeding:** Expert agents load curated domain knowledge at startup:
+  - `knowledge/architecture/` — ADRs, CALM model specifications
+  - `knowledge/security/` — STRIDE threat models, OWASP control mappings
+  - `knowledge/product-owner/` — PRD templates, product methodology guides
+  - Builder has no knowledge files; it learns by asking experts
 
 ---
 
