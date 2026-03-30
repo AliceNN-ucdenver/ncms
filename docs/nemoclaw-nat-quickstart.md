@@ -32,8 +32,8 @@ Four specialized AI agents coordinate through a shared knowledge bus to execute 
 |-------|------|-----------------|-------|------|
 | **Product Owner** | Live web research, PRD authoring | PRD templates, product methodology | web_search, ask_knowledge, writeprd | 8004 |
 | **Builder** | Consults experts, produces designs | *(learns by asking experts)* | ask_knowledge, writedesign | 8003 |
-| **Architect** | ADRs, CALM governance, system design | ADR-001..003, CALM model, C4 diagrams | ask_knowledge, announce_knowledge | 8001 |
-| **Security** | STRIDE threats, OWASP, compliance | STRIDE threat model, OWASP controls | ask_knowledge, announce_knowledge | 8002 |
+| **Architect** | ADRs, CALM governance, system design | ADR-001..003, CALM model, C4 diagrams | announce_knowledge *(answers via auto-memory)* | 8001 |
+| **Security** | STRIDE threats, OWASP, compliance | STRIDE threat model, OWASP controls | announce_knowledge *(answers via auto-memory)* | 8002 |
 
 ![Multi-Agent Pipeline](assets/multi-agent-pipeline.svg)
 
@@ -55,30 +55,68 @@ Four specialized AI agents coordinate through a shared knowledge bus to execute 
 
 This is not a chatbot. It is a software delivery pipeline where AI agents play distinct roles in a structured workflow. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume.
 
-### Phase 1 — Knowledge Seeding
+![Pipeline Phases](assets/pipeline-phases.svg)
 
-Before any work begins, agents load domain knowledge into the NCMS memory store. The Architect seeds ADRs (Architecture Decision Records), CALM model specifications, and quality attribute scenarios. The Security agent seeds STRIDE threat models, OWASP control mappings, and compliance matrices. The Product Owner loads PRD templates and product methodology guides. This knowledge becomes searchable by any agent through the knowledge bus — and it is the foundation that turns generic LLM reasoning into domain-grounded expert responses.
+### :one: Knowledge Seeding
 
-### Phase 2 — Research and Requirements
+Before any work begins, agents load domain knowledge into the NCMS memory store:
 
-When you ask the Product Owner to research a topic, it searches the live web via Tavily to find current best practices, industry standards, and security guidelines. It synthesizes the research into a PRD using a structured template — problem statement, goals, user stories, technical constraints, security requirements, and references with source URLs.
+- **Architect** seeds ADRs (Architecture Decision Records), CALM model specifications, and quality attribute scenarios
+- **Security** seeds STRIDE threat models, OWASP control mappings, and compliance matrices
+- **Product Owner** loads PRD templates and product methodology guides
 
-**What we observed:** The Product Owner searched for current authentication best practices and published a 3.0KB PRD covering passwordless magic link authentication, JWT with RSA-256/ECDSA signing, scope-based access control (`watchlist:read`, `movie:search`, `profile:read`), Redis-backed token revocation, AES-256-GCM credential encryption at rest, and rate limiting. The PRD cited NIST 800-63B authentication assurance levels and specific OWASP ASVS v5.0 controls (ASVS2 for Authentication, ASVS3 for Authorization). It included a five-step system architecture flow and explicit non-goals — a sign the agent understood the project's "lite" scope from its seeded knowledge.
+This knowledge becomes searchable by any agent through the knowledge bus — the foundation that turns generic LLM reasoning into domain-grounded expert responses.
 
-### Phase 3 — Implementation Design
+### :two: Research & PRD
 
-Click "Send to Builder" on any PRD. The Builder receives the design request and consults expert agents through the knowledge bus. Here is where the architecture pays off: the Builder issues parallel tool calls — asking the Architect and Security agent simultaneously — because NAT's native tool calling lets the LLM emit multiple function calls in a single response.
+When you ask the Product Owner to research a topic, it:
 
-**What we observed:** The Builder consulted both experts in parallel via native tool calling:
+1. Searches the live web via **Tavily** for current best practices, industry standards, and security guidelines
+2. Synthesizes findings into a **structured PRD** — problem statement, goals, user stories, technical constraints, security requirements, and references with source URLs
 
-- **Architect** synthesized: RBAC enforcement with role hierarchy (ADMIN > STAFF > USER), CALM infrastructure-as-code governance, SOA integration patterns, bcrypt password hashing, and compliance alignment with NIST/OWASP ASVS/STRIDE. The architect referenced all six STRIDE categories with specific mitigations for each.
-- **Security** synthesized with specific threat IDs: THR-001 (Spoofing via JWT forgery — mitigated by short-lived tokens + revocation lists), THR-002 (Tampering via NoSQL injection — mitigated by parameterized queries), with NIST control references (IA-2(1), SC-13(1)). This is domain knowledge from the seeded STRIDE threat model, not generic LLM output.
+> **Observed:** The PO published a 3.0KB PRD covering:
+> - Passwordless magic link authentication, JWT with RSA-256/ECDSA signing
+> - Scope-based access control (`watchlist:read`, `movie:search`, `profile:read`)
+> - Redis-backed token revocation, AES-256-GCM encryption at rest, rate limiting
+> - Citations: **NIST 800-63B** authentication assurance levels, **OWASP ASVS v5.0** controls (ASVS2 Authentication, ASVS3 Authorization)
+> - Five-step system architecture flow and explicit non-goals (a sign the agent understood the project's "lite" scope from seeded knowledge)
 
-The Builder compiled all expert input into a 2.1KB implementation design organized as a three-phase delivery plan: Phase 1 (Core Authentication — registration, JWT, roles), Phase 2 (Security Enhancements — revocation, audit logging, rate limiting), Phase 3 (Compliance and Hardening — CSP, CORS, security headers, testing). The design included specific mitigations for spoofing (RS256 asymmetric signing), tampering (input validation + parameterized queries), information disclosure (AES-256 + PII minimization), and availability (CDN DDoS + circuit breakers).
+### :three: Expert Consultation & Design
 
-### Phase 4 — Observability and Human Oversight
+Click **"Send to Builder"** on any PRD. The Builder consults expert agents through the knowledge bus — issuing **parallel tool calls** to the Architect and Security agent simultaneously (NAT's native tool calling lets the LLM emit multiple function calls in a single response).
 
-Every agent generates Phoenix OpenTelemetry traces. You observe everything through the NCMS dashboard: real-time SSE event feeds on each agent card, document publishing notifications, Phoenix trace links for debugging LLM reasoning, and the ability to chat directly with any agent. All four agents generated complete traces during the test run — full visibility into every LLM call, tool invocation, and knowledge bus interaction.
+> **Observed — Architect response:**
+> - RBAC enforcement with role hierarchy (ADMIN > STAFF > USER)
+> - CALM infrastructure-as-code governance, SOA integration patterns
+> - bcrypt password hashing, compliance alignment with NIST/OWASP ASVS/STRIDE
+> - Referenced all six STRIDE categories with specific mitigations
+
+> **Observed — Security response:**
+> - **THR-001** (Spoofing via JWT forgery) — mitigated by short-lived tokens + revocation lists
+> - **THR-002** (Tampering via NoSQL injection) — mitigated by parameterized queries
+> - NIST control references: **IA-2(1)**, **SC-13(1)**
+> - This is domain knowledge from the seeded STRIDE threat model, not generic LLM output
+
+The Builder compiled all expert input into a **2.1KB implementation design** organized as a three-phase delivery plan:
+
+| Phase | Focus | Key Elements |
+|-------|-------|-------------|
+| 1 | Core Authentication | Registration, JWT, roles |
+| 2 | Security Enhancements | Revocation, audit logging, rate limiting |
+| 3 | Compliance & Hardening | CSP, CORS, security headers, testing |
+
+Per-STRIDE-category mitigations included: RS256 asymmetric signing (spoofing), input validation + parameterized queries (tampering), AES-256 + PII minimization (information disclosure), CDN DDoS + circuit breakers (availability).
+
+### :four: Observability & Human Oversight
+
+Every agent generates **Phoenix OpenTelemetry traces**. The NCMS dashboard provides full visibility:
+
+- Real-time **SSE event feeds** on each agent card
+- **Document publishing** notifications in the sidebar
+- **Phoenix trace links** for debugging LLM reasoning
+- **Direct chat** with any agent from the dashboard
+
+All four agents generated complete traces during the test run — full visibility into every LLM call, tool invocation, and knowledge bus interaction.
 
 ---
 

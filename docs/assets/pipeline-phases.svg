@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="100%" stop-color="#0f1528"/>
+    </linearGradient>
+    <linearGradient id="poGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22c55e" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#22c55e" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="builderGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="archGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="secGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGrad)"/>
+
+  <!-- ===== PHASE 1: Knowledge Seeding ===== -->
+  <g transform="translate(0, 10)">
+    <!-- Phase number -->
+    <circle cx="60" cy="50" r="18" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    <text x="60" y="56" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="16" font-weight="700">1</text>
+    <text x="88" y="56" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="15" font-weight="600">Knowledge Seeding</text>
+
+    <!-- Left: Architect files -->
+    <rect x="40" y="72" width="200" height="52" rx="6" fill="url(#archGrad)" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="56" y="90" fill="#93c5fd" font-family="system-ui, sans-serif" font-size="10" font-weight="600">ADRs, CALM Model, C4 Diagrams</text>
+    <text x="56" y="112" fill="#3b82f6" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Architect memory</text>
+
+    <!-- Arrow from left to hub -->
+    <line x1="240" y1="98" x2="320" y2="98" stroke="#3b82f6" stroke-width="1.5" stroke-opacity="0.6" marker-end="url(#arrowBlue)"/>
+
+    <!-- NCMS hub -->
+    <rect x="320" y="76" width="160" height="44" rx="8" fill="#0a0e1a" stroke="#64748b" stroke-width="1.5"/>
+    <text x="400" y="103" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="13" font-weight="700">NCMS Hub</text>
+
+    <!-- Arrow from hub to right -->
+    <line x1="480" y1="98" x2="560" y2="98" stroke="#ef4444" stroke-width="1.5" stroke-opacity="0.6"/>
+    <polygon points="558,93 568,98 558,103" fill="#ef4444" fill-opacity="0.6"/>
+
+    <!-- Right: Security files -->
+    <rect x="560" y="72" width="200" height="52" rx="6" fill="url(#secGrad)" stroke="#ef4444" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="576" y="90" fill="#fca5a5" font-family="system-ui, sans-serif" font-size="10" font-weight="600">STRIDE Threat Model, OWASP</text>
+    <text x="576" y="112" fill="#ef4444" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Security memory</text>
+
+    <!-- Arrows into hub -->
+    <polygon points="318,93 328,98 318,103" fill="#3b82f6" fill-opacity="0.6"/>
+
+    <!-- Phase label -->
+    <text x="400" y="142" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="10" font-style="italic">Agents boot &rarr; knowledge files loaded into shared memory</text>
+  </g>
+
+  <!-- Connector arrow 1->2 -->
+  <line x1="400" y1="155" x2="400" y2="172" stroke="#475569" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="395,170 400,178 405,170" fill="#475569"/>
+
+  <!-- ===== PHASE 2: Research & PRD ===== -->
+  <g transform="translate(0, 170)">
+    <circle cx="60" cy="20" r="18" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    <text x="60" y="26" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="16" font-weight="700">2</text>
+    <text x="88" y="26" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="15" font-weight="600">Research &amp; PRD</text>
+
+    <!-- PO agent -->
+    <rect x="80" y="42" width="130" height="40" rx="6" fill="url(#poGrad)" stroke="#22c55e" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="145" y="58" text-anchor="middle" fill="#22c55e" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Product Owner</text>
+    <text x="145" y="72" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="9">web research</text>
+
+    <!-- Arrow PO -> Tavily -->
+    <line x1="210" y1="62" x2="290" y2="62" stroke="#22c55e" stroke-width="1.5" stroke-opacity="0.5"/>
+    <polygon points="288,57 298,62 288,67" fill="#22c55e" fill-opacity="0.5"/>
+
+    <!-- Tavily -->
+    <rect x="298" y="42" width="110" height="40" rx="6" fill="#0a0e1a" stroke="#64748b" stroke-width="1"/>
+    <text x="353" y="58" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Tavily</text>
+    <text x="353" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">live web search</text>
+
+    <!-- Arrow Tavily -> PRD -->
+    <line x1="408" y1="62" x2="488" y2="62" stroke="#22c55e" stroke-width="1.5" stroke-opacity="0.5"/>
+    <polygon points="486,57 496,62 486,67" fill="#22c55e" fill-opacity="0.5"/>
+
+    <!-- PRD doc -->
+    <rect x="496" y="42" width="120" height="40" rx="6" fill="url(#poGrad)" stroke="#22c55e" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="556" y="58" text-anchor="middle" fill="#22c55e" font-family="system-ui, sans-serif" font-size="12" font-weight="700">PRD</text>
+    <text x="556" y="72" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="9">structured output</text>
+
+    <!-- Standards tags -->
+    <rect x="660" y="44" width="100" height="14" rx="3" fill="#1e293b"/>
+    <text x="710" y="54" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">NIST 800-63B</text>
+    <rect x="660" y="60" width="100" height="14" rx="3" fill="#1e293b"/>
+    <text x="710" y="70" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">OWASP ASVS</text>
+    <rect x="660" y="76" width="100" height="14" rx="3" fill="#1e293b"/>
+    <text x="710" y="86" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">OAuth 2.0 PKCE</text>
+
+    <!-- Phase label -->
+    <text x="400" y="104" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="10" font-style="italic">PO searches live web, publishes structured PRD</text>
+  </g>
+
+  <!-- Connector arrow 2->3 -->
+  <line x1="400" y1="285" x2="400" y2="302" stroke="#475569" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="395,300 400,308 405,300" fill="#475569"/>
+
+  <!-- ===== PHASE 3: Expert Consultation & Design ===== -->
+  <g transform="translate(0, 300)">
+    <circle cx="60" cy="20" r="18" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    <text x="60" y="26" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="16" font-weight="700">3</text>
+    <text x="88" y="26" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="15" font-weight="600">Expert Consultation &amp; Design</text>
+
+    <!-- Builder -->
+    <rect x="310" y="40" width="140" height="36" rx="6" fill="url(#builderGrad)" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="380" y="63" text-anchor="middle" fill="#f59e0b" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Builder</text>
+
+    <!-- Arrow Builder -> Architect (left) -->
+    <line x1="310" y1="58" x2="230" y2="58" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+    <line x1="230" y1="58" x2="230" y2="86" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+    <polygon points="225,84 230,92 235,84" fill="#f59e0b" fill-opacity="0.5"/>
+
+    <!-- Arrow Builder -> Security (right) -->
+    <line x1="450" y1="58" x2="540" y2="58" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+    <line x1="540" y1="58" x2="540" y2="86" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+    <polygon points="535,84 540,92 545,84" fill="#f59e0b" fill-opacity="0.5"/>
+
+    <!-- Architect response -->
+    <rect x="100" y="92" width="260" height="44" rx="6" fill="url(#archGrad)" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="116" y="108" fill="#3b82f6" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Architect</text>
+    <text x="116" y="124" fill="#93c5fd" font-family="system-ui, sans-serif" font-size="9">CALM governance, RBAC patterns, ADR refs</text>
+
+    <!-- Security response -->
+    <rect x="420" y="92" width="260" height="44" rx="6" fill="url(#secGrad)" stroke="#ef4444" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="436" y="108" fill="#ef4444" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Security</text>
+    <text x="436" y="124" fill="#fca5a5" font-family="system-ui, sans-serif" font-size="9">THR-001, THR-002, NIST IA-2(1)</text>
+
+    <!-- Return arrows to Builder -> Design Doc -->
+    <line x1="230" y1="136" x2="230" y2="156" stroke="#3b82f6" stroke-width="1.2" stroke-opacity="0.4"/>
+    <line x1="230" y1="156" x2="340" y2="156" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+    <line x1="540" y1="136" x2="540" y2="156" stroke="#ef4444" stroke-width="1.2" stroke-opacity="0.4"/>
+    <line x1="540" y1="156" x2="460" y2="156" stroke="#f59e0b" stroke-width="1.2" stroke-opacity="0.4"/>
+
+    <!-- Design Doc -->
+    <rect x="340" y="144" width="120" height="30" rx="6" fill="url(#builderGrad)" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="400" y="164" text-anchor="middle" fill="#f59e0b" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Design Document</text>
+
+    <!-- Phase label -->
+    <text x="400" y="194" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="10" font-style="italic">Builder consults experts in parallel, produces implementation design</text>
+  </g>
+
+  <!-- Connector arrow 3->4 -->
+  <line x1="400" y1="500" x2="400" y2="517" stroke="#475569" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="395,515 400,523 405,515" fill="#475569"/>
+
+  <!-- ===== PHASE 4: Observability & Oversight ===== -->
+  <g transform="translate(0, 518)">
+    <circle cx="60" cy="20" r="18" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    <text x="60" y="26" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="16" font-weight="700">4</text>
+    <text x="88" y="26" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="15" font-weight="600">Observability &amp; Oversight</text>
+
+    <!-- Phoenix traces -->
+    <rect x="120" y="40" width="160" height="36" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="200" y="55" text-anchor="middle" fill="#c084fc" font-family="system-ui, sans-serif" font-size="11" font-weight="600">Phoenix Traces</text>
+    <text x="200" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">every LLM call traced</text>
+
+    <!-- Dashboard -->
+    <rect x="320" y="40" width="160" height="36" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="400" y="55" text-anchor="middle" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="11" font-weight="600">NCMS Dashboard</text>
+    <text x="400" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">real-time SSE events</text>
+
+    <!-- Human oversight -->
+    <rect x="520" y="40" width="160" height="36" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="600" y="55" text-anchor="middle" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="11" font-weight="600">Human Approval</text>
+    <text x="600" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9">every artifact auditable</text>
+  </g>
+</svg>
