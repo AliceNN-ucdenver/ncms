@@ -29,7 +29,7 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: product_owner
     domains: [product, requirements, research]
-    subscribe_to: [architecture, security, identity-service, implementation]
+    subscribe_to: [architecture, security, identity-service, implementation, trigger-product_owner]
     knowledge_paths:
       - path: /sandbox/knowledge/product-owner/
         domains: [product, requirements]

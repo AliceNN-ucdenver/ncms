@@ -29,7 +29,7 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: builder
     domains: [identity-service, implementation]
-    subscribe_to: [architecture, security, product, requirements]
+    subscribe_to: [architecture, security, product, requirements, trigger-builder]
 
 functions:
   design_agent:

@@ -116,7 +116,7 @@ async def _handle_event(
 ) -> None:
     """Dispatch a single SSE event."""
     if event_type == "bus.announce":
-        await _handle_announcement(client, agent_id, data, workflow_fn)
+        await _handle_announcement(client, agent_id, data, workflow_fn, self_port)
     elif event_type == "bus.ask.routed":
         await _handle_question(
             client, agent_id, data, workflow_fn, agent_domains, self_port,
@@ -133,6 +133,7 @@ async def _handle_announcement(
     agent_id: str,
     data: dict[str, Any],
     workflow_fn: WorkflowCallback | None = None,
+    self_port: int | None = None,
 ) -> None:
     """Store an announcement as a memory so agents can recall it.
 
@@ -150,6 +151,22 @@ async def _handle_announcement(
     # Don't store or react to our own announcements
     if from_agent == agent_id:
         return
+
+    # ── Pipeline trigger: bus-based agent chaining ──
+    # Check if this announcement is a trigger for THIS agent.
+    # Triggers use domain "trigger-{agent_id}" and contain the input message.
+    trigger_domain = f"trigger-{agent_id}"
+    if trigger_domain in domains:
+        logger.info(
+            "[trigger] %s received pipeline trigger from %s: %s",
+            agent_id, from_agent, content[:100],
+        )
+        # Self-call /generate inside the sandbox (no port forward needed)
+        if self_port:
+            asyncio.create_task(_self_generate(agent_id, self_port, content))
+        else:
+            logger.warning("[trigger] No self_port for %s — cannot process trigger", agent_id)
+        return  # Don't store trigger messages as memories
 
     logger.info(
         "Announcement from %s: %s", from_agent, content[:80],
@@ -294,3 +311,24 @@ async def _handle_question(
         from_agent=agent_id,
         confidence=confidence,
     )
+
+
+async def _self_generate(agent_id: str, port: int, message: str) -> None:
+    """Fire-and-forget self-call to this agent's /generate endpoint.
+
+    Runs inside the sandbox on localhost — no port forward needed.
+    Used by pipeline triggers (bus_announce to trigger-{agent_id}).
+    """
+    try:
+        import httpx as _httpx
+
+        logger.info("[trigger] %s self-calling localhost:%d/generate", agent_id, port)
+        async with _httpx.AsyncClient(timeout=600.0) as http:
+            resp = await http.post(
+                f"http://localhost:{port}/generate",
+                json={"input_message": message},
+            )
+            resp.raise_for_status()
+            logger.info("[trigger] %s /generate completed (status %d)", agent_id, resp.status_code)
+    except Exception as e:
+        logger.warning("[trigger] %s /generate failed: %s", agent_id, e)

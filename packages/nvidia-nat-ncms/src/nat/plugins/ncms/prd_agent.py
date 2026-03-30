@@ -404,11 +404,12 @@ class PRDAgent:
 
             async def _trigger() -> None:
                 try:
-                    await self.client.trigger_agent(
-                        "builder",
-                        f'Create implementation design based on PRD: "{title}" (doc_id: {doc_id})',
+                    await self.client.bus_announce(
+                        content=f'Create implementation design based on PRD: "{title}" (doc_id: {doc_id})',
+                        domains=["trigger-builder", "product", "implementation"],
+                        from_agent=self.from_agent,
                     )
-                    logger.info("[prd_agent] ✅ Builder triggered successfully")
+                    logger.info("[prd_agent] ✅ Builder triggered via bus announce")
                 except Exception as e:
                     logger.warning("[prd_agent] ⚠️ Failed to trigger builder: %s", e)
 

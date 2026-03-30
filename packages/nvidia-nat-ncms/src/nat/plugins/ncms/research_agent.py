@@ -404,11 +404,12 @@ class ResearchAgent:
 
             async def _trigger() -> None:
                 try:
-                    await self.client.trigger_agent(
-                        "product_owner",
-                        f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
+                    await self.client.bus_announce(
+                        content=f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
+                        domains=["trigger-product_owner", "research", "product"],
+                        from_agent=self.from_agent,
                     )
-                    logger.info("[research_agent] ✅ Product owner triggered successfully")
+                    logger.info("[research_agent] ✅ Product owner triggered via bus announce")
                 except Exception as e:
                     logger.warning("[research_agent] ⚠️ Failed to trigger product_owner: %s", e)
 
