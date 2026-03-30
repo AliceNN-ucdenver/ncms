@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from starlette.applications import Starlette
@@ -41,6 +44,7 @@ def create_api_app(
     consolidation_svc: object | None = None,
     event_log: EventLog | None = None,
     auth_token: str | None = None,
+    extra_routes: list[Route] | None = None,
 ) -> Starlette:
     """Create the NCMS HTTP REST API application."""
 
@@ -96,13 +100,29 @@ def create_api_app(
         if not query:
             return JSONResponse({"error": "q parameter is required"}, status_code=400)
 
-        domain = request.query_params.get("domain")
+        domain_param = request.query_params.get("domain")
         limit = int(request.query_params.get("limit", "10"))
         intent = request.query_params.get("intent")
 
-        results = await memory_svc.search(
-            query=query, domain=domain, limit=limit, intent_override=intent,
-        )
+        # Support comma-separated domains: ?domain=architecture,security
+        if domain_param and "," in domain_param:
+            domains = [d.strip() for d in domain_param.split(",") if d.strip()]
+            # Search each domain, merge + deduplicate by memory_id, re-sort
+            seen: dict[str, Any] = {}
+            for d in domains:
+                domain_results = await memory_svc.search(
+                    query=query, domain=d, limit=limit, intent_override=intent,
+                )
+                for r in domain_results:
+                    mid = r.memory.id
+                    if mid not in seen or r.combined_score > seen[mid].combined_score:
+                        seen[mid] = r
+            results = sorted(seen.values(), key=lambda r: r.combined_score, reverse=True)[:limit]
+        else:
+            results = await memory_svc.search(
+                query=query, domain=domain_param, limit=limit, intent_override=intent,
+            )
+
         return JSONResponse({
             "results": [
                 {
@@ -137,7 +157,7 @@ def create_api_app(
                 {
                     "memory_id": r.memory.memory.id,
                     "content": r.memory.memory.content,
-                    "combined_score": r.memory.combined_score,
+                    "score": r.memory.total_activation,
                     "retrieval_path": r.retrieval_path,
                     "episode": {
                         "episode_id": r.context.episode.episode_id,
@@ -203,13 +223,14 @@ def create_api_app(
         if not question:
             return JSONResponse({"error": "question is required"}, status_code=400)
 
-        agent_id = request.headers.get("X-Agent-ID", "http-client")
+        agent_id = request.headers.get("X-Agent-ID", body.get("from_agent", "http-client"))
+        timeout_ms = body.get("timeout_ms", 60000)
         ask_obj = KnowledgeAsk(
             question=question,
             domains=body.get("domains", []),
             from_agent=agent_id,
+            ttl_ms=timeout_ms,
         )
-        timeout_ms = body.get("timeout_ms", 5000)
         response = await bus_svc.ask_sync(ask_obj, timeout_ms=timeout_ms)
 
         if response is None:
@@ -233,7 +254,9 @@ def create_api_app(
                 {"error": "content and domains are required"}, status_code=400,
             )
 
-        agent_id = request.headers.get("X-Agent-ID", "http-client")
+        agent_id = request.headers.get(
+            "X-Agent-ID", body.get("from_agent", "http-client"),
+        )
         announcement = KnowledgeAnnounce(
             knowledge=KnowledgePayload(content=content),
             domains=domains,
@@ -465,6 +488,128 @@ def create_api_app(
         result = await consolidation_svc.run_consolidation_pass()  # type: ignore[union-attr]
         return JSONResponse(result)
 
+    # -- Agent Chat Proxy ----------------------------------------------------
+    # Proxies chat requests to NAT agents' /generate endpoint.
+    # Avoids CORS issues (dashboard and hub share the same origin).
+    # Agent port mapping: architect=8001, security=8002, builder=8003
+    _AGENT_PORTS = {"architect": 8001, "security": 8002, "builder": 8003, "product_owner": 8004}
+
+    async def agent_chat(request: Request) -> JSONResponse:
+        import httpx as _httpx
+
+        agent_id = request.path_params["agent_id"]
+        port = _AGENT_PORTS.get(agent_id)
+        if port is None:
+            return JSONResponse(
+                {"error": f"Unknown agent: {agent_id}"}, status_code=404,
+            )
+
+        body = await request.json()
+        input_message = body.get("input_message", body.get("question", ""))
+        if not input_message:
+            return JSONResponse({"error": "Missing input_message"}, status_code=400)
+
+        try:
+            async with _httpx.AsyncClient(
+                timeout=_httpx.Timeout(300.0, connect=10.0),
+            ) as client:
+                # Turn 1: send the user's message
+                resp = await client.post(
+                    f"http://host.docker.internal:{port}/generate",
+                    json={"input_message": input_message},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                content = data.get("value", data.get("output", str(data)))
+
+                return JSONResponse({
+                    "from_agent": agent_id,
+                    "content": content,
+                    "answered": True,
+                })
+        except _httpx.TimeoutException:
+            return JSONResponse(
+                {"error": "Agent timed out", "answered": False}, status_code=504,
+            )
+        except Exception as exc:
+            return JSONResponse(
+                {"error": f"Agent unreachable: {exc}", "answered": False},
+                status_code=502,
+            )
+
+    # -- Document Store -------------------------------------------------------
+
+    _documents: dict[str, dict[str, Any]] = {}
+    _documents_dir = Path(__file__).parent / "static" / "documents"
+    _documents_dir.mkdir(parents=True, exist_ok=True)
+
+    async def store_document(request: Request) -> JSONResponse:
+        """Store a design document (markdown) and return a download URL."""
+        body = await request.json()
+        title = body.get("title", "Untitled")
+        content = body.get("content", "")
+        from_agent = body.get("from_agent")
+        plan_id = body.get("plan_id")
+
+        if not content:
+            return JSONResponse({"error": "content is required"}, status_code=400)
+
+        doc_id = uuid.uuid4().hex[:12]
+        filename = f"{doc_id}.md"
+        filepath = _documents_dir / filename
+        filepath.write_text(content, encoding="utf-8")
+
+        meta = {
+            "document_id": doc_id,
+            "title": title,
+            "from_agent": from_agent,
+            "plan_id": plan_id,
+            "format": body.get("format", "markdown"),
+            "url": f"/documents/{filename}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "size_bytes": len(content.encode("utf-8")),
+        }
+        _documents[doc_id] = meta
+
+        # Emit SSE event so dashboard auto-refreshes documents
+        if event_log:
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="document.published",
+                data={
+                    "document_id": doc_id,
+                    "title": title,
+                    "from_agent": from_agent,
+                    "content": content[:200],
+                },
+                agent_id=from_agent,
+            ))
+
+        return JSONResponse(meta, status_code=201)
+
+    async def list_documents(request: Request) -> JSONResponse:
+        """List all published documents."""
+        docs = sorted(
+            _documents.values(),
+            key=lambda d: d.get("created_at", ""),
+            reverse=True,
+        )
+        return JSONResponse(docs)
+
+    async def get_document(request: Request) -> JSONResponse:
+        """Return a single document with its full content."""
+        doc_id = request.path_params["doc_id"]
+        meta = _documents.get(doc_id)
+        if not meta:
+            return JSONResponse({"error": "Document not found"}, status_code=404)
+
+        filepath = _documents_dir / f"{doc_id}.md"
+        content = ""
+        if filepath.exists():
+            content = filepath.read_text(encoding="utf-8")
+
+        return JSONResponse({**meta, "content": content})
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -496,15 +641,36 @@ def create_api_app(
         Route("/api/v1/episodes", list_episodes_endpoint, methods=["GET"]),
         Route("/api/v1/episodes/{episode_id}", get_episode_endpoint, methods=["GET"]),
 
+        # Agent chat proxy (NAT /generate)
+        Route("/api/v1/agent/{agent_id}/chat", agent_chat, methods=["POST"]),
+
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),
+
+        # Documents
+        Route("/api/v1/documents", store_document, methods=["POST"]),
+        Route("/api/v1/documents", list_documents, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}", get_document, methods=["GET"]),
     ]
+
+    # Mount transport or other extra routes (e.g. HttpBusTransport SSE)
+    if extra_routes:
+        routes.extend(extra_routes)
 
     class AuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             return await auth_middleware(request, call_next)
 
-    middlewares = []
+    from starlette.middleware.cors import CORSMiddleware
+
+    middlewares = [
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        ),
+    ]
     if auth_token:
         middlewares.append(Middleware(AuthMiddleware))
 
@@ -517,25 +683,46 @@ async def run_http_server(
     host: str = "0.0.0.0",
     port: int = 8080,
     auth_token: str | None = None,
+    dashboard_port: int | None = None,
 ) -> None:
-    """Start the NCMS HTTP API server."""
+    """Start the NCMS HTTP API server.
+
+    Args:
+        dashboard_port: If set, also start the dashboard on this port,
+            sharing the same EventLog and services (single process).
+    """
     import signal
 
     import uvicorn
 
     from ncms.config import NCMSConfig
+    from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
+    from ncms.infrastructure.bus.http_transport import HttpBusTransport
     from ncms.infrastructure.observability.event_log import EventLog
     from ncms.interfaces.mcp.server import create_ncms_services
 
     config = config or NCMSConfig()
+    event_log = EventLog(max_events=5000)
 
-    # Use the same service creation as MCP server
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc = await create_ncms_services(config)
+    # Create services — then wrap bus with HTTP transport
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc = (
+        await create_ncms_services(config)
+    )
 
-    event_log = EventLog(max_events=200)
-    # Wire event log into memory service if possible
+    # Wire event log into services for dashboard visibility
     if hasattr(memory_svc, "_event_log"):
         memory_svc._event_log = event_log
+    if hasattr(bus_svc, "_event_log"):
+        bus_svc._event_log = event_log
+
+    # Wrap the inner bus with HttpBusTransport for remote agent support
+    inner_bus = bus_svc.bus
+    if isinstance(inner_bus, AsyncKnowledgeBus):
+        inner_bus._event_log = event_log
+        transport = HttpBusTransport(inner=inner_bus, event_log=event_log)
+        bus_svc._bus = transport  # Swap transport — BusService is unaware
+    else:
+        transport = None
 
     app = create_api_app(
         memory_svc=memory_svc,
@@ -544,6 +731,7 @@ async def run_http_server(
         consolidation_svc=consolidation_svc,
         event_log=event_log,
         auth_token=auth_token,
+        extra_routes=transport.starlette_routes() if transport else None,
     )
 
     config_uvicorn = uvicorn.Config(
@@ -551,11 +739,46 @@ async def run_http_server(
     )
     server = uvicorn.Server(config_uvicorn)
 
+    # Optionally start dashboard on a separate port, sharing services
+    dashboard_server = None
+    if dashboard_port:
+        try:
+            from ncms.interfaces.http.dashboard import create_dashboard_app
+
+            dashboard_app = create_dashboard_app(
+                memory_service=memory_svc,
+                bus_service=bus_svc,
+                event_log=event_log,
+            )
+            dashboard_config = uvicorn.Config(
+                dashboard_app, host=host, port=dashboard_port,
+                log_level="info",
+            )
+            dashboard_server = uvicorn.Server(dashboard_config)
+            logger.info(
+                "Dashboard will start on %s:%d (shared EventLog)",
+                host, dashboard_port,
+            )
+        except ImportError:
+            logger.warning(
+                "Dashboard dependencies not installed, skipping"
+            )
+
     def _handle_shutdown(sig: int, frame: object) -> None:
         server.should_exit = True
+        if dashboard_server:
+            dashboard_server.should_exit = True
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
     logger.info("NCMS HTTP API server starting on %s:%d", host, port)
-    await server.serve()
+
+    if dashboard_server:
+        # Run both servers concurrently in the same event loop
+        await asyncio.gather(
+            server.serve(),
+            dashboard_server.serve(),
+        )
+    else:
+        await server.serve()

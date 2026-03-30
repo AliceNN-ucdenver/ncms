@@ -1,0 +1,126 @@
+# NemoClaw Multi-Agent Demo — 3 sandboxes + NCMS Hub
+#
+# Usage:
+#   cd deployment/nemoclaw-blueprint
+#   docker compose -f docker-compose.nemoclaw.yaml up --build
+#
+# Architecture:
+#   ncms-hub:  NCMS Hub (MCP HTTP :8080 + Dashboard :8420 + Knowledge Bus)
+#   architect: Architect agent sandbox (bus sidecar, domains: architecture)
+#   security:  Security agent sandbox (bus sidecar, domains: security)
+#   builder:   Builder agent sandbox (bus sidecar, domains: identity-service)
+#
+# All inference routes to DGX Spark (Nemotron 3 Nano via vLLM).
+# No Anthropic API calls.
+
+services:
+  # ── NCMS Hub ──────────────────────────────────────────────
+  ncms-hub:
+    build:
+      context: ../..
+      dockerfile: deployment/nemoclaw-blueprint/hub.Dockerfile
+    container_name: ncms-hub
+    environment:
+      # Retrieval features
+      NCMS_SPLADE_ENABLED: "true"
+      NCMS_EPISODES_ENABLED: "true"
+      NCMS_INTENT_CLASSIFICATION_ENABLED: "true"
+      NCMS_RERANKER_ENABLED: "true"
+      NCMS_ADMISSION_ENABLED: "true"
+      NCMS_RECONCILIATION_ENABLED: "true"
+      # LLM → DGX Spark (fully local, no Anthropic)
+      NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+      NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+      NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED: "true"
+      NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+      NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+      NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
+      # Bus timeout (agents need LLM time to synthesize answers)
+      NCMS_BUS_ASK_TIMEOUT_MS: "60000"
+    ports:
+      - "8080:8080"    # MCP HTTP API + Bus API
+      - "8420:8420"    # Dashboard
+    volumes:
+      - ncms-data:/app/data
+    healthcheck:
+      test: curl -f http://localhost:8080/api/v1/health || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s    # Models take time to load
+
+  # ── Architect Agent ────────────────────────────────────────
+  architect:
+    build:
+      context: ../..
+      dockerfile: deployment/nemoclaw-blueprint/sandbox.Dockerfile
+    container_name: ncms-architect
+    environment:
+      NCMS_HUB_URL: http://ncms-hub:8080
+      NCMS_AGENT_ID: architect
+      NCMS_AGENT_DOMAINS: "architecture,calm-model,quality,decisions"
+      NCMS_SUBSCRIBE_TO: "security,identity-service,implementation"
+      NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+      NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+      NCMS_SYSTEM_PROMPT: >-
+        You are the Architecture Agent. You are an expert in software architecture,
+        CALM (C4/Arc42 Lightweight Modelling), ADRs, quality attributes, and fitness
+        functions. Answer questions about system design, service boundaries, API
+        patterns, and architectural decisions based on the provided context.
+    depends_on:
+      ncms-hub:
+        condition: service_healthy
+
+  # ── Security Agent ─────────────────────────────────────────
+  security:
+    build:
+      context: ../..
+      dockerfile: deployment/nemoclaw-blueprint/sandbox.Dockerfile
+    container_name: ncms-security
+    environment:
+      NCMS_HUB_URL: http://ncms-hub:8080
+      NCMS_AGENT_ID: security
+      NCMS_AGENT_DOMAINS: "security,threats,compliance,controls"
+      NCMS_SUBSCRIBE_TO: "architecture,identity-service,implementation"
+      NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+      NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+      NCMS_SYSTEM_PROMPT: >-
+        You are the Security Agent. You are an expert in application security,
+        OWASP threats, STRIDE threat modeling, compliance requirements (SOC2, GDPR),
+        and security controls. Answer questions about authentication, authorization,
+        threat mitigations, and compliance based on the provided context.
+    depends_on:
+      ncms-hub:
+        condition: service_healthy
+
+  # ── Builder Agent ──────────────────────────────────────────
+  builder:
+    build:
+      context: ../..
+      dockerfile: deployment/nemoclaw-blueprint/sandbox.Dockerfile
+    container_name: ncms-builder
+    environment:
+      NCMS_HUB_URL: http://ncms-hub:8080
+      NCMS_AGENT_ID: builder
+      NCMS_AGENT_DOMAINS: "identity-service,implementation"
+      NCMS_SUBSCRIBE_TO: "architecture,security,threats,controls"
+      NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
+      NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
+      NCMS_SYSTEM_PROMPT: >-
+        You are the Builder Agent. You design and implement the imdb-identity-service,
+        an Express.js microservice for user authentication backed by PostgreSQL.
+        Consult architecture and security knowledge before making decisions.
+        Answer questions about implementation details based on the provided context.
+      NCMS_STARTUP_QUESTIONS: >-
+        [
+          {"question": "What are the key architectural decisions for the identity service?", "domains": ["architecture"]},
+          {"question": "What authentication and authorization approach should I implement?", "domains": ["architecture"]},
+          {"question": "What are the security requirements and threat mitigations for the identity service?", "domains": ["security"]},
+          {"question": "What compliance requirements (SOC2, GDPR) apply to user authentication?", "domains": ["security"]}
+        ]
+    depends_on:
+      ncms-hub:
+        condition: service_healthy
+
+volumes:
+  ncms-data:

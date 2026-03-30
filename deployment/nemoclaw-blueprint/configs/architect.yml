@@ -1,0 +1,74 @@
+# Architect Agent — tool_calling_agent for LLM-powered expert synthesis
+
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "https://inference.local/v1"
+    api_key: "dummy"
+    max_tokens: 16384
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: otelcollector
+        project: ncms-architect
+        endpoint: "http://host.docker.internal:6006/v1/traces"
+        resource_attributes:
+          openinference.project.name: ncms-architect
+
+memory:
+  ncms_store:
+    _type: ncms_memory
+    hub_url: "http://host.docker.internal:9080"
+    agent_id: architect
+    domains: [architecture, calm-model, quality, decisions]
+    subscribe_to: [security, identity-service, implementation]
+    knowledge_paths:
+      - path: /sandbox/knowledge/architecture/
+        domains: [architecture, decisions]
+
+functions:
+  ask_knowledge:
+    _type: ask_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: architect
+    timeout_ms: 120000
+
+  announce_knowledge:
+    _type: announce_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: architect
+
+  architect_agent:
+    _type: tool_calling_agent
+    llm_name: spark_llm
+    tool_names: [announce_knowledge]
+    verbose: true
+    handle_tool_errors: true
+    description: >
+      You are the architecture expert for the imdb-clone project.
+      You own ADRs (Architecture Decision Records), the CALM model,
+      and system design decisions.
+
+      Answer questions directly using your knowledge about service boundaries,
+      API design, data models, ADRs, quality attributes (scalability,
+      maintainability, observability), and system architecture.
+
+      Always cite ADR numbers (e.g. ADR-001) when referencing decisions.
+      Be specific about what aligns or conflicts with existing ADRs.
+      Do NOT call any tools. Just answer the question directly.
+
+workflow:
+  _type: auto_memory_agent
+  inner_agent_name: architect_agent
+  memory_name: ncms_store
+  llm_name: spark_llm
+  description: "Architect agent with reasoning-driven responses"
+  search_params:
+    top_k: 10

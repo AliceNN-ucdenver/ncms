@@ -30,6 +30,7 @@ def cli() -> None:
 @click.option("--host", default="0.0.0.0", help="HTTP bind address (http transport only)")
 @click.option("--port", default=8080, type=int, help="HTTP port (http transport only)")
 @click.option("--auth-token", default=None, help="Bearer token for HTTP auth")
+@click.option("--dashboard-port", default=None, type=int, help="Also start dashboard on this port")
 def serve(
     db: str | None,
     index: str | None,
@@ -37,6 +38,7 @@ def serve(
     host: str,
     port: int,
     auth_token: str | None,
+    dashboard_port: int | None,
 ) -> None:
     """Start the NCMS server (MCP stdio or HTTP REST)."""
     from ncms.config import NCMSConfig
@@ -51,12 +53,52 @@ def serve(
         from ncms.interfaces.http.api import run_http_server
 
         click.echo(f"Starting NCMS HTTP API server on {host}:{port}...", err=True)
-        asyncio.run(run_http_server(config=config, host=host, port=port, auth_token=auth_token))
+        if dashboard_port:
+            click.echo(f"Dashboard on {host}:{dashboard_port} (shared EventLog)", err=True)
+        asyncio.run(run_http_server(
+            config=config, host=host, port=port,
+            auth_token=auth_token, dashboard_port=dashboard_port,
+        ))
     else:
         from ncms.interfaces.mcp.server import run_server
 
         click.echo("Starting NCMS MCP server...", err=True)
         asyncio.run(run_server(config))
+
+
+@cli.command("bus-agent")
+@click.option("--hub", required=True, help="NCMS Hub URL (e.g. http://ncms-hub:8080)")
+@click.option("--agent-id", required=True, help="Agent identifier")
+@click.option("--domains", required=True, help="Comma-separated domain list")
+@click.option("--subscribe-to", default=None, help="Domains to subscribe to (comma-sep)")
+@click.option("--llm-model", default=None, envvar="NCMS_LLM_MODEL", help="LLM model for synthesis")
+@click.option("--llm-api-base", default=None, envvar="NCMS_LLM_API_BASE", help="LLM API base URL")
+@click.option("--system-prompt", default=None, help="System prompt for LLM synthesis")
+def bus_agent(
+    hub: str,
+    agent_id: str,
+    domains: str,
+    subscribe_to: str | None,
+    llm_model: str | None,
+    llm_api_base: str | None,
+    system_prompt: str | None,
+) -> None:
+    """Run the NCMS Bus Agent sidecar (for NemoClaw sandboxes).
+
+    Maintains an SSE connection to the NCMS Hub. Handles incoming
+    questions (search + LLM synthesis) and stores announcements.
+    """
+    from ncms.interfaces.cli.bus_agent import run_bus_agent
+
+    run_bus_agent(
+        hub_url=hub,
+        agent_id=agent_id,
+        domains=domains,
+        subscribe_to=subscribe_to,
+        llm_model=llm_model,
+        llm_api_base=llm_api_base,
+        system_prompt=system_prompt,
+    )
 
 
 @cli.command()

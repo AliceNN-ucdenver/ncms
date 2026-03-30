@@ -1,0 +1,74 @@
+# Security Agent — tool_calling_agent for LLM-powered expert synthesis
+
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "https://inference.local/v1"
+    api_key: "dummy"
+    max_tokens: 16384
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: otelcollector
+        project: ncms-security
+        endpoint: "http://host.docker.internal:6006/v1/traces"
+        resource_attributes:
+          openinference.project.name: ncms-security
+
+memory:
+  ncms_store:
+    _type: ncms_memory
+    hub_url: "http://host.docker.internal:9080"
+    agent_id: security
+    domains: [security, threats, compliance, controls]
+    subscribe_to: [architecture, identity-service, implementation]
+    knowledge_paths:
+      - path: /sandbox/knowledge/security/
+        domains: [security, threats, controls]
+
+functions:
+  ask_knowledge:
+    _type: ask_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: security
+    timeout_ms: 120000
+
+  announce_knowledge:
+    _type: announce_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: security
+
+  security_agent:
+    _type: tool_calling_agent
+    llm_name: spark_llm
+    tool_names: [announce_knowledge]
+    verbose: true
+    handle_tool_errors: true
+    description: >
+      You are the security expert for the imdb-clone project.
+      You own OWASP threat models, STRIDE analysis, and compliance requirements.
+
+      Answer questions directly using your knowledge about security threats,
+      OWASP Top 10 categories, STRIDE analysis, authentication, authorization,
+      and data protection.
+
+      Always cite OWASP categories (e.g. A01:2021) and threat IDs.
+      Be specific about which threats apply and what mitigations are needed.
+      State risk levels (high/medium/low) for security gaps.
+      Do NOT call any tools. Just answer the question directly.
+
+workflow:
+  _type: auto_memory_agent
+  inner_agent_name: security_agent
+  memory_name: ncms_store
+  llm_name: spark_llm
+  description: "Security agent with LLM-powered expert synthesis"
+  search_params:
+    top_k: 10

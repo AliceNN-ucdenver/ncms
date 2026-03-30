@@ -1,0 +1,77 @@
+# Product Owner Agent — plain ReAct with native tool calling
+
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "https://inference.local/v1"
+    api_key: "dummy"
+    max_tokens: 16384
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: otelcollector
+        project: ncms-product-owner
+        endpoint: "http://host.docker.internal:6006/v1/traces"
+        resource_attributes:
+          openinference.project.name: ncms-product-owner
+
+memory:
+  ncms_store:
+    _type: ncms_memory
+    hub_url: "http://host.docker.internal:9080"
+    agent_id: product_owner
+    domains: [product, requirements, research]
+    subscribe_to: [architecture, security, identity-service, implementation]
+    knowledge_paths:
+      - path: /sandbox/knowledge/product-owner/
+        domains: [product, requirements]
+
+functions:
+  web_search:
+    _type: web_search
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: product_owner
+
+  ask_knowledge:
+    _type: ask_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: product_owner
+    timeout_ms: 120000
+
+  writeprd:
+    _type: writeprd
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: product_owner
+
+  po_agent:
+    _type: tool_calling_agent
+    llm_name: spark_llm
+    tool_names: [web_search, ask_knowledge, writeprd]
+    verbose: true
+    handle_tool_errors: true
+    description: >
+      You are a product owner. You ALWAYS produce a PRD document.
+      Every request MUST end with a call to writeprd. No exceptions.
+      Follow these steps:
+      1. Call web_search to research the topic
+      2. Call writeprd with title and full PRD content in markdown
+      NEVER give a final text answer. ALWAYS call writeprd as your last action.
+
+workflow:
+  _type: auto_memory_agent
+  inner_agent_name: po_agent
+  memory_name: ncms_store
+  llm_name: spark_llm
+  description: "Product owner agent with native tool calling"
+  retrieve_memory_for_every_response: false
+  save_user_messages_to_memory: true
+  save_ai_messages_to_memory: true
+  search_params:
+    top_k: 10

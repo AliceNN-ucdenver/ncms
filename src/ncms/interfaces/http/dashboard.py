@@ -18,7 +18,8 @@ from typing import Any, cast
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from ncms.application.bus_service import BusService
 from ncms.application.memory_service import MemoryService
@@ -515,7 +516,13 @@ def create_dashboard_app(
         Route("/api/entities-with-states", api_entities_with_states),
         Route("/api/entity-states/{entity_id}", api_entity_states),
         Route("/api/entity-states/{entity_id}/history", api_entity_state_history),
+        Mount("/js", StaticFiles(directory=str(STATIC_DIR / "js")), name="js"),
+        Mount("/css", StaticFiles(directory=str(STATIC_DIR / "css")), name="css"),
+        Mount("/documents", StaticFiles(directory=str(STATIC_DIR / "documents")), name="documents"),
     ]
+
+    # Ensure documents directory exists for static serving
+    (STATIC_DIR / "documents").mkdir(exist_ok=True)
 
     return Starlette(routes=routes)
 

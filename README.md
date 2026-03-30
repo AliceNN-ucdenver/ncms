@@ -215,7 +215,7 @@ NCMS LLM features (contradiction detection, knowledge consolidation) can be acce
 **Deploy Nemotron on DGX Spark:**
 
 ```bash
-docker run -d --gpus all --ipc=host --restart unless-stopped \
+sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   -p 8000:8000 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
@@ -223,8 +223,13 @@ docker run -d --gpus all --ipc=host --restart unless-stopped \
     --host 0.0.0.0 \
     --port 8000 \
     --trust-remote-code \
-    --max-model-len 32768
+    --max-model-len 65536 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder
 ```
+
+- `--max-model-len 65536` &mdash; 64K context window (model ~60GB, leaves ~68GB for KV cache)
+- `--enable-auto-tool-choice` + `--tool-call-parser qwen3_coder` &mdash; enables native tool calling for NAT agents. Nemotron Nano uses `<tool_call><function=name>` format parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param is present; regular chat completions unaffected
 
 **Point NCMS at the Spark:**
 

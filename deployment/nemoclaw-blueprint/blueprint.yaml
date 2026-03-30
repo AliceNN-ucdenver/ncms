@@ -1,7 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# NemoClaw Blueprint for NCMS Cognitive Memory System
+# NemoClaw Blueprint for NCMS Multi-Agent Cognitive Memory System
 # Compatible with NemoClaw Blueprint Runner protocol.
+#
+# Architecture: 4 sandboxes
+#   ncms-hub:       NCMS Hub (MCP HTTP :9080 + Dashboard :8420 + Knowledge Bus)
+#   ncms-architect: Architect agent (OpenClaw + bus sidecar, domains: architecture)
+#   ncms-security:  Security agent (OpenClaw + bus sidecar, domains: security)
+#   ncms-builder:   Builder agent (OpenClaw + bus sidecar, domains: identity-service)
+#
+# Setup:
+#   ./setup_nemoclaw.sh                          # Interactive (first time)
+#   ./setup_nemoclaw.sh --non-interactive        # Automated
+#   ./setup_nemoclaw.sh --status                 # Check sandbox status
+#   ./setup_nemoclaw.sh --teardown               # Remove all sandboxes
+#
+# Inference: DGX Spark (Nemotron 3 Nano via vLLM, no GPU required on host).
+# NemoClaw will discover no local GPU — that's expected. We use the remote
+# DGX Spark endpoint via the vLLM provider (NEMOCLAW_EXPERIMENTAL=1).
 
 version: "0.1.0"
 min_openshell_version: "0.1.0"
@@ -17,16 +33,98 @@ profiles:
 description: |
   NCMS Cognitive Memory System — persistent memory for AI agents with
   hybrid BM25+SPLADE+Graph retrieval, Knowledge Bus, and autonomous
-  multi-agent design workflows via OpenClaw skills.
+  multi-agent design workflows via OpenClaw sandboxes.
 
+  Multi-sandbox architecture: one NCMS Hub provides shared memory and
+  real-time Knowledge Bus, three OpenClaw agent sandboxes (architect,
+  security, builder) connect via HTTP+SSE for event-driven coordination.
+
+# ── Sandboxes ──────────────────────────────────────────────────────────────
 components:
-  sandbox:
-    image: "ncms-nemoclaw:latest"
-    name: "ncms-openclaw"
-    forward_ports:
-      - 8420
-      - 8080
+  sandboxes:
+    # NCMS Hub — provides cognitive memory + Knowledge Bus for all agents
+    hub:
+      name: "ncms-hub"
+      image: "ncms-nemoclaw:latest"
+      role: "hub"
+      forward_ports:
+        - 9080   # MCP HTTP API + Bus API (8080 reserved for OpenClaw)
+        - 8420   # Observability Dashboard
+      command: >-
+        uv run ncms serve --transport http --port 9080 --host 0.0.0.0
+        --dashboard-port 8420
+      environment:
+        NCMS_SPLADE_ENABLED: "true"
+        NCMS_EPISODES_ENABLED: "true"
+        NCMS_INTENT_CLASSIFICATION_ENABLED: "true"
+        NCMS_RERANKER_ENABLED: "true"
+        NCMS_ADMISSION_ENABLED: "true"
+        NCMS_RECONCILIATION_ENABLED: "true"
+        NCMS_BUS_ASK_TIMEOUT_MS: "60000"
 
+    # Architect Agent — architecture, CALM models, ADRs, quality attributes
+    architect:
+      name: "ncms-architect"
+      base: "openclaw"
+      role: "agent"
+      agent_id: "architect"
+      domains:
+        - architecture
+        - calm-model
+        - quality
+        - decisions
+      subscribe_to:
+        - security
+        - identity-service
+        - implementation
+      skill: "skills/architect/architect.md"
+      depends_on: "ncms-hub"
+
+    # Security Agent — STRIDE threats, OWASP, compliance, controls
+    security:
+      name: "ncms-security"
+      base: "openclaw"
+      role: "agent"
+      agent_id: "security"
+      domains:
+        - security
+        - threats
+        - compliance
+        - controls
+      subscribe_to:
+        - architecture
+        - identity-service
+        - implementation
+      skill: "skills/security/security.md"
+      depends_on: "ncms-hub"
+
+    # Builder Agent — designs imdb-identity-service by consulting others
+    builder:
+      name: "ncms-builder"
+      base: "openclaw"
+      role: "agent"
+      agent_id: "builder"
+      domains:
+        - identity-service
+        - implementation
+      subscribe_to:
+        - architecture
+        - security
+        - threats
+        - controls
+      skill: "skills/builder/builder.md"
+      depends_on: "ncms-hub"
+      startup_questions:
+        - question: "What are the key architectural decisions for the identity service?"
+          domains: ["architecture"]
+        - question: "What authentication and authorization approach should I implement?"
+          domains: ["architecture"]
+        - question: "What are the security requirements and threat mitigations for the identity service?"
+          domains: ["security"]
+        - question: "What compliance requirements (SOC2, GDPR) apply to user authentication?"
+          domains: ["security"]
+
+  # ── Inference ──────────────────────────────────────────────────────────
   inference:
     profiles:
       default:
@@ -36,6 +134,9 @@ components:
         model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
         credential_env: "OPENAI_API_KEY"
         credential_default: "dummy"
+        # NemoClaw env vars for non-interactive setup:
+        nemoclaw_provider: "vllm"
+        nemoclaw_experimental: true
 
       ollama:
         provider_type: "openai"
@@ -44,6 +145,7 @@ components:
         model: "qwen3.5:35b-a3b"
         credential_env: "OPENAI_API_KEY"
         credential_default: "dummy"
+        nemoclaw_provider: "ollama"
 
       nim:
         provider_type: "nvidia"
@@ -51,6 +153,7 @@ components:
         endpoint: "https://integrate.api.nvidia.com/v1"
         model: "nvidia/llama-3.1-nemotron-70b-instruct"
         credential_env: "NVIDIA_API_KEY"
+        nemoclaw_provider: "cloud"
 
       vllm:
         provider_type: "openai"
@@ -59,9 +162,12 @@ components:
         model: "nvidia/nemotron-3-nano-30b-a3b"
         credential_env: "OPENAI_API_KEY"
         credential_default: "dummy"
+        nemoclaw_provider: "vllm"
+        nemoclaw_experimental: true
 
+  # ── Policy ─────────────────────────────────────────────────────────────
   policy:
-    base: "policies/ncms-sandbox.yaml"
+    base: "policies/openclaw-sandbox.yaml"
     additions:
       spark_service:
         name: spark_service
@@ -76,13 +182,28 @@ components:
             port: 11434
             protocol: rest
 
+  # ── MCP ────────────────────────────────────────────────────────────────
   mcp:
     servers:
       ncms:
-        command: "uv run ncms serve"
+        # Agents connect to the Hub's MCP HTTP endpoint (not a local process)
+        type: "url"
+        url: "http://localhost:9080/mcp"
         description: "NCMS Cognitive Memory — store, search, recall, Knowledge Bus"
 
+# ── Skills ─────────────────────────────────────────────────────────────────
 skills:
   - "skills/architect/architect.md"
   - "skills/security/security.md"
   - "skills/builder/builder.md"
+
+# ── Knowledge ──────────────────────────────────────────────────────────────
+knowledge:
+  load_on_startup: true
+  directory: "knowledge/"
+  domain_mapping:
+    "architecture/": ["architecture", "decisions"]
+    "security/": ["security", "threats", "controls"]
+    "prompts/architecture": ["architecture", "decisions"]
+    "prompts/application-security": ["security", "threats", "controls"]
+    "app.yaml": ["architecture", "identity-service"]

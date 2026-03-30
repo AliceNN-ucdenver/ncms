@@ -101,9 +101,13 @@ RUN git clone --depth 1 https://github.com/NVIDIA/NemoClaw.git /tmp/nemoclaw && 
 # ── Stage 4: Final Image ──────────────────────────────────────────────────
 FROM base AS final
 
-# Install Node.js 22 runtime (for NemoClaw CLI)
+# Install Node.js 22 runtime (for NemoClaw CLI) + Docker CLI (for OpenShell)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+      > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends nodejs docker-ce-cli && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy OpenShell binary from build stage
@@ -151,7 +155,7 @@ ENV NCMS_DB_PATH=/app/data/.ncms/ncms.db \
 EXPOSE 8420 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8080/api/v1/health || exit 1
+    CMD curl -f http://localhost:8080/api/v1/health || curl -f http://localhost:8420/ || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["serve"]

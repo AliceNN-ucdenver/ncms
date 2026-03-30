@@ -328,17 +328,35 @@ Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
 
 ### DGX Spark (vLLM)
 
-A DGX Spark at `spark-ee7d.local` serves Nemotron 3 Nano via NGC vLLM container:
+A DGX Spark at `spark-ee7d.local` (128GB) serves Nemotron 3 Nano via NGC vLLM container:
 
 ```bash
-# Deploy on Spark (via Portainer or SSH)
-docker run -d --gpus all --ipc=host --restart unless-stopped \
+# Deploy on Spark (via Portainer or SSH — use sudo if not in docker group)
+sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   -p 8000:8000 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
-    --host 0.0.0.0 --port 8000 --trust-remote-code --max-model-len 32768
+    --host 0.0.0.0 \
+    --port 8000 \
+    --trust-remote-code \
+    --max-model-len 65536 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder
+
+# Verify serving
+curl http://spark-ee7d.local:8000/v1/models
+
+# Test tool calling
+curl http://spark-ee7d.local:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16", "messages": [{"role": "user", "content": "hello"}], "max_tokens": 50}'
 ```
+
+**vLLM flags:**
+- `--max-model-len 65536` — 64K context window (model ~60GB, leaves ~68GB for KV cache on 128GB Spark)
+- `--enable-auto-tool-choice` — required for NAT `use_native_tool_calling: true` (agents send `tool_choice: "auto"`)
+- `--tool-call-parser qwen3_coder` — Nemotron Nano uses `<tool_call><function=name>` format, parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param present in request; regular chat completions unaffected
 
 Enable LLM features via Spark:
 

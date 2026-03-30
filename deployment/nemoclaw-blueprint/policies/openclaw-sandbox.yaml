@@ -1,0 +1,342 @@
+# SPDX-License-Identifier: Apache-2.0
+# NCMS NemoClaw sandbox policy — extends OpenClaw defaults with NCMS Hub,
+# DGX Spark inference, and Phoenix tracing endpoints.
+#
+# Apply: openshell policy set <sandbox> --policy policies/openclaw-sandbox.yaml
+# Or:    openshell sandbox create --policy policies/openclaw-sandbox.yaml ...
+
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+    - /lib
+    - /proc
+    - /dev/urandom
+    - /app
+    - /etc
+    - /var/log
+    - /sandbox/.openclaw
+  read_write:
+    - /sandbox
+    - /tmp
+    - /dev/null
+    - /sandbox/.openclaw-data
+
+landlock:
+  compatibility: best_effort
+
+process:
+  run_as_user: sandbox
+  run_as_group: sandbox
+
+network_policies:
+  # ── Claude Code API ──────────────────────────────────────────────────
+  claude_code:
+    name: claude_code
+    endpoints:
+      - host: api.anthropic.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+      - host: statsig.anthropic.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+      - host: sentry.io
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/claude }
+
+  # ── NVIDIA inference (NIM / DGX Spark vLLM) ─────────────────────────
+  nvidia:
+    name: nvidia
+    endpoints:
+      - host: integrate.api.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+      - host: inference-api.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/claude }
+      - { path: /usr/local/bin/openclaw }
+
+  # ── DGX Spark (vLLM on local network) ───────────────────────────────
+  # Plain HTTP — no TLS, no tls field
+  dgx_spark:
+    name: dgx_spark
+    endpoints:
+      - host: spark-ee7d.local
+        port: 8000
+        access: full
+        allowed_ips:
+          - 192.168.1.122
+    binaries:
+      - { path: "-" }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /sandbox/.venv/bin/nat }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/curl }
+      - { path: /usr/local/bin/claude }
+      - { path: /usr/local/bin/openclaw }
+
+  # ── NCMS Hub (Docker on host) ───────────────────────────────────────
+  # Plain HTTP — API + Bus + SSE
+  ncms_hub:
+    name: ncms_hub
+    endpoints:
+      - host: host.docker.internal
+        port: 9080
+        access: full
+        allowed_ips:
+          - 192.168.65.254
+      - host: host.openshell.internal
+        port: 9080
+        access: full
+        allowed_ips:
+          - 192.168.65.254
+    binaries:
+      - { path: "-" }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /sandbox/.venv/bin/nat }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/curl }
+      - { path: /usr/local/bin/claude }
+      - { path: /usr/local/bin/openclaw }
+
+  # ── Phoenix tracing ─────────────────────────────────────────────────
+  phoenix:
+    name: phoenix
+    endpoints:
+      - host: host.docker.internal
+        port: 6006
+        access: full
+        allowed_ips:
+          - 192.168.65.254
+      - host: host.openshell.internal
+        port: 6006
+        access: full
+        allowed_ips:
+          - 192.168.65.254
+    binaries:
+      - { path: "-" }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /sandbox/.venv/bin/nat }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/bin/curl }
+      - { path: /usr/local/bin/claude }
+      - { path: /usr/local/bin/openclaw }
+
+  # ── Claude MCP Proxy ────────────────────────────────────────────
+  claude_mcp:
+    name: claude_mcp
+    endpoints:
+      - host: mcp-proxy.anthropic.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+      - host: storage.googleapis.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/claude }
+
+  # ── GitHub ──────────────────────────────────────────────────────────
+  github:
+    name: github
+    endpoints:
+      - host: github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+      - host: api.github.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: "*", path: "/**" }
+    binaries:
+      - { path: /usr/bin/git }
+      - { path: /usr/bin/gh }
+
+  # ── Python packages (PyPI + uv) ────────────────────────────────────
+  python_packages:
+    name: python_packages
+    endpoints:
+      - host: pypi.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: files.pythonhosted.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/uv }
+      - { path: /usr/bin/curl }
+
+  # ── NVIDIA packages (NAT / NeMo Agent Toolkit) ────────────────
+  nvidia_packages:
+    name: nvidia_packages
+    endpoints:
+      - host: pypi.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: developer.download.nvidia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/uv }
+      - { path: /usr/bin/curl }
+
+  # ── HuggingFace (model downloads) ──────────────────────────────────
+  huggingface:
+    name: huggingface
+    endpoints:
+      - host: huggingface.co
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: cdn-lfs.huggingface.co
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: cdn-lfs-us-1.huggingface.co
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /usr/bin/python3 }
+      - { path: /usr/local/bin/uv }
+
+  # ── OpenClaw ────────────────────────────────────────────────────────
+  clawhub:
+    name: clawhub
+    endpoints:
+      - host: clawhub.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/openclaw }
+
+  openclaw_api:
+    name: openclaw_api
+    endpoints:
+      - host: openclaw.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/openclaw }
+
+  openclaw_docs:
+    name: openclaw_docs
+    endpoints:
+      - host: docs.openclaw.ai
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/openclaw }
+
+  # ── Tavily Search API (Product Owner web research) ─────────────────
+  tavily:
+    name: tavily
+    endpoints:
+      - host: api.tavily.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: POST, path: "/search" }
+    binaries:
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+      - { path: /sandbox/.venv/bin/nat }
+      - { path: /usr/bin/python3 }
+
+  npm_registry:
+    name: npm_registry
+    endpoints:
+      - host: registry.npmjs.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /usr/local/bin/openclaw }
+      - { path: /usr/local/bin/npm }

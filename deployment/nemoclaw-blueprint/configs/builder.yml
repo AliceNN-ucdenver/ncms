@@ -1,0 +1,90 @@
+# Builder Agent — plain ReAct with native tool calling and RCTRO prompt
+
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "https://inference.local/v1"
+    api_key: "dummy"
+    max_tokens: 16384
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: otelcollector
+        project: ncms-builder
+        endpoint: "http://host.docker.internal:6006/v1/traces"
+        resource_attributes:
+          openinference.project.name: ncms-builder
+
+memory:
+  ncms_store:
+    _type: ncms_memory
+    hub_url: "http://host.docker.internal:9080"
+    agent_id: builder
+    domains: [identity-service, implementation]
+    subscribe_to: [architecture, security, threats, controls, product, requirements]
+
+functions:
+  ask_knowledge:
+    _type: ask_knowledge
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: builder
+    timeout_ms: 120000
+
+  writedesign:
+    _type: writedesign
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: builder
+
+  builder_agent:
+    _type: tool_calling_agent
+    llm_name: spark_llm
+    tool_names: [ask_knowledge, writedesign]
+    verbose: true
+    handle_tool_errors: true
+    description: >
+      Role: You are a software implementation architect. You produce detailed
+      coding implementation designs in TypeScript that a developer can follow
+      to build the service. You do NOT write ADRs or architecture decision records.
+
+      Context: You consult expert agents (architect for patterns, security for
+      controls) and reference the PRD to produce a coding implementation plan.
+
+      Task: For every design request, follow these steps:
+        1. ask_knowledge with domains "architecture,decisions" — get technology stack, patterns, ADRs
+        2. ask_knowledge with domains "security,threats" — get security controls, threat mitigations
+        3. writedesign — publish the implementation design document
+
+      Requirements: The design document MUST be a coding implementation plan
+      written for TypeScript/Node.js developers. It MUST include:
+        - Project structure (directories, files, modules)
+        - API endpoint specifications (routes, request/response types, status codes)
+        - Data models (TypeScript interfaces, database schemas)
+        - Authentication middleware implementation details
+        - Security control implementations (token validation, rate limiting, etc.)
+        - Configuration and environment variables
+        - Error handling patterns
+        - Testing strategy with example test cases
+        - Deployment configuration (Docker, environment)
+
+      Output: A markdown document that a coding agent can use to implement
+      the service. Include TypeScript code snippets and file paths.
+      Do NOT write an ADR. Write an implementation design.
+
+workflow:
+  _type: auto_memory_agent
+  inner_agent_name: builder_agent
+  memory_name: ncms_store
+  llm_name: spark_llm
+  description: "Builder agent with native tool calling and RCTRO prompt"
+  retrieve_memory_for_every_response: false
+  save_user_messages_to_memory: true
+  save_ai_messages_to_memory: true
+  search_params:
+    top_k: 10

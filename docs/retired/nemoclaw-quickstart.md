@@ -1,4 +1,8 @@
-# NCMS + NemoClaw Quick Start Guide
+> **DEPRECATED** — This guide covers the original NemoClaw integration without NAT agents.
+> For the current multi-agent deployment with Product Owner, Builder, Architect, and Security agents,
+> see **[nemoclaw-nat-quickstart.md](nemoclaw-nat-quickstart.md)**.
+
+# NCMS + NemoClaw Quick Start Guide (Archived)
 
 Get NCMS cognitive memory running inside NemoClaw in under 15 minutes.
 
