@@ -61,7 +61,7 @@
     <polygon points="318,93 328,98 318,103" fill="#3b82f6" fill-opacity="0.6"/>
 
     <!-- Phase label -->
-    <text x="400" y="142" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="10" font-style="italic">Agents boot &rarr; knowledge files loaded into shared memory</text>
+    <text x="400" y="142" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="10" font-style="italic">Agents boot &#x2192; knowledge files loaded into shared memory</text>
   </g>
 
   <!-- Connector arrow 1->2 -->
