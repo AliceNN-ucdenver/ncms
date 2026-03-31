@@ -51,7 +51,7 @@ Six specialized AI agents coordinate through a shared knowledge bus to execute a
 | **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph -- nDCG@10 = 0.7206 |
 | **Orchestration** | LangGraph | Deterministic pipelines for Researcher, PO, Builder |
 | **Experts** | LangGraph (dual-mode) | Architect + Security: classify > search_memory > answer or structured_review |
-| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 256K context on DGX Spark (128GB) |
+| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB) |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
 | **Research** | Tavily | Live web search for Researcher (5 parallel queries) |
@@ -167,7 +167,7 @@ All agents generated complete traces during the test run -- full visibility into
 ### LLM Infrastructure
 
 - **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass. The model supports up to 1M context tokens.
-- **Serving:** NGC vLLM container on a DGX Spark (128GB memory). Configured with `--max-model-len 262144` (256K context window). At 256K, the model uses less than 1% of available KV cache on the 128GB Spark, leaving substantial headroom.
+- **Serving:** NGC vLLM container on a DGX Spark (128GB memory). Configured with `--max-model-len 524288` (512K context) via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`. KV cache usage under 0.5%, leaving massive headroom. Model supports up to 1M via RoPE scaling.
 - **Tool call parser:** `--tool-call-parser qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
 - **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output. The 256K context window provides ample room for the prompt, retrieved knowledge, and generation.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000` rather than through the NemoClaw `inference.local` proxy. The proxy imposes a 60-second timeout that is insufficient for large document synthesis. Direct connection eliminates this bottleneck.
@@ -246,19 +246,18 @@ After this, any sandbox can reach the LLM at `https://inference.local/v1` and Ne
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   --name vllm-nemotron-nano \
   -p 8000:8000 \
+  -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
     --host 0.0.0.0 --port 8000 \
     --trust-remote-code \
-    --max-model-len 262144 \
+    --max-model-len 524288 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder
 ```
 
-The model supports up to 1M context tokens. At 256K (`--max-model-len 262144`), the model (~15GB) uses less than 1% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly.
-
-**Note:** For 512K-1M context, add `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` as an environment variable to the docker command (e.g., `-e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`) and increase `--max-model-len` accordingly. Tested and working on the 128GB Spark for single-user workloads.
+512K context window with `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling). At 512K, the model uses less than 0.5% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly.
 
 ### Step 3: One-Command Deploy
 
@@ -687,9 +686,9 @@ The plugin uses namespace packages (no `__init__.py` in `nat/` or `nat/plugins/`
 
 The auto-chaining pipeline runs end-to-end with a review loop. These are the next areas of investment:
 
-### 512K-1M Context
+### 1M Context
 
-The current pipeline uses 256K context. Nemotron Nano supports up to 1M tokens. The model supports this via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (tested, works on the 128GB Spark). Pushing to 512K or 1M would enable feeding the full research report, PRD, and all expert consultations into a single Builder context for richer, more coherent implementation designs.
+The pipeline currently uses 512K context (KV cache under 0.5%). Nemotron Nano supports up to 1M tokens via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` with RoPE scaling. Pushing to 1M would enable feeding the full research report, PRD, all expert consultations, and multiple revision rounds into a single Builder context without any truncation.
 
 ### Nemotron Super 120B
 

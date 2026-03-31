@@ -216,7 +216,9 @@ NCMS LLM features (contradiction detection, knowledge consolidation) can be acce
 
 ```bash
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-nano \
   -p 8000:8000 \
+  -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
