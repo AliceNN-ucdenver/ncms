@@ -179,16 +179,49 @@ class ExpertAgent:
         else:
             search_query = input_text
 
-        # Run multiple searches to maximize recall
+        # For reviews, try entity-enriched search first (uses doc metadata from GLiNER)
         all_results = []
+        if request_type == "review":
+            try:
+                from .pipeline_utils import extract_doc_id
+                doc_id = extract_doc_id(input_text)
+                if doc_id:
+                    doc_resp = await self.client.read_document(doc_id)
+                    doc_entities = doc_resp.get("entities", [])
+                    if doc_entities:
+                        entity_query = " ".join(e["name"] for e in doc_entities[:12])
+                        domain_boost = {
+                            "architecture": "ADR architecture decisions quality attributes",
+                            "security": "STRIDE threat model OWASP security controls",
+                        }.get(self.primary_domain, "")
+                        enriched_query = f"{domain_boost} {entity_query}"
+                        logger.info(
+                            "[expert_agent:%s] Entity-enriched search: %s",
+                            self.from_agent, enriched_query[:120],
+                        )
+                        entity_results = await self.client.recall_memory(
+                            query=enriched_query[:3000],
+                            domain=self.primary_domain,
+                            limit=10,
+                        )
+                        all_results.extend(entity_results or [])
+            except Exception as e:
+                logger.debug("[expert_agent:%s] Entity-enriched search failed: %s", self.from_agent, e)
+
+        # Primary search with the constructed query (text excerpt fallback or question mode)
         try:
-            # Primary search with the constructed query
             results = await self.client.recall_memory(
                 query=search_query[:3000],
                 domain=self.primary_domain,
                 limit=10,
             )
-            all_results.extend(results or [])
+            # Deduplicate against entity results
+            existing_ids = {r.get("id", r.get("memory_id", i)) for i, r in enumerate(all_results)}
+            for r in (results or []):
+                rid = r.get("id", r.get("memory_id", ""))
+                if rid not in existing_ids:
+                    all_results.append(r)
+                    existing_ids.add(rid)
         except Exception as e:
             logger.warning("[expert_agent:%s] Primary recall failed: %s", self.from_agent, e)
 

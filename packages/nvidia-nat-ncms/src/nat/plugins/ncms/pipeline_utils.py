@@ -158,6 +158,34 @@ def build_design_trigger(
     return msg
 
 
+# ── Archaeology Trigger ──────────────────────────────────────────────────────
+
+_REPO_URL_PATTERN = re.compile(r"Analyze repository:\s*(\S+)")
+_GOAL_PATTERN = re.compile(r"Goal:\s*(.+?)(?:\(project_id:|$)", re.DOTALL)
+
+
+def extract_repo_url(text: str) -> str | None:
+    """Extract repository URL from an archaeology trigger message."""
+    match = _REPO_URL_PATTERN.search(text)
+    return match.group(1).strip() if match else None
+
+
+def extract_goal(text: str) -> str | None:
+    """Extract project goal from an archaeology trigger message."""
+    match = _GOAL_PATTERN.search(text)
+    return match.group(1).strip() if match else None
+
+
+def build_archaeology_trigger(
+    repository_url: str, goal: str, project_id: str | None = None,
+) -> str:
+    """Build trigger message for the Archeologist."""
+    msg = f"Analyze repository: {repository_url}\nGoal: {goal}"
+    if project_id:
+        msg += f" (project_id: {project_id})"
+    return msg
+
+
 # ── Pipeline Telemetry ───────────────────────────────────────────────────────
 
 

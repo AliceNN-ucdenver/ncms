@@ -558,8 +558,11 @@ class DesignAgent:
                         return 50, f"Review failed after 2 attempts: {e}"
             return 50, "Review failed"  # Unreachable but satisfies type checker
 
-        arch_prompt = ARCHITECTURE_REVIEW_PROMPT.format(design_content=design_for_review)
-        sec_prompt = SECURITY_REVIEW_PROMPT.format(design_content=design_for_review)
+        # Include doc_id so experts can fetch entity metadata for enriched search
+        doc_id = state.get("document_id", "")
+        doc_tag = f"\n(doc_id: {doc_id})" if doc_id else ""
+        arch_prompt = ARCHITECTURE_REVIEW_PROMPT.format(design_content=design_for_review) + doc_tag
+        sec_prompt = SECURITY_REVIEW_PROMPT.format(design_content=design_for_review) + doc_tag
 
         # Run both reviews in parallel, each with internal retry
         (arch_score, arch_feedback), (sec_score, sec_feedback) = await asyncio.gather(

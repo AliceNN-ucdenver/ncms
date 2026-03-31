@@ -46,6 +46,21 @@ function renderDocuments() {
         ? `<span class="doc-review-badge">Review</span>`
         : '';
 
+      // Entity tags from GLiNER extraction
+      const entities = doc.entities || [];
+      let entityHTML = '';
+      if (entities.length > 0) {
+        entityHTML = '<div class="doc-entity-tags">';
+        for (const ent of entities.slice(0, 8)) {
+          const typeCls = `entity-type-${(ent.type || 'concept').replace(/\s+/g, '-')}`;
+          entityHTML += `<span class="doc-entity-tag ${typeCls}">${escapeHtml(ent.name)}</span>`;
+        }
+        if (entities.length > 8) {
+          entityHTML += `<span class="doc-entity-more">+${entities.length - 8}</span>`;
+        }
+        entityHTML += '</div>';
+      }
+
       html += `<div class="document-card">
         <div class="document-card-header" onclick="toggleDocContent('${doc.document_id}')">
           <span class="document-title">${escapeHtml(doc.title || 'Untitled')}</span>
@@ -53,7 +68,8 @@ function renderDocuments() {
             ${versionBadge}${reviewBadge}
             <span class="document-time">${formatTime(doc.created_at || '')}</span>
           </span>
-        </div>`;
+        </div>
+        ${entityHTML}`;
 
       if (isExpanded) {
         if (doc._content) {

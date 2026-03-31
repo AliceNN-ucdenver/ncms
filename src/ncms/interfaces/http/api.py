@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -492,7 +493,10 @@ def create_api_app(
     # Proxies chat requests to NAT agents' /generate endpoint.
     # Avoids CORS issues (dashboard and hub share the same origin).
     # Agent port mapping: architect=8001, security=8002, builder=8003
-    _AGENT_PORTS = {"architect": 8001, "security": 8002, "builder": 8003, "product_owner": 8004, "researcher": 8005}
+    _AGENT_PORTS = {
+        "architect": 8001, "security": 8002, "builder": 8003,
+        "product_owner": 8004, "researcher": 8005, "archeologist": 8006,
+    }
 
     async def agent_chat(request: Request) -> JSONResponse:
         import httpx as _httpx
@@ -549,16 +553,21 @@ def create_api_app(
 
         project_id = "PRJ-" + uuid.uuid4().hex[:8]
         now = datetime.now(timezone.utc).isoformat()
-        meta = {
+        source_type = body.get("source_type", "research")  # "research" or "archaeology"
+        repository_url = body.get("repository_url", "")
+        meta: dict[str, Any] = {
             "project_id": project_id,
             "topic": topic,
             "target": body.get("target", ""),
             "scope": body.get("scope", []),
+            "source_type": source_type,
             "status": "active",
             "created_at": now,
             "documents": [],
             "phase": "pending",
         }
+        if repository_url:
+            meta["repository_url"] = repository_url
         _projects[project_id] = meta
 
         # Also store as NCMS memory (non-blocking — don't let this break project creation)
@@ -610,6 +619,38 @@ def create_api_app(
 
             asyncio.create_task(_trigger_researcher())
             meta["phase"] = "research"
+            _projects[project_id] = meta
+
+        # Fire-and-forget: trigger the archeologist for archaeology projects
+        archeologist_port = _AGENT_PORTS.get("archeologist")
+        if archeologist_port and source_type == "archaeology" and repository_url:
+            target = body.get("target", "")
+            prompt = (
+                f"Analyze repository: {repository_url}\n"
+                f"Goal: {topic}"
+                + (f" for {target}" if target else "")
+                + f"\n(project_id: {project_id})"
+            )
+
+            async def _trigger_archeologist() -> None:
+                import httpx as _hx
+                try:
+                    async with _hx.AsyncClient(
+                        timeout=_hx.Timeout(600.0, connect=10.0),
+                    ) as client:
+                        resp = await client.post(
+                            f"http://host.docker.internal:{archeologist_port}/generate",
+                            json={"input_message": prompt},
+                        )
+                        logger.info(
+                            "Archeologist triggered for %s (status %d)",
+                            project_id, resp.status_code,
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to trigger archeologist for %s: %s", project_id, exc)
+
+            asyncio.create_task(_trigger_archeologist())
+            meta["phase"] = "archaeology"
             _projects[project_id] = meta
 
         return JSONResponse(meta, status_code=201)
@@ -814,6 +855,18 @@ def create_api_app(
     _documents_dir = Path(__file__).parent / "static" / "documents"
     _documents_dir.mkdir(parents=True, exist_ok=True)
 
+    # Rebuild document metadata from sidecar files (persistence across restarts)
+    for _sidecar in _documents_dir.glob("*.meta.json"):
+        try:
+            _meta = json.loads(_sidecar.read_text(encoding="utf-8"))
+            _did = _meta.get("document_id")
+            if _did:
+                _documents[_did] = _meta
+        except Exception:
+            logger.warning("Failed to load document sidecar: %s", _sidecar.name)
+    if _documents:
+        logger.info("Rebuilt %d documents from sidecar files", len(_documents))
+
     async def store_document(request: Request) -> JSONResponse:
         """Store a design document (markdown) and return a download URL."""
         import re as _re
@@ -839,6 +892,20 @@ def create_api_app(
         filepath = _documents_dir / filename
         filepath.write_text(content, encoding="utf-8")
 
+        # GLiNER entity extraction (non-blocking, best-effort)
+        entities: list[dict[str, str]] = []
+        try:
+            from ncms.domain.entity_extraction import UNIVERSAL_LABELS
+            from ncms.infrastructure.extraction.gliner_extractor import (
+                extract_entities_gliner,
+            )
+
+            entities = await asyncio.to_thread(
+                extract_entities_gliner, content, labels=UNIVERSAL_LABELS,
+            )
+        except Exception as e:
+            logger.warning("GLiNER extraction failed for %s: %s", doc_id, e)
+
         meta = {
             "document_id": doc_id,
             "title": title,
@@ -849,8 +916,34 @@ def create_api_app(
             "url": f"/documents/{filename}",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(content.encode("utf-8")),
+            "entities": entities,
         }
         _documents[doc_id] = meta
+
+        # Persist metadata as JSON sidecar (survives hub restarts)
+        try:
+            sidecar_path = _documents_dir / f"{doc_id}.meta.json"
+            sidecar_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("Failed to write document sidecar for %s: %s", doc_id, e)
+
+        # Create NCMS memory for document (summary + entities, not full content)
+        try:
+            entity_names = [e["name"] for e in entities[:5]]
+            summary = f"Document '{title}' by {from_agent}: {content[:300]}"
+            if entity_names:
+                summary += f"\nKey entities: {', '.join(entity_names)}"
+            await memory_svc.store_memory(
+                content=summary,
+                memory_type="fact",
+                domains=["documents"],
+                tags=["document", doc_id] + [e["name"].lower() for e in entities[:5]],
+                importance=6.0,
+                source_agent=from_agent,
+                entities=entities,
+            )
+        except Exception as e:
+            logger.warning("Failed to store document memory for %s: %s", doc_id, e)
 
         # Emit SSE event so dashboard auto-refreshes documents
         if event_log:

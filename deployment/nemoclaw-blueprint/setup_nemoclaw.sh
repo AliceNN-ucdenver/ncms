@@ -62,7 +62,7 @@ NCMS_DASHBOARD_PORT="${NCMS_DASHBOARD_PORT:-8420}"
 PHOENIX_PORT="${PHOENIX_PORT:-6006}"
 
 # Sandbox names (RFC 1123)
-AGENT_SANDBOXES=("ncms-architect" "ncms-security" "ncms-builder" "ncms-product-owner" "ncms-researcher")
+AGENT_SANDBOXES=("ncms-architect" "ncms-security" "ncms-builder" "ncms-product-owner" "ncms-researcher" "ncms-archeologist")
 
 # Agent config: agent_id|nat_config|knowledge_dir
 # knowledge_dir is relative to SCRIPT_DIR/knowledge/
@@ -72,6 +72,7 @@ AGENT_CONFIGS=(
   "builder|configs/builder.yml|"
   "product_owner|configs/product_owner.yml|product-owner"
   "researcher|configs/researcher.yml|"
+  "archeologist|configs/archeologist.yml|"
 )
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -336,7 +337,7 @@ setup_agent_sandbox() {
 
   # Attach providers based on agent needs
   local providers=()
-  if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "researcher" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
+  if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "researcher" ] || [ "$agent_id" = "archeologist" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
     providers+=(tavily)
   fi
   create_sandbox "$sandbox_name" ${providers[@]+"${providers[@]}"}
@@ -423,6 +424,7 @@ setup_agent_sandbox() {
     builder)        agent_port=8003 ;;
     product_owner)  agent_port=8004 ;;
     researcher)     agent_port=8005 ;;
+    archeologist)   agent_port=8006 ;;
     *)              agent_port=8000 ;;
   esac
 

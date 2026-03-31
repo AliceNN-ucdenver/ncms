@@ -101,6 +101,7 @@ function projectCardHTML(project) {
     <div class="project-card-header" onclick="toggleProjectExpand('${id}')">
       <div class="project-card-title-row">
         <span class="project-topic">${topic}</span>
+        ${project.source_type === 'archaeology' ? `<span class="project-repo-badge" title="${escapeHtml(project.repository_url || '')}">Repo</span>` : ''}
         <span class="project-status-badge ${status}">${statusLabel}</span>
       </div>
       <div class="project-card-meta">
@@ -249,6 +250,16 @@ function openNewProject() {
         <label class="new-project-label">Target</label>
         <input type="text" class="new-project-input" id="new-project-target"
                placeholder="e.g. Production-ready design document">
+        <label class="new-project-label">Source</label>
+        <div class="new-project-source">
+          <label class="source-radio"><input type="radio" name="source-type" value="research" checked onchange="toggleRepoField()"> Research (Web)</label>
+          <label class="source-radio"><input type="radio" name="source-type" value="archaeology" onchange="toggleRepoField()"> Archaeology (GitHub)</label>
+        </div>
+        <div id="repo-url-field" style="display:none">
+          <label class="new-project-label">Repository</label>
+          <input type="text" class="new-project-input" id="new-project-repo-url"
+                 placeholder="e.g. https://github.com/owner/repo">
+        </div>
         <label class="new-project-label">Scope</label>
         <div class="new-project-scope">
           <label class="scope-checkbox"><input type="checkbox" id="scope-research" checked> Research</label>
@@ -268,6 +279,12 @@ function closeNewProject() {
   if (panel) panel.style.display = 'none';
 }
 
+function toggleRepoField() {
+  const archaeology = document.querySelector('input[name="source-type"][value="archaeology"]');
+  const field = document.getElementById('repo-url-field');
+  if (field) field.style.display = archaeology?.checked ? 'block' : 'none';
+}
+
 async function startProject() {
   const topic = (document.getElementById('new-project-topic') || {}).value || '';
   const target = (document.getElementById('new-project-target') || {}).value || '';
@@ -279,6 +296,14 @@ async function startProject() {
   if (document.getElementById('scope-design')?.checked) scope.push('design');
   if (document.getElementById('scope-implement')?.checked) scope.push('implement');
 
+  const sourceType = document.querySelector('input[name="source-type"]:checked')?.value || 'research';
+  const repoUrl = (document.getElementById('new-project-repo-url') || {}).value || '';
+
+  if (sourceType === 'archaeology' && !repoUrl.trim()) {
+    alert('Please enter a repository URL for archaeology projects.');
+    return;
+  }
+
   // Close modal immediately so user sees the project view
   closeNewProject();
 
@@ -286,7 +311,7 @@ async function startProject() {
     const resp = await fetch(HUB_API + '/api/v1/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, target, scope }),
+      body: JSON.stringify({ topic, target, scope, source_type: sourceType, repository_url: repoUrl }),
     });
 
     if (!resp.ok) {

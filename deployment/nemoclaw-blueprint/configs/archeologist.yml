@@ -1,0 +1,54 @@
+# Archeologist Agent — LangGraph deterministic pipeline
+# clone_and_index (Python) → analyze_architecture (LLM) → identify_gaps (LLM)
+# → web_research (Python) → synthesize_report (LLM) → publish_and_trigger (Python)
+
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "http://spark-ee7d.local:8000/v1"
+    api_key: "dummy"
+    max_tokens: 32768
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general:
+  telemetry:
+    tracing:
+      phoenix:
+        _type: otelcollector
+        project: ncms-archeologist
+        endpoint: "http://host.docker.internal:6006/v1/traces"
+        resource_attributes:
+          openinference.project.name: ncms-archeologist
+
+memory:
+  ncms_store:
+    _type: ncms_memory
+    hub_url: "http://host.docker.internal:9080"
+    agent_id: archeologist
+    domains: [archaeology, codebase-analysis]
+    subscribe_to: [product, requirements, architecture, security]
+
+functions:
+  archeologist_agent:
+    _type: archeologist_agent
+    llm_name: spark_llm
+    hub_url: "http://host.docker.internal:9080"
+    from_agent: archeologist
+    max_search_results: 3
+    trigger_next_agent: true
+
+workflow:
+  _type: auto_memory_agent
+  inner_agent_name: archeologist_agent
+  memory_name: ncms_store
+  llm_name: spark_llm
+  description: "Codebase archaeology agent — analyzes existing repos and produces grounded reports"
+  retrieve_memory_for_every_response: false
+  save_user_messages_to_memory: true
+  save_ai_messages_to_memory: true
+  search_params:
+    top_k: 10
