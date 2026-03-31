@@ -196,33 +196,54 @@ Quick summary: configure your DGX Spark inference provider, deploy vLLM with 512
 
 ## What's Next
 
-The auto-chaining pipeline runs end-to-end with a quality review loop. These are the next areas of investment:
+The auto-chaining pipeline runs end-to-end with a quality review loop. The foundation is solid. Here is where it goes from here.
 
-### 1M Context
+### Coding Agent (Claude Code in a Sandbox)
 
-The pipeline currently uses 512K context (KV cache under 0.5%). Nemotron Nano supports up to 1M tokens via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` with RoPE scaling. Pushing to 1M would enable feeding the full research report, PRD, all expert consultations, and multiple revision rounds into a single Builder context without any truncation.
+The most immediate next step. NemoClaw sandboxes already include the Claude CLI. A sixth LangGraph agent receives the Builder's approved implementation design, passes it to Claude Code as a specification, and orchestrates the actual code generation: source files, unit tests, integration tests, Dockerfiles, and CI configuration. The human approves the design before code generation begins. The agent monitors Claude Code's output, runs the test suite, and publishes the results. If tests fail, it feeds the errors back for a fix-and-retry loop, the same pattern as the Builder's review loop but applied to code execution.
 
-### Nemotron Super 120B
+### Human-in-the-Loop Before Implementation
 
-**Nemotron Super 120B-A12B-NVFP4** is the next model experiment. At 120B total and 12B active parameters (4x Nano's active compute) with NVIDIA's FP4 quantization, it fits on the DGX Spark (~60GB model, ~68GB for KV cache). Expected improvements: richer expert consultations, more detailed implementation designs, and more reliable multi-step reasoning. Requires NVIDIA driver 590+ for NVFP4 support.
+The pipeline currently runs fully autonomously from research to approved design. Before handing off to a coding agent, the human needs a gate. The dashboard already supports approval workflows. The next step is wiring the Builder's approved design into the approval queue so the human can review the final design, request changes, or approve for implementation. This creates a clear boundary: autonomous research-to-design, human-approved design-to-code.
 
-| Model | Active Params | Memory (FP4/FP8) | KV Cache | Fit on 128GB Spark? |
-|-------|--------------|-------------------|----------|-------------------|
+### Telegram Trigger
+
+A Telegram bot integration that accepts research prompts and kicks off the full pipeline. Send a message to the bot, watch the dashboard light up as agents chain through research, PRD, design, and review. Receive a notification when the pipeline completes with links to the published documents. This makes the pipeline accessible from anywhere without opening the dashboard.
+
+### Dashboard Improvements
+
+The dashboard works but has rough edges that need attention:
+
+- **Document versioning.** When the Builder revises a design, each version publishes as a separate document. Versions of the same document should stack together with a version selector, not clutter the sidebar as independent entries.
+- **Document viewer.** The sidebar panel is too narrow for reading 20KB design documents. A full-width document overlay with proper markdown rendering, syntax highlighting for code blocks, and section navigation would make the artifacts genuinely useful.
+- **Document management.** Ability to delete documents (and optionally their associated NCMS memories) for cleanup between pipeline runs.
+- **Phoenix trace links.** The current trace links point to `localhost:6006/projects/ncms-builder/traces` but Phoenix uses internal project IDs in its URLs (e.g., `UHJvamVjdDo2`). The links need to resolve the project ID via the Phoenix API before constructing the URL.
+- **Pipeline progress visualization.** A live progress bar showing which phase the pipeline is in (Research → PRD → Design → Review) with estimated time remaining based on historical run data.
+- **Event filtering.** The agent activity feeds show every bus event. Filters by event type (announcements, reviews, triggers, documents) would reduce noise.
+
+### Resilience and Observability
+
+- **Port forward auto-recovery.** SSH-based port forwards drop when the Mac sleeps or during long operations. A background health check that detects dead forwards and re-establishes them would eliminate the most common failure mode for dashboard chat.
+- **Phoenix event enrichment.** Currently only LLM calls generate Phoenix traces. Adding custom spans for bus_ask/bus_announce, memory retrieval, document publish, and review scoring would give complete pipeline visibility in Phoenix without reading agent logs.
+- **Agent health monitoring.** The dashboard shows online/offline status but does not detect agents stuck in retry loops or hung on LLM calls. A heartbeat mechanism with configurable timeout and auto-restart would improve reliability.
+- **Graceful degradation on review failure.** If a reviewer fails after retries, the current behavior defaults to a 50% score. A smarter fallback would skip that reviewer's score entirely and evaluate based on the available review, or proceed with a human review request.
+
+### LLM Upgrades
+
+| Model | Active Params | Memory | KV Cache | Fit on 128GB Spark? |
+|-------|--------------|--------|----------|-------------------|
 | Nemotron Nano 30B (current) | 3B | ~15GB | ~113GB | Easy |
 | **Nemotron Super 120B-A12B** | **12B** | **~60GB** | **~68GB** | **Yes, next experiment** |
 | Qwen 3.5 Coder 32B | 32B (dense) | ~32GB (FP8) | ~96GB | Yes |
 
-### Coding Agent
+**Nemotron Super 120B** (12B active, 4x Nano) is the immediate upgrade target once the DGX Spark driver is updated to 590+ for NVFP4 support. The 512K context window can also be pushed to 1M via RoPE scaling (KV cache under 0.5% at current usage).
 
-A seventh agent that takes the Builder's 21KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
+### Looking Glass Governance Mesh
 
-### Looking Glass Full Oraculum Integration
-
-The current expert review pipeline uses a simplified version of the Looking Glass governance framework. The next step is full Oraculum integration for 4-pillar governance reviews (architecture, security, operations, compliance) with richer scoring rubrics and cross-pillar dependency analysis.
+The current expert reviews use a simplified version of the Looking Glass governance framework. The full [Oraculum](https://github.com/AliceNN-ucdenver/MaintainabilityAI) integration would connect to the governance mesh via MCP servers, pulling BAR (Business Application Record) artifacts for each application: CALM architecture models, STRIDE threat models, ADRs, fitness functions, compliance checklists, and operational runbooks. This transforms the review from "does the design look reasonable" to "does the design comply with the documented governance baseline," with drift scores across four pillars (architecture, security, information risk, operations).
 
 ### Platform Capabilities
 
-- **Human approval workflows:** The dashboard supports agent chat, but structured approve/reject/modify flows for PRDs and designs are not yet wired up. This is the path to human-in-the-loop governance.
-- **CrewAI StorageBackend integration:** CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
-- **Multi-pipeline orchestration:** Running multiple pipelines concurrently (e.g., identity service + payment service) with cross-pipeline knowledge sharing through the bus.
-- **Production hardening:** mTLS between agents and hub, secret rotation for API keys, pod-level resource limits, and horizontal scaling of the hub.
+- **CrewAI StorageBackend.** CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
+- **Multi-pipeline orchestration.** Running multiple pipelines concurrently (e.g., identity service + payment service) with cross-pipeline knowledge sharing through the bus.
+- **Production hardening.** mTLS between agents and hub, secret rotation for API keys, pod-level resource limits, and horizontal scaling of the hub.
