@@ -317,7 +317,53 @@ Expert agents currently load knowledge from static files. The governance standar
 - Cross-pillar drift analysis: A new scoring function that computes dependency-weighted drift across pillar pairs, surfaced in the compliance dashboard.
 
 
-## 11. NemoGuardrails: Pipeline Policy Enforcement
+## 11. Spec Quality: Completeness Validation and Interface Contracts
+
+### Problem
+
+The review loop scores designs holistically (architecture 88%, security 78%) but does not validate structural completeness. A design might score well because it describes JWT validation eloquently, while quietly missing an entire API endpoint, omitting error response schemas, or referencing a PRD requirement that has no corresponding implementation detail. The coding agent needs a structurally complete specification, not just a well-written one.
+
+### Design
+
+Two new nodes added to the Builder's LangGraph pipeline, between `synthesize_design` and `publish_design`:
+
+**Completeness validation (Python, no LLM):**
+
+A deterministic check that parses the markdown design and verifies structural presence:
+
+- **Section presence:** Every required section (Project Structure, API Endpoints, Data Models, Authentication, Security Controls, Configuration, Error Handling, Testing, Deployment) must exist as a heading.
+- **Code examples:** Every section must contain at least one code fence. A section that describes "rate limiting" in prose but includes no code example is flagged.
+- **Endpoint coverage:** Regex extracts all HTTP method + path combinations (e.g., `POST /auth/login`). The design must define at least as many endpoints as the PRD requires.
+- **Interface definitions:** Count TypeScript `interface` declarations. A design with fewer than 3 interfaces lacks the type contracts a coding agent needs.
+- **PRD cross-reference:** Extract key terms from each PRD requirement and verify they appear somewhere in the design. A PRD requirement like "token revocation with Redis-backed store" should match at least one of ["revocation", "Redis", "revoke"] in the design text.
+- **Environment variables:** The configuration section must document env vars.
+- **Error response format:** The error handling section must define status codes.
+
+If the check finds issues, it returns them to the `synthesize_design` node for a targeted fix pass (LLM sees only the specific gaps, not the full design). This avoids full re-synthesis for minor structural gaps.
+
+**Interface contract generation (LLM, after approval):**
+
+After the design passes review, a final LLM pass produces machine-parseable contracts:
+
+- **OpenAPI 3.1 YAML:** Every API endpoint with request/response schemas, status codes, error responses, authentication requirements.
+- **Zod validation schemas:** TypeScript-native validation for every request body and query parameter, directly importable by the coding agent.
+- **Database migration scripts:** Schema definitions derived from the Data Models section, ready for Prisma, TypeORM, or raw SQL.
+
+These contracts are published as separate documents alongside the design. The coding agent consumes the contracts as specifications instead of parsing prose.
+
+### Implementation
+
+- `validate_completeness` node: pure Python, added to the Builder's LangGraph between `synthesize_design` and `publish_design`. Uses regex and string matching. No LLM cost. Runs in under 1 second.
+- `generate_contracts` node: LLM pass, added after the review loop approves the design. Produces OpenAPI YAML and Zod schemas. Published as separate documents with `type: "contract"` metadata.
+- Conditional edge: if completeness check fails, loop back to a targeted `fix_gaps` LLM node that receives only the specific issues (not the full design), then re-validates. Max 2 fix iterations.
+- The completeness check is configurable via `min_endpoints`, `min_interfaces`, `required_sections` in the builder config.
+
+### Why This Matters
+
+The hypothesis is that the spec is the single most important artifact. A coding agent with a perfect spec produces good code. A coding agent with a vague spec produces garbage. The completeness checker ensures structural rigor (every section present, every endpoint typed, every requirement traced). The contract generator produces machine-parseable output (OpenAPI, Zod) that eliminates ambiguity. Together, they transform the design from "a document a human can read" to "a specification a machine can execute."
+
+
+## 12. NemoGuardrails: Pipeline Policy Enforcement
 
 ### Problem
 
@@ -363,12 +409,13 @@ The guardrails layer sits between the hub's `/generate` proxy and the agent's La
 | 2 | Live Pipeline Progress | High | Low | Immediate usability improvement with no backend changes. Depends on Project View for context. |
 | 3 | Coding Agent (Claude Code) | High | High | Completes the pipeline from research through implementation. The most visible capability extension. |
 | 4 | Contextual Approval Queue | High | Medium | Required before the coding agent can operate safely. Human-in-the-loop gate with full context. |
-| 5 | NemoGuardrails | High | Medium | Policy enforcement before the coding agent generates real code. Prevents scope drift and compliance violations. |
-| 6 | Compliance Dashboard | High | Medium | The CIO story. Aggregate governance visibility across projects, essential for enterprise adoption. |
-| 7 | Document Diff View | Medium | Low | Audit trail for design iterations. Low effort since it is entirely frontend with existing APIs. |
-| 8 | Knowledge Grounding Inspector | Medium | Medium | Provenance and trust. Lets users verify that agent citations are backed by real retrieved knowledge. |
-| 9 | Telegram Integration | Medium | Low | Accessibility for mobile decision-makers. Uses existing APIs with a thin bot wrapper. |
-| 10 | Resilience Improvements | Medium | Medium | Reliability across the board. Each sub-feature is independently valuable and deployable. |
-| 11 | Looking Glass Governance Mesh | High | High | Highest enterprise value, but depends on external Looking Glass infrastructure and the full compliance dashboard. |
+| 5 | Spec Quality (Completeness + Contracts) | High | Medium | Structural validation and machine-parseable output. The spec is the single most important artifact for the coding agent. |
+| 6 | NemoGuardrails | High | Medium | Policy enforcement before the coding agent generates real code. Prevents scope drift and compliance violations. |
+| 7 | Compliance Dashboard | High | Medium | The CIO story. Aggregate governance visibility across projects, essential for enterprise adoption. |
+| 8 | Document Diff View | Medium | Low | Audit trail for design iterations. Low effort since it is entirely frontend with existing APIs. |
+| 9 | Knowledge Grounding Inspector | Medium | Medium | Provenance and trust. Lets users verify that agent citations are backed by real retrieved knowledge. |
+| 10 | Telegram Integration | Medium | Low | Accessibility for mobile decision-makers. Uses existing APIs with a thin bot wrapper. |
+| 11 | Resilience Improvements | Medium | Medium | Reliability across the board. Each sub-feature is independently valuable and deployable. |
+| 12 | Looking Glass Governance Mesh | High | High | Highest enterprise value, but depends on external Looking Glass infrastructure and the full compliance dashboard. |
 
 Priorities 1 and 2 should ship together as a single release since the pipeline progress bar is most valuable when rendered inside a project context. Priority 4 must ship before or alongside priority 3 since the coding agent requires the approval gate. Priority 5 (NemoGuardrails) should ship before or alongside the coding agent to ensure generated code respects organizational policies from day one. The remaining features are independently deployable.
