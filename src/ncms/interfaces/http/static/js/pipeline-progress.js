@@ -9,33 +9,53 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 // Each phase defines its agent and the ordered processing nodes.
 
 const PIPELINE_PHASES = {
-  research:  { agent: 'researcher',     label: 'Research',  nodes: ['plan', 'search', 'synthesize', 'publish', 'trigger'] },
-  prd:       { agent: 'product_owner',  label: 'PRD',       nodes: ['read_doc', 'ask_experts', 'synthesize', 'publish', 'trigger'] },
-  design:    { agent: 'builder',        label: 'Design',    nodes: ['read_doc', 'ask_experts', 'synthesize', 'validate', 'publish', 'review', 'contracts'] },
-  implement: { agent: 'builder',        label: 'Implement', nodes: ['read_doc', 'scaffold', 'generate', 'test', 'publish'] },
+  research:  { agent: 'researcher',     label: 'Research',  nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
+  prd:       { agent: 'product_owner',  label: 'PRD',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
+  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'publish_design', 'request_review', 'revise_design', 'verify'] },
 };
 
 const NODE_LABELS = {
-  plan: 'Plan',
-  search: 'Search',
+  check_guardrails: 'Guardrails',
+  plan_queries: 'Plan',
+  parallel_search: 'Search',
   synthesize: 'Synthesize',
+  synthesize_prd: 'Synthesize',
+  synthesize_design: 'Synthesize',
   publish: 'Publish',
-  trigger: 'Trigger',
-  read_doc: 'Read Doc',
+  publish_prd: 'Publish',
+  publish_design: 'Publish',
+  verify: 'Verify',
+  verify_and_trigger: 'Trigger',
+  read_document: 'Read Doc',
   ask_experts: 'Ask Experts',
-  validate: 'Validate',
-  review: 'Review',
-  contracts: 'Contracts',
-  scaffold: 'Scaffold',
-  generate: 'Generate',
+  validate_completeness: 'Validate',
+  request_review: 'Review',
+  revise_design: 'Revise',
+  generate_manifest: 'Manifest',
   test: 'Test',
 };
 
 // ── Render ───────────────────────────────────────────────────────────
 
-function renderPipelineProgress(projectId, containerId) {
+async function renderPipelineProgress(projectId, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
+
+  // Fetch stored events from hub if we don't have them yet
+  if (!state.pipelineProgress[projectId]) {
+    try {
+      const resp = await fetch(HUB_API + '/api/v1/pipeline/events/' + encodeURIComponent(projectId));
+      if (resp.ok) {
+        const events = await resp.json();
+        state.pipelineProgress[projectId] = {};
+        for (const evt of events) {
+          handlePipelineProgressEvent({ data: evt });
+        }
+      }
+    } catch (e) {
+      console.debug('Failed to fetch pipeline events:', e);
+    }
+  }
 
   // Find the project to determine which phases are in scope
   const project = (state.projects || []).find(p => p.project_id === projectId);
@@ -92,16 +112,18 @@ function renderPipelineProgress(projectId, containerId) {
 // ── SSE Event Handling ───────────────────────────────────────────────
 
 function handlePipelineProgressEvent(event) {
-  // event: { project_id, agent, node, status, detail }
-  if (!event || !event.project_id) return;
+  // Normalize: event may be raw {project_id, agent, node, status, detail}
+  // or an SSE event wrapper {data: {project_id, ...}} or {detail: {data: {...}}}
+  const evt = event?.data || event?.detail?.data || event || {};
+  if (!evt.project_id) return;
 
-  const pid = event.project_id;
+  const pid = evt.project_id;
   if (!state.pipelineProgress[pid]) state.pipelineProgress[pid] = {};
 
   // Determine which phase this agent belongs to
   let phaseKey = null;
   for (const [key, def] of Object.entries(PIPELINE_PHASES)) {
-    if (def.agent === event.agent) {
+    if (def.agent === evt.agent) {
       phaseKey = key;
       break;
     }
@@ -112,9 +134,9 @@ function handlePipelineProgressEvent(event) {
     state.pipelineProgress[pid][phaseKey] = {};
   }
 
-  state.pipelineProgress[pid][phaseKey][event.node] = {
-    status: event.status || 'started',
-    detail: event.detail || '',
+  state.pipelineProgress[pid][phaseKey][evt.node] = {
+    status: evt.status || 'started',
+    detail: evt.detail || '',
   };
 
   // Re-render the progress bar if the container is visible
