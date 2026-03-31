@@ -227,6 +227,7 @@ The dashboard works but has rough edges that need attention:
 - **Phoenix event enrichment.** Currently only LLM calls generate Phoenix traces. Adding custom spans for bus_ask/bus_announce, memory retrieval, document publish, and review scoring would give complete pipeline visibility in Phoenix without reading agent logs.
 - **Agent health monitoring.** The dashboard shows online/offline status but does not detect agents stuck in retry loops or hung on LLM calls. A heartbeat mechanism with configurable timeout and auto-restart would improve reliability.
 - **Graceful degradation on review failure.** If a reviewer fails after retries, the current behavior defaults to a 50% score. A smarter fallback would skip that reviewer's score entirely and evaluate based on the available review, or proceed with a human review request.
+- **Agent interruptability.** Click an agent card in the dashboard to stop its current pipeline mid-execution. Useful when a revision loop is heading in the wrong direction or a research query needs to be refined. The interrupted agent should publish whatever partial results it has and announce the interruption to the bus so downstream agents know not to wait.
 
 ### LLM Upgrades
 
