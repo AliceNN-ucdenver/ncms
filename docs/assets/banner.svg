@@ -163,7 +163,7 @@
 
     <!-- Report artifact -->
     <rect x="45" y="-10" width="35" height="20" rx="3" fill="#0a1a10" stroke="#10b981" stroke-width="0.8" opacity="0.6"/>
-    <text x="62" y="4" text-anchor="middle" fill="#10b981" font-size="6" font-weight="600">9KB</text>
+    <text x="62" y="4" text-anchor="middle" fill="#10b981" font-size="6" font-weight="600">11KB</text>
 
     <!-- PO -->
     <circle cx="120" cy="0" r="22" fill="#0a1a10" stroke="#00ff88" stroke-width="2" filter="url(#glow)"/>
@@ -176,7 +176,7 @@
 
     <!-- PRD artifact -->
     <rect x="163" y="-10" width="35" height="20" rx="3" fill="#0a1a10" stroke="#00ff88" stroke-width="0.8" opacity="0.6"/>
-    <text x="180" y="4" text-anchor="middle" fill="#00ff88" font-size="6" font-weight="600">15KB</text>
+    <text x="180" y="4" text-anchor="middle" fill="#00ff88" font-size="6" font-weight="600">16KB</text>
 
     <!-- Builder -->
     <circle cx="240" cy="0" r="22" fill="#1a1408" stroke="#ff9800" stroke-width="2" filter="url(#glow)"/>
@@ -210,7 +210,7 @@
 
     <!-- Design artifact -->
     <rect x="515" y="-16" width="65" height="32" rx="5" fill="#1a1428" stroke="#7c4dff" stroke-width="1.2" opacity="0.8"/>
-    <text x="547" y="1" text-anchor="middle" fill="#b090ff" font-size="8" font-weight="600">18KB</text>
+    <text x="547" y="1" text-anchor="middle" fill="#b090ff" font-size="8" font-weight="600">21KB</text>
     <text x="547" y="11" text-anchor="middle" fill="#8a7aaa" font-size="7">Design</text>
   </g>
 

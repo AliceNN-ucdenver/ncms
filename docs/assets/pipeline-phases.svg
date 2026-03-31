@@ -124,7 +124,7 @@
 
     <!-- Output artifact -->
     <rect x="626" y="60" width="72" height="28" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="662" y="78" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">9KB Report</text>
+    <text x="662" y="78" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">11KB Report</text>
   </g>
 
   <!-- Auto-trigger connector 2->3 -->
@@ -184,7 +184,7 @@
 
     <!-- Output artifact + tags together -->
     <rect x="626" y="52" width="76" height="44" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="664" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">15KB PRD</text>
+    <text x="664" y="68" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">16KB PRD</text>
     <text x="664" y="82" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="7">ADR STRIDE CALM</text>
     <text x="664" y="92" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="7">NIST PKCE RS256</text>
   </g>
@@ -277,8 +277,8 @@
     <!-- Review scores annotation -->
     <rect x="50" y="116" width="370" height="40" rx="5" fill="#0f1528" stroke="#475569" stroke-width="0.8" stroke-opacity="0.4"/>
     <text x="66" y="132" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8" font-weight="600">Review Loop</text>
-    <text x="66" y="144" fill="#f87171" font-family="system-ui, sans-serif" font-size="8">R1: Arch 78% / Sec 72% &#x2192; revise</text>
-    <text x="260" y="144" fill="#4ade80" font-family="system-ui, sans-serif" font-size="8">R2: Arch 85% / Sec 92% &#x2713;</text>
+    <text x="66" y="144" fill="#f87171" font-family="system-ui, sans-serif" font-size="8">R1: Arch 88% / Sec 78% &#x2192; approved</text>
+    <text x="260" y="144" fill="#4ade80" font-family="system-ui, sans-serif" font-size="8">Approved round 1 &#x2713;</text>
 
     <!-- Loop iteration indicator -->
     <text x="66" y="196" fill="#64748b" font-family="system-ui, sans-serif" font-size="7">publish &#x2192; request_review &#x2192; [&#x2265;80%? verify : revise &#x2192; publish &#x2192; ...]</text>
@@ -287,13 +287,13 @@
   <!-- Output artifact for Phase 4 (outside the builder box, positioned to its right) -->
   <g transform="translate(0, 420)">
     <rect x="626" y="46" width="76" height="58" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="664" y="60" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">27.8KB</text>
+    <text x="664" y="60" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">21KB</text>
     <text x="664" y="72" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">Design v2</text>
     <text x="664" y="84" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="7">JWT interfaces</text>
     <text x="664" y="94" text-anchor="middle" fill="#fde68a" font-family="system-ui, sans-serif" font-size="7">TypeScript middleware</text>
     <!-- Approved badge -->
     <rect x="638" y="97" width="52" height="14" rx="3" fill="#166534" stroke="#4ade80" stroke-width="0.8"/>
-    <text x="664" y="107" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="7" font-weight="700">Approved 89%</text>
+    <text x="664" y="107" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="7" font-weight="700">Approved 83%</text>
   </g>
 
   <!-- Connector arrow 4->5 -->
@@ -328,7 +328,7 @@
 
     <!-- Summary label -->
     <rect x="140" y="90" width="470" height="24" rx="6" fill="#0f1528" stroke="#475569" stroke-width="1"/>
-    <text x="375" y="106" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10" font-weight="600">4 LLM calls + review loop  |  ~10 minutes  |  Approved at 89%</text>
+    <text x="375" y="106" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10" font-weight="600">4 LLM calls + review  |  ~14 minutes  |  Approved at 83% (round 1)</text>
   </g>
 
   <!-- ===== Expert Dual-Mode Inset ===== -->
