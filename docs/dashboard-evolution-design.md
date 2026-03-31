@@ -21,26 +21,32 @@ Each pipeline run creates a **Project** with a unique ID, topic, and creation ti
 
 **Project card.** Each project renders as a card showing the topic, phase progress as a row of checkmarks, total elapsed time, the latest quality score from review, and a count of knowledge-grounded references. Clicking the card expands it to reveal a phase timeline where each document appears with its size, creation timestamp, and inbound reference count.
 
-**New project trigger.** A "New Project" button opens a structured trigger panel. The panel collects a topic string, a target description, and scope checkboxes selecting which phases to run (research only, research through design, full pipeline including implementation). Submitting the form creates the project record and triggers the first agent.
+**New project trigger.** A "New Project" button opens a structured trigger panel. The panel collects a topic string, a target description, and scope checkboxes selecting which phases to run (research only, research through design, full pipeline including implementation). Submitting the form creates the project record with a hub-generated `project_id` and triggers the first agent with the `project_id` embedded in the bus trigger message.
+
+**Project ID propagation.** The hub generates a unique `project_id` when the trigger panel submits. This ID is included in the bus trigger message to the Researcher. Each agent extracts the `project_id` from its input, passes it through its LangGraph state, tags all published documents with it, and includes it in the trigger message to the next agent. This creates an unbroken chain: every document, review report, and contract links back to the originating project.
 
 **Persistence.** Projects persist as NCMS memories with `type: "project"` and metadata linking to constituent document IDs. This means projects are searchable through the standard memory retrieval pipeline and benefit from entity extraction, episode linking, and all other NCMS features.
 
-**Project list.** The list supports filtering by status (active, completed, failed), sorting by recency or quality score, and text search across topics. Active projects sort to the top with a visual indicator.
+**Project list.** The list supports filtering by status (active, completed, failed, archived), sorting by recency or quality score, and text search across topics. Active projects sort to the top with a visual indicator.
+
+**Archival.** Completed or abandoned projects can be archived from the dashboard. Archival marks the project as read-only and moves it to the archive view. Documents and memories are preserved (immutable for compliance) but excluded from active project lists and knowledge retrieval by default. Archived projects remain accessible for audit and compliance queries.
 
 ### Implementation
 
 Backend:
 
 - New REST endpoints on the dashboard Starlette app:
-  - `POST /api/v1/projects` creates a project memory with topic, scope, and phase configuration.
+  - `POST /api/v1/projects` generates a `project_id`, creates a project memory with topic, scope, and phase configuration, and returns the ID.
   - `GET /api/v1/projects` returns all project memories with phase completion status derived from linked documents.
   - `GET /api/v1/projects/{id}` returns the full project detail including all linked documents grouped by phase.
+  - `POST /api/v1/projects/{id}/archive` marks the project as archived.
 - Each agent's publish step tags documents with a `project_id` field in the memory's `structured` metadata. The dashboard resolves these links at query time.
-- Project creation calls `memory_service.store()` with the project memory, then dispatches a bus announcement to trigger the first pipeline agent.
+- Project creation calls `memory_service.store()` with the project memory, then dispatches a bus announcement to `trigger-researcher` with the `project_id` in the message payload.
+- All LangGraph agents add `project_id` to their state TypedDict, extract it from input via regex, and include it in trigger announcements and document publish calls.
 
 Frontend:
 
-- New `projects.js` module replaces the document sidebar rendering logic. The module manages the project list, card rendering, phase timeline, and trigger panel.
+- New `projects.js` module replaces the document sidebar rendering logic. The module manages the project list, card rendering, phase timeline, trigger panel, and archive view.
 - The trigger panel posts a structured JSON payload to the projects endpoint and subscribes to SSE events filtered by the new project ID.
 - Project cards update in real time as SSE events arrive for documents tagged with matching project IDs.
 
@@ -110,16 +116,41 @@ Each node shows its status: completed (checkmark), active (progress bar), waitin
 
 **Time estimation.** Estimated time remaining for the active node is computed from a rolling average of previous runs stored in the browser's localStorage. After three or more completed runs, the estimate becomes reasonably accurate.
 
-**Bus event integration.** The progress bar updates in real time by listening to SSE events. Each LangGraph node emits a bus announcement when it starts and completes, providing the granularity needed for node-level progress tracking. Handoff triggers advance to the next phase. Review results update the review display. Document publish events update sizes and mark nodes complete.
+**Lightweight pipeline telemetry.** Node-level events use a dedicated telemetry channel, not the knowledge bus. The bus (`bus_announce`) is reserved for meaningful events that should persist as memories: document publications, review scores, handoff triggers. Pipeline telemetry (node started, node completed, progress updates) is ephemeral and should not clutter the memory store.
+
+A new hub endpoint accepts lightweight telemetry and relays it via SSE:
+
+```
+POST /api/v1/pipeline/events
+{"project_id": "abc", "agent": "builder", "node": "synthesize", "status": "started", "timestamp": "..."}
+
+# Dashboard receives via SSE:
+event: pipeline.node
+data: {"project_id": "abc", "agent": "builder", "node": "synthesize", "status": "started"}
+```
+
+No memory storage. No entity extraction. No indexing. Just an event relay. Each LangGraph node calls this endpoint at entry and exit. The dashboard subscribes to `pipeline.node` events for the active project.
+
+This separation also cleans up the existing system: several current `bus_announce` calls that exist only for dashboard visibility (e.g., "Querying architecture and security experts") should move to the telemetry channel, reducing noise in the memory store.
+
+**Node interrupt and retry.** Each node in the progress bar is clickable. Clicking an active node shows two options: "Interrupt" (stop this node, publish partial results, skip to the next phase) and "Retry" (re-run this node from its inputs). The interrupt sends a cancellation signal to the agent via a bus announcement to `interrupt-{agent_id}`. The agent's LangGraph checks for interrupt signals between nodes and exits cleanly if one is received. Retry re-triggers the same node with the same state.
+
+**Failure states.** Failed nodes display in red with the error message in the tooltip. The progress bar shows the pipeline as "failed at [node]" with a retry button. If the review loop exhausts max iterations, the Review node shows amber with "Accepted at X% (below threshold)" and the pipeline continues to the next phase.
 
 ### Implementation
 
-This is a frontend-only feature. No backend changes are required.
+Backend:
 
-- New `pipeline-progress.js` module subscribes to the existing SSE stream and filters for `bus.announce` events whose content matches known trigger, review, and publish patterns.
-- Phase transitions are inferred from event content: a publish event from the Researcher with a matching project ID marks Research complete and PRD as active.
-- Time estimates are stored in localStorage keyed by phase name. Each completed phase updates the rolling average.
-- The progress bar DOM element is injected at the top of the expanded project card when a run is active and removed when all phases complete or fail.
+- New `POST /api/v1/pipeline/events` endpoint on the hub. Ring buffer in memory (last 1000 events per project). SSE broadcast to subscribed dashboard clients.
+- New `interrupt-{agent_id}` bus domain. Agents subscribe to their interrupt domain. LangGraph nodes check for interrupt signals at entry via a shared interrupt flag in the agent state.
+
+Frontend:
+
+- New `pipeline-progress.js` module subscribes to both the main SSE stream (for bus events) and the pipeline telemetry stream (for node events).
+- Phase transitions inferred from telemetry events: node "trigger" completing in the Researcher marks Research complete and PRD as active.
+- Time estimates stored in localStorage keyed by phase and node name. Each completed node updates the rolling average.
+- The progress bar DOM element is injected at the top of the expanded project card when a run is active.
+- Click handlers on active nodes show interrupt/retry options. Interrupt sends a bus announcement. Retry re-POSTs to the agent's `/generate` endpoint.
 
 
 ## 4. Document Diff View
@@ -341,21 +372,45 @@ Two new nodes added to the Builder's LangGraph pipeline, between `synthesize_des
 
 **Completeness validation (Python, no LLM):**
 
-A deterministic check that parses the markdown design and verifies structural presence:
+A deterministic check that validates the design against both structural rules and a machine-readable requirements manifest from the PRD.
+
+**Requirements manifest.** The PO's `publish_prd` node produces a structured JSON manifest alongside the prose PRD:
+
+```json
+{
+  "project_id": "abc123",
+  "type": "requirements_manifest",
+  "endpoints": [
+    {"method": "POST", "path": "/auth/login", "description": "User login"},
+    {"method": "POST", "path": "/auth/refresh", "description": "Token refresh"},
+    {"method": "POST", "path": "/auth/revoke", "description": "Token revocation"},
+    {"method": "GET", "path": "/auth/me", "description": "Current user profile"},
+    {"method": "POST", "path": "/auth/register", "description": "User registration"}
+  ],
+  "security_requirements": ["token_revocation", "rate_limiting", "mfa", "password_hashing"],
+  "technology_constraints": ["TypeScript", "NestJS", "MongoDB", "Redis"],
+  "quality_targets": {"latency_p99_ms": 200, "availability": "99.9%"}
+}
+```
+
+The PO's LLM generates this JSON as a second output from the same synthesis step. The prose PRD is for humans. The manifest is for machines.
+
+**Completeness checks against the manifest:**
 
 - **Section presence:** Every required section (Project Structure, API Endpoints, Data Models, Authentication, Security Controls, Configuration, Error Handling, Testing, Deployment) must exist as a heading.
-- **Code examples:** Every section must contain at least one code fence. A section that describes "rate limiting" in prose but includes no code example is flagged.
-- **Endpoint coverage:** Regex extracts all HTTP method + path combinations (e.g., `POST /auth/login`). The design must define at least as many endpoints as the PRD requires.
-- **Interface definitions:** Count TypeScript `interface` declarations. A design with fewer than 3 interfaces lacks the type contracts a coding agent needs.
-- **PRD cross-reference:** Extract key terms from each PRD requirement and verify they appear somewhere in the design. A PRD requirement like "token revocation with Redis-backed store" should match at least one of ["revocation", "Redis", "revoke"] in the design text.
+- **Code examples:** Every section must contain at least one code fence. Prose without code is flagged.
+- **Endpoint coverage:** Design endpoints (extracted via regex) are compared against the manifest's endpoint list. Missing endpoints are reported by name and path.
+- **Security requirement coverage:** Each item in the manifest's `security_requirements` array must appear in the design text. "PRD requires token_revocation but design does not mention revocation, revoke, or revocation list."
+- **Technology alignment:** Design must reference the technologies in `technology_constraints`. A manifest saying "NestJS" but a design importing Express is flagged.
+- **Interface definitions:** Count TypeScript `interface` declarations. A design with fewer interfaces than endpoints is suspect.
 - **Environment variables:** The configuration section must document env vars.
 - **Error response format:** The error handling section must define status codes.
 
-If the check finds issues, it returns them to the `synthesize_design` node for a targeted fix pass (LLM sees only the specific gaps, not the full design). This avoids full re-synthesis for minor structural gaps.
+If the check finds issues, it returns them to a targeted `fix_gaps` LLM node that receives only the specific gaps (not the full design). This avoids full re-synthesis for minor structural gaps.
 
-**Interface contract generation (LLM, after approval):**
+**Interface contract generation (LLM, after final approval only):**
 
-After the design passes review, a final LLM pass produces machine-parseable contracts:
+Contracts are generated once, after the design passes the review loop. If the design went through revisions, contracts reflect the final approved version only. This avoids wasting LLM calls generating contracts for designs that will be revised. A final LLM pass produces machine-parseable contracts:
 
 - **OpenAPI 3.1 YAML:** Every API endpoint with request/response schemas, status codes, error responses, authentication requirements.
 - **Zod validation schemas:** TypeScript-native validation for every request body and query parameter, directly importable by the coding agent.
@@ -464,9 +519,16 @@ standards:
   - NIST SP 800-63B
 ```
 
-**Dashboard policy editor:** A dedicated "Policies" tab where the human can view, edit, and version guardrails policies. Changes take effect on the next pipeline run. Policy version history shows what changed and when, with links to the pipeline runs that used each version.
+**Configurable escalation.** Each policy rule has an escalation level:
+- **Warn:** Pipeline continues but the violation is flagged in the project card, the pipeline progress bar shows an amber warning, and the compliance dashboard records it. Use for process guardrails where the team should be aware but not blocked.
+- **Block:** Pipeline pauses at the violation point and waits for human override. The approval queue shows the violation with context and an "Override" button. Use for output guardrails like secret detection.
+- **Reject:** Pipeline cancels and the project is marked failed with the violation reason. Use for input guardrails like denied domains.
 
-**Policy inheritance:** Organization-level policies apply to all projects by default. Individual projects can add stricter constraints (never weaker). For example, a healthcare project inherits the base technology policy but adds HIPAA compliance requirements.
+Escalation levels are configurable per policy rule, not globally. A domain policy might reject "cryptocurrency" but warn on "blockchain infrastructure."
+
+**Dashboard policy editor.** A dedicated "Policies" tab, restricted to admin users, where policies can be viewed, edited, and versioned. Changes take effect on the next pipeline run. Policy version history shows what changed, when, and by whom, with links to the pipeline runs that used each version.
+
+**Policy inheritance.** Organization-level policies apply to all projects by default. Individual projects can add stricter constraints (never weaker). For example, a healthcare project inherits the base technology policy but adds HIPAA compliance requirements.
 
 ### Implementation
 
@@ -550,17 +612,19 @@ A managed prompt library where each agent's prompts are versioned, testable, and
 
 - **Prompt registry:** all agent prompts (system prompts, synthesis prompts, review prompts, revision prompts) stored in the hub as versioned documents with `type: "prompt"`
 - **Version tracking:** each prompt version is linked to the pipeline runs that used it and the review scores those runs produced
-- **A/B comparison:** run the same research topic with two different Builder prompts and compare the resulting design quality scores side by side
 - **Dashboard editor:** edit prompts in the dashboard with live preview. Save creates a new version. Rollback to any previous version.
 - **Prompt performance metrics:** which prompt version produces the highest average review scores? Which prompt produces the largest designs? Which prompt grounds the most knowledge references?
+- **Fail-fast startup:** agents fetch prompts from the hub at startup. If the hub is unreachable, the agent fails to start rather than falling back to embedded prompts. This makes the prompt library authoritative — the hub is the single source of truth for agent behavior.
+
+**Future (not Phase 1):** A/B comparison — run the same research topic with two different prompt versions and compare the resulting design quality scores side by side. This requires parallel pipeline execution which adds significant complexity.
 
 ### Implementation
 
-- New document type `prompt` with metadata: `agent_id`, `prompt_type` (system, synthesis, review, revision), `version`, `performance_metrics`
+- New document type `prompt` with metadata: `agent_id`, `prompt_type` (system, synthesis, review, revision), `version`
 - Agent configs reference prompt IDs instead of inline text: `synthesis_prompt: prompt://builder/synthesis/v3`
-- At startup, agents fetch their prompts from the hub. Prompt changes take effect on the next pipeline run without rebuilding.
+- At startup, agents fetch their prompts from the hub. If the hub is unreachable, the agent fails to start with a clear error message. This is a hard dependency, not a graceful degradation.
 - Hub API: `GET /api/v1/prompts?agent=builder&type=synthesis` to list versions
-- Dashboard: prompt editor tab with version history and performance comparison charts
+- Dashboard: prompt editor tab with version history and performance metrics
 
 
 ## 16. Audit Trail and Reproducibility
