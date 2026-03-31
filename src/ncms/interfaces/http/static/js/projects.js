@@ -428,9 +428,21 @@ function closeDocumentViewer() {
 
 document.addEventListener('DOMContentLoaded', () => {
   // Auto-update projects on relevant SSE events
-  document.addEventListener('ncms:document-published', () => {
+  document.addEventListener('ncms:document-published', async () => {
     if (document.getElementById('projects-view')?.style.display !== 'none') {
-      loadProjects();
+      // Re-fetch details for any expanded projects so new documents appear
+      for (const p of (state.projects || [])) {
+        if (p._expanded && p.project_id) {
+          try {
+            const resp = await fetch(HUB_API + '/api/v1/projects/' + encodeURIComponent(p.project_id));
+            if (resp.ok) {
+              const detail = await resp.json();
+              p.documents = detail.documents || [];
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+      renderProjects();
     }
   });
 
