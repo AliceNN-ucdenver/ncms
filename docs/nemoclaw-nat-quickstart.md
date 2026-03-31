@@ -245,6 +245,10 @@ The dashboard needs to evolve from "watch agents work" to "manage a portfolio of
 
 The current expert reviews use a simplified version of the Looking Glass governance framework. The full [Oraculum](https://github.com/AliceNN-ucdenver/MaintainabilityAI) integration would connect to the governance mesh via MCP servers, pulling BAR (Business Application Record) artifacts for each application: CALM architecture models, STRIDE threat models, ADRs, fitness functions, compliance checklists, and operational runbooks. This transforms the review from "does the design look reasonable" to "does the design comply with the documented governance baseline," with drift scores across four pillars (architecture, security, information risk, operations).
 
+### NemoGuardrails: Policy Enforcement
+
+[NemoGuardrails](https://github.com/NVIDIA/NeMo-Guardrails) as a policy layer on pipeline inputs and outputs. Before a new project starts, guardrails validate that the research topic aligns with organizational scope (e.g., "we build identity services, not cryptocurrency exchanges"). During the pipeline, guardrails check that generated documents stay within approved technology stacks, comply with organizational security policies, and don't introduce out-of-scope dependencies. On output, guardrails verify the design doesn't contain hardcoded secrets, prohibited patterns, or content that violates compliance requirements. This turns the pipeline from "it builds whatever you ask" into "it builds what your organization approves." The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md).
+
 ### Platform Capabilities
 
 - **CrewAI StorageBackend.** CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
