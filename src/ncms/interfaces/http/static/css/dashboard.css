@@ -121,7 +121,7 @@
   }
 
   .left-nav-bottom {
-    padding: 0 10px 12px;
+    padding: 0 10px 100px;  /* extra bottom padding to clear footer + timeline */
   }
 
   .left-nav-human {
@@ -133,19 +133,20 @@
     color: #8b95a5;
   }
 
-  /* ── Main Content (shifted right for left nav) ─────────────────── */
+  /* ── Main Content (shifted right for left nav, above footer + timeline) */
   .main-content {
     margin-left: 180px;
-    min-height: calc(100vh - 44px);
+    padding-bottom: 88px;  /* 36px footer + 52px timeline */
+    min-height: calc(100vh - 88px);
   }
 
-  /* ── Footer Stats Bar ──────────────────────────────────────────── */
+  /* ── Footer Stats Bar (above timeline bar) ────────────────────── */
   .footer-bar {
     position: fixed;
-    bottom: 0;
+    bottom: 52px;  /* sits above the 52px timeline bar */
     left: 180px;
     right: 0;
-    height: 44px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -153,6 +154,7 @@
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);
     z-index: 50;
+    font-size: 12px;
   }
 
   /* Hide old header (replaced by left nav) */
@@ -224,7 +226,7 @@
   .main {
     display: grid;
     grid-template-columns: 1fr;
-    height: calc(100vh - 44px);
+    height: calc(100vh - 88px);
     overflow: hidden;
   }
 
@@ -2267,7 +2269,7 @@
   .timeline-bar {
     position: fixed;
     bottom: 0;
-    left: 0;
+    left: 180px;
     right: 0;
     height: 52px;
     background: var(--bg-secondary);
@@ -2384,8 +2386,8 @@
   .timeline-history-banner {
     display: none;
     position: fixed;
-    top: 56px;
-    left: 0;
+    top: 0;
+    left: 180px;
     right: 0;
     height: 32px;
     background: rgba(210, 153, 34, 0.12);

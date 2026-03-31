@@ -391,9 +391,7 @@ async function openDocumentViewer(docId) {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const doc = await resp.json();
 
-    const titleEl = overlay.querySelector('.doc-viewer-title');
     const bodyEl = overlay.querySelector('.doc-viewer-body');
-    const downloadBtn = overlay.querySelector('#doc-viewer-download-btn');
 
     // Professional header with metadata
     const agent = doc.from_agent || 'unknown';
