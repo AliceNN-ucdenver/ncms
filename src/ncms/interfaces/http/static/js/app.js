@@ -81,6 +81,8 @@ function connectSSE() {
     'episode.created', 'episode.assigned', 'episode.closed',
     'admission.scored',
     'document.published',
+    'pipeline.node',
+    'project.created', 'project.archived',
   ];
 
   eventTypes.forEach(type => {

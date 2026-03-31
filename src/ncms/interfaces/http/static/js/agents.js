@@ -25,6 +25,17 @@ function handleEvent(event) {
   // Auto-refresh documents when a new one is published
   if (event.type === 'document.published') {
     if (typeof loadDocuments === 'function') loadDocuments();
+    document.dispatchEvent(new CustomEvent('ncms:document-published', { detail: event }));
+  }
+
+  // Pipeline telemetry events
+  if (event.type === 'pipeline.node') {
+    document.dispatchEvent(new CustomEvent('ncms:pipeline-node', { detail: event }));
+  }
+
+  // Project lifecycle events
+  if (event.type === 'project.created' || event.type === 'project.archived') {
+    document.dispatchEvent(new CustomEvent('ncms:project-updated', { detail: event }));
   }
 
   // Agent lifecycle events
