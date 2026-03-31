@@ -308,36 +308,41 @@ async function startProject() {
 // ── Tab Switching ────────────────────────────────────────────────────
 
 function showProjectsView() {
-  // Hide agent view elements
-  document.querySelector('.main').style.display = 'none';
+  // Hide agent view
+  const agentView = document.getElementById('agent-view');
+  if (agentView) agentView.style.display = 'none';
   // Show projects panel
   const panel = document.getElementById('projects-view');
   if (panel) panel.style.display = 'block';
-  // Update tab button states
-  updateViewTabButtons('projects');
+  // Update nav button states
+  updateNavButtons('projects');
   // Load fresh data
   loadProjects();
 }
 
 function showAgentView() {
-  // Show agent view elements
-  document.querySelector('.main').style.display = 'grid';
+  // Show agent view
+  const agentView = document.getElementById('agent-view');
+  if (agentView) agentView.style.display = 'grid';
   // Hide projects panel
   const panel = document.getElementById('projects-view');
   if (panel) panel.style.display = 'none';
-  // Update tab button states
-  updateViewTabButtons('agents');
+  // Update nav button states
+  updateNavButtons('agents');
 }
 
-function updateViewTabButtons(activeView) {
+function updateNavButtons(activeView) {
+  // Left nav buttons
+  const navAgents = document.getElementById('nav-agents');
+  const navProjects = document.getElementById('nav-projects');
+  if (navAgents) navAgents.classList.toggle('active', activeView === 'agents');
+  if (navProjects) navProjects.classList.toggle('active', activeView === 'projects');
+
+  // Legacy header buttons (if they still exist)
   const projectsBtn = document.getElementById('projects-tab-btn');
   const agentsBtn = document.getElementById('agents-tab-btn');
-  if (projectsBtn) {
-    projectsBtn.classList.toggle('active', activeView === 'projects');
-  }
-  if (agentsBtn) {
-    agentsBtn.classList.toggle('active', activeView === 'agents');
-  }
+  if (projectsBtn) projectsBtn.classList.toggle('active', activeView === 'projects');
+  if (agentsBtn) agentsBtn.classList.toggle('active', activeView === 'agents');
 }
 
 // ── Document Viewer Modal ────────────────────────────────────────

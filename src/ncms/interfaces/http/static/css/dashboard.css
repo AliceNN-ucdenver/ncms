@@ -27,14 +27,137 @@
   }
 
   /* ── Header ────────────────────────────────────────────────────── */
-  .header {
+  /* ── Left Nav Sidebar ─────────────────────────────────────────── */
+  .left-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 180px;
+    height: 100vh;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+  }
+
+  .left-nav-top {
+    flex: 1;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+  }
+
+  .left-nav-logo {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 12px 20px;
+    gap: 8px;
+    padding: 8px 10px 16px;
+  }
+
+  .left-nav-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 10px;
+  }
+
+  .left-nav-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .left-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: #8b95a5;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.15s;
+    text-align: left;
+    width: 100%;
+  }
+
+  .left-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #c9d1d9;
+  }
+
+  .left-nav-btn.active {
+    background: rgba(88, 166, 255, 0.12);
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+
+  .left-nav-btn.primary {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--accent-green);
+    font-weight: 600;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    margin-bottom: 8px;
+  }
+
+  .left-nav-btn.primary:hover {
+    background: rgba(63, 185, 80, 0.25);
+  }
+
+  .left-nav-icon {
+    font-size: 15px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .left-nav-label {
+    flex: 1;
+  }
+
+  .left-nav-bottom {
+    padding: 0 10px 12px;
+  }
+
+  .left-nav-human {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #8b95a5;
+  }
+
+  /* ── Main Content (shifted right for left nav) ─────────────────── */
+  .main-content {
+    margin-left: 180px;
+    min-height: calc(100vh - 44px);
+  }
+
+  /* ── Footer Stats Bar ──────────────────────────────────────────── */
+  .footer-bar {
+    position: fixed;
+    bottom: 0;
+    left: 180px;
+    right: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
     background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
-    height: 56px;
+    border-top: 1px solid var(--border);
+    z-index: 50;
+  }
+
+  /* Hide old header (replaced by left nav) */
+  .header {
+    display: none;
   }
 
   .header-left {
@@ -44,12 +167,7 @@
   }
 
   .header-nav {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: 16px;
-    padding-left: 16px;
-    border-left: 1px solid var(--border);
+    display: none;
   }
 
   .logo {
@@ -106,7 +224,7 @@
   .main {
     display: grid;
     grid-template-columns: 1fr;
-    height: calc(100vh - 56px - 52px);
+    height: calc(100vh - 44px);
     overflow: hidden;
   }
 

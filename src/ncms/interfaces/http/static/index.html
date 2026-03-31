@@ -13,71 +13,131 @@
   &#x23EA; VIEWING HISTORY &mdash; <span id="timeline-banner-timestamp"></span>
 </div>
 
-<div class="header">
-  <div class="header-left">
-    <div class="connection-dot" id="connection-dot"></div>
-    <div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- LEFT NAV SIDEBAR                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<nav class="left-nav">
+  <div class="left-nav-top">
+    <!-- Logo -->
+    <div class="left-nav-logo">
+      <div class="connection-dot" id="connection-dot"></div>
       <span class="logo">NCMS</span>
-      <span class="logo-sub">Dashboard</span>
     </div>
-    <div class="header-nav">
-      <button class="graph-btn view-tab-btn active" id="agents-tab-btn" onclick="showAgentView()">&#x1F916; Agents</button>
-      <button class="graph-btn view-tab-btn" id="projects-tab-btn" onclick="showProjectsView()" style="background:rgba(57,210,192,0.15);color:var(--accent-cyan);border-color:rgba(57,210,192,0.3)">&#x1F4C1; Projects</button>
-      <button class="project-trigger-btn" onclick="openNewProject()">+ New Project</button>
+
+    <!-- Primary action -->
+    <button class="left-nav-btn primary" onclick="openNewProject()">
+      <span class="left-nav-icon">+</span>
+      <span class="left-nav-label">New Project</span>
+    </button>
+
+    <!-- Navigation items -->
+    <div class="left-nav-section">
+      <button class="left-nav-btn active" id="nav-agents" onclick="showAgentView()">
+        <span class="left-nav-icon">&#x1F916;</span>
+        <span class="left-nav-label">Agents</span>
+      </button>
+      <button class="left-nav-btn" id="nav-projects" onclick="showProjectsView()">
+        <span class="left-nav-icon">&#x1F4C1;</span>
+        <span class="left-nav-label">Projects</span>
+      </button>
+    </div>
+
+    <div class="left-nav-divider"></div>
+
+    <div class="left-nav-section">
+      <button class="left-nav-btn" onclick="openPromptEditor()">
+        <span class="left-nav-icon">&#x270F;</span>
+        <span class="left-nav-label">Prompts</span>
+      </button>
+      <button class="left-nav-btn" onclick="openPolicyEditor()">
+        <span class="left-nav-icon">&#x1F6E1;</span>
+        <span class="left-nav-label">Policies</span>
+      </button>
+    </div>
+
+    <div class="left-nav-divider"></div>
+
+    <div class="left-nav-section">
+      <button class="left-nav-btn" onclick="openGraphView()">
+        <span class="left-nav-icon">&#x2B22;</span>
+        <span class="left-nav-label">Graph</span>
+      </button>
+      <button class="left-nav-btn" onclick="openEpisodeView()">
+        <span class="left-nav-icon">&#x23F1;</span>
+        <span class="left-nav-label">Episodes</span>
+      </button>
+      <button class="left-nav-btn" onclick="openStateHistoryView()">
+        <span class="left-nav-icon">&#x1F4CA;</span>
+        <span class="left-nav-label">States</span>
+      </button>
     </div>
   </div>
-  <div class="stats-bar" id="stats-bar">
-    <div class="stat">Memories <span class="stat-value" id="stat-memories">0</span></div>
-    <div class="stat">Entities <span class="stat-value" id="stat-entities">0</span></div>
-    <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
-    <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
-    <button class="graph-btn" onclick="openGraphView()">&#x2B22; View Graph</button>
-    <button class="graph-btn" onclick="openEpisodeView()" style="background:rgba(210,153,34,0.15);color:var(--accent-amber);border-color:rgba(210,153,34,0.3)">&#x23F1; Episodes</button>
-    <button class="graph-btn" onclick="openStateHistoryView()" style="background:rgba(63,185,80,0.15);color:var(--accent-green);border-color:rgba(63,185,80,0.3)">&#x1F4CA; States</button>
-    <button class="graph-btn" onclick="openPromptEditor()" style="background:rgba(187,128,255,0.15);color:#bb80ff;border-color:rgba(187,128,255,0.3)">&#x270F; Prompts</button>
-    <button class="graph-btn" onclick="openPolicyEditor()" style="background:rgba(248,113,113,0.15);color:#f87171;border-color:rgba(248,113,113,0.3)">&#x1F6E1; Policies</button>
+
+  <!-- Human agent (bottom of nav) -->
+  <div class="left-nav-bottom">
+    <div class="left-nav-divider"></div>
+    <div class="left-nav-human" id="human-badge">
+      <span class="human-dot online"></span>
+      <span class="left-nav-label">Human</span>
+      <span class="human-approval-count" onclick="toggleApprovalPanel(event)" title="View approvals">0</span>
+    </div>
   </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT AREA                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="main-content">
+
+  <!-- Agent View (default) -->
+  <div class="main" id="agent-view">
+    <div class="main-left">
+      <div class="agents-area" id="agents-area">
+        <div class="waiting-message">Waiting for agents to connect...</div>
+      </div>
+
+      <div class="pipeline-panel" id="pipeline-panel">
+        <div class="pipeline-empty">No pipeline activity yet</div>
+      </div>
+
+      <div class="admission-panel" id="admission-panel" style="display:none">
+        <div class="admission-header" onclick="toggleAdmissionFeed()">
+          <span class="admission-title">&#x2696; Admission Scoring</span>
+          <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+        </div>
+        <div class="admission-feed" id="admission-feed" style="display:none">
+          <div class="admission-empty">No admission decisions yet</div>
+        </div>
+      </div>
+
+      <div class="bus-backbone">
+        <span class="bus-label">Knowledge Bus</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Projects View (hidden by default) -->
+  <div class="projects-view" id="projects-view" style="display:none">
+    <div class="projects-panel" id="projects-panel">
+      <div class="projects-empty">No projects yet. Click <strong>+ New Project</strong> to start a pipeline.</div>
+    </div>
+  </div>
+
+</div><!-- /.main-content -->
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- FOOTER (stats bar)                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="footer-bar" id="stats-bar">
+  <div class="stat">Memories <span class="stat-value" id="stat-memories">0</span></div>
+  <div class="stat">Entities <span class="stat-value" id="stat-entities">0</span></div>
+  <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
+  <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
 </div>
 
-<div class="main">
-<!-- Left column: agents, pipeline, bus -->
-<div class="main-left">
-  <!-- All agents above the bus -->
-  <div class="agents-area" id="agents-area">
-    <div class="waiting-message">Waiting for agents to connect...</div>
-  </div>
-
-  <!-- Pipeline Observability Panel -->
-  <div class="pipeline-panel" id="pipeline-panel">
-    <div class="pipeline-empty">No pipeline activity yet</div>
-  </div>
-
-  <!-- Admission Scoring Panel -->
-  <div class="admission-panel" id="admission-panel" style="display:none">
-    <div class="admission-header" onclick="toggleAdmissionFeed()">
-      <span class="admission-title">&#x2696; Admission Scoring</span>
-      <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
-    </div>
-    <div class="admission-feed" id="admission-feed" style="display:none">
-      <div class="admission-empty">No admission decisions yet</div>
-    </div>
-  </div>
-
-  <!-- Central Knowledge Bus backbone -->
-  <div class="bus-backbone">
-    <span class="bus-label">Knowledge Bus</span>
-  </div>
-
-</div><!-- /.main-left -->
-
-</div><!-- /.main -->
-
-<!-- Projects View (full-width, hidden by default) -->
-<div class="projects-view" id="projects-view" style="display:none">
-  <div class="projects-panel" id="projects-panel">
-    <div class="projects-empty">No projects yet. Click <strong>+ New Project</strong> to start a pipeline.</div>
-  </div>
-</div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- OVERLAYS (unchanged)                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 
 <!-- Chat Overlay (slide-in from right, per-agent) -->
 <div class="chat-overlay" id="chat-overlay" style="display:none">
@@ -97,7 +157,7 @@
   </div>
 </div>
 
-<!-- Floating Approval Panel (triggered from human agent card) -->
+<!-- Floating Approval Panel -->
 <div class="approval-float" id="approval-float" style="display:none">
   <div class="approval-float-header">
     <span class="approval-float-title">&#x2714; Approvals</span>
@@ -181,7 +241,7 @@
          min="0" max="1000" value="1000" step="1">
 </div>
 
-<!-- Scripts: app core first, then feature modules, then D3 + graph -->
+<!-- Scripts -->
 <script src="/js/app.js"></script>
 <script src="/js/agents.js"></script>
 <script src="/js/events.js"></script>
