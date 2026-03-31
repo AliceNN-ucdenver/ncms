@@ -28,6 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
+from .pipeline_utils import extract_project_id, emit_telemetry, build_trigger_message
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class ResearchState(TypedDict):
     synthesis: str  # Markdown report
     document_id: str | None  # Published doc ID
     messages: list[BaseMessage]  # LangGraph compat
+    project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -165,6 +167,7 @@ class ResearchAgent:
 
     async def plan_queries(self, state: ResearchState) -> ResearchState:
         """LLM generates 5 search queries covering different research angles."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "plan_queries", "started")
         topic = state["topic"]
         logger.info("[research_agent] Planning queries for topic: %s", topic[:100])
 
@@ -188,6 +191,7 @@ class ResearchAgent:
                 logger.info("[research_agent] LLM planned %d queries", len(state["search_queries"]))
                 for i, q in enumerate(state["search_queries"]):
                     logger.debug("[research_agent]   Query %d: %s", i + 1, q)
+                await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "plan_queries", "completed", f"{len(state['search_queries'])} queries planned")
                 return state
         except Exception as e:
             logger.warning("[research_agent] LLM query planning failed: %s — using templates", e)
@@ -201,12 +205,14 @@ class ResearchAgent:
             f"{topic} case studies real-world examples lessons learned",
         ]
         logger.info("[research_agent] Using %d template queries (fallback)", len(state["search_queries"]))
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "plan_queries", "completed", f"{len(state['search_queries'])} queries (fallback)")
         return state
 
     # ── Node 2: Parallel Search (Pure Python) ────────────────────────────
 
     async def parallel_search(self, state: ResearchState) -> ResearchState:
         """Run 5 concurrent Tavily searches. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "parallel_search", "started")
         queries = state["search_queries"]
         logger.info("[research_agent] Starting %d parallel Tavily searches", len(queries))
 
@@ -287,12 +293,14 @@ class ResearchAgent:
         except Exception:
             pass
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "parallel_search", "completed", f"{total_results} results")
         return state
 
     # ── Node 3: Synthesize (LLM) ─────────────────────────────────────────
 
     async def synthesize(self, state: ResearchState) -> ResearchState:
         """LLM synthesizes all search results into a structured report."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize", "started")
         topic = state["topic"]
         logger.info("[research_agent] Synthesizing report for: %s", topic[:100])
 
@@ -326,14 +334,20 @@ class ResearchAgent:
             # Emergency fallback — return raw results as markdown
             state["synthesis"] = f"# {topic} — Research Results (Raw)\n\n{search_text}"
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize", "completed", f"{len(state['synthesis'])} chars")
         return state
 
     # ── Node 4: Publish (Pure Python) ─────────────────────────────────────
 
     async def publish(self, state: ResearchState) -> ResearchState:
         """Publish the report to the NCMS document store. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish", "started")
         topic = state["topic"]
         synthesis = state["synthesis"]
+        # Tag content with project_id for traceability
+        project_id = state.get("project_id")
+        if project_id:
+            synthesis = f"<!-- project_id: {project_id} -->\n{synthesis}"
         logger.info("[research_agent] Publishing document: %d chars", len(synthesis))
 
         try:
@@ -365,12 +379,14 @@ class ResearchAgent:
             logger.error("[research_agent] ❌ Publish failed: %s", e)
             state["document_id"] = None
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish", "completed", f"doc_id={state.get('document_id')}")
         return state
 
     # ── Node 5: Verify (Debug — Pure Python) ──────────────────────────────
 
     async def verify(self, state: ResearchState) -> ResearchState:
         """Verify publication and auto-trigger Product Owner if enabled."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "started")
         topic = state["topic"]
         doc_id = state.get("document_id")
 
@@ -404,8 +420,13 @@ class ResearchAgent:
 
             async def _trigger() -> None:
                 try:
+                    msg = build_trigger_message(
+                        f'Create a PRD based on this market research: "{title}"',
+                        project_id=state.get("project_id"),
+                        doc_id=doc_id,
+                    )
                     await self.client.bus_announce(
-                        content=f'Create a PRD based on this market research: "{title}" (doc_id: {doc_id})',
+                        content=msg,
                         domains=["trigger-product_owner", "research", "product"],
                         from_agent=self.from_agent,
                     )
@@ -420,6 +441,7 @@ class ResearchAgent:
             len(state.get("synthesis", "")),
         )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "completed", f"doc_id={doc_id}")
         return state
 
 
@@ -492,6 +514,7 @@ async def research_agent_fn(
         logger.info("[research_agent] === Starting research pipeline ===")
         logger.info("[research_agent] Topic: %s", input_message[:200])
 
+        project_id = extract_project_id(input_message)
         result = await graph.ainvoke({
             "topic": input_message,
             "search_queries": [],
@@ -499,6 +522,7 @@ async def research_agent_fn(
             "synthesis": "",
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
+            "project_id": project_id,
         })
 
         synthesis = result.get("synthesis", "Research pipeline produced no output.")

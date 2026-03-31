@@ -3221,3 +3221,600 @@
 .trace-link:hover {
   opacity: 0.8;
 }
+
+/* ── Projects View ─────────────────────────────────────────────── */
+.projects-view {
+  height: calc(100vh - 56px - 52px);
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.projects-panel {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.projects-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 48px 20px;
+  font-size: 14px;
+}
+
+.projects-empty strong {
+  color: var(--accent-cyan);
+}
+
+/* ── View Tab Buttons ──────────────────────────────────────────── */
+.view-tab-btn.active {
+  box-shadow: 0 0 10px rgba(188, 140, 255, 0.3);
+  border-color: currentColor;
+}
+
+.project-trigger-btn {
+  background: rgba(57, 210, 192, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(57, 210, 192, 0.3);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: all 0.2s;
+}
+
+.project-trigger-btn:hover {
+  background: rgba(57, 210, 192, 0.25);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px rgba(57, 210, 192, 0.3);
+}
+
+/* ── Project Card ──────────────────────────────────────────────── */
+.project-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.project-card:hover {
+  border-color: rgba(57, 210, 192, 0.4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.project-card.expanded {
+  border-color: rgba(57, 210, 192, 0.3);
+}
+
+.project-card-header {
+  padding: 14px 16px;
+  cursor: pointer;
+}
+
+.project-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.project-topic {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.project-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.project-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.project-quality {
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+.project-time {
+  color: var(--text-secondary);
+}
+
+.project-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Project Status Badge ──────────────────────────────────────── */
+.project-status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.project-status-badge.active {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.project-status-badge.pending {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.project-status-badge.completed {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent-blue);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.project-status-badge.archived {
+  background: rgba(110, 118, 129, 0.15);
+  color: var(--text-muted);
+  border: 1px solid rgba(110, 118, 129, 0.3);
+}
+
+.project-status-badge.failed {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--accent-red);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+/* ── Phase Indicator ───────────────────────────────────────────── */
+.phase-indicator {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.phase-indicator.completed {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--accent-green);
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.phase-indicator.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent-blue);
+  border-color: rgba(88, 166, 255, 0.3);
+  animation: phaseGlow 2s ease-in-out infinite;
+}
+
+.phase-indicator.failed {
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--accent-red);
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+.phase-indicator.waiting {
+  opacity: 0.5;
+}
+
+@keyframes phaseGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(88, 166, 255, 0.2); }
+  50% { box-shadow: 0 0 8px rgba(88, 166, 255, 0.5); }
+}
+
+/* ── Project Detail (expanded) ─────────────────────────────────── */
+.project-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.project-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.project-action-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.project-action-btn.archive:hover {
+  background: rgba(110, 118, 129, 0.2);
+  border-color: var(--text-muted);
+}
+
+.project-archived-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Phase Timeline (documents within project) ─────────────────── */
+.phase-timeline {
+  padding: 12px 0 0 12px;
+  border-left: 2px solid var(--border);
+  margin-left: 8px;
+  margin-top: 12px;
+}
+
+.phase-timeline-item {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.phase-timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  margin-top: 5px;
+  margin-left: -16px;
+  flex-shrink: 0;
+}
+
+.phase-timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.phase-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.phase-timeline-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phase-timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.phase-timeline-agent {
+  color: var(--accent-purple);
+  font-weight: 600;
+}
+
+.phase-timeline-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.phase-timeline-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 12px 0;
+  font-style: italic;
+}
+
+/* ── Pipeline Progress Bar ─────────────────────────────────────── */
+.project-pipeline-container {
+  margin-top: 12px;
+}
+
+.pipeline-progress-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pipeline-phase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pipeline-phase.waiting {
+  opacity: 0.4;
+}
+
+.pipeline-phase-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  width: 70px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.pipeline-phase.active .pipeline-phase-label {
+  color: var(--accent-blue);
+}
+
+.pipeline-phase.completed .pipeline-phase-label {
+  color: var(--accent-green);
+}
+
+.pipeline-phase.failed .pipeline-phase-label {
+  color: var(--accent-red);
+}
+
+.pipeline-phase-nodes {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* ── Pipeline Node ─────────────────────────────────────────────── */
+.pipeline-node {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  cursor: default;
+  transition: all 0.2s;
+}
+
+.pipeline-node.dimmed {
+  opacity: 0.35;
+}
+
+.pipeline-node.completed {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--accent-green);
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.pipeline-node.started,
+.pipeline-node.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent-blue);
+  border-color: rgba(88, 166, 255, 0.4);
+  cursor: pointer;
+  animation: nodePulse 1.5s ease-in-out infinite;
+}
+
+.pipeline-node.failed {
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--accent-red);
+  border-color: rgba(248, 81, 73, 0.4);
+  cursor: pointer;
+}
+
+.pipeline-node.waiting {
+  color: var(--text-muted);
+}
+
+@keyframes nodePulse {
+  0%, 100% { border-color: rgba(88, 166, 255, 0.3); }
+  50% { border-color: rgba(88, 166, 255, 0.7); box-shadow: 0 0 6px rgba(88, 166, 255, 0.3); }
+}
+
+/* ── Pipeline Node Popup ───────────────────────────────────────── */
+.pipeline-node-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  z-index: 1000;
+  min-width: 240px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.pipeline-popup-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.pipeline-popup-detail {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.pipeline-popup-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pipeline-popup-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.pipeline-popup-btn.retry {
+  color: var(--accent-amber);
+  border-color: rgba(210, 153, 34, 0.3);
+}
+
+.pipeline-popup-btn.retry:hover {
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.pipeline-popup-btn.interrupt {
+  color: var(--accent-red);
+  border-color: rgba(248, 81, 73, 0.3);
+}
+
+.pipeline-popup-btn.interrupt:hover {
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.pipeline-popup-btn.close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── New Project Panel (Modal) ─────────────────────────────────── */
+.new-project-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+}
+
+.new-project-inner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 440px;
+  max-width: 90vw;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
+}
+
+.new-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.new-project-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.new-project-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.new-project-close:hover {
+  color: var(--text-primary);
+}
+
+.new-project-form {
+  padding: 20px;
+}
+
+.new-project-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  margin-top: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.new-project-label:first-child {
+  margin-top: 0;
+}
+
+.new-project-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.new-project-input:focus {
+  border-color: var(--accent-cyan);
+}
+
+.new-project-input::placeholder {
+  color: var(--text-muted);
+}
+
+.new-project-scope {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.scope-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.scope-checkbox input[type="checkbox"] {
+  accent-color: var(--accent-cyan);
+}
+
+.new-project-start-btn {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px;
+  background: rgba(57, 210, 192, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(57, 210, 192, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.new-project-start-btn:hover {
+  background: rgba(57, 210, 192, 0.25);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(57, 210, 192, 0.3);
+}

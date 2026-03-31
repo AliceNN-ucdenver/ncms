@@ -28,6 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
+from .pipeline_utils import extract_project_id, emit_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class ExpertState(TypedDict):
     memory_context: str  # Retrieved from NCMS memory
     response: str  # Final response
     messages: list[BaseMessage]  # LangGraph compat
+    project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
 
 
 # ── Prompts (architect) ─────────────────────────────────────────────────────
@@ -248,6 +250,7 @@ class ExpertAgent:
 
     async def classify(self, state: ExpertState) -> ExpertState:
         """Classify the input as a question or a review request. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "started")
         input_text = state["input"]
 
         if _REVIEW_PATTERN.search(input_text):
@@ -260,6 +263,7 @@ class ExpertAgent:
             self.from_agent,
             state["request_type"],
         )
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "completed", state["request_type"])
         return state
 
     # ── Node 2: Search Memory (Pure Python) ──────────────────────────────
@@ -272,6 +276,7 @@ class ExpertAgent:
         match against ADRs, threat models, and other seeded knowledge.
         For questions, the original input is used as-is.
         """
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "search_memory", "started")
         input_text = state["input"]
         request_type = state.get("request_type", "question")
 
@@ -359,6 +364,7 @@ class ExpertAgent:
             len(context),
             request_type,
         )
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "search_memory", "completed", f"{len(all_results)} results")
         return state
 
     # ── Conditional router ───────────────────────────────────────────────
@@ -371,6 +377,7 @@ class ExpertAgent:
 
     async def synthesize_answer(self, state: ExpertState) -> ExpertState:
         """LLM answers the question grounded in retrieved knowledge."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_answer", "started")
         input_text = state["input"]
         memory_context = state["memory_context"]
 
@@ -402,12 +409,14 @@ class ExpertAgent:
                 f"Retrieved context:\n{memory_context}"
             )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_answer", "completed", f"{len(state['response'])} chars")
         return state
 
     # ── Node 3b: Structured Review (LLM) ─────────────────────────────────
 
     async def structured_review(self, state: ExpertState) -> ExpertState:
         """LLM produces a structured SCORE/SEVERITY/COVERED/MISSING/CHANGES review."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "structured_review", "started")
         input_text = state["input"]
         memory_context = state["memory_context"]
 
@@ -447,6 +456,7 @@ class ExpertAgent:
                 f"CHANGES: 1. Retry review with working LLM endpoint"
             )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "structured_review", "completed", f"{len(state['response'])} chars")
         return state
 
 
@@ -504,12 +514,14 @@ async def architect_expert_fn(
         logger.info("[expert_agent:architect] === Starting expert pipeline ===")
         logger.info("[expert_agent:architect] Input: %s", input_message[:200])
 
+        project_id = extract_project_id(input_message)
         result = await graph.ainvoke({
             "input": input_message,
             "request_type": "",
             "memory_context": "",
             "response": "",
             "messages": [HumanMessage(content=input_message)],
+            "project_id": project_id,
         })
 
         response = result.get("response", "No response generated.")
@@ -585,12 +597,14 @@ async def security_expert_fn(
         logger.info("[expert_agent:security] === Starting expert pipeline ===")
         logger.info("[expert_agent:security] Input: %s", input_message[:200])
 
+        project_id = extract_project_id(input_message)
         result = await graph.ainvoke({
             "input": input_message,
             "request_type": "",
             "memory_context": "",
             "response": "",
             "messages": [HumanMessage(content=input_message)],
+            "project_id": project_id,
         })
 
         response = result.get("response", "No response generated.")

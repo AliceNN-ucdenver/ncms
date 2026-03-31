@@ -537,6 +537,222 @@ def create_api_app(
                 status_code=502,
             )
 
+    # -- Project Store ---------------------------------------------------------
+
+    _projects: dict[str, dict[str, Any]] = {}
+
+    async def create_project(request: Request) -> JSONResponse:
+        body = await request.json()
+        topic = body.get("topic", "")
+        if not topic:
+            return JSONResponse({"error": "topic is required"}, status_code=400)
+
+        project_id = "PRJ-" + uuid.uuid4().hex[:8]
+        now = datetime.now(timezone.utc).isoformat()
+        meta = {
+            "project_id": project_id,
+            "topic": topic,
+            "target": body.get("target", ""),
+            "scope": body.get("scope", []),
+            "status": "active",
+            "created_at": now,
+            "documents": [],
+            "phase": "pending",
+        }
+        _projects[project_id] = meta
+
+        # Also store as NCMS memory
+        await memory_svc.store_memory(
+            content=f"Project {project_id}: {topic}",
+            memory_type="project",
+            domains=body.get("scope", []),
+            tags=["project", project_id],
+            importance=7.0,
+        )
+
+        if event_log:
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="project.created",
+                data={"project_id": project_id, "topic": topic},
+            ))
+
+        return JSONResponse(meta, status_code=201)
+
+    async def list_projects(request: Request) -> JSONResponse:
+        status_filter = request.query_params.get("status")
+        projects = list(_projects.values())
+        if status_filter:
+            projects = [p for p in projects if p.get("status") == status_filter]
+        projects.sort(key=lambda p: p.get("created_at", ""), reverse=True)
+        return JSONResponse(projects)
+
+    async def get_project(request: Request) -> JSONResponse:
+        project_id = request.path_params["project_id"]
+        meta = _projects.get(project_id)
+        if not meta:
+            return JSONResponse({"error": "Project not found"}, status_code=404)
+
+        # Collect linked documents
+        linked_docs = [
+            doc for doc in _documents.values()
+            if doc.get("plan_id") == project_id
+        ]
+        return JSONResponse({**meta, "documents": linked_docs})
+
+    async def archive_project(request: Request) -> JSONResponse:
+        project_id = request.path_params["project_id"]
+        meta = _projects.get(project_id)
+        if not meta:
+            return JSONResponse({"error": "Project not found"}, status_code=404)
+
+        meta["status"] = "archived"
+
+        if event_log:
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="project.archived",
+                data={"project_id": project_id},
+            ))
+
+        return JSONResponse(meta)
+
+    # -- Pipeline Telemetry ----------------------------------------------------
+
+    _pipeline_events: dict[str, list[dict[str, Any]]] = {}
+
+    async def post_pipeline_event(request: Request) -> JSONResponse:
+        body = await request.json()
+        project_id = body.get("project_id", "")
+        if not project_id:
+            return JSONResponse({"error": "project_id is required"}, status_code=400)
+
+        evt = {
+            "project_id": project_id,
+            "agent": body.get("agent", ""),
+            "node": body.get("node", ""),
+            "status": body.get("status", ""),
+            "detail": body.get("detail", ""),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if project_id not in _pipeline_events:
+            _pipeline_events[project_id] = []
+        buf = _pipeline_events[project_id]
+        buf.append(evt)
+        # Ring buffer: keep last 500
+        if len(buf) > 500:
+            _pipeline_events[project_id] = buf[-500:]
+
+        if event_log:
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="pipeline.node",
+                data=evt,
+                agent_id=body.get("agent"),
+            ))
+
+        return JSONResponse({"stored": True})
+
+    async def get_pipeline_events(request: Request) -> JSONResponse:
+        project_id = request.path_params["project_id"]
+        events = _pipeline_events.get(project_id, [])
+        return JSONResponse(events)
+
+    # -- Prompt Store ----------------------------------------------------------
+
+    _prompts: dict[str, dict[str, Any]] = {}
+
+    async def store_prompt(request: Request) -> JSONResponse:
+        body = await request.json()
+        agent_id = body.get("agent_id", "")
+        prompt_type = body.get("prompt_type", "")
+        content = body.get("content", "")
+        if not agent_id or not prompt_type or not content:
+            return JSONResponse(
+                {"error": "agent_id, prompt_type, and content are required"},
+                status_code=400,
+            )
+
+        # Find highest existing version for this agent+type combo
+        prefix = f"{agent_id}/{prompt_type}/"
+        existing_versions = [
+            v["version"] for k, v in _prompts.items() if k.startswith(prefix)
+        ]
+        version = max(existing_versions, default=0) + 1
+        key = f"{agent_id}/{prompt_type}/{version}"
+
+        meta = {
+            "agent_id": agent_id,
+            "prompt_type": prompt_type,
+            "version": version,
+            "content": content,
+            "description": body.get("description", ""),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _prompts[key] = meta
+        return JSONResponse(meta, status_code=201)
+
+    async def list_prompts(request: Request) -> JSONResponse:
+        agent_filter = request.query_params.get("agent")
+        type_filter = request.query_params.get("type")
+
+        results = list(_prompts.values())
+        if agent_filter:
+            results = [p for p in results if p.get("agent_id") == agent_filter]
+        if type_filter:
+            results = [p for p in results if p.get("prompt_type") == type_filter]
+
+        results.sort(key=lambda p: p.get("version", 0), reverse=True)
+        return JSONResponse(results)
+
+    async def get_latest_prompt(request: Request) -> JSONResponse:
+        agent_id = request.path_params["agent_id"]
+        prompt_type = request.path_params["prompt_type"]
+
+        prefix = f"{agent_id}/{prompt_type}/"
+        matching = [v for k, v in _prompts.items() if k.startswith(prefix)]
+        if not matching:
+            return JSONResponse({"error": "Prompt not found"}, status_code=404)
+
+        latest = max(matching, key=lambda p: p.get("version", 0))
+        return JSONResponse(latest)
+
+    # -- Policy Store ----------------------------------------------------------
+
+    _policies: dict[str, dict[str, Any]] = {}
+
+    async def store_policy(request: Request) -> JSONResponse:
+        body = await request.json()
+        policy_type = body.get("policy_type", "")
+        content = body.get("content", "")
+        if not policy_type or not content:
+            return JSONResponse(
+                {"error": "policy_type and content are required"}, status_code=400,
+            )
+
+        existing = _policies.get(policy_type)
+        version = (existing["version"] + 1) if existing else 1
+
+        meta = {
+            "policy_type": policy_type,
+            "version": version,
+            "content": content,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _policies[policy_type] = meta
+        return JSONResponse(meta, status_code=201)
+
+    async def list_policies(request: Request) -> JSONResponse:
+        return JSONResponse(list(_policies.values()))
+
+    async def get_policy(request: Request) -> JSONResponse:
+        policy_type = request.path_params["policy_type"]
+        meta = _policies.get(policy_type)
+        if not meta:
+            return JSONResponse({"error": "Policy not found"}, status_code=404)
+        return JSONResponse(meta)
+
     # -- Document Store -------------------------------------------------------
 
     _documents: dict[str, dict[str, Any]] = {}
@@ -651,6 +867,30 @@ def create_api_app(
         Route("/api/v1/documents", store_document, methods=["POST"]),
         Route("/api/v1/documents", list_documents, methods=["GET"]),
         Route("/api/v1/documents/{doc_id}", get_document, methods=["GET"]),
+
+        # Projects
+        Route("/api/v1/projects", create_project, methods=["POST"]),
+        Route("/api/v1/projects", list_projects, methods=["GET"]),
+        Route("/api/v1/projects/{project_id}", get_project, methods=["GET"]),
+        Route("/api/v1/projects/{project_id}/archive", archive_project, methods=["POST"]),
+
+        # Pipeline telemetry
+        Route("/api/v1/pipeline/events", post_pipeline_event, methods=["POST"]),
+        Route("/api/v1/pipeline/events/{project_id}", get_pipeline_events, methods=["GET"]),
+
+        # Prompts
+        Route("/api/v1/prompts", store_prompt, methods=["POST"]),
+        Route("/api/v1/prompts", list_prompts, methods=["GET"]),
+        Route(
+            "/api/v1/prompts/{agent_id}/{prompt_type}/latest",
+            get_latest_prompt,
+            methods=["GET"],
+        ),
+
+        # Policies
+        Route("/api/v1/policies", store_policy, methods=["POST"]),
+        Route("/api/v1/policies", list_policies, methods=["GET"]),
+        Route("/api/v1/policies/{policy_type}", get_policy, methods=["GET"]),
     ]
 
     # Mount transport or other extra routes (e.g. HttpBusTransport SSE)

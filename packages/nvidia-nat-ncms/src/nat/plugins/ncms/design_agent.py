@@ -37,6 +37,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
+from .pipeline_utils import extract_project_id, emit_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class DesignState(TypedDict):
     review_scores: dict[str, int]  # {"architect": 85, "security": 72}
     review_feedback: dict[str, str]  # {"architect": "COVERED:...", "security": "..."}
     iteration: int  # Current review round (0 = first pass)
+    project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
 
 
 # -- Prompts -----------------------------------------------------------------
@@ -342,6 +344,7 @@ class DesignAgent:
 
     async def read_document(self, state: DesignState) -> DesignState:
         """Parse doc_id from input and fetch the PRD. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "started")
         topic = state["topic"]
         logger.info("[design_agent] Reading source document for topic: %s", topic[:100])
 
@@ -364,12 +367,14 @@ class DesignAgent:
             state["source_doc_id"] = None
             state["source_content"] = ""
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "completed", f"doc_id={state.get('source_doc_id')}")
         return state
 
     # -- Node 2: Ask Experts (Pure Python) -----------------------------------
 
     async def ask_experts(self, state: DesignState) -> DesignState:
         """Parallel bus_ask to architecture and security experts. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "started")
         topic = state["topic"]
         source = state.get("source_content", "")
         logger.info("[design_agent] Querying experts for: %s", topic[:100])
@@ -438,12 +443,14 @@ class DesignAgent:
             len(architect_response), len(security_response),
         )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "completed", f"architect={len(architect_response)} security={len(security_response)}")
         return state
 
     # -- Node 3: Synthesize Design (LLM) ------------------------------------
 
     async def synthesize_design(self, state: DesignState) -> DesignState:
         """LLM synthesizes PRD + expert input into an implementation design."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_design", "started")
         topic = state["topic"]
         logger.info("[design_agent] Synthesizing design for: %s", topic[:100])
 
@@ -492,12 +499,14 @@ class DesignAgent:
                 f"## Security Input\n\n{security_input}\n"
             )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_design", "completed", f"{len(state['design'])} chars")
         return state
 
     # -- Node 4: Publish Design (Pure Python) --------------------------------
 
     async def publish_design(self, state: DesignState) -> DesignState:
         """Publish the design to the NCMS document store. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_design", "started")
         topic = state["topic"]
         design = state["design"]
         iteration = state.get("iteration", 0)
@@ -513,7 +522,9 @@ class DesignAgent:
                 f"Security {scores.get('security', '?')}% | "
                 f"Round {iteration + 1}\n"
             )
-        versioned_design = f"<!-- Version: {version} | Round: {iteration + 1} -->\n{score_line}\n{design}"
+        project_id = state.get("project_id")
+        project_comment = f"<!-- project_id: {project_id} -->\n" if project_id else ""
+        versioned_design = f"{project_comment}<!-- Version: {version} | Round: {iteration + 1} -->\n{score_line}\n{design}"
 
         logger.info("[design_agent] Publishing design document: %d chars %s", len(design), version)
 
@@ -544,6 +555,7 @@ class DesignAgent:
             logger.error("[design_agent] Publish failed: %s", e)
             state["document_id"] = None
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_design", "completed", f"doc_id={state.get('document_id')}")
         return state
 
     # -- Node 5: Request Review (Pure Python) --------------------------------
@@ -555,6 +567,7 @@ class DesignAgent:
         before falling back to a default score. This ensures the revision
         step always has feedback from BOTH reviewers.
         """
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "request_review", "started")
         design = state["design"]
         iteration = state.get("iteration", 0)
         logger.info("[design_agent] Requesting review (round %d)", iteration + 1)
@@ -627,12 +640,14 @@ class DesignAgent:
         except Exception:
             pass
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "request_review", "completed", f"architect={arch_score}% security={sec_score}% avg={avg_score:.0f}%")
         return state
 
     # -- Node 6: Revise Design (LLM) ----------------------------------------
 
     async def revise_design(self, state: DesignState) -> DesignState:
         """LLM revises design based on review feedback."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "revise_design", "started")
         iteration = state.get("iteration", 0) + 1
         state["iteration"] = iteration
         logger.info("[design_agent] 🔄 Revising design (round %d)", iteration)
@@ -682,12 +697,14 @@ class DesignAgent:
             logger.error("[design_agent] Revision failed: %s", e)
             # Keep existing design — don't make it worse
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "revise_design", "completed", f"round {iteration}, {len(state['design'])} chars")
         return state
 
     # -- Node 7: Verify (Pure Python) ----------------------------------------
 
     async def verify(self, state: DesignState) -> DesignState:
         """Final verification — log results and announce completion."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "started")
         topic = state["topic"]
         doc_id = state.get("document_id")
         scores = state.get("review_scores", {})
@@ -760,6 +777,7 @@ class DesignAgent:
             len(state.get("design", "")),
         )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "completed", status)
         return state
 
     # -- Helpers ---------------------------------------------------------------
@@ -825,6 +843,7 @@ async def design_agent_fn(
         logger.info("[design_agent] === Starting design pipeline ===")
         logger.info("[design_agent] Input: %s", input_message[:200])
 
+        project_id = extract_project_id(input_message)
         result = await graph.ainvoke({
             "topic": input_message,
             "source_doc_id": None,
@@ -836,6 +855,7 @@ async def design_agent_fn(
             "review_scores": {},
             "review_feedback": {},
             "iteration": 0,
+            "project_id": project_id,
         })
 
         design = result.get("design", "Design pipeline produced no output.")

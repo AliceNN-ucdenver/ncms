@@ -26,6 +26,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
+from .pipeline_utils import extract_project_id, emit_telemetry, build_trigger_message
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class PRDState(TypedDict):
     prd: str  # Synthesized PRD markdown
     document_id: str | None  # Published PRD doc ID
     messages: list[BaseMessage]  # LangGraph compat
+    project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -163,6 +165,7 @@ class PRDAgent:
 
     async def read_document(self, state: PRDState) -> PRDState:
         """Parse doc_id from input and fetch the researcher's report. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "started")
         topic = state["topic"]
         logger.info("[prd_agent] Reading source document for topic: %s", topic[:100])
 
@@ -188,12 +191,14 @@ class PRDAgent:
             state["source_doc_id"] = None
             state["source_content"] = ""
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "completed", f"doc_id={state.get('source_doc_id')}")
         return state
 
     # ── Node 2: Ask Experts (Pure Python) ────────────────────────────────
 
     async def ask_experts(self, state: PRDState) -> PRDState:
         """Parallel bus_ask to architect and security experts. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "started")
         topic = state["topic"]
         source = state.get("source_content", "")
         logger.info("[prd_agent] Asking experts about: %s", topic[:100])
@@ -277,12 +282,14 @@ class PRDAgent:
         except Exception:
             pass
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "completed", f"architect={len(architect_resp)} security={len(security_resp)}")
         return state
 
     # ── Node 3: Synthesize PRD (LLM) ─────────────────────────────────────
 
     async def synthesize_prd(self, state: PRDState) -> PRDState:
         """LLM synthesizes source document and expert input into a structured PRD."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_prd", "started")
         topic = state["topic"]
         logger.info("[prd_agent] Synthesizing PRD for: %s", topic[:100])
 
@@ -334,14 +341,20 @@ class PRDAgent:
                 f"*PRD synthesis failed — raw inputs provided above.*"
             )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_prd", "completed", f"{len(state['prd'])} chars")
         return state
 
     # ── Node 4: Publish PRD (Pure Python) ─────────────────────────────────
 
     async def publish_prd(self, state: PRDState) -> PRDState:
         """Publish the PRD to the NCMS document store. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_prd", "started")
         topic = state["topic"]
         prd = state["prd"]
+        # Tag content with project_id for traceability
+        project_id = state.get("project_id")
+        if project_id:
+            prd = f"<!-- project_id: {project_id} -->\n{prd}"
         title = f"{topic} — PRD"
         logger.info("[prd_agent] Publishing PRD: %d chars", len(prd))
 
@@ -374,12 +387,14 @@ class PRDAgent:
             logger.error("[prd_agent] Publish failed: %s", e)
             state["document_id"] = None
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_prd", "completed", f"doc_id={state.get('document_id')}")
         return state
 
     # ── Node 5: Verify and Trigger (Pure Python) ─────────────────────────
 
     async def verify_and_trigger(self, state: PRDState) -> PRDState:
         """Verify pipeline completion and optionally trigger the builder agent."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify_and_trigger", "started")
         topic = state["topic"]
         doc_id = state.get("document_id")
         prd = state.get("prd", "")
@@ -416,8 +431,13 @@ class PRDAgent:
 
             async def _trigger() -> None:
                 try:
+                    msg = build_trigger_message(
+                        f'Create implementation design based on PRD: "{title}"',
+                        project_id=state.get("project_id"),
+                        doc_id=doc_id,
+                    )
                     await self.client.bus_announce(
-                        content=f'Create implementation design based on PRD: "{title}" (doc_id: {doc_id})',
+                        content=msg,
                         domains=["trigger-builder", "product", "implementation"],
                         from_agent=self.from_agent,
                     )
@@ -433,6 +453,7 @@ class PRDAgent:
             len(prd),
         )
 
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify_and_trigger", "completed", f"doc_id={doc_id}")
         return state
 
 
@@ -495,6 +516,7 @@ async def prd_agent_fn(
         logger.info("[prd_agent] === Starting PRD pipeline ===")
         logger.info("[prd_agent] Topic: %s", input_message[:200])
 
+        project_id = extract_project_id(input_message)
         result = await graph.ainvoke({
             "topic": input_message,
             "source_doc_id": None,
@@ -503,6 +525,7 @@ async def prd_agent_fn(
             "prd": "",
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
+            "project_id": project_id,
         })
 
         prd = result.get("prd", "PRD pipeline produced no output.")
