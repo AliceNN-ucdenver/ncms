@@ -390,11 +390,42 @@ async function openDocumentViewer(docId) {
     const bodyEl = overlay.querySelector('.doc-viewer-body');
     const downloadBtn = overlay.querySelector('#doc-viewer-download-btn');
 
-    titleEl.textContent = doc.title || 'Untitled Document';
+    // Professional header with metadata
+    const agent = doc.from_agent || 'unknown';
+    const docType = (doc.title || '').includes('PRD') ? 'PRD'
+      : (doc.title || '').includes('Research') ? 'Research'
+      : (doc.title || '').includes('Design') ? 'Design'
+      : (doc.title || '').includes('Review') ? 'Review'
+      : (doc.title || '').includes('Manifest') ? 'Manifest'
+      : (doc.title || '').includes('Contract') ? 'Contract'
+      : 'Document';
+    const typeColors = {
+      Research: '#10b981', PRD: '#22c55e', Design: '#f59e0b',
+      Review: '#a78bfa', Manifest: '#f97316', Contract: '#8b5cf6', Document: '#64748b'
+    };
+    const created = doc.created_at ? new Date(doc.created_at).toLocaleString() : '';
+    const sizeKB = doc.size_bytes ? (doc.size_bytes / 1024).toFixed(1) + ' KB' : '';
 
-    // Show download button if URL available
-    if (doc.url) {
-      downloadBtn.style.display = '';
+    const headerEl = overlay.querySelector('.doc-viewer-header');
+    headerEl.innerHTML = `
+      <div class="doc-viewer-header-left">
+        <span class="doc-viewer-logo">NCMS</span>
+        <span class="doc-viewer-type-badge" style="background:${typeColors[docType] || '#64748b'}20;color:${typeColors[docType] || '#64748b'};border-color:${typeColors[docType] || '#64748b'}40">${escapeHtml(docType)}</span>
+        <span class="doc-viewer-agent-badge">${escapeHtml(agent)}</span>
+      </div>
+      <div class="doc-viewer-header-center">
+        <span class="doc-viewer-title">${escapeHtml(doc.title || 'Untitled Document')}</span>
+        <span class="doc-viewer-meta">${escapeHtml(created)}${sizeKB ? ' · ' + sizeKB : ''}</span>
+      </div>
+      <div class="doc-viewer-header-right">
+        ${doc.url ? '<button class="doc-viewer-download" id="doc-viewer-download-btn">Download</button>' : ''}
+        <button class="doc-viewer-close" onclick="closeDocumentViewer()">&times;</button>
+      </div>
+    `;
+
+    // Bind download after rendering
+    const downloadBtn = overlay.querySelector('#doc-viewer-download-btn');
+    if (downloadBtn && doc.url) {
       downloadBtn.onclick = () => {
         const a = document.createElement('a');
         a.href = doc.url;

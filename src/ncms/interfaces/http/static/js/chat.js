@@ -10,6 +10,37 @@ function stripThinkTags(text) {
              .trim();
 }
 
+function buildTableHTML(tableLines) {
+  if (tableLines.length < 2) return '';
+  // Check if second row is a separator (all dashes/colons)
+  const hasSep = tableLines.length >= 2 &&
+    tableLines[1].cells.every(c => /^[-:]+$/.test(c));
+
+  let html = '<table>';
+  const startData = hasSep ? 2 : 0;
+
+  if (hasSep) {
+    html += '<thead><tr>';
+    for (const cell of tableLines[0].cells) {
+      html += '<th>' + cell + '</th>';
+    }
+    html += '</tr></thead>';
+  }
+
+  html += '<tbody>';
+  for (let i = startData; i < tableLines.length; i++) {
+    // Skip separator rows
+    if (tableLines[i].cells.every(c => /^[-:]+$/.test(c))) continue;
+    html += '<tr>';
+    for (const cell of tableLines[i].cells) {
+      html += '<td>' + cell + '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
 function simpleMarkdown(md) {
   if (!md) return '';
 
@@ -51,33 +82,30 @@ function simpleMarkdown(md) {
   html = html.replace(/^&gt;\s*(.+)$/gm, '<blockquote>$1</blockquote>');
   html = html.replace(/<\/blockquote>\n?<blockquote>/g, '<br>');
 
-  // Tables — detect header row (first row before separator)
-  html = html.replace(/^\|(.+)\|$/gm, (match) => {
-    const cells = match.split('|').filter(c => c.trim()).map(c => c.trim());
-    if (cells.every(c => /^[-:]+$/.test(c))) return '%%TABLE_SEP%%';
-    return '%%TABLE_ROW%%' + cells.map(c => `%%TD%%${c}%%/TD%%`).join('') + '%%/TABLE_ROW%%';
-  });
+  // Tables — parse line by line for robustness
+  const lines = html.split('\n');
+  const tableLines = [];
+  let inTable = false;
+  let tableStart = -1;
 
-  // Process table rows — first row before separator becomes header
-  html = html.replace(
-    /%%TABLE_ROW%%([\s\S]*?)%%\/TABLE_ROW%%\s*%%TABLE_SEP%%/g,
-    (_, cells) => {
-      const headerCells = cells.replace(/%%TD%%/g, '<th>').replace(/%%\/TD%%/g, '</th>');
-      return '<thead><tr>' + headerCells + '</tr></thead><tbody>';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('|') && line.endsWith('|')) {
+      if (!inTable) { tableStart = i; inTable = true; }
+      tableLines.push({ idx: i, cells: line.split('|').slice(1, -1).map(c => c.trim()) });
+    } else if (inTable) {
+      // End of table block — convert collected lines
+      const tableHTML = buildTableHTML(tableLines);
+      for (let j = tableStart; j < i; j++) lines[j] = (j === tableStart) ? tableHTML : '';
+      tableLines.length = 0;
+      inTable = false;
     }
-  );
-  html = html.replace(/%%TABLE_ROW%%([\s\S]*?)%%\/TABLE_ROW%%/g, (_, cells) => {
-    const tdCells = cells.replace(/%%TD%%/g, '<td>').replace(/%%\/TD%%/g, '</td>');
-    return '<tr>' + tdCells + '</tr>';
-  });
-
-  // Wrap consecutive table rows
-  html = html.replace(/(<thead>[\s\S]*?<\/tbody>(?:\s*<tr>[\s\S]*?<\/tr>)*)/g, '<table>$1</tbody></table>');
-  // Clean up orphan table rows
-  html = html.replace(/(<tr>(?:[\s\S]*?<\/tr>\s*)+)/g, (match) => {
-    if (match.includes('<table>')) return match;
-    return '<table><tbody>' + match + '</tbody></table>';
-  });
+  }
+  if (inTable && tableLines.length > 0) {
+    const tableHTML = buildTableHTML(tableLines);
+    for (let j = tableStart; j < lines.length; j++) lines[j] = (j === tableStart) ? tableHTML : '';
+  }
+  html = lines.join('\n');
 
   // Numbered lists (1. 2. 3.)
   html = html.replace(/^\d+\.\s+(.+)$/gm, '<oli>$1</oli>');
