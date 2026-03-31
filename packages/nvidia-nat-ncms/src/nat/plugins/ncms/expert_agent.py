@@ -158,11 +158,12 @@ class ExpertAgent:
                     break
 
             if design_marker:
-                # Use first 2000 chars of design content as search query
-                design_excerpt = input_text[design_marker:design_marker + 2000].strip()
+                # Use first 400 chars of design content as search query
+                # (kept short to avoid URL-too-long errors on GET /memories/search)
+                design_excerpt = input_text[design_marker:design_marker + 400].strip()
             else:
-                # Fallback: use last 2000 chars (likely design content)
-                design_excerpt = input_text[-2000:]
+                # Fallback: use last 400 chars (likely design content)
+                design_excerpt = input_text[-400:]
 
             # Also search for domain-specific terms
             domain_queries = {
@@ -170,7 +171,7 @@ class ExpertAgent:
                 "security": "STRIDE threat model OWASP security controls authentication authorization",
             }
             domain_boost = domain_queries.get(self.primary_domain, "")
-            search_query = f"{domain_boost}\n{design_excerpt[:1500]}"
+            search_query = f"{domain_boost}\n{design_excerpt[:300]}"
             logger.info(
                 "[expert_agent:%s] Review mode: searching with design excerpt + domain terms (%d chars)",
                 self.from_agent, len(search_query),

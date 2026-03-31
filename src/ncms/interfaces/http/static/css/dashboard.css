@@ -4460,8 +4460,28 @@
 }
 
 .policy-textarea {
-  min-height: 200px;
-  border-radius: 0;
+  width: 100%;
+  min-height: 250px;
+  padding: 16px 20px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: none;
+  border-top: 1px solid var(--border);
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+  box-sizing: border-box;
+}
+
+.policy-textarea:focus {
+  background: rgba(13, 17, 23, 0.8);
+}
+
+.policy-card .editor-save-btn {
+  margin: 12px 20px;
 }
 
 .policy-loading {
