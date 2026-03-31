@@ -90,15 +90,27 @@ During an active pipeline run, the user watches the general activity feed and wa
 
 ### Design
 
-A horizontal pipeline progress bar renders at the top of the project view whenever a project has an active run. The bar shows the full phase sequence: Research, PRD, Design, Review, Implement. The active phase displays an animated progress indicator. Completed phases show a checkmark and the final document size. Future phases appear dimmed.
+A horizontal pipeline progress bar renders at the top of the project view whenever a project has an active run. The bar shows the full node-level sequence for each phase, not just the phase name. This gives visibility into exactly where the pipeline is within each agent's LangGraph:
 
-**Phase detail.** Hovering over any phase shows a tooltip with the agent name handling it, elapsed time, and document size (growing in real time during active generation).
+```
+Research: [plan ✓] [search ✓] [synthesize ████░░] [publish] [trigger]
+PRD:      [read_doc] [ask_experts] [synthesize] [publish] [trigger]  (waiting)
+Design:   [read_doc] [ask_experts] [synthesize] [validate] [publish] [review] [contracts]  (waiting)
+```
 
-**Review round tracking.** The Review phase is special: it shows round-by-round progress. For example, "R1: 78%/72% [fail] -> R2: 85%/92% [pass]" where the two percentages represent the architecture and security review scores.
+Each node shows its status: completed (checkmark), active (progress bar), waiting (dimmed), or failed (red). The `validate` node (completeness check) and `contracts` node (OpenAPI/Zod generation) appear as visible steps in the Design phase so the user sees the spec quality checks happening.
 
-**Time estimation.** Estimated time remaining for the active phase is computed from a rolling average of previous runs stored in the browser's localStorage. After three or more completed runs, the estimate becomes reasonably accurate.
+**Phase detail.** Hovering over any node shows a tooltip with the agent name, elapsed time, and output size (growing in real time during active generation).
 
-**Bus event integration.** The progress bar updates in real time by listening to SSE events. Handoff triggers (one agent completing and triggering the next) advance the active phase. Review result announcements update the review round display. Document publish events update sizes and mark phases complete.
+**Review round tracking.** The Review node expands to show round-by-round progress. For example, "R1: Arch 88% / Sec 78% [pass]" where each reviewer's score is visible. If revision occurs, the bar shows the loop: Review → Revise → Publish → Review.
+
+**Completeness validation visibility.** The `validate` node in the Design phase shows the check results: "7/9 sections present, 5 endpoints, 4 interfaces, 2 PRD gaps found." If it fails, the user sees the specific gaps before the LLM fix pass runs.
+
+**Contract generation visibility.** The `contracts` node shows "Generating OpenAPI 3.1 + Zod schemas" and on completion "3 contracts published: openapi.yaml, validation.ts, migrations.sql."
+
+**Time estimation.** Estimated time remaining for the active node is computed from a rolling average of previous runs stored in the browser's localStorage. After three or more completed runs, the estimate becomes reasonably accurate.
+
+**Bus event integration.** The progress bar updates in real time by listening to SSE events. Each LangGraph node emits a bus announcement when it starts and completes, providing the granularity needed for node-level progress tracking. Handoff triggers advance to the next phase. Review results update the review display. Document publish events update sizes and mark nodes complete.
 
 ### Implementation
 
