@@ -51,6 +51,7 @@ class DesignState(TypedDict):
     topic: str  # Design subject
     source_doc_id: str | None  # PO's PRD doc ID (parsed from input)
     source_content: str  # PRD content
+    manifest: dict  # Requirements manifest from PO (endpoints, security reqs, tech constraints)
     expert_input: dict[str, str]  # {"architect": "...", "security": "..."}
     design: str  # Implementation design markdown
     document_id: str | None  # Published design doc ID
@@ -294,9 +295,11 @@ class DesignAgent:
         """Validate structural completeness. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "validate_completeness", "started")
         from .spec_validator import validate_design_completeness
+        manifest = state.get("manifest") if isinstance(state.get("manifest"), dict) else None
         result = validate_design_completeness(
             design=state["design"],
             prd=state.get("source_content", ""),
+            manifest=manifest,
         )
         if not result.passed:
             logger.warning("[design_agent] Completeness: %s", result.summary())
@@ -497,6 +500,39 @@ class DesignAgent:
             logger.info("[design_agent] No prd_id found in input — standalone mode")
             state["source_doc_id"] = None
             state["source_content"] = ""
+
+        # Also fetch the requirements manifest for this project
+        project_id = state.get("project_id")
+        if project_id:
+            try:
+                import httpx as _hx
+                async with _hx.AsyncClient(timeout=10.0) as http:
+                    resp = await http.get(
+                        f"{self.hub_url}/api/v1/documents",
+                    )
+                    if resp.status_code == 200:
+                        all_docs = resp.json()
+                        for doc in all_docs:
+                            if (doc.get("project_id") == project_id
+                                    and "Manifest" in doc.get("title", "")):
+                                manifest_resp = await http.get(
+                                    f"{self.hub_url}/api/v1/documents/{doc['document_id']}",
+                                )
+                                if manifest_resp.status_code == 200:
+                                    import json
+                                    manifest_content = manifest_resp.json().get("content", "")
+                                    try:
+                                        state["manifest"] = json.loads(manifest_content)
+                                        logger.info(
+                                            "[design_agent] Loaded manifest: %d endpoints, %d security reqs",
+                                            len(state["manifest"].get("endpoints", [])),
+                                            len(state["manifest"].get("security_requirements", [])),
+                                        )
+                                    except json.JSONDecodeError:
+                                        logger.debug("[design_agent] Manifest not valid JSON")
+                                break
+            except Exception as e:
+                logger.debug("[design_agent] Manifest fetch failed: %s", e)
 
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "completed", f"doc_id={state.get('source_doc_id')}")
         return state
@@ -986,6 +1022,7 @@ async def design_agent_fn(
             "topic": input_message,
             "source_doc_id": None,
             "source_content": "",
+            "manifest": {},
             "expert_input": {},
             "design": "",
             "document_id": None,
