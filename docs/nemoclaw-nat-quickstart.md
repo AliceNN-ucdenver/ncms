@@ -210,16 +210,18 @@ The pipeline currently runs fully autonomously from research to approved design.
 
 A Telegram bot integration that accepts research prompts and kicks off the full pipeline. Send a message to the bot, watch the dashboard light up as agents chain through research, PRD, design, and review. Receive a notification when the pipeline completes with links to the published documents. This makes the pipeline accessible from anywhere without opening the dashboard.
 
-### Dashboard Improvements
+### Dashboard: From Monitoring to Project Delivery
 
-The dashboard works but has rough edges that need attention:
+The dashboard needs to evolve from "watch agents work" to "manage a portfolio of design projects." The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md). Key features:
 
-- **Document versioning.** When the Builder revises a design, each version publishes as a separate document. Versions of the same document should stack together with a version selector, not clutter the sidebar as independent entries.
-- **Document viewer.** The sidebar panel is too narrow for reading 20KB design documents. A full-width document overlay with proper markdown rendering, syntax highlighting for code blocks, and section navigation would make the artifacts genuinely useful.
-- **Document management.** Ability to delete documents (and optionally their associated NCMS memories) for cleanup between pipeline runs.
-- **Phoenix trace links.** The current trace links point to `localhost:6006/projects/ncms-builder/traces` but Phoenix uses internal project IDs in its URLs (e.g., `UHJvamVjdDo2`). The links need to resolve the project ID via the Phoenix API before constructing the URL.
-- **Pipeline progress visualization.** A live progress bar showing which phase the pipeline is in (Research → PRD → Design → Review) with estimated time remaining based on historical run data.
-- **Event filtering.** The agent activity feeds show every bus event. Filters by event type (announcements, reviews, triggers, documents) would reduce noise.
+- **Project/Epic View.** Replace the flat document sidebar with a project-centric view. Each pipeline run creates a project that groups all related documents into a phase timeline with quality scores, grounding metrics, and knowledge references. Start new projects from a structured trigger panel instead of chatting with individual agents.
+- **Compliance Dashboard.** Aggregate review scores across all projects. ADR compliance rates, STRIDE coverage heat maps, quality trends over time, knowledge grounding metrics, and drift scores using the Looking Glass severity formula.
+- **Live Pipeline Progress.** A horizontal visualization showing active phase, document sizes growing in real time, review round scores, and estimated time remaining based on historical runs.
+- **Document Diff View.** Side-by-side comparison of design revisions highlighting sections added or modified in response to review feedback, with review comments mapped to the changes they influenced.
+- **Knowledge Grounding Inspector.** Click any reference in a document (e.g., "ADR-003") to see the actual memory that was retrieved, its retrieval score, which agent used it, and the full provenance chain from seed file to review to design.
+- **Contextual Approval Queue.** Show the full design, review report, and coding plan before the human approves implementation. Estimated cost, previous approval history, and one-click approve/reject.
+- **Phoenix trace link resolution.** Resolve project IDs via the Phoenix API before constructing URLs.
+- **Event filtering.** Filter agent activity by type (announcements, reviews, triggers, documents).
 
 ### Resilience and Observability
 
