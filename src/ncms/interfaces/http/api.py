@@ -628,10 +628,10 @@ def create_api_app(
         if not meta:
             return JSONResponse({"error": "Project not found"}, status_code=404)
 
-        # Collect linked documents
+        # Collect linked documents (match by project_id in metadata)
         linked_docs = [
             doc for doc in _documents.values()
-            if doc.get("plan_id") == project_id
+            if doc.get("project_id") == project_id
         ]
         return JSONResponse({**meta, "documents": linked_docs})
 
@@ -796,6 +796,8 @@ def create_api_app(
 
     async def store_document(request: Request) -> JSONResponse:
         """Store a design document (markdown) and return a download URL."""
+        import re as _re
+
         body = await request.json()
         title = body.get("title", "Untitled")
         content = body.get("content", "")
@@ -804,6 +806,13 @@ def create_api_app(
 
         if not content:
             return JSONResponse({"error": "content is required"}, status_code=400)
+
+        # Extract project_id from content (embedded as HTML comment by agents)
+        project_id = body.get("project_id")
+        if not project_id:
+            prj_match = _re.search(r"project_id:\s*(PRJ-[a-f0-9]{8})", content)
+            if prj_match:
+                project_id = prj_match.group(1)
 
         doc_id = uuid.uuid4().hex[:12]
         filename = f"{doc_id}.md"
@@ -815,6 +824,7 @@ def create_api_app(
             "title": title,
             "from_agent": from_agent,
             "plan_id": plan_id,
+            "project_id": project_id,
             "format": body.get("format", "markdown"),
             "url": f"/documents/{filename}",
             "created_at": datetime.now(timezone.utc).isoformat(),

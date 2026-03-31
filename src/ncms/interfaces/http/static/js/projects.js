@@ -11,7 +11,17 @@ async function loadProjects() {
   try {
     const resp = await fetch(HUB_API + '/api/v1/projects');
     if (!resp.ok) return;
-    state.projects = await resp.json();
+    const projects = await resp.json();
+
+    // Preserve _expanded state from previous render
+    const expandedIds = new Set(
+      (state.projects || []).filter(p => p._expanded).map(p => p.project_id)
+    );
+    for (const p of projects) {
+      if (expandedIds.has(p.project_id)) p._expanded = true;
+    }
+
+    state.projects = projects;
     renderProjects();
   } catch (e) {
     console.debug('Failed to load projects:', e);
@@ -180,12 +190,27 @@ function renderProjectDetail(project) {
 
 // ── Interactions ─────────────────────────────────────────────────────
 
-function toggleProjectExpand(projectId) {
+async function toggleProjectExpand(projectId) {
   const project = state.projects.find(p => p.project_id === projectId);
-  if (project) {
-    project._expanded = !project._expanded;
-    renderProjects();
+  if (!project) return;
+
+  project._expanded = !project._expanded;
+
+  // Fetch linked documents when expanding
+  if (project._expanded) {
+    try {
+      const resp = await fetch(HUB_API + '/api/v1/projects/' + encodeURIComponent(projectId));
+      if (resp.ok) {
+        const detail = await resp.json();
+        project.documents = detail.documents || [];
+        project.phases = detail.phases || project.phases || [];
+      }
+    } catch (e) {
+      console.debug('Failed to fetch project detail:', e);
+    }
   }
+
+  renderProjects();
 }
 
 async function archiveProject(projectId) {

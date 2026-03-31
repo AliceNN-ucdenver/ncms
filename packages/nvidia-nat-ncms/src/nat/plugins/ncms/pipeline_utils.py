@@ -70,29 +70,61 @@ def extract_doc_id(text: str) -> str | None:
 def extract_topic(text: str) -> str:
     """Extract a clean topic from a trigger message.
 
-    Strips nested document references and trigger prefixes to produce
-    a human-readable topic for document titles.
+    Strips nested document references and trigger prefixes iteratively
+    to produce a human-readable topic for document titles.
+
+    Examples:
+        "Create implementation design for: Create a PRD for: Research auth patterns..."
+        → "Authentication patterns for identity services"
+
+        "Research auth patterns for identity services (project_id: PRJ-123)"
+        → "Authentication patterns for identity services"
     """
-    # Remove known prefixes
     topic = text
-    for prefix in [
-        "Research ", "Create a PRD based on this market research: ",
-        "Create implementation design based on PRD: ",
-    ]:
-        if topic.startswith(prefix):
-            topic = topic[len(prefix):]
+
+    # Remove ID tags first (before stripping prefixes, so nested IDs are gone)
+    topic = re.sub(
+        r'\((research_id|prd_id|design_id|review_id|project_id|doc_id):\s*[^)]+\)',
+        '', topic,
+    )
 
     # Remove quoted nested titles
     topic = re.sub(r'"[^"]*"', '', topic).strip()
 
-    # Remove ID tags
-    topic = re.sub(r'\((research_id|prd_id|design_id|review_id|project_id|doc_id):\s*[^)]+\)', '', topic)
+    # Strip known prefixes ITERATIVELY (handles nested chains)
+    prefixes = [
+        "Create implementation design for:",
+        "Create a PRD for:",
+        "Create a PRD based on this market research:",
+        "Create implementation design based on PRD:",
+        "Research",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        stripped = topic.strip().lstrip(' :-–—')
+        for prefix in prefixes:
+            if stripped.lower().startswith(prefix.lower()):
+                stripped = stripped[len(prefix):]
+                changed = True
+        topic = stripped
+
+    # Remove "for Market research document suitable for..." boilerplate
+    for boilerplate in [
+        "for Market research document suitable for a product owner to develop a PRD from",
+        "for Production ready design document",
+    ]:
+        topic = topic.replace(boilerplate, "").strip()
 
     # Clean up whitespace and trailing punctuation
-    topic = re.sub(r'\s+', ' ', topic).strip().rstrip(' :-–—')
+    topic = re.sub(r'\s+', ' ', topic).strip().rstrip(' :-–—,.')
+
+    # Capitalize first letter
+    if topic and topic[0].islower():
+        topic = topic[0].upper() + topic[1:]
 
     # If nothing left, return original first 80 chars
-    return topic if topic else text[:80]
+    return topic if len(topic) > 3 else text[:80]
 
 
 # ── Trigger Message Builder ──────────────────────────────────────────────────
