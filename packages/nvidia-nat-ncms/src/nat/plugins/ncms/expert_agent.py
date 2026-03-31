@@ -265,37 +265,99 @@ class ExpertAgent:
     # ── Node 2: Search Memory (Pure Python) ──────────────────────────────
 
     async def search_memory(self, state: ExpertState) -> ExpertState:
-        """Retrieve relevant memories from NCMS. No LLM."""
-        input_text = state["input"]
+        """Retrieve relevant memories from NCMS. No LLM.
 
+        For review requests, the search query uses extracted keywords from
+        the design content (not the review prompt itself), so BM25 can
+        match against ADRs, threat models, and other seeded knowledge.
+        For questions, the original input is used as-is.
+        """
+        input_text = state["input"]
+        request_type = state.get("request_type", "question")
+
+        # Build an effective search query
+        if request_type == "review":
+            # Extract meaningful terms from the design content for memory search
+            # The review prompt starts with instructions; the design is after "DESIGN TO REVIEW:"
+            # or "IMPLEMENTATION DESIGN TO REVIEW:"
+            design_marker = None
+            for marker in ["DESIGN TO REVIEW:", "IMPLEMENTATION DESIGN TO REVIEW:"]:
+                idx = input_text.find(marker)
+                if idx >= 0:
+                    design_marker = idx + len(marker)
+                    break
+
+            if design_marker:
+                # Use first 2000 chars of design content as search query
+                design_excerpt = input_text[design_marker:design_marker + 2000].strip()
+            else:
+                # Fallback: use last 2000 chars (likely design content)
+                design_excerpt = input_text[-2000:]
+
+            # Also search for domain-specific terms
+            domain_queries = {
+                "architecture": "ADR architecture decisions CALM model quality attributes fitness functions",
+                "security": "STRIDE threat model OWASP security controls authentication authorization",
+            }
+            domain_boost = domain_queries.get(self.primary_domain, "")
+            search_query = f"{domain_boost}\n{design_excerpt[:1500]}"
+            logger.info(
+                "[expert_agent:%s] Review mode: searching with design excerpt + domain terms (%d chars)",
+                self.from_agent, len(search_query),
+            )
+        else:
+            search_query = input_text
+
+        # Run multiple searches to maximize recall
+        all_results = []
         try:
+            # Primary search with the constructed query
             results = await self.client.recall_memory(
-                query=input_text,
+                query=search_query[:3000],
                 domain=self.primary_domain,
                 limit=10,
             )
+            all_results.extend(results or [])
         except Exception as e:
-            logger.warning(
-                "[expert_agent:%s] Memory recall failed: %s",
-                self.from_agent,
-                e,
-            )
-            results = []
+            logger.warning("[expert_agent:%s] Primary recall failed: %s", self.from_agent, e)
+
+        # For reviews, also search with domain-specific terms to ensure we get ADRs/threats
+        if request_type == "review" and len(all_results) < 5:
+            try:
+                domain_query = {
+                    "architecture": "architecture decision record ADR CALM service boundary",
+                    "security": "threat model STRIDE spoofing tampering OWASP control",
+                }.get(self.primary_domain, self.primary_domain)
+                boost_results = await self.client.recall_memory(
+                    query=domain_query,
+                    domain=self.primary_domain,
+                    limit=10,
+                )
+                # Deduplicate by memory ID
+                existing_ids = {r.get("id", r.get("memory_id", i)) for i, r in enumerate(all_results)}
+                for r in (boost_results or []):
+                    rid = r.get("id", r.get("memory_id", ""))
+                    if rid not in existing_ids:
+                        all_results.append(r)
+                        existing_ids.add(rid)
+            except Exception as e:
+                logger.debug("[expert_agent:%s] Boost recall failed: %s", self.from_agent, e)
 
         # Format results into context string
         parts = []
-        for i, r in enumerate(results):
+        for i, r in enumerate(all_results):
             content = r.get("content", "") if isinstance(r, dict) else str(r)
-            parts.append(f"[{i + 1}] {content[:1000]}")
+            parts.append(f"[{i + 1}] {content[:1500]}")
 
-        context = "\n\n".join(parts) if parts else "No relevant knowledge found."
+        context = "\n\n".join(parts) if parts else "No relevant knowledge found in memory."
         state["memory_context"] = context
 
         logger.info(
-            "[expert_agent:%s] Retrieved %d memory results (%d chars)",
+            "[expert_agent:%s] Retrieved %d memory results (%d chars) [mode=%s]",
             self.from_agent,
-            len(results),
+            len(all_results),
             len(context),
+            request_type,
         )
         return state
 
