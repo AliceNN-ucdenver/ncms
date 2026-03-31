@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, emit_telemetry, build_trigger_message
+from .pipeline_utils import extract_project_id, extract_topic, emit_telemetry, build_prd_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -343,6 +343,7 @@ class ResearchAgent:
         """Publish the report to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish", "started")
         topic = state["topic"]
+        clean_topic = extract_topic(topic)
         synthesis = state["synthesis"]
         # Tag content with project_id for traceability
         project_id = state.get("project_id")
@@ -353,7 +354,7 @@ class ResearchAgent:
         try:
             result = await self.client.publish_document(
                 content=synthesis,
-                title=f"{topic} — Market Research Report",
+                title=f"{clean_topic} — Market Research Report",
                 from_agent=self.from_agent,
                 format="markdown",
             )
@@ -405,7 +406,7 @@ class ResearchAgent:
         if self.trigger_next_agent and doc_id:
             import asyncio
 
-            title = f"{topic} — Market Research Report"
+            clean_topic = extract_topic(topic)
             logger.info("[research_agent] 🔗 Triggering product_owner (async) with doc_id: %s", doc_id)
 
             # Announce handoff so it's visible in the dashboard
@@ -420,10 +421,10 @@ class ResearchAgent:
 
             async def _trigger() -> None:
                 try:
-                    msg = build_trigger_message(
-                        f'Create a PRD based on this market research: "{title}"',
+                    msg = build_prd_trigger(
+                        clean_topic,
+                        research_id=doc_id,
                         project_id=state.get("project_id"),
-                        doc_id=doc_id,
                     )
                     await self.client.bus_announce(
                         content=msg,

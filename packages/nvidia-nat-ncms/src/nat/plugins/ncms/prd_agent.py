@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncGenerator
 from typing import TypedDict
 
@@ -26,7 +25,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, emit_telemetry, build_trigger_message
+from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -169,12 +168,11 @@ class PRDAgent:
         topic = state["topic"]
         logger.info("[prd_agent] Reading source document for topic: %s", topic[:100])
 
-        # Parse (doc_id: XXXX) from the input message
-        match = re.search(r"\(doc_id:\s*([^)]+)\)", topic)
-        if match:
-            doc_id = match.group(1).strip()
+        # Parse (research_id: XXXX) from the input message
+        doc_id = extract_research_id(topic)
+        if doc_id:
             state["source_doc_id"] = doc_id
-            logger.info("[prd_agent] Found doc_id in input: %s", doc_id)
+            logger.info("[prd_agent] Found research_id in input: %s", doc_id)
 
             try:
                 doc = await self.client.read_document(doc_id)
@@ -187,7 +185,7 @@ class PRDAgent:
                 logger.warning("[prd_agent] Failed to read document %s: %s", doc_id, e)
                 state["source_content"] = ""
         else:
-            logger.info("[prd_agent] No doc_id found in input — standalone mode")
+            logger.info("[prd_agent] No research_id found in input — standalone mode")
             state["source_doc_id"] = None
             state["source_content"] = ""
 
@@ -350,12 +348,13 @@ class PRDAgent:
         """Publish the PRD to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_prd", "started")
         topic = state["topic"]
+        clean_topic = extract_topic(topic)
         prd = state["prd"]
         # Tag content with project_id for traceability
         project_id = state.get("project_id")
         if project_id:
             prd = f"<!-- project_id: {project_id} -->\n{prd}"
-        title = f"{topic} — PRD"
+        title = f"{clean_topic} — PRD"
         logger.info("[prd_agent] Publishing PRD: %d chars", len(prd))
 
         try:
@@ -416,7 +415,7 @@ class PRDAgent:
         if self.trigger_next_agent and doc_id:
             import asyncio
 
-            title = f"{topic} — PRD"
+            clean_topic = extract_topic(topic)
             logger.info("[prd_agent] 🔗 Triggering builder (async) with doc_id: %s", doc_id)
 
             # Announce handoff so it's visible in the dashboard
@@ -431,10 +430,10 @@ class PRDAgent:
 
             async def _trigger() -> None:
                 try:
-                    msg = build_trigger_message(
-                        f'Create implementation design based on PRD: "{title}"',
+                    msg = build_design_trigger(
+                        clean_topic,
+                        prd_id=doc_id,
                         project_id=state.get("project_id"),
-                        doc_id=doc_id,
                     )
                     await self.client.bus_announce(
                         content=msg,

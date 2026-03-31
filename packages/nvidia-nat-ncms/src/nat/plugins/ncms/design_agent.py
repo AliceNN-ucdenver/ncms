@@ -37,7 +37,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, emit_telemetry
+from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -348,9 +348,8 @@ class DesignAgent:
         topic = state["topic"]
         logger.info("[design_agent] Reading source document for topic: %s", topic[:100])
 
-        match = re.search(r"\(doc_id:\s*([^)]+)\)", topic)
-        if match:
-            doc_id = match.group(1).strip()
+        doc_id = extract_prd_id(topic)
+        if doc_id:
             state["source_doc_id"] = doc_id
             try:
                 result = await self.client.read_document(doc_id)
@@ -363,7 +362,7 @@ class DesignAgent:
                 logger.warning("[design_agent] Failed to read document %s: %s", doc_id, e)
                 state["source_content"] = ""
         else:
-            logger.info("[design_agent] No doc_id found in input — standalone mode")
+            logger.info("[design_agent] No prd_id found in input — standalone mode")
             state["source_doc_id"] = None
             state["source_content"] = ""
 
@@ -508,11 +507,11 @@ class DesignAgent:
         """Publish the design to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_design", "started")
         topic = state["topic"]
+        clean_topic = extract_topic(topic)
         design = state["design"]
         iteration = state.get("iteration", 0)
         version = f"v{iteration + 1}"
         scores = state.get("review_scores", {})
-        suffix = f" ({version})" if iteration > 0 else ""
 
         # Prepend version header to the design content
         score_line = ""
@@ -531,7 +530,7 @@ class DesignAgent:
         try:
             result = await self.client.publish_document(
                 content=versioned_design,
-                title=f"{topic[:80]} — Implementation Design {version}",
+                title=f"{clean_topic} — Implementation Design {version}",
                 from_agent=self.from_agent,
                 format="markdown",
             )
@@ -727,9 +726,10 @@ class DesignAgent:
             status = "Complete"
 
         # Publish review report as a separate document artifact
+        clean_topic = extract_topic(topic)
         feedback = state.get("review_feedback", {})
         review_doc = (
-            f"# Design Review Report — {topic[:60]}\n\n"
+            f"# Design Review Report — {clean_topic}\n\n"
             f"**Status:** {status}\n"
             f"**Design Document:** {doc_id}\n"
             f"**Review Rounds:** {iteration + 1}\n"
@@ -749,7 +749,7 @@ class DesignAgent:
         try:
             await self.client.publish_document(
                 content=review_doc,
-                title=f"{topic[:60]} — Design Review Report",
+                title=f"{clean_topic} — Design Review Report",
                 from_agent=self.from_agent,
                 format="markdown",
             )
