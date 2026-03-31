@@ -27,6 +27,7 @@ from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
 from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger
+from .prd_prompts import SYNTHESIZE_PRD_PROMPT, MANIFEST_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -46,70 +47,6 @@ class PRDState(TypedDict):
     document_id: str | None  # Published PRD doc ID
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
-
-
-# ── Prompts ───────────────────────────────────────────────────────────────────
-
-SYNTHESIZE_PRD_PROMPT = """\
-You are a senior product owner writing a Product Requirements Document (PRD). \
-Synthesize the source research and expert input into a structured, actionable PRD. \
-Ground security and architecture sections in the expert input provided.
-
-## Topic
-{topic}
-
-## Source Document (Researcher's Report)
-{source_content}
-
-## Expert Input
-
-### Architect
-{architect_input}
-
-### Security
-{security_input}
-
-Write the PRD with these sections:
-
-# {topic} — Product Requirements Document
-
-## Problem Statement and Scope
-(Define the problem being solved, boundaries, and what is out of scope)
-
-## Goals and Non-Goals
-### Goals
-(Numbered list of measurable goals)
-### Non-Goals
-(Explicit list of what this effort will NOT address)
-
-## Functional Requirements
-(Numbered requirements, each with acceptance criteria)
-
-## Non-Functional Requirements
-### Performance
-(Latency, throughput, concurrency targets)
-### Scalability
-(Growth projections, scaling strategy)
-### Compliance
-(Regulatory requirements, standards adherence)
-
-## Security Requirements
-(Grounded in security expert input — threats, controls, mitigations)
-
-## Architecture Alignment
-(Grounded in architect expert input — patterns, decisions, constraints)
-
-## Risk Matrix
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-(Identify key risks with likelihood, impact, and mitigation strategies)
-
-## Success Metrics
-(Numbered list of measurable success criteria)
-
-## References
-(Numbered list of sources referenced)
-"""
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -153,15 +90,7 @@ class PRDAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_manifest", "started")
         prd = state["prd"]
         try:
-            prompt = (
-                "Based on this PRD, generate a structured requirements manifest as JSON.\n\n"
-                f"PRD:\n{prd[:15000]}\n\n"
-                "Return ONLY valid JSON:\n"
-                '{"endpoints": [{"method": "POST", "path": "/auth/login", "description": "..."}], '
-                '"security_requirements": ["token_revocation", ...], '
-                '"technology_constraints": ["TypeScript", ...], '
-                '"quality_targets": {"latency_p99_ms": 200}}'
-            )
+            prompt = MANIFEST_PROMPT.format(prd_content=prd[:15000])
             response = await self.llm.ainvoke([
                 SystemMessage(content="Output only valid JSON. No markdown, no explanation."),
                 HumanMessage(content=prompt),
