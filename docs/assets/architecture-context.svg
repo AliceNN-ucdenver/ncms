@@ -185,19 +185,9 @@
   <text x="115" y="256" fill="#76b900" font-size="6.5" font-weight="500" text-anchor="end">LLM</text>
   <text x="115" y="264" fill="#76b900" font-size="6.5" font-weight="500" text-anchor="end">inference</text>
 
-  <!-- Spark direct :8000 to agents: route OUTSIDE hub along far left edge -->
-  <!-- Vertical trunk from Spark top (y=190) up past hub to agent level -->
-  <line x1="8" y1="190" x2="8" y2="50" stroke="#76b900" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.35"/>
-  <!-- Connect trunk to Spark box -->
-  <line x1="8" y1="190" x2="10" y2="190" stroke="#76b900" stroke-width="0.8" stroke-dasharray="4,3" opacity="0.35"/>
-  <!-- Rotated label on vertical trunk -->
-  <text x="4" y="130" fill="#76b900" font-size="6" font-weight="500" transform="rotate(-90,4,130)" text-anchor="middle">direct :8000</text>
-  <!-- Horizontal branches from trunk to each agent left edge -->
-  <line x1="8" y1="82" x2="75"  y2="82" stroke="#76b900" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.3"/>
-  <line x1="8" y1="78" x2="220" y2="78" stroke="#76b900" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.3"/>
-  <line x1="8" y1="74" x2="365" y2="74" stroke="#76b900" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.3"/>
-  <line x1="8" y1="70" x2="510" y2="70" stroke="#76b900" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.3"/>
-  <line x1="8" y1="66" x2="655" y2="66" stroke="#76b900" stroke-width="0.7" stroke-dasharray="3,3" opacity="0.3"/>
+  <!-- Note: LangGraph agents connect directly to Spark at :8000 (bypassing
+       the NemoClaw inference.local proxy). This is a config-level detail
+       — visually represented by the Spark→Hub arrow labeled "LLM inference". -->
 
   <!-- ================================================================ -->
   <!-- RIGHT: External Services (x=835..990, y=195..330)                -->
