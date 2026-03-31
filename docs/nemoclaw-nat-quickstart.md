@@ -6,7 +6,7 @@ We asked a 3-billion-parameter model to do the job of a software delivery team. 
 
 **One message. Four documents. Fourteen minutes.**
 
-A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across six specialized agents. The Researcher runs five parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 16KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces a 21KB TypeScript implementation design. It submits the design for structured review. On round one, the Architect scored 88% and Security scored 78%. Approved at 83% average with no revision needed.
+A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across five specialized agents. The Researcher runs five parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 16KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces a 21KB TypeScript implementation design. It submits the design for structured review. On round one, the Architect scored 88% and Security scored 78%. Approved at 83% average with no revision needed.
 
 During reviews, the Architect retrieved four memories (4,792 chars of actual ADR content) and Security retrieved three memories (2,133 chars of STRIDE threat models) from the shared knowledge store. A 6KB Design Review Report cites ADR-001 (SOA with CALM), ADR-002 (MongoDB), and ADR-003 (JWT with inline RBAC), all verified as correctly implemented. This is not a demo. These are grounded, auditable engineering artifacts produced by a model that fits on a desk.
 
@@ -35,7 +35,7 @@ When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, 
 
 ## What You Are Building
 
-Six specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
+Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
 
 | Agent | Type | Pipeline |
 |-------|------|----------|
@@ -44,7 +44,6 @@ Six specialized AI agents coordinate through a shared knowledge bus to execute a
 | **Builder** | LangGraph | read_document → ask_experts → synthesize → publish → review loop (revise until 80%+) |
 | **Architect** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
 | **Security** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
-| **Human** | Dashboard UI | Header badge with approval count |
 
 ![Multi-Agent Pipeline](assets/multi-agent-pipeline.svg)
 
@@ -74,7 +73,7 @@ Six specialized AI agents coordinate through a shared knowledge bus to execute a
 
 ## How the Pipeline Works
 
-This is not a chatbot. It is a deterministic software delivery pipeline where LangGraph enforces the workflow for all six agents and the LLM generates content within that structure. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume automatically.
+This is not a chatbot. It is a deterministic software delivery pipeline where LangGraph enforces the workflow for all five agents and the LLM generates content within that structure. Each agent runs in its own kernel-isolated sandbox, communicates through a shared knowledge bus, and produces artifacts that downstream agents consume automatically.
 
 ![Pipeline Phases](assets/pipeline-phases.svg)
 
@@ -167,7 +166,7 @@ All agents generated complete traces during the test run. Full visibility into e
 - **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000`, bypassing the NemoClaw `inference.local` proxy which imposes a 60-second timeout insufficient for large document synthesis.
 - **Thinking mode off:** `enable_thinking: false` prevents thinking-mode tokens from consuming the output budget. Valuable for open-ended reasoning, but wasteful in structured pipelines.
-- **Pipeline orchestration:** LangGraph enforces deterministic workflows for all six agents. The Architect and Security experts use dual-mode pipelines (classify → search_memory → answer or structured_review).
+- **Pipeline orchestration:** LangGraph enforces deterministic workflows for all five agents. The Architect and Security experts use dual-mode pipelines (classify → search_memory → answer or structured_review).
 - **Handoff mechanism:** Triggers use `bus_announce` to domain `trigger-{agent_id}`. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its own sandbox. No port forward dependency. No polling. No shared state. No orchestrator.
 
 ### Agent Sandboxing
