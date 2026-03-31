@@ -4119,3 +4119,304 @@
 .pipeline-node .validate-fail {
   color: var(--accent-amber);
 }
+
+/* ── Editor Overlays (Prompt & Policy) ─────────────────────────── */
+
+.editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-modal {
+  width: 90vw;
+  height: 90vh;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.editor-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.editor-close-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.editor-close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.editor-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor-sidebar {
+  width: 250px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px 0;
+  flex-shrink: 0;
+}
+
+.editor-sidebar-group {
+  margin-bottom: 8px;
+}
+
+.editor-sidebar-group-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.editor-sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 8px 24px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.editor-sidebar-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.editor-sidebar-item.active {
+  background: rgba(187, 128, 255, 0.1);
+  border-left-color: #bb80ff;
+}
+
+.editor-sidebar-item-type {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.editor-sidebar-item-version {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.editor-sidebar-loading,
+.editor-sidebar-empty {
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.editor-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.editor-main-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.editor-main-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.editor-textarea {
+  flex: 1;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: none;
+  padding: 16px 20px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+}
+
+.editor-textarea:focus {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.editor-save-btn {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(63, 185, 80, 0.3);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editor-save-btn:hover {
+  background: rgba(63, 185, 80, 0.25);
+  border-color: var(--accent-green);
+  box-shadow: 0 0 12px rgba(63, 185, 80, 0.3);
+}
+
+.editor-save-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-versions {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  max-height: 120px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.editor-versions-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.editor-version-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.editor-version-num {
+  color: var(--accent-purple);
+  font-weight: 600;
+}
+
+.editor-version-time {
+  color: var(--text-muted);
+}
+
+/* ── Policy Cards ─────────────────────────────────────────────── */
+
+.policy-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.policy-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.policy-card-icon {
+  font-size: 16px;
+}
+
+.policy-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.policy-card-version {
+  font-size: 11px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.policy-card-updated {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.policy-textarea {
+  min-height: 200px;
+  border-radius: 0;
+}
+
+.policy-loading {
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
