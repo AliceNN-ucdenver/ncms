@@ -20,15 +20,17 @@
       <span class="logo">NCMS</span>
       <span class="logo-sub">Dashboard</span>
     </div>
+    <div class="header-nav">
+      <button class="graph-btn view-tab-btn active" id="agents-tab-btn" onclick="showAgentView()">&#x1F916; Agents</button>
+      <button class="graph-btn view-tab-btn" id="projects-tab-btn" onclick="showProjectsView()" style="background:rgba(57,210,192,0.15);color:var(--accent-cyan);border-color:rgba(57,210,192,0.3)">&#x1F4C1; Projects</button>
+      <button class="project-trigger-btn" onclick="openNewProject()">+ New Project</button>
+    </div>
   </div>
   <div class="stats-bar" id="stats-bar">
     <div class="stat">Memories <span class="stat-value" id="stat-memories">0</span></div>
     <div class="stat">Entities <span class="stat-value" id="stat-entities">0</span></div>
     <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
     <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
-    <button class="graph-btn view-tab-btn active" id="agents-tab-btn" onclick="showAgentView()">&#x1F916; Agents</button>
-    <button class="graph-btn view-tab-btn" id="projects-tab-btn" onclick="showProjectsView()" style="background:rgba(57,210,192,0.15);color:var(--accent-cyan);border-color:rgba(57,210,192,0.3)">&#x1F4C1; Projects</button>
-    <button class="project-trigger-btn" onclick="openNewProject()">+ New Project</button>
     <button class="graph-btn" onclick="openGraphView()">&#x2B22; View Graph</button>
     <button class="graph-btn" onclick="openEpisodeView()" style="background:rgba(210,153,34,0.15);color:var(--accent-amber);border-color:rgba(210,153,34,0.3)">&#x23F1; Episodes</button>
     <button class="graph-btn" onclick="openStateHistoryView()" style="background:rgba(63,185,80,0.15);color:var(--accent-green);border-color:rgba(63,185,80,0.3)">&#x1F4CA; States</button>
@@ -65,16 +67,6 @@
   </div>
 
 </div><!-- /.main-left -->
-
-<!-- Documents Sidebar (hidden - replaced by Projects view) -->
-<div class="documents-sidebar" id="documents-sidebar" style="display:none">
-  <div class="sidebar-header">
-    <span class="sidebar-title">&#x1F4C4; Documents</span>
-  </div>
-  <div class="documents-panel" id="documents-panel">
-    <div class="documents-empty">No documents yet</div>
-  </div>
-</div>
 
 </div><!-- /.main -->
 

@@ -43,6 +43,15 @@
     gap: 12px;
   }
 
+  .header-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+  }
+
   .logo {
     font-size: 18px;
     font-weight: 700;
@@ -96,7 +105,7 @@
   /* ── Main Layout (two-column: left content + right docs sidebar) ── */
   .main {
     display: grid;
-    grid-template-columns: 1fr 280px;
+    grid-template-columns: 1fr;
     height: calc(100vh - 56px - 52px);
     overflow: hidden;
   }
