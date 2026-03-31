@@ -694,6 +694,26 @@ def create_api_app(
         events = _pipeline_events.get(project_id, [])
         return JSONResponse(events)
 
+    # -- Pipeline Interrupt ----------------------------------------------------
+
+    _interrupts: dict[str, bool] = {}  # agent_id -> interrupted
+
+    async def interrupt_agent(request: Request) -> JSONResponse:
+        """Signal an agent to interrupt its current pipeline."""
+        agent_id = request.path_params["agent_id"]
+        _interrupts[agent_id] = True
+        logger.info("Interrupt signal sent to agent %s", agent_id)
+
+        if event_log:
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="pipeline.interrupt",
+                data={"agent_id": agent_id},
+                agent_id=agent_id,
+            ))
+
+        return JSONResponse({"interrupted": True, "agent_id": agent_id})
+
     # -- Prompt Store ----------------------------------------------------------
 
     _prompts: dict[str, dict[str, Any]] = {}
@@ -919,9 +939,10 @@ def create_api_app(
         Route("/api/v1/projects/{project_id}", get_project, methods=["GET"]),
         Route("/api/v1/projects/{project_id}/archive", archive_project, methods=["POST"]),
 
-        # Pipeline telemetry
+        # Pipeline telemetry + control
         Route("/api/v1/pipeline/events", post_pipeline_event, methods=["POST"]),
         Route("/api/v1/pipeline/events/{project_id}", get_pipeline_events, methods=["GET"]),
+        Route("/api/v1/pipeline/interrupt/{agent_id}", interrupt_agent, methods=["POST"]),
 
         # Prompts
         Route("/api/v1/prompts", store_prompt, methods=["POST"]),

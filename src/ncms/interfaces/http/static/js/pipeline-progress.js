@@ -11,7 +11,7 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 const PIPELINE_PHASES = {
   research:  { agent: 'researcher',     label: 'Research',  nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
   prd:       { agent: 'product_owner',  label: 'PRD',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
-  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify'] },
+  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify', 'generate_contracts'] },
 };
 
 const NODE_LABELS = {

@@ -394,8 +394,10 @@ class DesignAgent:
         # Revise loops back to publish (then review again)
         graph.add_edge("revise_design", "publish_design")
 
-        # Exit
-        graph.add_edge("verify", END)
+        # After approval: generate contracts, then exit
+        graph.add_node("generate_contracts", self.generate_contracts)
+        graph.add_edge("verify", "generate_contracts")
+        graph.add_edge("generate_contracts", END)
 
         compiled = graph.compile()
         logger.info(
@@ -904,6 +906,65 @@ class DesignAgent:
         )
 
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "completed", status)
+        return state
+
+    # -- Node: Generate Contracts (LLM, after approval) -------------------------
+
+    async def generate_contracts(self, state: DesignState) -> DesignState:
+        """Generate machine-parseable contracts from the approved design.
+
+        Produces OpenAPI 3.1 YAML and Zod validation schemas as separate
+        documents. Only runs after review approval. These contracts give
+        the coding agent unambiguous specifications.
+        """
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_contracts", "started")
+        design = state["design"]
+        clean_topic = extract_topic(state["topic"])
+
+        if not design or len(design) < 500:
+            logger.info("[design_agent] Skipping contract generation (design too short)")
+            await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_contracts", "completed", "skipped")
+            return state
+
+        logger.info("[design_agent] Generating contracts from %d char design", len(design))
+
+        try:
+            prompt = (
+                "Based on this implementation design, generate an OpenAPI 3.1 specification "
+                "as YAML. Include every API endpoint mentioned in the design with:\n"
+                "- Path, method, summary\n"
+                "- Request body schema (if applicable)\n"
+                "- Response schemas for success and error cases\n"
+                "- Authentication requirements\n"
+                "- Status codes\n\n"
+                "Output ONLY valid YAML starting with 'openapi: 3.1.0'. No markdown, no explanation.\n\n"
+                f"DESIGN:\n{design[:40000]}"
+            )
+
+            response = await self.llm.ainvoke([
+                SystemMessage(content="Output only valid OpenAPI 3.1 YAML. No markdown fences."),
+                HumanMessage(content=prompt),
+            ])
+
+            contract = response.content
+            logger.info("[design_agent] OpenAPI contract generated: %d chars", len(contract))
+
+            # Publish as a separate document
+            try:
+                await self.client.publish_document(
+                    content=contract,
+                    title=f"{clean_topic} — OpenAPI Contract",
+                    from_agent=self.from_agent,
+                    format="yaml",
+                )
+                logger.info("[design_agent] OpenAPI contract published")
+            except Exception as e:
+                logger.warning("[design_agent] Contract publish failed: %s", e)
+
+        except Exception as e:
+            logger.warning("[design_agent] Contract generation failed: %s", e)
+
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_contracts", "completed")
         return state
 
     # -- Helpers ---------------------------------------------------------------
