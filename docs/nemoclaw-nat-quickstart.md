@@ -2,9 +2,9 @@
 
 ---
 
-One message. Four documents. Ten minutes.
+One message. Four documents. Fourteen minutes.
 
-A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across six specialized agents. The Researcher runs 5 parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 7.6KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, produces an initial implementation design, then submits it for structured review. Round 1: Architect scored 78%, Security scored 72% -- below the 80% threshold. The Builder revised, addressing each reviewer's feedback explicitly. Round 2: Architect 85%, Security 92% -- APPROVED at 89% average. The final 27.8KB TypeScript implementation design includes actual project structure, `jwt.strategy.ts`, `auth.middleware.ts`, interface contracts, per-STRIDE-category mitigations, and revision markers. Everything runs on a single DGX Spark with 3B active parameters.
+A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across six specialized agents. The Researcher runs 5 parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 16KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces a 21KB implementation design. It submits for structured review -- and on Round 1, Architect scored 88%, Security scored 78%, APPROVED at 83% average with no revision needed. During reviews, the Architect retrieved 4 memories (4,792 chars) and Security retrieved 3 memories (2,133 chars) from the shared knowledge store, grounding their structured feedback in actual ADRs and threat models. A 6KB Design Review Report cites ADR-001 (SOA with CALM), ADR-002 (MongoDB), and ADR-003 (JWT with inline RBAC) -- all verified as correctly implemented. Everything runs on a single DGX Spark with 3B active parameters.
 
 The memory layer underneath is NCMS -- vector-free hybrid retrieval combining BM25 (Tantivy/Rust), SPLADE v3 sparse neural expansion, and graph spreading activation. nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. Zero dense embeddings. Zero external API calls. Everything runs locally.
 
@@ -27,7 +27,7 @@ When we added knowledge-aware prompts that describe what each agent has access t
 
 > ***"Don't let the LLM decide the workflow -- let the graph enforce it."***
 
-When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. The result: one message produces 4 documents (11KB research, 7.6KB PRD, 27.8KB implementation design approved at 89%), every time, with no dead loops.
+When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. The result: one message produces 4 documents (11KB research, 16KB PRD, 21KB implementation design approved at 83% on round 1), every time, with no dead loops.
 
 ## What You Are Building
 
@@ -59,14 +59,12 @@ Six specialized AI agents coordinate through a shared knowledge bus to execute a
 
 ### Four Documents, One Prompt
 
-| Document | Agent | Size | Key Details |
-|----------|-------|------|-------------|
-| Market Research Report | Researcher | 11KB | 5 parallel Tavily searches, 25 results synthesized |
-| PRD | Product Owner | 7.6KB | Grounded in research + architect/security expert input |
-| Implementation Design v1 | Builder | 11.6KB | Initial design from PRD + expert consultation |
-| Implementation Design v2 | Builder | 27.8KB | Revised after review, approved at 89% (Architect 85%, Security 92%) |
-
-A separate Design Review Report is also published with both reviewers' scores and structured feedback.
+| Document | Agent | Size | Key References |
+|----------|-------|------|---------------|
+| Market Research Report | Researcher | 11KB | NIST (3), OAuth, live web sources |
+| PRD | Product Owner | 16KB | CALM (7), ADR (4), OWASP (3), NIST (3), JWT (10), RBAC (4), RS256 (2) |
+| Implementation Design | Builder | 21KB | JWT (24), TypeScript (3), interface (7), bcrypt |
+| Design Review Report | Builder | 6KB | ADR (10), CALM (3), STRIDE, SCORE 88%/78% |
 
 ---
 
@@ -111,7 +109,7 @@ Triggered automatically by the Researcher's bus announcement, the Product Owner:
 4. **Publish** -- Publishes the PRD to the hub's document store
 5. **Trigger** -- Fires a bus announcement that automatically triggers the Builder
 
-**What we observed:** The Product Owner read the full 11KB research document, then received architecture input (ADR decisions, CALM governance patterns, system design principles) and security input (STRIDE threat categories with specific threat IDs, OWASP ASVS control mappings, NIST compliance requirements). The resulting 7.6KB PRD included explicit references to ADR-001 through ADR-003, all six STRIDE threat categories with mitigations, CALM model governance patterns, OWASP ASVS v5.0 controls, NIST SP 800-63B authentication assurance levels, PKCE authorization code flows, and RS256 asymmetric JWT signing. This is not generic LLM output -- every reference traces back to seeded knowledge or live web research.
+**What we observed:** The Product Owner read the full 11KB research document, then received expert input grounded in retrieved memories. The Architect provided a 5.6KB answer grounded in 4 retrieved memories, and Security provided a 7.7KB answer grounded in 3 retrieved memories. The resulting 16KB PRD included CALM (7 references), ADR (4), OWASP (3), NIST (3), JWT (10), RBAC (4), and RS256 (2) -- explicit references to ADR-001 through ADR-003, all six STRIDE threat categories with mitigations, CALM model governance patterns, OWASP ASVS v5.0 controls, NIST SP 800-63B authentication assurance levels, PKCE authorization code flows, and RS256 asymmetric JWT signing. This is not generic LLM output -- every reference traces back to seeded knowledge or live web research.
 
 ### Phase 4: Implementation Design (Builder LangGraph)
 
@@ -119,18 +117,17 @@ The Builder runs a deterministic LangGraph pipeline: **read_document > ask_exper
 
 Triggered automatically by the Product Owner's bus announcement, the Builder:
 
-1. **Read Document** -- Reads the 7.6KB PRD from the document store
+1. **Read Document** -- Reads the 16KB PRD from the document store
 2. **Ask Experts** -- Issues `bus_ask` calls to the Architect and Security agents
 3. **Synthesize Design** -- Compiles the PRD and expert input into a TypeScript implementation design
 4. **Publish** -- Publishes the initial design document to the hub's document store
 5. **Review Loop** -- Sends the design to Architect and Security for structured review. If average score < 80%, revises using explicit feedback and resubmits. Max 5 iterations, then accepts as-is.
 
-**What we observed:** The Builder read the full 7.6KB PRD, consulted experts, and produced an initial 11.6KB implementation design. It then submitted the design for structured review:
+**What we observed:** The Builder read the full 16KB PRD, consulted experts (Architect provided a 4KB answer grounded in 2 memories, Security provided a 9.9KB answer grounded in 3 memories), and produced a 21KB implementation design with JWT (24 references), TypeScript (3), interface (7), and bcrypt. It then submitted the design for structured review:
 
-- **Round 1:** Architect scored 78%, Security scored 72% -- average 75%, below the 80% threshold. The Builder revised, addressing each reviewer's missing items separately with `<!-- Rev 1: Addressed change -->` markers.
-- **Round 2:** Architect scored 85%, Security scored 92% -- average 89%, APPROVED.
+- **Round 1:** Architect scored 88%, Security scored 78% -- average 83%, APPROVED on the first round with no revision needed. During review, Architect retrieved 4 memories (4,792 chars) and Security retrieved 3 memories (2,133 chars), grounding their feedback in actual ADRs and threat models.
 
-The final 27.8KB TypeScript implementation design included actual project structure with `jwt.strategy.ts`, `auth.middleware.ts`, `token.service.ts`, interface definitions, NestJS module organization, per-STRIDE-category mitigations, RS256 signing configuration, PKCE flow implementation, and a three-phase delivery plan. A separate Design Review Report was published with both rounds of scores, severity ratings, covered items, missing items, and required changes.
+The 21KB TypeScript implementation design included actual project structure with `jwt.strategy.ts`, `auth.middleware.ts`, `token.service.ts`, interface definitions, NestJS module organization, per-STRIDE-category mitigations, RS256 signing configuration, PKCE flow implementation, and a three-phase delivery plan. A separate 6KB Design Review Report was published citing ADR-001 (SOA with CALM), ADR-002 (MongoDB), ADR-003 (JWT with inline RBAC), with SCORE/COVERED/MISSING/CHANGES structure, all verified as correctly implemented in the design.
 
 ### Expert Agent Pipeline (Architect & Security)
 
@@ -169,7 +166,7 @@ All agents generated complete traces during the test run -- full visibility into
 - **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass. The model supports up to 1M context tokens.
 - **Serving:** NGC vLLM container on a DGX Spark (128GB memory). Configured with `--max-model-len 524288` (512K context) via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`. KV cache usage under 0.5%, leaving massive headroom. Model supports up to 1M via RoPE scaling.
 - **Tool call parser:** `--tool-call-parser qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
-- **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output. The 256K context window provides ample room for the prompt, retrieved knowledge, and generation.
+- **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output. The 512K context window provides ample room for the prompt, retrieved knowledge, and generation.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000` rather than through the NemoClaw `inference.local` proxy. The proxy imposes a 60-second timeout that is insufficient for large document synthesis. Direct connection eliminates this bottleneck.
 - **Thinking mode off:** `enable_thinking: false` keeps thinking-mode tokens from consuming the context budget. Valuable for open-ended reasoning, but wasteful in structured pipelines where the agent's job is to call specific tools in sequence.
 - **Pipeline orchestration:** LangGraph enforces deterministic workflows for all six agents. The Architect and Security experts use dual-mode LangGraph pipelines (classify > search_memory > answer or structured_review).
@@ -364,26 +361,24 @@ No further human interaction is required. The pipeline chains automatically:
 - Reads the 11KB research report
 - Issues parallel `bus_ask` calls to Architect and Security
 - Receives architecture + security expert input
-- Synthesizes and publishes a 7.6KB PRD
+- Synthesizes and publishes a 16KB PRD
 - Fires bus announcement, Builder activates automatically
 
 **Builder activates** (triggered by Product Owner's bus announcement):
-- Reads the 7.6KB PRD
+- Reads the 16KB PRD
 - Consults Architect and Security experts
-- Synthesizes and publishes an 11.6KB initial implementation design
-- Submits for structured review: Round 1 (Architect 78%, Security 72% -- revise)
-- Revises with explicit feedback, resubmits: Round 2 (Architect 85%, Security 92% -- APPROVED at 89%)
-- Publishes final 27.8KB implementation design + Design Review Report
+- Synthesizes and publishes a 21KB implementation design
+- Submits for structured review: Round 1 (Architect 88%, Security 78% -- APPROVED at 83%)
+- Publishes 21KB implementation design + 6KB Design Review Report
 
 ### 3. Review the Artifacts
 
-Four documents appear in the Documents sidebar, plus a Design Review Report:
+Four documents appear in the Documents sidebar:
 
 1. **Market Research Report** (11KB) -- 5 parallel Tavily searches, 25 results synthesized
-2. **PRD** (7.6KB) -- Grounded in research + architect/security expert input
-3. **Implementation Design v1** (11.6KB) -- Initial design from PRD + expert consultation
-4. **Implementation Design v2** (27.8KB) -- Revised after review, approved at 89% (Architect 85%, Security 92%)
-5. **Design Review Report** -- Both rounds of scores, severity ratings, covered/missing items, required changes
+2. **PRD** (16KB) -- CALM (7), ADR (4), OWASP (3), NIST (3), JWT (10), RBAC (4), RS256 (2)
+3. **Implementation Design** (21KB) -- JWT (24), TypeScript (3), interface (7), bcrypt
+4. **Design Review Report** (6KB) -- ADR (10), CALM (3), STRIDE, SCORE 88%/78%, approved at 83%
 
 ### 4. Inspect Traces
 
