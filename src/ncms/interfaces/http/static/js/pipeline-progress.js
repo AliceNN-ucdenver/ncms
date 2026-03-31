@@ -11,7 +11,7 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 const PIPELINE_PHASES = {
   research:  { agent: 'researcher',     label: 'Research',  nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
   prd:       { agent: 'product_owner',  label: 'PRD',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
-  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'fix_violations', 'publish_design', 'request_review', 'revise_design', 'verify'] },
+  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify'] },
 };
 
 const NODE_LABELS = {
@@ -124,7 +124,7 @@ async function renderPipelineProgress(projectId, containerId) {
 
       const nodeClass = `pipeline-node ${nodeStatus}${isPhaseWaiting ? ' dimmed' : ''}`;
 
-      html += `<div class="${nodeClass}"${detail}
+      html += `<div class="${nodeClass}" data-node="${escapeHtml(nodeKey)}" data-phase="${escapeHtml(phaseKey)}"${detail}
         onclick="onPipelineNodeClick('${escapeHtml(projectId)}', '${escapeHtml(phaseKey)}', '${escapeHtml(nodeKey)}')"
         >${escapeHtml(nodeLabel)}${statusIcon}${extraBadge}</div>`;
     }
@@ -180,32 +180,48 @@ function onPipelineNodeClick(projectId, phaseKey, nodeKey) {
   const data = state.pipelineProgress[projectId]?.[phaseKey]?.[nodeKey];
   if (!data) return;
 
-  // Only show actions for active or failed nodes
-  if (data.status !== 'started' && data.status !== 'active' && data.status !== 'failed') return;
-
   const phaseDef = PIPELINE_PHASES[phaseKey];
   if (!phaseDef) return;
 
-  // Create a simple popup near the node
-  const existing = document.getElementById('pipeline-node-popup');
-  if (existing) existing.remove();
+  // Find the clicked node element and toggle inline expand
+  const nodeEls = document.querySelectorAll(`.pipeline-node[data-node="${nodeKey}"][data-phase="${phaseKey}"]`);
+  const nodeEl = nodeEls.length > 0 ? nodeEls[0] : null;
+  if (!nodeEl) return;
 
-  const popup = document.createElement('div');
-  popup.id = 'pipeline-node-popup';
-  popup.className = 'pipeline-node-popup';
-  popup.innerHTML = `
-    <div class="pipeline-popup-header">${escapeHtml(NODE_LABELS[nodeKey] || nodeKey)} - ${escapeHtml(data.status)}</div>
-    ${data.detail ? `<div class="pipeline-popup-detail">${escapeHtml(data.detail)}</div>` : ''}
-    <div class="pipeline-popup-actions">
-      ${data.status === 'failed' ? `<button class="pipeline-popup-btn retry" onclick="retryPipelineNode('${escapeHtml(projectId)}', '${escapeHtml(phaseDef.agent)}', '${escapeHtml(nodeKey)}')">Retry</button>` : ''}
-      ${data.status === 'started' || data.status === 'active' ? `<button class="pipeline-popup-btn interrupt" onclick="interruptAgent('${escapeHtml(phaseDef.agent)}')">Interrupt</button>` : ''}
-      <button class="pipeline-popup-btn close" onclick="this.closest('.pipeline-node-popup').remove()">Close</button>
-    </div>
+  // Close any other expanded nodes
+  document.querySelectorAll('.pipeline-node-expanded').forEach(el => {
+    if (el !== nodeEl.nextElementSibling) el.remove();
+  });
+
+  // Toggle: if already expanded, close it
+  const existing = nodeEl.nextElementSibling;
+  if (existing && existing.classList.contains('pipeline-node-expanded')) {
+    existing.remove();
+    return;
+  }
+
+  // Build inline expand panel
+  const isActionable = data.status === 'started' || data.status === 'active' || data.status === 'failed';
+  const detail = data.detail || '';
+
+  let actionsHTML = '';
+  if (isActionable) {
+    if (data.status === 'failed') {
+      actionsHTML += `<button class="pipeline-inline-btn retry" onclick="retryPipelineNode('${escapeHtml(projectId)}', '${escapeHtml(phaseDef.agent)}', '${escapeHtml(nodeKey)}'); this.closest('.pipeline-node-expanded').remove()">&#x21BB; Retry</button>`;
+    }
+    if (data.status === 'started' || data.status === 'active') {
+      actionsHTML += `<button class="pipeline-inline-btn interrupt" onclick="interruptAgent('${escapeHtml(phaseDef.agent)}'); this.closest('.pipeline-node-expanded').remove()">&#x23F9; Interrupt</button>`;
+    }
+  }
+
+  const expand = document.createElement('div');
+  expand.className = 'pipeline-node-expanded';
+  expand.innerHTML = `
+    <div class="pipeline-expand-detail">${detail ? escapeHtml(detail) : 'Status: ' + escapeHtml(data.status)}</div>
+    ${actionsHTML ? '<div class="pipeline-expand-actions">' + actionsHTML + '</div>' : ''}
+    <button class="pipeline-expand-close" onclick="this.closest('.pipeline-node-expanded').remove()">&#x2715;</button>
   `;
-  document.body.appendChild(popup);
-
-  // Auto-remove after 10 seconds
-  setTimeout(() => { if (popup.parentNode) popup.remove(); }, 10000);
+  nodeEl.insertAdjacentElement('afterend', expand);
 }
 
 async function interruptAgent(agentId) {
