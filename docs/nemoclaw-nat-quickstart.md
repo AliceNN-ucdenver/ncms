@@ -37,11 +37,13 @@ When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, 
 
 Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
 
+A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that propagates through every agent in the chain. Each document, telemetry event, and review score links back to the originating project, giving the dashboard a project-centric view with per-node pipeline progress instead of a flat document list.
+
 | Agent | Type | Pipeline |
 |-------|------|----------|
-| **Researcher** | LangGraph | plan → search (5x parallel) → synthesize → publish → trigger PO |
-| **Product Owner** | LangGraph | read_document → ask_experts (parallel) → synthesize_prd → publish → trigger Builder |
-| **Builder** | LangGraph | read_document → ask_experts → synthesize → publish → review loop (revise until 80%+) |
+| **Researcher** | LangGraph | check_guardrails → plan → search (5x parallel) → synthesize → publish → trigger PO |
+| **Product Owner** | LangGraph | check_guardrails → read_doc → ask_experts (parallel) → synthesize_prd → generate_manifest → publish → trigger Builder |
+| **Builder** | LangGraph | check_guardrails → read_doc → ask_experts → synthesize → validate_completeness → check_output_guardrails → publish → review ⟲ → verify → generate_contracts |
 | **Architect** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
 | **Security** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
 
@@ -59,6 +61,9 @@ Five specialized AI agents coordinate through a shared knowledge bus to execute 
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
 | **Research** | Tavily | Live web search for Researcher (5 parallel queries) |
 | **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
+| **Guardrails** | NemoGuardrails | Policy enforcement on pipeline inputs (domain/technology scope) and outputs (secrets, prohibited patterns) |
+| **Spec Quality** | Python + LLM | Completeness validator (10 structural checks), requirements manifest, OpenAPI/Zod contract generation |
+| **Project Management** | NCMS Hub | Project view with pipeline progress, per-node telemetry, prompt editor, policy editor |
 
 ### Four Documents, One Prompt
 
@@ -184,6 +189,13 @@ All agents generated complete traces during the test run. Full visibility into e
 - **Integration:** Expert agents use NCMS recall with domain filtering. When a pipeline agent issues a `bus_ask`, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
 - **Knowledge seeding:** Expert agents load curated domain knowledge at startup from `knowledge/architecture/` (ADRs, CALM specs) and `knowledge/security/` (STRIDE threat models, OWASP controls). The Researcher, Product Owner, and Builder have no knowledge files. They learn by querying experts and consuming documents.
 
+### Pipeline Infrastructure
+
+- **Lightweight telemetry channel.** A dedicated `POST /api/v1/pipeline/events` endpoint relays per-node status events via SSE without storing them as memories. Each LangGraph node calls this endpoint at entry and exit. The dashboard subscribes to `pipeline.node` events for real-time progress visualization. This is deliberately separate from the knowledge bus, which is reserved for meaningful events like document publications and review scores.
+- **Guardrails as pipeline bookends.** Every pipeline agent starts with a `check_guardrails` node that validates topics against domain and technology policies stored in the hub. The Builder additionally runs `check_output_guardrails` before publishing, scanning for hardcoded secrets and prohibited patterns. Policies are versioned documents editable from the dashboard's policy editor.
+- **Prompt extraction.** Agent prompts are extracted into separate `*_prompts.py` modules (`research_prompts.py`, `prd_prompts.py`, `design_prompts.py`, `expert_prompts.py`). The hub provides a prompt store API and the dashboard includes a prompt editor for versioning and editing prompts without rebuilding sandboxes.
+- **Policy storage.** Guardrails policies (domain scope, technology scope, compliance requirements) are stored via the hub's policy API and managed from the dashboard policy editor. Agents load policies at pipeline start.
+
 ---
 
 ## Getting Started
@@ -196,7 +208,7 @@ Quick summary: configure your DGX Spark inference provider, deploy vLLM with 512
 
 ## What's Next
 
-The auto-chaining pipeline runs end-to-end with a quality review loop. The foundation is solid. Here is where it goes from here.
+The pipeline runs end-to-end with guardrails, spec validation, contract generation, project tracking, and per-node telemetry. The foundation is solid. Here is where it goes from here.
 
 ### Coding Agent (Claude Code in a Sandbox)
 
@@ -210,16 +222,14 @@ The pipeline currently runs fully autonomously from research to approved design.
 
 A Telegram bot integration that accepts research prompts and kicks off the full pipeline. Send a message to the bot, watch the dashboard light up as agents chain through research, PRD, design, and review. Receive a notification when the pipeline completes with links to the published documents. This makes the pipeline accessible from anywhere without opening the dashboard.
 
-### Dashboard: From Monitoring to Project Delivery
+### Dashboard: Phase 2
 
-The dashboard needs to evolve from "watch agents work" to "manage a portfolio of design projects." The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md). Key features:
+The project view, pipeline progress, and policy/prompt editors are implemented. The next dashboard features from [dashboard-evolution-design.md](dashboard-evolution-design.md) are:
 
-- **Project/Epic View.** Replace the flat document sidebar with a project-centric view. Each pipeline run creates a project that groups all related documents into a phase timeline with quality scores, grounding metrics, and knowledge references. Start new projects from a structured trigger panel instead of chatting with individual agents.
 - **Compliance Dashboard.** Aggregate review scores across all projects. ADR compliance rates, STRIDE coverage heat maps, quality trends over time, knowledge grounding metrics, and drift scores using the Looking Glass severity formula.
-- **Live Pipeline Progress.** A horizontal visualization showing active phase, document sizes growing in real time, review round scores, and estimated time remaining based on historical runs.
 - **Document Diff View.** Side-by-side comparison of design revisions highlighting sections added or modified in response to review feedback, with review comments mapped to the changes they influenced.
 - **Knowledge Grounding Inspector.** Click any reference in a document (e.g., "ADR-003") to see the actual memory that was retrieved, its retrieval score, which agent used it, and the full provenance chain from seed file to review to design.
-- **Contextual Approval Queue.** Show the full design, review report, and coding plan before the human approves implementation. Estimated cost, previous approval history, and one-click approve/reject.
+- **Contextual Approval Queue.** Full-width approval overlay showing the design, review report, and coding plan before the human approves implementation. Estimated cost, previous approval history, and one-click approve/reject.
 - **Phoenix trace link resolution.** Resolve project IDs via the Phoenix API before constructing URLs.
 - **Event filtering.** Filter agent activity by type (announcements, reviews, triggers, documents).
 
@@ -229,7 +239,6 @@ The dashboard needs to evolve from "watch agents work" to "manage a portfolio of
 - **Phoenix event enrichment.** Currently only LLM calls generate Phoenix traces. Adding custom spans for bus_ask/bus_announce, memory retrieval, document publish, and review scoring would give complete pipeline visibility in Phoenix without reading agent logs.
 - **Agent health monitoring.** The dashboard shows online/offline status but does not detect agents stuck in retry loops or hung on LLM calls. A heartbeat mechanism with configurable timeout and auto-restart would improve reliability.
 - **Graceful degradation on review failure.** If a reviewer fails after retries, the current behavior defaults to a 50% score. A smarter fallback would skip that reviewer's score entirely and evaluate based on the available review, or proceed with a human review request.
-- **Agent interruptability.** Click an agent card in the dashboard to stop its current pipeline mid-execution. Useful when a revision loop is heading in the wrong direction or a research query needs to be refined. The interrupted agent should publish whatever partial results it has and announce the interruption to the bus so downstream agents know not to wait.
 
 ### LLM Upgrades
 
@@ -245,19 +254,11 @@ The dashboard needs to evolve from "watch agents work" to "manage a portfolio of
 
 The current expert reviews use a simplified version of the Looking Glass governance framework. The full [Oraculum](https://github.com/AliceNN-ucdenver/MaintainabilityAI) integration would connect to the governance mesh via MCP servers, pulling BAR (Business Application Record) artifacts for each application: CALM architecture models, STRIDE threat models, ADRs, fitness functions, compliance checklists, and operational runbooks. This transforms the review from "does the design look reasonable" to "does the design comply with the documented governance baseline," with drift scores across four pillars (architecture, security, information risk, operations).
 
-### Spec Quality: Completeness Validation and Interface Contracts
-
-The spec is the single most important artifact. A coding agent with a perfect spec produces good code. A vague spec produces garbage. Two additions to the Builder's pipeline: a deterministic completeness checker (Python, no LLM) that validates every PRD requirement maps to a design section, every endpoint has types, and every section includes code examples. And a contract generator (LLM) that produces OpenAPI 3.1 YAML and Zod validation schemas from the design, giving the coding agent machine-parseable specifications instead of prose. The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md).
-
-### NemoGuardrails: Policy Enforcement
-
-[NemoGuardrails](https://github.com/NVIDIA/NeMo-Guardrails) as a policy layer on pipeline inputs and outputs. Before a new project starts, guardrails validate that the research topic aligns with organizational scope (e.g., "we build identity services, not cryptocurrency exchanges"). During the pipeline, guardrails check that generated documents stay within approved technology stacks, comply with organizational security policies, and don't introduce out-of-scope dependencies. On output, guardrails verify the design doesn't contain hardcoded secrets, prohibited patterns, or content that violates compliance requirements. This turns the pipeline from "it builds whatever you ask" into "it builds what your organization approves." The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md).
-
 ### Libraries and Lifecycle
 
 - **Template Library.** Reusable design fragments (middleware patterns, API contracts, infrastructure configs) stored as versioned documents. The Builder adapts templates to each project instead of generating from scratch. High-scoring designs automatically contribute new templates.
 - **Design Pattern Library.** Organizational patterns mined from historical runs using NCMS knowledge consolidation. Recurring implementations (JWT signing, rate limiting, error handling) surface as discoverable patterns that promote consistency across projects.
-- **Prompt Library.** Agent prompts versioned and managed in the hub instead of hardcoded in YAML. A/B test prompt changes, track which prompt versions produce the highest review scores, and edit prompts from the dashboard without rebuilding.
+- **Prompt Performance Metrics.** The prompt library stores versions and the dashboard editor supports editing. The next step is tracking which prompt version produces the highest review scores, enabling A/B comparison across pipeline runs.
 - **Knowledge Lifecycle Management.** Hot-reload knowledge files without rebuilding sandboxes. Versioned knowledge with reconciliation (NCMS Phase 2 supersedes/conflicts). Deprecation for outdated ADRs or threat models. Cross-agent synchronization when knowledge changes.
 
 ### Feedback and Audit

@@ -706,17 +706,17 @@ A bidirectional feedback channel from the coding agent back to the Builder:
 
 ## Phased Delivery
 
-### Phase 1 (Foundation)
+### Phase 1 (Foundation) -- IMPLEMENTED
 
-| # | Feature | Rationale |
-|---|---------|-----------|
-| 1 | Project/Epic View | Foundation for every other feature. Groups documents, enables progress tracking. |
-| 2 | Live Pipeline Progress | Immediate usability. Node-level visibility into what agents are doing. |
-| 5 | Spec Quality (Completeness + Contracts) | The spec is the bottleneck. Structural validation before review. |
-| 6 | NemoGuardrails | Policy enforcement before the coding agent generates real code. |
-| 15 | Prompt Library | Versioned prompts enable rapid iteration without rebuilding. |
+| # | Feature | Status | Implementation Notes |
+|---|---------|--------|---------------------|
+| 1 | Project/Epic View | Done | Hub endpoints: `POST/GET /api/v1/projects`, `GET /api/v1/projects/{id}`, `POST .../archive`. Frontend: `projects.js` with project cards, phase timelines, "New Project" trigger panel. PRJ-XXXXXXXX IDs propagated through all agents via `pipeline_utils.py`. Documents linked by project_id extracted from content or metadata. |
+| 2 | Live Pipeline Progress | Done | Hub endpoints: `POST /api/v1/pipeline/events`, `GET .../events/{project_id}`, `POST .../interrupt/{agent_id}`. Frontend: `pipeline-progress.js` with per-node status indicators for all three pipeline phases. Telemetry emitted at every node entry/exit by all five agents. Ring buffer (500 events/project). SSE broadcast via `pipeline.node` events. Interrupt signal support. |
+| 5 | Spec Quality (Completeness + Contracts) | Done | `spec_validator.py`: 10-check completeness validator (section presence, code blocks, endpoint coverage, security requirements, technology alignment, PRD cross-reference, env vars, status codes). Validates against PO's requirements manifest. `design_agent.py`: `validate_completeness` node between synthesize and publish, `generate_contracts` node after review approval (OpenAPI 3.1 + Zod schemas). `prd_agent.py`: `generate_manifest` node produces structured JSON manifest alongside prose PRD. Auto-fix loop for minor structural gaps. |
+| 6 | NemoGuardrails | Done | `guardrails.py`: `PolicyViolation` model with warn/block/reject escalation. `check_domain_scope`, `check_technology_scope`, `check_output_compliance` (secret detection, mandatory sections). `run_input_guardrails` and `run_output_guardrails` wrappers. All three pipeline agents have `check_guardrails` as first node. Builder has `check_output_guardrails` before publish. Violations announced to bus. Hub endpoints: `POST/GET /api/v1/policies`, `GET .../policies/{type}`. Frontend: `policy-editor.js` with YAML editor. |
+| 15 | Prompt Library | Done | Hub endpoints: `POST/GET /api/v1/prompts`, `GET .../prompts/{agent}/{type}/latest`. Versioned storage with auto-incrementing version numbers. Frontend: `prompt-editor.js` with per-agent prompt editing. Prompts extracted into `research_prompts.py`, `prd_prompts.py`, `design_prompts.py`, `expert_prompts.py`. |
 
-Phase 1 establishes the project model, gives visibility into pipeline execution, ensures spec quality, enforces policy, and makes prompts manageable. All subsequent features build on this foundation.
+Phase 1 is complete. The project model, pipeline telemetry, spec validation, guardrails, and prompt management are all operational. All subsequent features build on this foundation.
 
 ### Phase 2 (Coding Agent + Governance)
 
