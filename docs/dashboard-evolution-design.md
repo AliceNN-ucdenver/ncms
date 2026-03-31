@@ -760,7 +760,7 @@ Frontend:
 - Document search panel with entity-based filtering.
 
 
-## 20. Archaeologist Agent (Existing Repository Analysis)
+## 20. Archeologist Agent (Existing Repository Analysis)
 
 ### Problem
 
@@ -770,7 +770,7 @@ The current pipeline is green-field only. Every project starts with a research p
 
 **New entry point: "+ Start Archaeology".** The dashboard's project creation panel gains a second action alongside the existing "+ New Project" button. "+ Start Archaeology" opens a repository browser that connects to GitHub via PAT authentication. The user selects a repository (or pastes a URL), chooses a branch, and describes the goal: "Modernize authentication from session cookies to JWT", "Add rate limiting to all public endpoints", "Migrate from Express to NestJS", or "Security audit against OWASP Top 10."
 
-**GitHub MCP provider.** The Archaeologist agent uses GitHub MCP (analogous to Tavily for web search) to explore repositories. The MCP provider authenticates with a GitHub PAT stored in environment configuration (`NCMS_GITHUB_PAT`). It provides structured access to:
+**GitHub MCP provider.** The Archeologist agent uses GitHub MCP (analogous to the Tavily provider for web search) to explore repositories. The PAT is accessed through the sandbox provider configuration — the same pattern used for Tavily API keys. The environment variable `GITHUB_PERSONAL_ACCESS_TOKEN` is already set and `api.github.com` is already allowed by the NemoClaw network policy, so no policy changes are needed. The provider gives structured access to:
 
 - Repository file tree and directory structure
 - File contents with language detection
@@ -779,7 +779,7 @@ The current pipeline is green-field only. Every project starts with a research p
 - Recent commit history and contributors
 - Open issues and pull requests (for context on known problems)
 
-**Archaeologist LangGraph pipeline.** A new agent with a seven-node deterministic pipeline:
+**Archeologist LangGraph pipeline.** A new agent with a seven-node deterministic pipeline:
 
 1. **check_guardrails**: Validate the repository URL and goal against domain/technology policies (reuses existing guardrails infrastructure).
 2. **clone_and_index**: Fetch the repository structure via GitHub MCP. Build a file tree, identify entry points, extract dependency manifests. Index key files into the agent's working context.
@@ -789,11 +789,11 @@ The current pipeline is green-field only. Every project starts with a research p
 6. **synthesize_report**: Produce a research report combining: as-is assessment, gap analysis, web research findings, and recommended modernization path. This is the equivalent of the Researcher's output but grounded in an existing codebase.
 7. **publish_and_trigger**: Publish the archaeology report as a project document, then trigger the Product Owner to produce a PRD — feeding into the existing PO → Builder pipeline.
 
-**Convergence with existing pipeline.** The Archaeologist's output (a research report grounded in an existing codebase) feeds into the same downstream pipeline as the Researcher's output. The PO reads it, produces a PRD with a requirements manifest, and the Builder produces a design. The difference is the quality of grounding: the Researcher starts from web search; the Archaeologist starts from actual code.
+**Convergence with existing pipeline.** The Archeologist's output (a research report grounded in an existing codebase) feeds into the same downstream pipeline as the Researcher's output. The PO reads it, produces a PRD with a requirements manifest, and the Builder produces a design. The difference is the quality of grounding: the Researcher starts from web search; the Archeologist starts from actual code.
 
-**Dashboard integration.** Archaeology projects appear in the same project list as green-field projects but with a repository badge showing the GitHub org/repo. The pipeline progress bar shows the Archaeologist's nodes instead of the Researcher's. The phase timeline shows "Archaeology" instead of "Research" as the first phase.
+**Dashboard integration.** Archaeology projects appear in the same project list as green-field projects but with a repository badge showing the GitHub org/repo. The pipeline progress bar shows the Archeologist's nodes instead of the Researcher's. The phase timeline shows "Archaeology" instead of "Research" as the first phase.
 
-**Repository metadata.** The Archaeologist extracts and publishes structured metadata:
+**Repository metadata.** The Archeologist extracts and publishes structured metadata:
 
 ```json
 {
@@ -816,26 +816,25 @@ This metadata is stored as a document sidecar (feature 19) and indexed into NCMS
 
 Backend:
 
-- New agent module: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/archaeologist_agent.py` with the seven-node LangGraph pipeline.
-- GitHub MCP provider: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/github_provider.py` wrapping GitHub REST API with PAT auth. Methods: `get_tree()`, `get_file()`, `get_dependencies()`, `get_workflows()`, `get_commits()`, `get_issues()`.
-- New sandbox config: `archaeologist.yml` with GitHub MCP and Tavily providers, both available.
+- New agent module: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/archeologist_agent.py` with the seven-node LangGraph pipeline.
+- GitHub provider: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/github_provider.py` wrapping GitHub REST API. PAT injected via sandbox provider config (same pattern as Tavily). Methods: `get_tree()`, `get_file()`, `get_dependencies()`, `get_workflows()`, `get_commits()`, `get_issues()`. No network policy change needed — `api.github.com` is already allowed.
+- New sandbox config: `archeologist.yml` with GitHub MCP and Tavily providers, both available.
 - Hub API: `POST /api/v1/projects` extended with `source_type: "archaeology"` and `repository_url` fields.
-- Pipeline trigger: archaeology projects trigger `trigger-archaeologist` domain instead of `trigger-researcher`.
-- Agent port assignment: `"archaeologist": 8006` in the hub's agent port map.
+- Pipeline trigger: archaeology projects trigger `trigger-archeologist` domain instead of `trigger-researcher`.
+- Agent port assignment: `"archeologist": 8006` in the hub's agent port map.
 
 Frontend:
 
 - New "+ Start Archaeology" button in the left nav (below "+ New Project").
 - Repository browser panel: GitHub PAT configuration, org/repo search, branch selector, goal text input.
 - Project cards for archaeology projects show repository badge (org/repo) and language breakdown.
-- Pipeline progress bar uses Archaeologist node sequence for archaeology projects.
+- Pipeline progress bar uses Archeologist node sequence for archaeology projects.
 
 Configuration:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NCMS_GITHUB_PAT` | *(none)* | GitHub Personal Access Token for repository access |
-| `NCMS_GITHUB_API_URL` | `https://api.github.com` | GitHub API base URL (supports GitHub Enterprise) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | *(env)* | GitHub PAT, accessed via sandbox provider (same pattern as `TAVILY_API_KEY`) |
 | `NCMS_ARCHAEOLOGY_MAX_FILES` | `200` | Max files to index from a repository |
 | `NCMS_ARCHAEOLOGY_MAX_FILE_SIZE` | `50000` | Max file size in chars to include in analysis |
 
@@ -854,16 +853,16 @@ Configuration:
 
 Phase 1 is complete. The project model, pipeline telemetry, spec validation, guardrails, and prompt management are all operational. All subsequent features build on this foundation.
 
-### Phase 2 (Document Intelligence + Archaeologist)
+### Phase 2 (Document Intelligence + Archeologist)
 
 | # | Feature | Rationale |
 |---|---------|-----------|
 | 19 | Document-Memory Integration | GLiNER entity extraction at publish time. Entity-enriched search replaces raw text excerpts for expert grounding. JSON sidecar persistence for document metadata. Makes every published document a first-class knowledge object in NCMS. |
-| 20 | Archaeologist Agent | New entry point for existing repositories. GitHub MCP provider for codebase exploration. Seven-node LangGraph pipeline: guardrails → clone → analyze → gaps → research → synthesize → trigger. Output feeds into existing PO → Builder chain. |
-| 4 | Document Diff View | Side-by-side diff for design revisions with review comment annotations. Essential for reviewing Archaeologist-produced modernization plans against the existing codebase state. |
-| 13 | Template Library | Reusable design fragments. The Archaeologist's gap analysis can identify patterns from the existing codebase that should become templates for the modernization design. |
+| 20 | Archeologist Agent | New entry point for existing repositories. GitHub MCP provider for codebase exploration. Seven-node LangGraph pipeline: guardrails → clone → analyze → gaps → research → synthesize → trigger. Output feeds into existing PO → Builder chain. |
+| 4 | Document Diff View | Side-by-side diff for design revisions with review comment annotations. Essential for reviewing Archeologist-produced modernization plans against the existing codebase state. |
+| 13 | Template Library | Reusable design fragments. The Archeologist's gap analysis can identify patterns from the existing codebase that should become templates for the modernization design. |
 
-Phase 2 makes documents intelligent (entity-enriched, searchable, persistent metadata) and opens the second entry path: existing repository analysis. The Archaeologist grounds the pipeline in real code instead of web search, while document-memory integration ensures expert agents retrieve precisely the governance knowledge each document needs. Template extraction from successful runs begins building organizational memory.
+Phase 2 makes documents intelligent (entity-enriched, searchable, persistent metadata) and opens the second entry path: existing repository analysis. The Archeologist grounds the pipeline in real code instead of web search, while document-memory integration ensures expert agents retrieve precisely the governance knowledge each document needs. Template extraction from successful runs begins building organizational memory.
 
 ### Phase 3 (Coding Agent + Governance)
 
@@ -875,7 +874,7 @@ Phase 2 makes documents intelligent (entity-enriched, searchable, persistent met
 | 16 | Audit Trail | Reproducibility and compliance for all pipeline runs. Frozen snapshots of every input, retrieval, LLM response, and review score. |
 | 18 | Feedback Loop (Code → Design) | Bidirectional improvement. When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder for targeted revision. |
 
-Phase 3 closes the loop from design to code. The coding agent consumes approved designs (from either the Researcher or Archaeologist path) and produces working implementations. Human approval gates every code generation. The feedback loop ensures design quality improves from implementation experience. Governance visibility and audit trails make the full pipeline enterprise-ready.
+Phase 3 closes the loop from design to code. The coding agent consumes approved designs (from either the Researcher or Archeologist path) and produces working implementations. Human approval gates every code generation. The feedback loop ensures design quality improves from implementation experience. Governance visibility and audit trails make the full pipeline enterprise-ready.
 
 ### Phase 4 (Learning System)
 
