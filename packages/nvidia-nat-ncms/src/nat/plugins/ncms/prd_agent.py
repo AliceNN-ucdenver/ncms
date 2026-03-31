@@ -195,7 +195,11 @@ class PRDAgent:
     async def ask_experts(self, state: PRDState) -> PRDState:
         """Parallel bus_ask to architect and security experts. No LLM."""
         topic = state["topic"]
+        source = state.get("source_content", "")
         logger.info("[prd_agent] Asking experts about: %s", topic[:100])
+
+        # Include source document context so experts can give grounded answers
+        context_summary = source[:5000] if source else "(no source document available)"
 
         # Announce progress to bus
         try:
@@ -209,11 +213,15 @@ class PRDAgent:
 
         async def _ask_architect() -> str:
             try:
+                question = (
+                    f"What architectural decisions and patterns apply to this project?\n\n"
+                    f"Context from research:\n{context_summary}"
+                )
                 result = await self.client.bus_ask(
-                    question=f"What architectural decisions apply to: {topic}",
+                    question=question,
                     domains=["architecture", "decisions"],
                     from_agent=self.from_agent,
-                    timeout_ms=120000,
+                    timeout_ms=180000,
                 )
                 response = result.get("response", result.get("content", ""))
                 logger.info("[prd_agent] Architect response: %d chars", len(response))
@@ -224,11 +232,15 @@ class PRDAgent:
 
         async def _ask_security() -> str:
             try:
+                question = (
+                    f"What security threats and requirements apply to this project?\n\n"
+                    f"Context from research:\n{context_summary}"
+                )
                 result = await self.client.bus_ask(
-                    question=f"What security requirements apply to: {topic}",
+                    question=question,
                     domains=["security", "threats"],
                     from_agent=self.from_agent,
-                    timeout_ms=120000,
+                    timeout_ms=180000,
                 )
                 response = result.get("response", result.get("content", ""))
                 logger.info("[prd_agent] Security response: %d chars", len(response))

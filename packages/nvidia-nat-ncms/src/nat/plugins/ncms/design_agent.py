@@ -371,7 +371,11 @@ class DesignAgent:
     async def ask_experts(self, state: DesignState) -> DesignState:
         """Parallel bus_ask to architecture and security experts. No LLM."""
         topic = state["topic"]
+        source = state.get("source_content", "")
         logger.info("[design_agent] Querying experts for: %s", topic[:100])
+
+        # Include PRD context so experts can give grounded answers
+        context_summary = source[:5000] if source else "(no PRD document available)"
 
         try:
             await self.client.bus_announce(
@@ -384,11 +388,15 @@ class DesignAgent:
 
         async def _ask_architect() -> str:
             try:
+                question = (
+                    f"What architectural patterns and ADRs apply to this implementation?\n\n"
+                    f"PRD context:\n{context_summary}"
+                )
                 result = await self.client.bus_ask(
-                    question=f"What architectural patterns and ADRs apply to: {topic}",
+                    question=question,
                     domains=["architecture", "decisions"],
                     from_agent=self.from_agent,
-                    timeout_ms=120000,
+                    timeout_ms=180000,
                 )
                 answer = result.get("answer", "") or result.get("content", "")
                 logger.info("[design_agent] Architect response: %d chars", len(answer))
@@ -399,11 +407,15 @@ class DesignAgent:
 
         async def _ask_security() -> str:
             try:
+                question = (
+                    f"What security threats and controls apply to this implementation?\n\n"
+                    f"PRD context:\n{context_summary}"
+                )
                 result = await self.client.bus_ask(
-                    question=f"What security threats and controls apply to: {topic}",
+                    question=question,
                     domains=["security", "threats"],
                     from_agent=self.from_agent,
-                    timeout_ms=120000,
+                    timeout_ms=180000,
                 )
                 answer = result.get("answer", "") or result.get("content", "")
                 logger.info("[design_agent] Security response: %d chars", len(answer))
