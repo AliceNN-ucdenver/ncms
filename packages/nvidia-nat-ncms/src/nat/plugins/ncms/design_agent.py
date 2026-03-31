@@ -59,6 +59,9 @@ class DesignState(TypedDict):
     review_scores: dict[str, int]  # {"architect": 85, "security": 72}
     review_feedback: dict[str, str]  # {"architect": "COVERED:...", "security": "..."}
     iteration: int  # Current review round (0 = first pass)
+    # Guardrail loop fields
+    guardrail_violations: list[str]  # List of violation messages from output guardrails
+    guardrail_fix_iteration: int  # Current fix iteration (0 = first check)
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
 
 
@@ -303,6 +306,97 @@ class DesignAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "validate_completeness", "completed", result.summary())
         return state
 
+    # -- Node: Check Output Guardrails (Pure Python) -------------------------
+
+    async def check_output_guardrails(self, state: DesignState) -> DesignState:
+        """Check output guardrails before publishing. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_output_guardrails", "started")
+        from .guardrails import run_output_guardrails
+
+        can_publish, violations = await run_output_guardrails(
+            self.hub_url, state["design"], self.from_agent,
+        )
+        state["guardrail_violations"] = [str(v) for v in violations]
+
+        if can_publish:
+            logger.info("[design_agent] Output guardrails PASSED")
+            await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_output_guardrails", "completed", "passed")
+        else:
+            logger.warning(
+                "[design_agent] Output guardrails BLOCKED (%d violations, fix iteration %d)",
+                len(violations), state.get("guardrail_fix_iteration", 0),
+            )
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"), self.from_agent,
+                "check_output_guardrails", "completed",
+                f"blocked: {len(violations)} violations",
+            )
+            try:
+                await self.client.bus_announce(
+                    content=f"⚠️ Output guardrails: {len(violations)} violation(s) — fixing",
+                    domains=["implementation"],
+                    from_agent=self.from_agent,
+                )
+            except Exception:
+                pass
+
+        return state
+
+    async def should_fix_violations(self, state: DesignState) -> str:
+        """Decide whether to fix violations or proceed to publish."""
+        violations = state.get("guardrail_violations", [])
+        fix_iter = state.get("guardrail_fix_iteration", 0)
+
+        if not violations:
+            return "publish_design"
+        elif fix_iter >= 2:
+            logger.warning("[design_agent] Max guardrail fix iterations reached, publishing with warnings")
+            return "publish_design"
+        else:
+            return "fix_violations"
+
+    async def fix_violations(self, state: DesignState) -> DesignState:
+        """LLM fixes guardrail violations in the design."""
+        fix_iter = state.get("guardrail_fix_iteration", 0) + 1
+        state["guardrail_fix_iteration"] = fix_iter
+        violations = state.get("guardrail_violations", [])
+
+        logger.info("[design_agent] 🔧 Fixing %d guardrail violations (iteration %d)", len(violations), fix_iter)
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "fix_violations", "started", f"{len(violations)} violations")
+
+        try:
+            await self.client.bus_announce(
+                content=f"🔧 Fixing guardrail violations (attempt {fix_iter}): {'; '.join(violations[:3])}",
+                domains=["implementation"],
+                from_agent=self.from_agent,
+            )
+        except Exception:
+            pass
+
+        prompt = (
+            "The following implementation design has guardrail violations that must be fixed.\n\n"
+            "VIOLATIONS:\n" + "\n".join(f"- {v}" for v in violations) + "\n\n"
+            "DESIGN:\n" + state["design"][:60000] + "\n\n"
+            "Fix each violation:\n"
+            "- Replace any hardcoded passwords, secrets, or API keys with environment variable references\n"
+            "- Replace any prohibited patterns (eval, SQL concatenation, wildcard CORS) with safe alternatives\n"
+            "- Add any missing mandatory sections\n\n"
+            "Output the COMPLETE fixed design. Do not remove any existing content."
+        )
+
+        try:
+            response = await self.llm.ainvoke([
+                SystemMessage(content="Fix security violations in this design. Keep all existing content."),
+                HumanMessage(content=prompt),
+            ])
+            state["design"] = response.content
+            logger.info("[design_agent] Design fixed: %d chars (guardrail fix %d)", len(state["design"]), fix_iter)
+        except Exception as e:
+            logger.error("[design_agent] Fix violations failed: %s", e)
+
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "fix_violations", "completed", f"fixed, {len(state['design'])} chars")
+        return state
+
     async def build_graph(self) -> StateGraph:
         """Build and compile the design pipeline with review loop."""
         graph = StateGraph(DesignState)
@@ -312,6 +406,8 @@ class DesignAgent:
         graph.add_node("ask_experts", self.ask_experts)
         graph.add_node("synthesize_design", self.synthesize_design)
         graph.add_node("validate_completeness", self.validate_completeness)
+        graph.add_node("check_output_guardrails", self.check_output_guardrails)
+        graph.add_node("fix_violations", self.fix_violations)
         graph.add_node("publish_design", self.publish_design)
         graph.add_node("request_review", self.request_review)
         graph.add_node("revise_design", self.revise_design)
@@ -323,7 +419,12 @@ class DesignAgent:
         graph.add_edge("read_document", "ask_experts")
         graph.add_edge("ask_experts", "synthesize_design")
         graph.add_edge("synthesize_design", "validate_completeness")
-        graph.add_edge("validate_completeness", "publish_design")
+        graph.add_edge("validate_completeness", "check_output_guardrails")
+
+        # Guardrail fix loop: pass → publish, fail → fix → re-check
+        graph.add_conditional_edges("check_output_guardrails", self.should_fix_violations)
+        graph.add_edge("fix_violations", "check_output_guardrails")
+
         graph.add_edge("publish_design", "request_review")
 
         # Review loop: conditional edge
@@ -558,12 +659,11 @@ class DesignAgent:
 
         logger.info("[design_agent] Publishing design document: %d chars %s", len(design), version)
 
-        # Run output guardrails before publishing
-        from .guardrails import run_output_guardrails
-        can_publish, output_violations = await run_output_guardrails(self.hub_url, design, self.from_agent)
-        if not can_publish:
-            logger.warning("[design_agent] Output guardrails BLOCKED publish: %s", output_violations)
-            state["design"] += "\n\n---\n**Output Guardrails:** " + "; ".join(str(v) for v in output_violations[:5])
+        # Output guardrails already checked in check_output_guardrails node
+        # If we reach here, guardrails passed or max fix iterations exhausted
+        violations = state.get("guardrail_violations", [])
+        if violations:
+            versioned_design += "\n\n---\n⚠️ **Remaining guardrail warnings:** " + "; ".join(violations[:3])
 
         try:
             result = await self.client.publish_document(
@@ -893,6 +993,8 @@ async def design_agent_fn(
             "review_scores": {},
             "review_feedback": {},
             "iteration": 0,
+            "guardrail_violations": [],
+            "guardrail_fix_iteration": 0,
             "project_id": project_id,
         })
 
