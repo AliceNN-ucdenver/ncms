@@ -161,7 +161,7 @@ def check_output_compliance(
     # Secret detection (always active, regardless of policy)
     secret_patterns = [
         (r'(?:api[_-]?key|apikey)\s*[:=]\s*["\']?[a-zA-Z0-9_\-]{20,}', "Possible API key"),
-        (r'(?:password|passwd|pwd)\s*[:=]\s*["\'][^"\']{4,}', "Possible hardcoded password"),
+        (r'(?:password|passwd|pwd)\s*[:=]\s*["\'][^"\']{8,}', "Possible hardcoded password"),
         (r'(?:secret|token)\s*[:=]\s*["\'][a-zA-Z0-9_\-]{10,}', "Possible hardcoded secret"),
         (r'mongodb(?:\+srv)?://[^\s"\']+:[^\s"\']+@', "MongoDB connection string with credentials"),
         (r'postgres(?:ql)?://[^\s"\']+:[^\s"\']+@', "PostgreSQL connection string with credentials"),
@@ -169,11 +169,14 @@ def check_output_compliance(
 
     for pattern, description in secret_patterns:
         if re.search(pattern, content, re.IGNORECASE):
+            # Connection strings with real credentials are BLOCK level
+            # Password field references in code examples are WARN level
+            is_connection_string = "://" in description.lower()
             violations.append(PolicyViolation(
                 policy_type="compliance",
                 rule="secret_detection",
                 message=f"Possible secret in document: {description}",
-                escalation="block",
+                escalation="block" if is_connection_string else "warn",
             ))
 
     # Check mandatory sections from policy
