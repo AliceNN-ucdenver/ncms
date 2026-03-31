@@ -400,17 +400,88 @@ The pipeline builds whatever you ask it to. There is no validation that a resear
 - Prohibited pattern detection: flag designs that include known anti-patterns (SQL string concatenation, eval() usage, disabled CORS, wildcard permissions).
 - Compliance checklist: verify the final design addresses all mandatory compliance requirements from the organization's governance baseline.
 
+### Policy Storage and Management
+
+Guardrails policies must be living, editable configurations, not hardcoded files. They are stored in NCMS as versioned documents with `type: "policy"` and managed from the dashboard:
+
+**Domain policies** define what the organization works on:
+```yaml
+# Stored in NCMS as policy document, editable from dashboard
+policy_type: domain_scope
+allowed_domains:
+  - identity services
+  - authentication and authorization
+  - data access and APIs
+  - microservice architecture
+  - observability and monitoring
+denied_domains:
+  - cryptocurrency
+  - gambling
+  - weapons systems
+elevated_approval:
+  - PII handling
+  - financial data processing
+  - healthcare compliance (HIPAA)
+```
+
+**Technology policies** define what the organization builds with:
+```yaml
+policy_type: technology_scope
+approved_stacks:
+  backend:
+    - TypeScript / NestJS
+    - TypeScript / Express
+    - Python / FastAPI
+  database:
+    - MongoDB
+    - PostgreSQL
+  authentication:
+    - JWT with RS256 signing
+    - OAuth 2.0 with PKCE
+  hashing:
+    - bcrypt (cost >= 12)
+    - Argon2id
+prohibited:
+  - eval() or Function() constructor
+  - SQL string concatenation
+  - wildcard CORS origins in production
+  - HTTP without TLS
+```
+
+**Compliance policies** define what must be present:
+```yaml
+policy_type: compliance_requirements
+mandatory_sections:
+  - authentication middleware
+  - rate limiting
+  - input validation
+  - error handling with status codes
+  - environment variable documentation
+  - health check endpoint
+  - audit logging
+standards:
+  - OWASP ASVS v5.0 Level 2
+  - NIST SP 800-63B
+```
+
+**Dashboard policy editor:** A dedicated "Policies" tab where the human can view, edit, and version guardrails policies. Changes take effect on the next pipeline run. Policy version history shows what changed and when, with links to the pipeline runs that used each version.
+
+**Policy inheritance:** Organization-level policies apply to all projects by default. Individual projects can add stricter constraints (never weaker). For example, a healthcare project inherits the base technology policy but adds HIPAA compliance requirements.
+
 ### Implementation
 
-- NemoGuardrails configuration files (`guardrails/`) define the policy rules in Colang format.
-- A guardrails wrapper around each LangGraph pipeline's entry point validates inputs before the graph runs.
-- A guardrails check node after each `publish` step validates outputs before the document is made visible.
-- Policy violations are announced to the bus and surfaced in the dashboard as warnings with specific remediation guidance.
-- The compliance dashboard tracks guardrail violations per project and across the portfolio.
+- New document type `policy` in NCMS with metadata: `policy_type`, `version`, `scope` (organization or project-level)
+- Hub API: `GET /api/v1/policies?type=domain_scope` to fetch active policies, `PUT /api/v1/policies/{id}` to update
+- NemoGuardrails loads policies from NCMS at pipeline start (not from static Colang files). The Colang rules reference NCMS policy documents as dynamic data sources.
+- A guardrails wrapper around each LangGraph pipeline's entry point validates inputs against domain and technology policies before the graph runs.
+- A guardrails check node after each `publish` step validates outputs against compliance and technology policies before the document is made visible.
+- Policy violations are announced to the bus and surfaced in the dashboard as warnings with specific remediation guidance and a link to the policy that was violated.
+- The compliance dashboard tracks guardrail violations per project, per policy, and across the portfolio.
+- Dashboard: "Policies" tab with YAML editor, version history, and per-project override support.
 
 ### Integration with Existing Pipeline
 
-The guardrails layer sits between the hub's `/generate` proxy and the agent's LangGraph pipeline. It does not modify the graph itself. This means guardrails can be enabled or disabled per agent via configuration, and the pipeline continues to work identically when guardrails are off. The goal is policy as an overlay, not policy embedded in agent logic.
+The guardrails layer sits between the hub's `/generate` proxy and the agent's LangGraph pipeline. It does not modify the graph itself. This means guardrails can be enabled or disabled per agent via configuration, and the pipeline continues to work identically when guardrails are off. The goal is policy as an overlay, not policy embedded in agent logic. Policies stored in NCMS are versioned and auditable, and the audit trail (feature 16) records which policy version was active for each pipeline run.
 
 
 ## 13. Template Library
