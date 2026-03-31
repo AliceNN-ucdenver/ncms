@@ -561,14 +561,17 @@ def create_api_app(
         }
         _projects[project_id] = meta
 
-        # Also store as NCMS memory
-        await memory_svc.store_memory(
-            content=f"Project {project_id}: {topic}",
-            memory_type="project",
-            domains=body.get("scope", []),
-            tags=["project", project_id],
-            importance=7.0,
-        )
+        # Also store as NCMS memory (non-blocking — don't let this break project creation)
+        try:
+            await memory_svc.store_memory(
+                content=f"Project {project_id}: {topic}",
+                memory_type="fact",
+                domains=body.get("scope", []),
+                tags=["project", project_id],
+                importance=7.0,
+            )
+        except Exception as e:
+            logger.warning("Failed to store project memory: %s", e)
 
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
