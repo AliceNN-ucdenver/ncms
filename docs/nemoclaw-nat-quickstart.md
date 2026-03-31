@@ -235,7 +235,7 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
 
 ### Coding Agent
 
-A seventh agent that takes the Builder's 27.8KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this -- the coding agent would consume them as specifications. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
+A seventh agent that takes the Builder's 21KB TypeScript implementation design and generates actual source code, tests, and Dockerfiles. The design documents are already structured for this -- the coding agent would consume them as specifications. The project structure, interface contracts, and module organization are explicit enough to drive code generation directly.
 
 ### Looking Glass Full Oraculum Integration
 

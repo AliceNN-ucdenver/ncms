@@ -425,15 +425,17 @@ Then restart the agent or run `./setup_nemoclaw.sh --rebuild`.
 
 ### Known Quirks
 
-1. **Architect always needs manual approval.** Security, builder, and other sandboxes tend to auto-approve after the first time, but the architect sandbox has stale state in the gateway database that persists across restarts.
+1. **Gateway restart wipes approvals.** If you restart the NemoClaw gateway (`openshell gateway restart`), all interactive approvals are lost. The sandboxes will need re-approval on their next connection attempt.
 
-2. **Gateway restart wipes approvals.** If you restart the NemoClaw gateway (`openshell gateway restart`), all interactive approvals are lost. The sandboxes will need re-approval on their next connection attempt.
+2. **Stale sandbox names.** If a sandbox name was previously denied, the gateway DB keeps the deny state. Restarting the gateway clears this. If you see persistent 403 errors after creating a sandbox with a previously-used name, restart the gateway.
 
-3. **Stale sandbox names.** If a sandbox name was previously denied, the gateway DB keeps the deny state. Restarting the gateway clears this. If you see persistent 403 errors after creating a sandbox with a previously-used name, restart the gateway.
+3. **Port forwards can drop.** SSH-based port forwards (`openshell forward`) may drop during long-running operations or Mac sleep. The auto-chain pipeline uses bus-based triggers to avoid this, but dashboard chat still requires port forwards.
 
 4. **`openshell forward` maps same port only.** You cannot map `localhost:9000` to sandbox port `8000`. Each agent listens on a unique port so the forwards work 1:1.
 
-5. **NemoClaw proxy 60-second timeout.** The `inference.local` proxy has a hardcoded 60-second timeout. LangGraph synthesis nodes that generate large documents (15-18KB) can exceed this. Solution: connect LangGraph agents directly to the Spark URL.
+5. **NemoClaw inference proxy has a 60-second timeout.** LangGraph agents connect directly to `spark-ee7d.local:8000` instead of through `inference.local` to avoid this. The proxy timeout is hardcoded in the OpenShell gateway.
+
+5. **NemoClaw proxy 60-second timeout.** The `inference.local` proxy has a hardcoded 60-second timeout. LangGraph synthesis nodes that generate large documents (20KB+) can exceed this. Solution: connect LangGraph agents directly to the Spark URL.
 
 ---
 
