@@ -141,10 +141,22 @@ class ResearchAgent:
         self.client = client
         self.max_search_results = max_search_results
 
+    async def check_guardrails(self, state: ResearchState) -> ResearchState:
+        """Check input guardrails before pipeline starts."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
+        from .guardrails import run_input_guardrails
+        can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
+        if not can_proceed:
+            logger.warning("[research_agent] Guardrails BLOCKED: %s", violations)
+            state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
+        return state
+
     async def build_graph(self) -> StateGraph:
         """Build and compile the deterministic research pipeline."""
         graph = StateGraph(ResearchState)
 
+        graph.add_node("check_guardrails", self.check_guardrails)
         graph.add_node("plan_queries", self.plan_queries)
         graph.add_node("parallel_search", self.parallel_search)
         graph.add_node("synthesize", self.synthesize)
@@ -152,7 +164,8 @@ class ResearchAgent:
         graph.add_node("verify", self.verify)
 
         # All edges unconditional — deterministic flow
-        graph.add_edge(START, "plan_queries")
+        graph.add_edge(START, "check_guardrails")
+        graph.add_edge("check_guardrails", "plan_queries")
         graph.add_edge("plan_queries", "parallel_search")
         graph.add_edge("parallel_search", "synthesize")
         graph.add_edge("synthesize", "publish")
@@ -160,7 +173,7 @@ class ResearchAgent:
         graph.add_edge("verify", END)
 
         compiled = graph.compile()
-        logger.info("[research_agent] Graph compiled: plan → search → synthesize → publish → verify")
+        logger.info("[research_agent] Graph compiled: guardrails → plan → search → synthesize → publish → verify")
         return compiled
 
     # ── Node 1: Plan Queries (LLM) ───────────────────────────────────────

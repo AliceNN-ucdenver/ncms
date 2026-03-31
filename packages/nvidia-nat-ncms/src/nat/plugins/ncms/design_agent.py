@@ -276,23 +276,54 @@ class DesignAgent:
         self.quality_threshold = quality_threshold
         self.max_iterations = max_iterations
 
+    async def check_guardrails(self, state: DesignState) -> DesignState:
+        """Check input guardrails before pipeline starts."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
+        from .guardrails import run_input_guardrails
+        can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
+        if not can_proceed:
+            logger.warning("[design_agent] Guardrails BLOCKED: %s", violations)
+            state["design"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
+        return state
+
+    async def validate_completeness(self, state: DesignState) -> DesignState:
+        """Validate structural completeness. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "validate_completeness", "started")
+        from .spec_validator import validate_design_completeness
+        result = validate_design_completeness(
+            design=state["design"],
+            prd=state.get("source_content", ""),
+        )
+        if not result.passed:
+            logger.warning("[design_agent] Completeness: %s", result.summary())
+            state["design"] += "\n\n---\n**Completeness Check:** " + "; ".join(result.issues[:5])
+        else:
+            logger.info("[design_agent] %s", result.summary())
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "validate_completeness", "completed", result.summary())
+        return state
+
     async def build_graph(self) -> StateGraph:
         """Build and compile the design pipeline with review loop."""
         graph = StateGraph(DesignState)
 
+        graph.add_node("check_guardrails", self.check_guardrails)
         graph.add_node("read_document", self.read_document)
         graph.add_node("ask_experts", self.ask_experts)
         graph.add_node("synthesize_design", self.synthesize_design)
+        graph.add_node("validate_completeness", self.validate_completeness)
         graph.add_node("publish_design", self.publish_design)
         graph.add_node("request_review", self.request_review)
         graph.add_node("revise_design", self.revise_design)
         graph.add_node("verify", self.verify)
 
         # Forward path
-        graph.add_edge(START, "read_document")
+        graph.add_edge(START, "check_guardrails")
+        graph.add_edge("check_guardrails", "read_document")
         graph.add_edge("read_document", "ask_experts")
         graph.add_edge("ask_experts", "synthesize_design")
-        graph.add_edge("synthesize_design", "publish_design")
+        graph.add_edge("synthesize_design", "validate_completeness")
+        graph.add_edge("validate_completeness", "publish_design")
         graph.add_edge("publish_design", "request_review")
 
         # Review loop: conditional edge
@@ -306,8 +337,8 @@ class DesignAgent:
 
         compiled = graph.compile()
         logger.info(
-            "[design_agent] Graph compiled: read_document → ask_experts → "
-            "synthesize → publish → review ⟲ (threshold: %d%%, max: %d iterations)",
+            "[design_agent] Graph compiled: check_guardrails → read_document → ask_experts → "
+            "synthesize → validate → publish → review ⟲ (threshold: %d%%, max: %d iterations)",
             self.quality_threshold,
             self.max_iterations,
         )
@@ -526,6 +557,13 @@ class DesignAgent:
         versioned_design = f"{project_comment}<!-- Version: {version} | Round: {iteration + 1} -->\n{score_line}\n{design}"
 
         logger.info("[design_agent] Publishing design document: %d chars %s", len(design), version)
+
+        # Run output guardrails before publishing
+        from .guardrails import run_output_guardrails
+        can_publish, output_violations = await run_output_guardrails(self.hub_url, design, self.from_agent)
+        if not can_publish:
+            logger.warning("[design_agent] Output guardrails BLOCKED publish: %s", output_violations)
+            state["design"] += "\n\n---\n**Output Guardrails:** " + "; ".join(str(v) for v in output_violations[:5])
 
         try:
             result = await self.client.publish_document(

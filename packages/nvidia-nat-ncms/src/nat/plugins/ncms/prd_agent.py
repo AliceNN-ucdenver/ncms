@@ -8,6 +8,7 @@ LLM called exactly once (synthesis). All other nodes are pure Python.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import TypedDict
@@ -41,6 +42,7 @@ class PRDState(TypedDict):
     source_content: str  # Content from source document
     expert_input: dict[str, str]  # {"architect": "...", "security": "..."}
     prd: str  # Synthesized PRD markdown
+    manifest: dict  # Structured requirements manifest (JSON)
     document_id: str | None  # Published PRD doc ID
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
@@ -135,28 +137,74 @@ class PRDAgent:
         self.client = client
         self.trigger_next_agent = trigger_next_agent
 
+    async def check_guardrails(self, state: PRDState) -> PRDState:
+        """Check input guardrails before pipeline starts."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
+        from .guardrails import run_input_guardrails
+        can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
+        if not can_proceed:
+            logger.warning("[prd_agent] Guardrails BLOCKED: %s", violations)
+            state["prd"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
+        return state
+
+    async def generate_manifest(self, state: PRDState) -> PRDState:
+        """Generate structured requirements manifest. Second LLM call."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_manifest", "started")
+        prd = state["prd"]
+        try:
+            prompt = (
+                "Based on this PRD, generate a structured requirements manifest as JSON.\n\n"
+                f"PRD:\n{prd[:15000]}\n\n"
+                "Return ONLY valid JSON:\n"
+                '{"endpoints": [{"method": "POST", "path": "/auth/login", "description": "..."}], '
+                '"security_requirements": ["token_revocation", ...], '
+                '"technology_constraints": ["TypeScript", ...], '
+                '"quality_targets": {"latency_p99_ms": 200}}'
+            )
+            response = await self.llm.ainvoke([
+                SystemMessage(content="Output only valid JSON. No markdown, no explanation."),
+                HumanMessage(content=prompt),
+            ])
+            text = response.content.strip()
+            if text.startswith("```"): text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"): text = text[:-3].strip()
+            state["manifest"] = json.loads(text)
+            logger.info("[prd_agent] Manifest: %d endpoints, %d security reqs",
+                        len(state["manifest"].get("endpoints", [])),
+                        len(state["manifest"].get("security_requirements", [])))
+        except Exception as e:
+            logger.warning("[prd_agent] Manifest generation failed: %s", e)
+            state["manifest"] = {}
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_manifest", "completed")
+        return state
+
     async def build_graph(self) -> StateGraph:
         """Build and compile the deterministic PRD pipeline."""
         graph = StateGraph(PRDState)
 
+        graph.add_node("check_guardrails", self.check_guardrails)
         graph.add_node("read_document", self.read_document)
         graph.add_node("ask_experts", self.ask_experts)
         graph.add_node("synthesize_prd", self.synthesize_prd)
+        graph.add_node("generate_manifest", self.generate_manifest)
         graph.add_node("publish_prd", self.publish_prd)
         graph.add_node("verify_and_trigger", self.verify_and_trigger)
 
         # All edges unconditional — deterministic flow
-        graph.add_edge(START, "read_document")
+        graph.add_edge(START, "check_guardrails")
+        graph.add_edge("check_guardrails", "read_document")
         graph.add_edge("read_document", "ask_experts")
         graph.add_edge("ask_experts", "synthesize_prd")
-        graph.add_edge("synthesize_prd", "publish_prd")
+        graph.add_edge("synthesize_prd", "generate_manifest")
+        graph.add_edge("generate_manifest", "publish_prd")
         graph.add_edge("publish_prd", "verify_and_trigger")
         graph.add_edge("verify_and_trigger", END)
 
         compiled = graph.compile()
         logger.info(
-            "[prd_agent] Graph compiled: read_document → ask_experts → synthesize_prd"
-            " → publish_prd → verify_and_trigger"
+            "[prd_agent] Graph compiled: check_guardrails → read_document → ask_experts"
+            " → synthesize_prd → generate_manifest → publish_prd → verify_and_trigger"
         )
         return compiled
 
@@ -386,6 +434,22 @@ class PRDAgent:
             logger.error("[prd_agent] Publish failed: %s", e)
             state["document_id"] = None
 
+        # Publish the requirements manifest as a separate document if it exists
+        manifest = state.get("manifest", {})
+        if manifest:
+            try:
+                manifest_content = f"<!-- project_id: {project_id} -->\n" if project_id else ""
+                manifest_content += f"# {clean_topic} — Requirements Manifest\n\n```json\n{json.dumps(manifest, indent=2)}\n```"
+                await self.client.publish_document(
+                    content=manifest_content,
+                    title=f"{clean_topic} — Requirements Manifest",
+                    from_agent=self.from_agent,
+                    format="markdown",
+                )
+                logger.info("[prd_agent] Requirements manifest published")
+            except Exception as e:
+                logger.warning("[prd_agent] Failed to publish manifest: %s", e)
+
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_prd", "completed", f"doc_id={state.get('document_id')}")
         return state
 
@@ -522,6 +586,7 @@ async def prd_agent_fn(
             "source_content": "",
             "expert_input": {},
             "prd": "",
+            "manifest": {},
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
