@@ -970,6 +970,8 @@ async def design_agent_fn(
         logger.info("[design_agent] Input: %s", input_message[:200])
 
         project_id = extract_project_id(input_message)
+        # Builder has 10+ nodes + review loop (up to 5 iterations × 2 nodes each)
+        # Default recursion limit of 15 is too low
         result = await graph.ainvoke({
             "topic": input_message,
             "source_doc_id": None,
@@ -985,7 +987,7 @@ async def design_agent_fn(
             "guardrail_violations": [],
             "guardrail_fix_iteration": 0,
             "project_id": project_id,
-        })
+        }, config={"recursion_limit": 50})
 
         design = result.get("design", "Design pipeline produced no output.")
         doc_id = result.get("document_id")

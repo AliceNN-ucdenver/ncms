@@ -590,7 +590,7 @@ async def prd_agent_fn(
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
-        })
+        }, config={"recursion_limit": 30})
 
         prd = result.get("prd", "PRD pipeline produced no output.")
         doc_id = result.get("document_id")

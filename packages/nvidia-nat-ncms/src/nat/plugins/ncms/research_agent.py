@@ -537,7 +537,7 @@ async def research_agent_fn(
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
-        })
+        }, config={"recursion_limit": 30})
 
         synthesis = result.get("synthesis", "Research pipeline produced no output.")
         doc_id = result.get("document_id")
