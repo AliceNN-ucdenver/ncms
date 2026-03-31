@@ -3827,3 +3827,276 @@
   border-color: var(--accent-cyan);
   box-shadow: 0 0 16px rgba(57, 210, 192, 0.3);
 }
+
+/* ── Document Viewer Modal ────────────────────────────────────── */
+
+.doc-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doc-viewer-modal {
+  width: 90vw;
+  height: 90vh;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.doc-viewer-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.doc-viewer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-viewer-close,
+.doc-viewer-download {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.doc-viewer-close:hover,
+.doc-viewer-download:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.doc-viewer-download {
+  color: var(--accent-blue);
+  border-color: rgba(88, 166, 255, 0.3);
+}
+
+.doc-viewer-download:hover {
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.doc-viewer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.doc-viewer-body h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 28px 0 12px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.doc-viewer-body h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 24px 0 10px;
+  color: var(--text-primary);
+}
+
+.doc-viewer-body h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 20px 0 8px;
+  color: var(--text-primary);
+}
+
+.doc-viewer-body p {
+  margin: 8px 0;
+}
+
+.doc-viewer-body ul, .doc-viewer-body ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.doc-viewer-body li {
+  margin: 4px 0;
+}
+
+.doc-viewer-body pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  overflow-x: auto;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.doc-viewer-body code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+.doc-viewer-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.doc-viewer-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.doc-viewer-body th,
+.doc-viewer-body td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.doc-viewer-body th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.doc-viewer-body td {
+  color: var(--text-secondary);
+}
+
+.doc-viewer-body blockquote {
+  border-left: 3px solid var(--accent-purple);
+  padding: 8px 16px;
+  margin: 12px 0;
+  color: var(--text-secondary);
+  background: rgba(188, 140, 255, 0.05);
+  border-radius: 0 6px 6px 0;
+}
+
+.doc-viewer-body a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.doc-viewer-body a:hover {
+  text-decoration: underline;
+}
+
+.doc-viewer-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
+.doc-viewer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.doc-viewer-error {
+  color: var(--accent-red);
+  text-align: center;
+  padding: 40px;
+}
+
+.phase-timeline-title.clickable {
+  cursor: pointer;
+  color: var(--accent-blue);
+  transition: color 0.15s;
+}
+
+.phase-timeline-title.clickable:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+/* ── Guardrail / Validate Status Indicators ───────────────────── */
+
+.pipeline-node .guardrail-badge,
+.pipeline-node .validate-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.pipeline-node .guardrail-pass {
+  color: var(--accent-green);
+}
+
+.pipeline-node .guardrail-pass::before {
+  content: "\1F6E1";
+  margin-right: 2px;
+  font-size: 10px;
+}
+
+.pipeline-node .guardrail-block {
+  color: var(--accent-red);
+}
+
+.pipeline-node .guardrail-block::before {
+  content: "\1F6E1";
+  margin-right: 2px;
+  font-size: 10px;
+}
+
+.pipeline-node .guardrail-warn {
+  color: var(--accent-amber);
+}
+
+.pipeline-node .guardrail-warn::before {
+  content: "\1F6E1";
+  margin-right: 2px;
+  font-size: 10px;
+}
+
+.pipeline-node .validate-pass {
+  color: var(--accent-green);
+}
+
+.pipeline-node .validate-fail {
+  color: var(--accent-amber);
+}

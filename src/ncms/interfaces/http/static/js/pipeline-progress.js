@@ -95,11 +95,36 @@ async function renderPipelineProgress(projectId, containerId) {
       else if (nodeStatus === 'failed') statusIcon = ' &#x2717;';
       else if (nodeStatus === 'started' || nodeStatus === 'active') statusIcon = '';
 
+      // Guardrail status badge
+      let extraBadge = '';
+      const detailText = (nodeData.detail || '').toLowerCase();
+      if (nodeKey === 'check_guardrails' && nodeStatus === 'completed') {
+        if (detailText.includes('blocked')) {
+          extraBadge = ' <span class="guardrail-badge guardrail-block">&#x2717;</span>';
+        } else if (detailText.includes('warn')) {
+          extraBadge = ' <span class="guardrail-badge guardrail-warn">&#x26A0;</span>';
+        } else {
+          extraBadge = ' <span class="guardrail-badge guardrail-pass">&#x2713;</span>';
+        }
+      }
+
+      // Validate completeness badge
+      if (nodeKey === 'validate_completeness' && nodeStatus === 'completed') {
+        const issueMatch = (nodeData.detail || '').match(/(\d+)\s*issue/i);
+        if (issueMatch && parseInt(issueMatch[1]) > 0) {
+          extraBadge = ' <span class="validate-badge validate-fail">&#x26A0; ' + escapeHtml(issueMatch[1]) + '</span>';
+        } else if (detailText.includes('fail') || detailText.includes('issue')) {
+          extraBadge = ' <span class="validate-badge validate-fail">&#x26A0;</span>';
+        } else {
+          extraBadge = ' <span class="validate-badge validate-pass">&#x2713;</span>';
+        }
+      }
+
       const nodeClass = `pipeline-node ${nodeStatus}${isPhaseWaiting ? ' dimmed' : ''}`;
 
       html += `<div class="${nodeClass}"${detail}
         onclick="onPipelineNodeClick('${escapeHtml(projectId)}', '${escapeHtml(phaseKey)}', '${escapeHtml(nodeKey)}')"
-        >${escapeHtml(nodeLabel)}${statusIcon}</div>`;
+        >${escapeHtml(nodeLabel)}${statusIcon}${extraBadge}</div>`;
     }
 
     html += '</div></div>';

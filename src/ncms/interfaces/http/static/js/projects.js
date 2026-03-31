@@ -146,7 +146,7 @@ function renderProjectDetail(project) {
         <div class="phase-timeline-dot"></div>
         <div class="phase-timeline-content">
           <div class="phase-timeline-header">
-            <span class="phase-timeline-title">${docTitle}</span>
+            <span class="phase-timeline-title clickable" onclick="openDocumentViewer('${escapeHtml(doc.document_id || '')}')">${docTitle}</span>
             <span class="phase-timeline-meta">
               ${versionBadge}
               <span class="phase-timeline-agent">${docAgent}</span>
@@ -338,6 +338,90 @@ function updateViewTabButtons(activeView) {
   if (agentsBtn) {
     agentsBtn.classList.toggle('active', activeView === 'agents');
   }
+}
+
+// ── Document Viewer Modal ────────────────────────────────────────
+
+async function openDocumentViewer(docId) {
+  // Remove any existing viewer
+  const existing = document.getElementById('doc-viewer-overlay');
+  if (existing) existing.remove();
+
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'doc-viewer-overlay';
+  overlay.className = 'doc-viewer-overlay';
+  overlay.innerHTML = `
+    <div class="doc-viewer-modal">
+      <div class="doc-viewer-header">
+        <span class="doc-viewer-title">Loading...</span>
+        <button class="doc-viewer-download" id="doc-viewer-download-btn" style="display:none">Download</button>
+        <button class="doc-viewer-close" onclick="closeDocumentViewer()">&times;</button>
+      </div>
+      <div class="doc-viewer-body">
+        <div class="doc-viewer-loading">Loading document...</div>
+      </div>
+    </div>
+  `;
+
+  // Close on backdrop click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeDocumentViewer();
+  });
+
+  document.body.appendChild(overlay);
+
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeDocumentViewer();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+
+  // Fetch document
+  try {
+    const resp = await fetch(HUB_API + '/api/v1/documents/' + encodeURIComponent(docId));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const doc = await resp.json();
+
+    const titleEl = overlay.querySelector('.doc-viewer-title');
+    const bodyEl = overlay.querySelector('.doc-viewer-body');
+    const downloadBtn = overlay.querySelector('#doc-viewer-download-btn');
+
+    titleEl.textContent = doc.title || 'Untitled Document';
+
+    // Show download button if URL available
+    if (doc.url) {
+      downloadBtn.style.display = '';
+      downloadBtn.onclick = () => {
+        const a = document.createElement('a');
+        a.href = doc.url;
+        a.download = doc.title || 'document';
+        a.target = '_blank';
+        a.click();
+      };
+    }
+
+    // Render content as markdown
+    const content = doc.content || doc.body || '';
+    if (content) {
+      bodyEl.innerHTML = simpleMarkdown(content);
+    } else {
+      bodyEl.innerHTML = '<div class="doc-viewer-error">No content available for this document.</div>';
+    }
+  } catch (e) {
+    const bodyEl = overlay.querySelector('.doc-viewer-body');
+    if (bodyEl) {
+      bodyEl.innerHTML = '<div class="doc-viewer-error">Failed to load document: ' + escapeHtml(String(e.message || e)) + '</div>';
+    }
+  }
+}
+
+function closeDocumentViewer() {
+  const overlay = document.getElementById('doc-viewer-overlay');
+  if (overlay) overlay.remove();
 }
 
 // ── SSE Event Listeners ──────────────────────────────────────────────
