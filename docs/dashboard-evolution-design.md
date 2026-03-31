@@ -6,7 +6,7 @@ The NCMS dashboard today is an observability tool. It shows agent activity via S
 
 This is effective for watching agents work. It is not effective for managing a portfolio of AI-driven design projects, tracking governance compliance across those projects, or giving a human approver enough context to make informed decisions about code generation.
 
-This document describes ten capabilities that transform the dashboard from a monitoring tool into a project delivery and governance compliance platform. Each section states the problem, describes the design, and outlines the implementation path. The priority table at the end orders them by impact and effort.
+This document describes twenty capabilities that transform the dashboard from a monitoring tool into a project delivery and governance compliance platform. Each section states the problem, describes the design, and outlines the implementation path. The phased delivery plan at the end groups them by dependency and impact.
 
 
 ## 1. Project/Epic View
@@ -704,9 +704,145 @@ A bidirectional feedback channel from the coding agent back to the Builder:
 - Dashboard shows the feedback loop as a visible phase in the pipeline progress bar
 
 
+## 19. Document-Memory Integration (Entity-Enriched Recall)
+
+### Problem
+
+When an expert agent receives a design document for review, it needs to search NCMS memory for relevant governance knowledge. Currently, the expert sends a truncated excerpt of the design text (up to 400 characters) as a search query. This produces poor retrieval: BM25 matches on raw prose miss the specific entities that matter (technology names, threat IDs, ADR references, compliance standards). The search is keyword-blind to the document's actual subject matter.
+
+Meanwhile, published documents sit in the hub's document store as opaque blobs. There is no structured metadata about what a document contains, what entities it references, or what domains it touches. The only way to find related documents is full-text search of their prose.
+
+### Design
+
+**Entity extraction at publish time.** When any agent publishes a document via the hub's `/api/v1/documents` endpoint, the hub runs GLiNER zero-shot NER on the document content. GLiNER is already a required NCMS dependency with automatic text chunking (1,200 char chunks, sentence boundary splitting, entity dedup). The extracted entities — technology names, standards references, threat IDs, ADR numbers, architectural patterns, compliance frameworks — are stored as structured metadata alongside the document.
+
+**JSON sidecar persistence.** Document metadata (entities, domain tags, timestamps, project linkage) is persisted as a JSON sidecar file alongside the markdown document. This replaces the current in-memory dict that loses metadata on hub restart. The sidecar file lives at `{doc_path}.meta.json` and contains:
+
+```json
+{
+  "document_id": "design-abc123",
+  "project_id": "PRJ-12345678",
+  "agent": "builder",
+  "phase": "design",
+  "published_at": "2026-03-31T10:00:00Z",
+  "entities": {
+    "technology": ["NestJS", "MongoDB", "Redis", "JWT"],
+    "standard": ["OWASP A01:2021", "NIST SP 800-63B"],
+    "threat": ["THR-001", "THR-003"],
+    "adr": ["ADR-001", "ADR-004"],
+    "pattern": ["CQRS", "circuit breaker", "rate limiting"]
+  },
+  "domains": ["authentication", "authorization", "data access"],
+  "summary": "Implementation design for JWT-based auth service with Redis token revocation"
+}
+```
+
+**Entity-enriched search for expert agents.** When an expert agent needs to search memory for review grounding, it queries using the document's extracted entities instead of raw text excerpts. The search query becomes a targeted list of entity keywords (e.g., `"NestJS JWT OWASP A01:2021 ADR-001 circuit breaker"`) rather than a 400-char prose excerpt. This produces dramatically better BM25 hits because the query terms directly match the entities indexed in NCMS memories.
+
+**NCMS memory creation.** At publish time, the hub also creates an NCMS memory with the document summary and entity list (not the full document content). This makes documents discoverable through the standard NCMS retrieval pipeline (BM25 + SPLADE + graph spreading activation) and benefits from episode linking, reconciliation, and all other NCMS features.
+
+**Document search API.** A new endpoint `GET /api/v1/documents/search?entities=JWT,NestJS&domain=authentication` enables entity-aware document search. The dashboard's document viewer gains a search box that queries by entities, not just titles.
+
+### Implementation
+
+Backend:
+
+- Modify `store_document()` in `api.py` to run GLiNER extraction on the document content at publish time. Use the existing `GlinerExtractor` from `infrastructure/extraction/gliner_extractor.py` with auto-chunking.
+- Persist metadata as JSON sidecar files. On hub startup, rebuild the in-memory metadata index from sidecar files.
+- New endpoint `GET /api/v1/documents/search` with entity and domain query parameters.
+- Modify the expert agent's `search_memory` node to use document entities for search queries instead of text excerpts.
+- Create an NCMS memory per published document with `type: "fact"`, summary content, and entity metadata.
+
+Frontend:
+
+- Document viewer shows extracted entities as clickable tags below the document header.
+- Entity tags link to the knowledge graph view filtered to that entity.
+- Document search panel with entity-based filtering.
+
+
+## 20. Archaeologist Agent (Existing Repository Analysis)
+
+### Problem
+
+The current pipeline is green-field only. Every project starts with a research prompt, searches the web, and generates designs from scratch. But most real engineering work involves existing codebases — modernizing a legacy service, adding features to an established system, migrating between frameworks, or improving security posture of deployed code. There is no path to bring an existing repository into the pipeline.
+
+### Design
+
+**New entry point: "+ Start Archaeology".** The dashboard's project creation panel gains a second action alongside the existing "+ New Project" button. "+ Start Archaeology" opens a repository browser that connects to GitHub via PAT authentication. The user selects a repository (or pastes a URL), chooses a branch, and describes the goal: "Modernize authentication from session cookies to JWT", "Add rate limiting to all public endpoints", "Migrate from Express to NestJS", or "Security audit against OWASP Top 10."
+
+**GitHub MCP provider.** The Archaeologist agent uses GitHub MCP (analogous to Tavily for web search) to explore repositories. The MCP provider authenticates with a GitHub PAT stored in environment configuration (`NCMS_GITHUB_PAT`). It provides structured access to:
+
+- Repository file tree and directory structure
+- File contents with language detection
+- Dependency manifests (package.json, requirements.txt, go.mod, Cargo.toml)
+- CI/CD configuration (.github/workflows, Dockerfile, docker-compose)
+- Recent commit history and contributors
+- Open issues and pull requests (for context on known problems)
+
+**Archaeologist LangGraph pipeline.** A new agent with a seven-node deterministic pipeline:
+
+1. **check_guardrails**: Validate the repository URL and goal against domain/technology policies (reuses existing guardrails infrastructure).
+2. **clone_and_index**: Fetch the repository structure via GitHub MCP. Build a file tree, identify entry points, extract dependency manifests. Index key files into the agent's working context.
+3. **analyze_architecture**: Map the existing codebase structure — frameworks, patterns, data models, API endpoints, authentication mechanisms, test coverage. Produce a structured "as-is" architecture assessment.
+4. **identify_gaps**: Compare the current architecture against the stated goal. Cross-reference with NCMS expert knowledge (ADRs, threat models, best practices). Produce a gap analysis: what exists, what's missing, what needs to change.
+5. **web_research**: Targeted web search (via Tavily) grounded in codebase understanding. Instead of searching "JWT authentication patterns" generically, search "migrate Express session middleware to NestJS JWT guard" — queries informed by what's actually in the code.
+6. **synthesize_report**: Produce a research report combining: as-is assessment, gap analysis, web research findings, and recommended modernization path. This is the equivalent of the Researcher's output but grounded in an existing codebase.
+7. **publish_and_trigger**: Publish the archaeology report as a project document, then trigger the Product Owner to produce a PRD — feeding into the existing PO → Builder pipeline.
+
+**Convergence with existing pipeline.** The Archaeologist's output (a research report grounded in an existing codebase) feeds into the same downstream pipeline as the Researcher's output. The PO reads it, produces a PRD with a requirements manifest, and the Builder produces a design. The difference is the quality of grounding: the Researcher starts from web search; the Archaeologist starts from actual code.
+
+**Dashboard integration.** Archaeology projects appear in the same project list as green-field projects but with a repository badge showing the GitHub org/repo. The pipeline progress bar shows the Archaeologist's nodes instead of the Researcher's. The phase timeline shows "Archaeology" instead of "Research" as the first phase.
+
+**Repository metadata.** The Archaeologist extracts and publishes structured metadata:
+
+```json
+{
+  "repository": "org/repo-name",
+  "branch": "main",
+  "languages": {"TypeScript": 68, "Python": 22, "YAML": 10},
+  "frameworks": ["Express", "Mongoose", "Jest"],
+  "endpoints": 24,
+  "test_coverage": "~60%",
+  "dependencies": 47,
+  "last_commit": "2026-03-28",
+  "open_issues": 12,
+  "goal": "Migrate authentication from session cookies to JWT"
+}
+```
+
+This metadata is stored as a document sidecar (feature 19) and indexed into NCMS memory for expert agent grounding.
+
+### Implementation
+
+Backend:
+
+- New agent module: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/archaeologist_agent.py` with the seven-node LangGraph pipeline.
+- GitHub MCP provider: `packages/nvidia-nat-ncms/src/nat/plugins/ncms/github_provider.py` wrapping GitHub REST API with PAT auth. Methods: `get_tree()`, `get_file()`, `get_dependencies()`, `get_workflows()`, `get_commits()`, `get_issues()`.
+- New sandbox config: `archaeologist.yml` with GitHub MCP and Tavily providers, both available.
+- Hub API: `POST /api/v1/projects` extended with `source_type: "archaeology"` and `repository_url` fields.
+- Pipeline trigger: archaeology projects trigger `trigger-archaeologist` domain instead of `trigger-researcher`.
+- Agent port assignment: `"archaeologist": 8006` in the hub's agent port map.
+
+Frontend:
+
+- New "+ Start Archaeology" button in the left nav (below "+ New Project").
+- Repository browser panel: GitHub PAT configuration, org/repo search, branch selector, goal text input.
+- Project cards for archaeology projects show repository badge (org/repo) and language breakdown.
+- Pipeline progress bar uses Archaeologist node sequence for archaeology projects.
+
+Configuration:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NCMS_GITHUB_PAT` | *(none)* | GitHub Personal Access Token for repository access |
+| `NCMS_GITHUB_API_URL` | `https://api.github.com` | GitHub API base URL (supports GitHub Enterprise) |
+| `NCMS_ARCHAEOLOGY_MAX_FILES` | `200` | Max files to index from a repository |
+| `NCMS_ARCHAEOLOGY_MAX_FILE_SIZE` | `50000` | Max file size in chars to include in analysis |
+
+
 ## Phased Delivery
 
-### Phase 1 (Foundation) -- IMPLEMENTED
+### Phase 1 (Foundation) — IMPLEMENTED
 
 | # | Feature | Status | Implementation Notes |
 |---|---------|--------|---------------------|
@@ -718,34 +854,43 @@ A bidirectional feedback channel from the coding agent back to the Builder:
 
 Phase 1 is complete. The project model, pipeline telemetry, spec validation, guardrails, and prompt management are all operational. All subsequent features build on this foundation.
 
-### Phase 2 (Coding Agent + Governance)
+### Phase 2 (Document Intelligence + Archaeologist)
 
 | # | Feature | Rationale |
 |---|---------|-----------|
-| 3 | Coding Agent (Claude Code) | Completes the pipeline from research through implementation. |
-| 4 | Contextual Approval Queue | Required human gate before code generation. |
-| 7 | Compliance Dashboard | Aggregate governance visibility across projects. |
-| 13 | Template Library | Reusable design fragments reduce generation time and improve consistency. |
-| 16 | Audit Trail | Reproducibility and compliance for all pipeline runs. |
+| 19 | Document-Memory Integration | GLiNER entity extraction at publish time. Entity-enriched search replaces raw text excerpts for expert grounding. JSON sidecar persistence for document metadata. Makes every published document a first-class knowledge object in NCMS. |
+| 20 | Archaeologist Agent | New entry point for existing repositories. GitHub MCP provider for codebase exploration. Seven-node LangGraph pipeline: guardrails → clone → analyze → gaps → research → synthesize → trigger. Output feeds into existing PO → Builder chain. |
+| 4 | Document Diff View | Side-by-side diff for design revisions with review comment annotations. Essential for reviewing Archaeologist-produced modernization plans against the existing codebase state. |
+| 13 | Template Library | Reusable design fragments. The Archaeologist's gap analysis can identify patterns from the existing codebase that should become templates for the modernization design. |
 
-Phase 2 adds the coding agent with human approval, governance visibility, templates for consistency, and audit records for compliance.
+Phase 2 makes documents intelligent (entity-enriched, searchable, persistent metadata) and opens the second entry path: existing repository analysis. The Archaeologist grounds the pipeline in real code instead of web search, while document-memory integration ensures expert agents retrieve precisely the governance knowledge each document needs. Template extraction from successful runs begins building organizational memory.
 
-### Phase 3 (Learning System)
+### Phase 3 (Coding Agent + Governance)
 
 | # | Feature | Rationale |
 |---|---------|-----------|
-| 8 | Document Diff View | Audit trail for design revisions. |
-| 9 | Knowledge Grounding Inspector | Provenance verification. |
-| 14 | Design Pattern Library | Organizational knowledge mined from historical runs. |
-| 17 | Knowledge Lifecycle Management | Living, versioned knowledge corpus with hot-reload. |
-| 18 | Feedback Loop (Code → Design) | Bidirectional improvement between design and implementation. |
+| 3 | Coding Agent (Claude Code) | Completes the pipeline from research/archaeology through implementation. Runs in NemoClaw sandbox with Claude CLI. |
+| 6 | Contextual Approval Queue | Full-context human gate before code generation. Design + review scores + cost estimate in one approval view. |
+| 7 | Compliance Dashboard | Aggregate governance visibility across all projects (green-field and archaeology). ADR matrix, STRIDE heat map, quality trends, drift scores. |
+| 16 | Audit Trail | Reproducibility and compliance for all pipeline runs. Frozen snapshots of every input, retrieval, LLM response, and review score. |
+| 18 | Feedback Loop (Code → Design) | Bidirectional improvement. When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder for targeted revision. |
 
-Phase 3 makes the system self-improving. Patterns emerge from successful runs. Knowledge evolves without rebuilds. Code failures feed back into better designs. The system gets smarter with each project.
+Phase 3 closes the loop from design to code. The coding agent consumes approved designs (from either the Researcher or Archaeologist path) and produces working implementations. Human approval gates every code generation. The feedback loop ensures design quality improves from implementation experience. Governance visibility and audit trails make the full pipeline enterprise-ready.
+
+### Phase 4 (Learning System)
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 9 | Knowledge Grounding Inspector | Provenance verification — trace every citation to its backing NCMS memory. |
+| 14 | Design Pattern Library | Organizational knowledge mined from historical runs. Patterns surface automatically via NCMS consolidation (Phase 5 clustering). |
+| 17 | Knowledge Lifecycle Management | Living, versioned knowledge corpus with hot-reload. File watchers, reconciliation-based supersession, cross-agent sync. |
+| 12 | Looking Glass Governance Mesh | Enterprise-grade 4-pillar governance via MCP. BAR artifact integration replaces static knowledge files. |
+
+Phase 4 makes the system self-improving. Patterns emerge from successful runs across both green-field and archaeology projects. Knowledge evolves without rebuilds. The Looking Glass mesh connects to enterprise governance artifacts. The system gets smarter with each project.
 
 ### Future
 
 | # | Feature | Rationale |
 |---|---------|-----------|
-| 10 | Telegram Integration | Mobile accessibility. |
-| 11 | Resilience Improvements | Reliability and observability. |
-| 12 | Looking Glass Governance Mesh | Enterprise-grade 4-pillar governance via MCP. |
+| 10 | Telegram Integration | Mobile accessibility for approvals and pipeline triggers. |
+| 11 | Resilience Improvements | Port forward auto-recovery, agent health monitoring, graceful review degradation. |
