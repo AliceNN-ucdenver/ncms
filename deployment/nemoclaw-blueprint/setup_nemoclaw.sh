@@ -443,7 +443,7 @@ setup_agent_sandbox() {
 
   # ── Wait for NAT agent to be ready before port forward ──
   info "Waiting for NAT agent $agent_id to start listening on port $agent_port..."
-  local wait_i=0 wait_max=30
+  local wait_i=0 wait_max=60
   while [ "$wait_i" -lt "$wait_max" ]; do
     if sandbox_run "$sandbox_name" "curl -sf http://localhost:$agent_port/health" &>/dev/null; then
       ok "NAT agent $agent_id is healthy"
@@ -453,6 +453,8 @@ setup_agent_sandbox() {
   done
   if [ "$wait_i" -ge "$wait_max" ]; then
     warn "NAT agent $agent_id did not become healthy in ${wait_max}s — port forward may fail"
+  else
+    sleep 3  # Let the socket stabilize before forwarding
   fi
 
   # ── Port forward for direct /generate access ──
