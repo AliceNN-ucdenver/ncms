@@ -413,21 +413,204 @@ The pipeline builds whatever you ask it to. There is no validation that a resear
 The guardrails layer sits between the hub's `/generate` proxy and the agent's LangGraph pipeline. It does not modify the graph itself. This means guardrails can be enabled or disabled per agent via configuration, and the pipeline continues to work identically when guardrails are off. The goal is policy as an overlay, not policy embedded in agent logic.
 
 
-## Priority Order
+## 13. Template Library
 
-| Priority | Feature | Impact | Effort | Rationale |
-|----------|---------|--------|--------|-----------|
-| 1 | Project/Epic View | High | Medium | Transforms the UX from a flat document list into a structured project management interface. Foundation for every other feature. |
-| 2 | Live Pipeline Progress | High | Low | Immediate usability improvement with no backend changes. Depends on Project View for context. |
-| 3 | Coding Agent (Claude Code) | High | High | Completes the pipeline from research through implementation. The most visible capability extension. |
-| 4 | Contextual Approval Queue | High | Medium | Required before the coding agent can operate safely. Human-in-the-loop gate with full context. |
-| 5 | Spec Quality (Completeness + Contracts) | High | Medium | Structural validation and machine-parseable output. The spec is the single most important artifact for the coding agent. |
-| 6 | NemoGuardrails | High | Medium | Policy enforcement before the coding agent generates real code. Prevents scope drift and compliance violations. |
-| 7 | Compliance Dashboard | High | Medium | The CIO story. Aggregate governance visibility across projects, essential for enterprise adoption. |
-| 8 | Document Diff View | Medium | Low | Audit trail for design iterations. Low effort since it is entirely frontend with existing APIs. |
-| 9 | Knowledge Grounding Inspector | Medium | Medium | Provenance and trust. Lets users verify that agent citations are backed by real retrieved knowledge. |
-| 10 | Telegram Integration | Medium | Low | Accessibility for mobile decision-makers. Uses existing APIs with a thin bot wrapper. |
-| 11 | Resilience Improvements | Medium | Medium | Reliability across the board. Each sub-feature is independently valuable and deployable. |
-| 12 | Looking Glass Governance Mesh | High | High | Highest enterprise value, but depends on external Looking Glass infrastructure and the full compliance dashboard. |
+### Problem
 
-Priorities 1 and 2 should ship together as a single release since the pipeline progress bar is most valuable when rendered inside a project context. Priority 4 must ship before or alongside priority 3 since the coding agent requires the approval gate. Priority 5 (NemoGuardrails) should ship before or alongside the coding agent to ensure generated code respects organizational policies from day one. The remaining features are independently deployable.
+Every pipeline run starts from scratch. The Builder generates authentication middleware, error handling, health checks, and configuration patterns from nothing each time. Most services share common structural patterns. The Builder wastes tokens regenerating what already exists, and inconsistencies creep in across projects because each generation is independent.
+
+### Design
+
+A versioned template library stored in the NCMS document store with `type: "template"`. Templates are reusable design fragments:
+
+- **Middleware templates:** authentication, rate limiting, error handling, request validation, CORS configuration
+- **Infrastructure templates:** Dockerfile, docker-compose, CI pipeline, health check endpoint
+- **API patterns:** pagination envelope, error response format, authentication header contract
+- **Test patterns:** unit test scaffolding, integration test setup, mock strategies
+
+The Builder's `synthesize_design` node queries the template library before generating each section. If a matching template exists, the Builder adapts it to the current project context instead of generating from scratch. Templates are tagged with technology stack (TypeScript/NestJS, Python/FastAPI) and domain (authentication, data access, messaging).
+
+New templates are created automatically: when a design passes review at 90%+ and the human approves it for the template library, its sections are extracted and stored as reusable templates. The library grows organically from successful pipeline runs.
+
+### Implementation
+
+- New document type `template` in the hub's document store with metadata: `stack`, `domain`, `section`, `version`
+- Hub API: `GET /api/v1/templates?stack=typescript&domain=authentication` to query matching templates
+- Builder's `synthesize_design` prompt includes relevant templates as context: "Here is an approved template for authentication middleware. Adapt it to this project's requirements."
+- Template extraction: a post-approval node in the Builder graph that offers to extract sections from high-scoring designs into the template library
+- Dashboard: template browser in the project view showing available templates by domain
+
+
+## 14. Design Pattern Library (Mined from Historical Runs)
+
+### Problem
+
+After running the pipeline across multiple services, the published designs contain recurring implementation patterns. These patterns are trapped inside individual documents. There is no way to surface "every design we produced uses RS256 JWT signing with 15-minute expiry" as a discoverable organizational pattern.
+
+### Design
+
+A pattern mining system that analyzes historical designs and extracts recurring patterns:
+
+- **Automatic detection:** NCMS's knowledge consolidation (Phase 5: recurring pattern detection) clusters design documents by topic entity overlap and extracts common patterns with stability-based promotion
+- **Pattern catalog:** each discovered pattern becomes a searchable entry with: pattern name, frequency (how many designs use it), example implementations, and the specific projects that contributed to it
+- **Builder integration:** the Builder's synthesis prompt includes "These patterns are established across the organization" context, promoting consistency
+- **Drift detection:** when a new design deviates from an established pattern, the review flags it. Deviation is not necessarily wrong, but it requires justification.
+
+This transforms NCMS from "memory for one pipeline run" to "organizational knowledge that improves over time." The dream cycle (Phase 8 in CLAUDE.md) already supports importance drift and co-occurrence edge generation. Applying this to design documents would surface the patterns naturally.
+
+### Implementation
+
+- Extend NCMS consolidation to run across documents with `type: "design"`
+- New document type `pattern` with metadata: `frequency`, `contributing_projects`, `stability_score`
+- Hub API: `GET /api/v1/patterns?domain=authentication` to query established patterns
+- Compliance dashboard integration: pattern adherence rate across projects
+- Builder prompt injection: top patterns for the relevant domain included as context
+
+
+## 15. Prompt Library (Agent Prompt Management)
+
+### Problem
+
+Agent prompts are hardcoded in YAML config files and Python source code. Changing a prompt requires editing code, rebuilding sandboxes, and redeploying. There is no versioning, no A/B testing, and no way to see which prompt produced which result. When a prompt change improves security review scores from 78% to 92%, that improvement is invisible in the commit history.
+
+### Design
+
+A managed prompt library where each agent's prompts are versioned, testable, and traceable:
+
+- **Prompt registry:** all agent prompts (system prompts, synthesis prompts, review prompts, revision prompts) stored in the hub as versioned documents with `type: "prompt"`
+- **Version tracking:** each prompt version is linked to the pipeline runs that used it and the review scores those runs produced
+- **A/B comparison:** run the same research topic with two different Builder prompts and compare the resulting design quality scores side by side
+- **Dashboard editor:** edit prompts in the dashboard with live preview. Save creates a new version. Rollback to any previous version.
+- **Prompt performance metrics:** which prompt version produces the highest average review scores? Which prompt produces the largest designs? Which prompt grounds the most knowledge references?
+
+### Implementation
+
+- New document type `prompt` with metadata: `agent_id`, `prompt_type` (system, synthesis, review, revision), `version`, `performance_metrics`
+- Agent configs reference prompt IDs instead of inline text: `synthesis_prompt: prompt://builder/synthesis/v3`
+- At startup, agents fetch their prompts from the hub. Prompt changes take effect on the next pipeline run without rebuilding.
+- Hub API: `GET /api/v1/prompts?agent=builder&type=synthesis` to list versions
+- Dashboard: prompt editor tab with version history and performance comparison charts
+
+
+## 16. Audit Trail and Reproducibility
+
+### Problem
+
+Can you reproduce a pipeline run from three months ago? The answer is no. Web search results change daily. LLM output is non-deterministic. Expert memories evolve as new knowledge is seeded. Review scores vary with memory retrieval results. For compliance and governance, you need a frozen snapshot of exactly what happened: every input, every retrieved memory, every LLM response, and every review score.
+
+### Design
+
+Each pipeline run produces a complete audit record:
+
+- **Run manifest:** a JSON document capturing the full execution trace: project ID, timestamp, each node's input and output, LLM prompts and responses (with token counts), memory queries and retrieved results, review scores and feedback, document IDs published
+- **Memory snapshot:** the exact memories retrieved during each `bus_ask` and review, with their NCMS memory IDs and content at the time of retrieval
+- **Input freeze:** for the Researcher, the exact Tavily search results (URLs, content, scores) are preserved. Even if those web pages change or disappear, the audit record shows what the agent saw.
+- **LLM response capture:** every LLM call's full prompt and response, including thinking tokens if enabled, token usage, and latency
+- **Reproducibility score:** a metric indicating how reproducible the run is. A run with no web search (all from seeded knowledge) scores higher than one that depends on live web results.
+
+NCMS's bitemporal fields (`observed_at`, `ingested_at`) provide the foundation. The audit trail extends this to the pipeline level.
+
+### Implementation
+
+- Each LangGraph node emits structured audit events via bus announcement with `type: "audit"`
+- New document type `audit_trail` published at pipeline completion with the full run manifest
+- Hub API: `GET /api/v1/projects/{id}/audit` returns the complete audit record
+- Dashboard: "Audit" tab on each project showing the execution timeline with expandable detail at each node
+- Phoenix integration: link each audit node to its corresponding Phoenix trace span
+- Retention policy: audit records are immutable and retained per organizational compliance requirements
+
+
+## 17. Knowledge Lifecycle Management
+
+### Problem
+
+Expert knowledge is seeded once at startup from static files in `knowledge/architecture/` and `knowledge/security/`. When ADR-004 is added, a threat model is updated, or a CALM spec changes, the only option is rebuilding the sandboxes. There is no hot-reload, no versioning of knowledge files, and no way to deprecate superseded knowledge. NCMS already has reconciliation capabilities (supersedes/conflicts relations in Phase 2) but they are not wired into the agent knowledge loading flow.
+
+### Design
+
+A knowledge management layer that treats seeded knowledge as a living, versioned corpus:
+
+- **Hot-reload:** file watcher on the knowledge directories. When a file changes, the agent re-indexes it into NCMS without restart. The SSE listener detects a `knowledge.updated` bus event and triggers re-indexing.
+- **Versioned knowledge:** each knowledge file stored with a version hash. When the file changes, the new version is stored alongside the old one. NCMS reconciliation marks the old version as superseded. Queries return the current version by default but can request historical versions.
+- **Knowledge deprecation:** mark specific memories as deprecated (e.g., "ADR-002 is superseded by ADR-005"). Deprecated memories still exist for historical queries but are excluded from expert synthesis and review grounding.
+- **Knowledge provenance:** each memory tracks its source file, load timestamp, version hash, and which agent loaded it. The knowledge grounding inspector (feature 9) shows this full provenance chain.
+- **Cross-agent knowledge synchronization:** when the architect loads a new ADR, the security agent's next review should be aware of it. Bus announcements for `knowledge.updated` events notify all agents that the knowledge base has changed.
+
+### Implementation
+
+- File watcher in `register.py`: use `watchdog` or polling to detect changes in `knowledge_paths`
+- On change: re-run the knowledge loading logic for the changed file, with NCMS reconciliation to handle supersession
+- New bus event type `knowledge.updated` with metadata: `agent_id`, `file_path`, `version_hash`, `action` (added, updated, deprecated)
+- Dashboard: knowledge management panel showing loaded files per agent, versions, and deprecation status
+- NCMS reconciliation (Phase 2) activated for knowledge memories: new versions automatically supersede old ones with `valid_to` closure
+
+
+## 18. Feedback Loop: Code Back to Design
+
+### Problem
+
+The pipeline flows one direction: Research → PRD → Design → Code. When the coding agent discovers the design is unimplementable (circular dependency, schema mismatch, missing API endpoint), there is no path for feedback to flow back to the Builder. The coding agent either fails silently or produces broken code that matches a broken spec.
+
+### Design
+
+A bidirectional feedback channel from the coding agent back to the Builder:
+
+- **Implementation feedback report:** when the coding agent encounters an issue (test failure, type error, missing dependency, architectural conflict), it produces a structured feedback document with: the specific design section that caused the problem, the error or conflict description, and a suggested design change
+- **Builder revision trigger:** the feedback document triggers the Builder's review loop, but instead of expert review, the input is the coding agent's implementation feedback. The Builder revises the design to address the specific issues, then re-publishes.
+- **Cascading update:** the revised design triggers the coding agent to re-generate the affected code sections (not the entire codebase). The project view shows this as a "design-code reconciliation" phase.
+- **Convergence tracking:** the project tracks how many design-code round trips were needed. A design that requires zero code feedback is a high-quality spec. A design that requires three rounds has gaps. This metric feeds into the compliance dashboard and the design pattern library.
+
+### Implementation
+
+- New bus domain `feedback-builder` that the coding agent announces to with structured feedback
+- Builder's SSE listener detects feedback announcements and triggers a targeted revision pass
+- New LangGraph node in the coding agent: `report_issues` that produces the feedback document before retrying
+- Project model tracks `design_code_iterations` count
+- Dashboard shows the feedback loop as a visible phase in the pipeline progress bar
+
+
+## Phased Delivery
+
+### Phase 1 (Foundation)
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 1 | Project/Epic View | Foundation for every other feature. Groups documents, enables progress tracking. |
+| 2 | Live Pipeline Progress | Immediate usability. Node-level visibility into what agents are doing. |
+| 5 | Spec Quality (Completeness + Contracts) | The spec is the bottleneck. Structural validation before review. |
+| 6 | NemoGuardrails | Policy enforcement before the coding agent generates real code. |
+| 15 | Prompt Library | Versioned prompts enable rapid iteration without rebuilding. |
+
+Phase 1 establishes the project model, gives visibility into pipeline execution, ensures spec quality, enforces policy, and makes prompts manageable. All subsequent features build on this foundation.
+
+### Phase 2 (Coding Agent + Governance)
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 3 | Coding Agent (Claude Code) | Completes the pipeline from research through implementation. |
+| 4 | Contextual Approval Queue | Required human gate before code generation. |
+| 7 | Compliance Dashboard | Aggregate governance visibility across projects. |
+| 13 | Template Library | Reusable design fragments reduce generation time and improve consistency. |
+| 16 | Audit Trail | Reproducibility and compliance for all pipeline runs. |
+
+Phase 2 adds the coding agent with human approval, governance visibility, templates for consistency, and audit records for compliance.
+
+### Phase 3 (Learning System)
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 8 | Document Diff View | Audit trail for design revisions. |
+| 9 | Knowledge Grounding Inspector | Provenance verification. |
+| 14 | Design Pattern Library | Organizational knowledge mined from historical runs. |
+| 17 | Knowledge Lifecycle Management | Living, versioned knowledge corpus with hot-reload. |
+| 18 | Feedback Loop (Code → Design) | Bidirectional improvement between design and implementation. |
+
+Phase 3 makes the system self-improving. Patterns emerge from successful runs. Knowledge evolves without rebuilds. Code failures feed back into better designs. The system gets smarter with each project.
+
+### Future
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 10 | Telegram Integration | Mobile accessibility. |
+| 11 | Resilience Improvements | Reliability and observability. |
+| 12 | Looking Glass Governance Mesh | Enterprise-grade 4-pillar governance via MCP. |

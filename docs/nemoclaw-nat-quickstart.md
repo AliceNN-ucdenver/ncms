@@ -253,6 +253,18 @@ The spec is the single most important artifact. A coding agent with a perfect sp
 
 [NemoGuardrails](https://github.com/NVIDIA/NeMo-Guardrails) as a policy layer on pipeline inputs and outputs. Before a new project starts, guardrails validate that the research topic aligns with organizational scope (e.g., "we build identity services, not cryptocurrency exchanges"). During the pipeline, guardrails check that generated documents stay within approved technology stacks, comply with organizational security policies, and don't introduce out-of-scope dependencies. On output, guardrails verify the design doesn't contain hardcoded secrets, prohibited patterns, or content that violates compliance requirements. This turns the pipeline from "it builds whatever you ask" into "it builds what your organization approves." The full design is in [dashboard-evolution-design.md](dashboard-evolution-design.md).
 
+### Libraries and Lifecycle
+
+- **Template Library.** Reusable design fragments (middleware patterns, API contracts, infrastructure configs) stored as versioned documents. The Builder adapts templates to each project instead of generating from scratch. High-scoring designs automatically contribute new templates.
+- **Design Pattern Library.** Organizational patterns mined from historical runs using NCMS knowledge consolidation. Recurring implementations (JWT signing, rate limiting, error handling) surface as discoverable patterns that promote consistency across projects.
+- **Prompt Library.** Agent prompts versioned and managed in the hub instead of hardcoded in YAML. A/B test prompt changes, track which prompt versions produce the highest review scores, and edit prompts from the dashboard without rebuilding.
+- **Knowledge Lifecycle Management.** Hot-reload knowledge files without rebuilding sandboxes. Versioned knowledge with reconciliation (NCMS Phase 2 supersedes/conflicts). Deprecation for outdated ADRs or threat models. Cross-agent synchronization when knowledge changes.
+
+### Feedback and Audit
+
+- **Code-to-Design Feedback Loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder for targeted revision. The project tracks how many design-code round trips were needed as a spec quality metric.
+- **Audit Trail and Reproducibility.** Complete execution records for every pipeline run: inputs, retrieved memories, LLM prompts and responses, review scores, and document IDs. Frozen snapshots enable reproducibility for compliance and governance.
+
 ### Platform Capabilities
 
 - **CrewAI StorageBackend.** CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
