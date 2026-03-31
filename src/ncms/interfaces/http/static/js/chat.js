@@ -11,29 +11,115 @@ function stripThinkTags(text) {
 }
 
 function simpleMarkdown(md) {
+  if (!md) return '';
+
+  // Escape HTML first
   let html = md
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/^\|(.+)\|$/gm, (match) => {
-      const cells = match.split('|').filter(c => c.trim()).map(c => c.trim());
-      if (cells.every(c => /^[-:]+$/.test(c))) return '';
-      return '<tr>' + cells.map(c => '<td>' + c + '</td>').join('') + '</tr>';
-    })
-    .replace(/^[*-] (.+)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-  html = html.replace(/(<tr>[\s\S]*?<\/tr>)/g, '<table>$1</table>');
-  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  html = html.replace(/<\/ul><ul>/g, '');
-  html = html.replace(/<\/table><table>/g, '');
-  return '<p>' + html + '</p>';
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Code blocks (preserve content, don't process inside)
+  const codeBlocks = [];
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(`<pre><code class="lang-${lang || 'text'}">${code}</code></pre>`);
+    return `%%CODEBLOCK_${idx}%%`;
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headings
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Horizontal rules
+  html = html.replace(/^---+$/gm, '<hr>');
+
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Bare URLs (not already in links)
+  html = html.replace(/(?<!")(?<!=)(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+  // Blockquotes
+  html = html.replace(/^&gt;\s*(.+)$/gm, '<blockquote>$1</blockquote>');
+  html = html.replace(/<\/blockquote>\n?<blockquote>/g, '<br>');
+
+  // Tables — detect header row (first row before separator)
+  html = html.replace(/^\|(.+)\|$/gm, (match) => {
+    const cells = match.split('|').filter(c => c.trim()).map(c => c.trim());
+    if (cells.every(c => /^[-:]+$/.test(c))) return '%%TABLE_SEP%%';
+    return '%%TABLE_ROW%%' + cells.map(c => `%%TD%%${c}%%/TD%%`).join('') + '%%/TABLE_ROW%%';
+  });
+
+  // Process table rows — first row before separator becomes header
+  html = html.replace(
+    /%%TABLE_ROW%%([\s\S]*?)%%\/TABLE_ROW%%\s*%%TABLE_SEP%%/g,
+    (_, cells) => {
+      const headerCells = cells.replace(/%%TD%%/g, '<th>').replace(/%%\/TD%%/g, '</th>');
+      return '<thead><tr>' + headerCells + '</tr></thead><tbody>';
+    }
+  );
+  html = html.replace(/%%TABLE_ROW%%([\s\S]*?)%%\/TABLE_ROW%%/g, (_, cells) => {
+    const tdCells = cells.replace(/%%TD%%/g, '<td>').replace(/%%\/TD%%/g, '</td>');
+    return '<tr>' + tdCells + '</tr>';
+  });
+
+  // Wrap consecutive table rows
+  html = html.replace(/(<thead>[\s\S]*?<\/tbody>(?:\s*<tr>[\s\S]*?<\/tr>)*)/g, '<table>$1</tbody></table>');
+  // Clean up orphan table rows
+  html = html.replace(/(<tr>(?:[\s\S]*?<\/tr>\s*)+)/g, (match) => {
+    if (match.includes('<table>')) return match;
+    return '<table><tbody>' + match + '</tbody></table>';
+  });
+
+  // Numbered lists (1. 2. 3.)
+  html = html.replace(/^\d+\.\s+(.+)$/gm, '<oli>$1</oli>');
+  html = html.replace(/(<oli>[\s\S]*?<\/oli>)/g, (match) => {
+    const items = match.replace(/<\/?oli>/g, '').split('</oli><oli>');
+    return '<ol>' + items.map(i => `<li>${i.trim()}</li>`).join('') + '</ol>';
+  });
+
+  // Unordered lists
+  html = html.replace(/^[*-] (.+)$/gm, '<uli>$1</uli>');
+  html = html.replace(/(<uli>[\s\S]*?<\/uli>)/g, (match) => {
+    const items = match.replace(/<\/?uli>/g, '').split('</uli><uli>');
+    return '<ul>' + items.map(i => `<li>${i.trim()}</li>`).join('') + '</ul>';
+  });
+
+  // Paragraphs
+  html = html.replace(/\n\n+/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+
+  // Clean up empty paragraphs and adjacent lists
+  html = html.replace(/<\/ul><br><ul>/g, '');
+  html = html.replace(/<\/ol><br><ol>/g, '');
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[1-4]>)/g, '$1');
+  html = html.replace(/(<\/h[1-4]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<table>)/g, '$1');
+  html = html.replace(/(<\/table>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>|<ol>)/g, '$1');
+  html = html.replace(/(<\/ul>|<\/ol>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote>)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+
+  // Restore code blocks
+  for (let i = 0; i < codeBlocks.length; i++) {
+    html = html.replace(`%%CODEBLOCK_${i}%%`, codeBlocks[i]);
+  }
+
+  // Remove HTML comments (project_id, version markers)
+  html = html.replace(/&lt;!--[\s\S]*?--&gt;/g, '');
+
+  return '<div class="md-rendered"><p>' + html + '</p></div>';
 }
 
 // ── Open chat overlay for a specific agent ──
