@@ -150,7 +150,6 @@ function handleAgentEvent(event) {
 
   if (!_replaying) {
     renderAgents();
-    updateChatTargets();
   }
 }
 

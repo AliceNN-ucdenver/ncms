@@ -577,6 +577,38 @@ def create_api_app(
                 data={"project_id": project_id, "topic": topic},
             ))
 
+        # Fire-and-forget: trigger the researcher agent from the hub
+        # (runs inside Docker, so host.docker.internal resolves correctly)
+        researcher_port = _AGENT_PORTS.get("researcher")
+        if researcher_port and "research" in body.get("scope", []):
+            target = body.get("target", "")
+            prompt = (
+                f"Research {topic}"
+                + (f" for {target}" if target else "")
+                + f" (project_id: {project_id})"
+            )
+
+            async def _trigger_researcher() -> None:
+                import httpx as _hx
+                try:
+                    async with _hx.AsyncClient(
+                        timeout=_hx.Timeout(600.0, connect=10.0),
+                    ) as client:
+                        resp = await client.post(
+                            f"http://host.docker.internal:{researcher_port}/generate",
+                            json={"input_message": prompt},
+                        )
+                        logger.info(
+                            "Researcher triggered for %s (status %d)",
+                            project_id, resp.status_code,
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to trigger researcher for %s: %s", project_id, exc)
+
+            asyncio.create_task(_trigger_researcher())
+            meta["phase"] = "research"
+            _projects[project_id] = meta
+
         return JSONResponse(meta, status_code=201)
 
     async def list_projects(request: Request) -> JSONResponse:

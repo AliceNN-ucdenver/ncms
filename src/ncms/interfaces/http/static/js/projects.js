@@ -270,29 +270,10 @@ async function startProject() {
     }
 
     const project = await resp.json();
-    console.log('Project created:', project.project_id);
+    console.log('Project created:', project.project_id, '- researcher triggered by hub');
 
-    // Refresh project list
+    // Refresh project list (hub triggers researcher automatically)
     await loadProjects();
-
-    // Trigger the Researcher agent with the project context
-    const projectId = project.project_id || '';
-    const prompt = `Research ${topic}` + (target ? ` for ${target}` : '') + ` (project_id: ${projectId})`;
-
-    // Fire-and-forget: trigger researcher via agent chat proxy
-    fetch(HUB_API + '/api/v1/agent/researcher/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input_message: prompt }),
-      signal: AbortSignal.timeout(600000),
-    }).then(r => {
-      if (r.ok) {
-        console.log('Researcher triggered for project', projectId);
-        loadProjects();  // Refresh again after researcher responds
-      } else {
-        console.warn('Researcher trigger failed:', r.status);
-      }
-    }).catch(e => console.warn('Researcher trigger error:', e));
 
   } catch (e) {
     console.error('Failed to start project:', e);
