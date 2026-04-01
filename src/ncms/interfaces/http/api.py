@@ -589,68 +589,44 @@ def create_api_app(
                 data={"project_id": project_id, "topic": topic},
             ))
 
-        # Fire-and-forget: trigger the first agent based on source type
+        # Fire-and-forget: trigger the first agent via bus announcement.
+        # The SSE listener in each agent detects trigger-{agent_id} domains
+        # and self-calls /generate inside the sandbox. No port forward needed.
         # Archaeology → archeologist, Research → researcher (mutually exclusive)
-        researcher_port = _AGENT_PORTS.get("researcher")
-        if researcher_port and source_type != "archaeology" and "research" in body.get("scope", []):
-            target = body.get("target", "")
-            prompt = (
-                f"Research {topic}"
-                + (f" for {target}" if target else "")
-                + f" (project_id: {project_id})"
-            )
-
-            async def _trigger_researcher() -> None:
-                import httpx as _hx
-                try:
-                    async with _hx.AsyncClient(
-                        timeout=_hx.Timeout(600.0, connect=10.0),
-                    ) as client:
-                        resp = await client.post(
-                            f"http://host.docker.internal:{researcher_port}/generate",
-                            json={"input_message": prompt},
-                        )
-                        logger.info(
-                            "Researcher triggered for %s (status %d)",
-                            project_id, resp.status_code,
-                        )
-                except Exception as exc:
-                    logger.warning("Failed to trigger researcher for %s: %s", project_id, exc)
-
-            asyncio.create_task(_trigger_researcher())
-            meta["phase"] = "research"
-            _projects[project_id] = meta
-
-        # Fire-and-forget: trigger the archeologist for archaeology projects
-        archeologist_port = _AGENT_PORTS.get("archeologist")
-        if archeologist_port and source_type == "archaeology" and repository_url:
-            target = body.get("target", "")
-            prompt = (
+        target = body.get("target", "")
+        if source_type == "archaeology" and repository_url:
+            trigger_msg = (
                 f"Analyze repository: {repository_url}\n"
                 f"Goal: {topic}"
                 + (f" for {target}" if target else "")
                 + f"\n(project_id: {project_id})"
             )
-
-            async def _trigger_archeologist() -> None:
-                import httpx as _hx
-                try:
-                    async with _hx.AsyncClient(
-                        timeout=_hx.Timeout(600.0, connect=10.0),
-                    ) as client:
-                        resp = await client.post(
-                            f"http://host.docker.internal:{archeologist_port}/generate",
-                            json={"input_message": prompt},
-                        )
-                        logger.info(
-                            "Archeologist triggered for %s (status %d)",
-                            project_id, resp.status_code,
-                        )
-                except Exception as exc:
-                    logger.warning("Failed to trigger archeologist for %s: %s", project_id, exc)
-
-            asyncio.create_task(_trigger_archeologist())
+            trigger_domain = "trigger-archeologist"
             meta["phase"] = "archaeology"
+        elif "research" in body.get("scope", []):
+            trigger_msg = (
+                f"Research {topic}"
+                + (f" for {target}" if target else "")
+                + f" (project_id: {project_id})"
+            )
+            trigger_domain = "trigger-researcher"
+            meta["phase"] = "research"
+        else:
+            trigger_msg = ""
+            trigger_domain = ""
+
+        if trigger_msg and trigger_domain:
+            announcement = KnowledgeAnnounce(
+                knowledge=KnowledgePayload(content=trigger_msg),
+                domains=[trigger_domain],
+                from_agent="hub",
+                event="trigger",
+            )
+            await bus_svc.announce(announcement)
+            logger.info(
+                "Triggered %s for %s via bus announce",
+                trigger_domain, project_id,
+            )
             _projects[project_id] = meta
 
         return JSONResponse(meta, status_code=201)
@@ -914,7 +890,7 @@ def create_api_app(
             except Exception:
                 labels = list(UNIVERSAL_LABELS)
 
-            domain_labels = [l for l in labels if l not in UNIVERSAL_LABELS]
+            domain_labels = [lb for lb in labels if lb not in UNIVERSAL_LABELS]
             if domain_labels:
                 logger.info(
                     "GLiNER for %s: %d labels (%d universal + %d domain: %s)",
@@ -922,7 +898,10 @@ def create_api_app(
                     len(domain_labels), ", ".join(domain_labels[:5]),
                 )
             else:
-                logger.info("GLiNER for %s: %d universal labels (no domain topics cached)", doc_id, len(labels))
+                logger.info(
+                    "GLiNER for %s: %d universal labels (no domain topics cached)",
+                    doc_id, len(labels),
+                )
 
             entities = await asyncio.to_thread(
                 extract_entities_gliner, content, labels=labels,
