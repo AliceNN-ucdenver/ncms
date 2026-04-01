@@ -96,17 +96,19 @@
         <div class="waiting-message">Waiting for agents to connect...</div>
       </div>
 
-      <div class="pipeline-panel" id="pipeline-panel">
-        <div class="pipeline-empty">No pipeline activity yet</div>
-      </div>
-
-      <div class="admission-panel" id="admission-panel" style="display:none">
-        <div class="admission-header" onclick="toggleAdmissionFeed()">
-          <span class="admission-title">&#x2696; Admission Scoring</span>
-          <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+      <div class="pipeline-row">
+        <div class="pipeline-panel" id="pipeline-panel">
+          <div class="pipeline-empty">No pipeline activity yet</div>
         </div>
-        <div class="admission-feed" id="admission-feed" style="display:none">
-          <div class="admission-empty">No admission decisions yet</div>
+
+        <div class="admission-panel" id="admission-panel" style="display:none">
+          <div class="admission-header" onclick="toggleAdmissionFeed()">
+            <span class="admission-title">&#x2696; Admission</span>
+            <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+          </div>
+          <div class="admission-feed" id="admission-feed" style="display:none">
+            <div class="admission-empty">No admission decisions yet</div>
+          </div>
         </div>
       </div>
 
