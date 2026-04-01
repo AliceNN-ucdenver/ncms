@@ -230,7 +230,9 @@ network_policies:
         rules:
           - allow: { method: GET, path: "/**" }
     binaries:
-      - { path: "-" }
+      - { path: /usr/local/bin/uv }
+      - { path: /usr/bin/python3 }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
 
   # ── NVIDIA packages (NAT / NeMo Agent Toolkit) ────────────────
   nvidia_packages:
