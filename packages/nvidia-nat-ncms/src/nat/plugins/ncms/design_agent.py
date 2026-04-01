@@ -386,7 +386,7 @@ class DesignAgent:
                     question=question,
                     domains=["architecture", "decisions"],
                     from_agent=self.from_agent,
-                    timeout_ms=180000,
+                    timeout_ms=300000,
                 )
                 answer = result.get("answer", "") or result.get("content", "")
                 logger.info("[design_agent] Architect response: %d chars", len(answer))
@@ -406,7 +406,7 @@ class DesignAgent:
                     question=question,
                     domains=["security", "threats"],
                     from_agent=self.from_agent,
-                    timeout_ms=180000,
+                    timeout_ms=300000,
                 )
                 answer = result.get("answer", "") or result.get("content", "")
                 logger.info("[design_agent] Security response: %d chars", len(answer))
@@ -577,7 +577,7 @@ class DesignAgent:
                         question=prompt,
                         domains=domains,
                         from_agent=self.from_agent,
-                        timeout_ms=240000,  # 4 minutes
+                        timeout_ms=420000,  # 7 minutes (CoT experts need 4-5 min)
                     )
                     answer = result.get("answer", "") or result.get("content", "")
                     if not answer or len(answer) < 20:

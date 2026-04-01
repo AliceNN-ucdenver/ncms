@@ -91,11 +91,11 @@ class MemoryService:
     def graph(self) -> GraphEngine:
         return self._graph
 
-    async def _get_cached_labels(self, domains: list[str]) -> dict[str, list[str]]:
+    async def _get_cached_labels(self, domains: list[str]) -> dict:
         """Load domain-specific entity labels from consolidation_state."""
         import json as _json
 
-        cached: dict[str, list[str]] = {}
+        cached: dict = {}
         for domain in domains:
             raw = await self._store.get_consolidation_value(f"entity_labels:{domain}")
             if raw:
@@ -105,6 +105,13 @@ class MemoryService:
                         cached[domain] = labels
                 except Exception:
                     pass
+        # Load keep_universal preference
+        raw_ku = await self._store.get_consolidation_value("_keep_universal")
+        if raw_ku:
+            try:
+                cached["_keep_universal"] = _json.loads(raw_ku)
+            except Exception:
+                pass
         return cached
 
     # ── Entity State Extraction (Phase 2A) ───────────────────────────────

@@ -23,7 +23,7 @@ class NCMSHttpClient:
         self,
         hub_url: str,
         connect_timeout: float = 10.0,
-        request_timeout: float = 120.0,
+        request_timeout: float = 300.0,
     ) -> None:
         self._base = hub_url.rstrip("/")
         self._client = httpx.AsyncClient(

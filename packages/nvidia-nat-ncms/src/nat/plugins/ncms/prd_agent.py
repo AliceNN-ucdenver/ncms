@@ -237,7 +237,7 @@ class PRDAgent:
                     question=question,
                     domains=["architecture", "decisions"],
                     from_agent=self.from_agent,
-                    timeout_ms=180000,
+                    timeout_ms=300000,
                 )
                 response = result.get("response", result.get("content", ""))
                 logger.info("[prd_agent] Architect response: %d chars", len(response))
@@ -257,7 +257,7 @@ class PRDAgent:
                     question=question,
                     domains=["security", "threats"],
                     from_agent=self.from_agent,
-                    timeout_ms=180000,
+                    timeout_ms=300000,
                 )
                 response = result.get("response", result.get("content", ""))
                 logger.info("[prd_agent] Security response: %d chars", len(response))

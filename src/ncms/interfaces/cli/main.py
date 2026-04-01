@@ -654,12 +654,18 @@ def topics() -> None:
 @click.argument("domain")
 @click.argument("labels", nargs=-1, required=True)
 @click.option("--db", default=None, help="Database path")
-def topics_set(domain: str, labels: tuple[str, ...], db: str | None) -> None:
+@click.option("--keep-universal", is_flag=True, default=False,
+              help="Keep universal labels (additive). Default: domain labels replace universal.")
+def topics_set(domain: str, labels: tuple[str, ...], db: str | None, keep_universal: bool) -> None:
     """Set entity labels for a domain.
 
+    By default, domain labels REPLACE universal labels for faster GLiNER
+    extraction (~10 labels instead of ~20). Use --keep-universal to merge
+    domain labels on top of universal labels (slower but broader coverage).
+
     Examples:
-        ncms topics set api endpoint service protocol authentication
-        ncms topics set finance stock bond portfolio risk
+        ncms topics set software framework database protocol standard
+        ncms topics set --keep-universal software framework database protocol
     """
     import json
 
@@ -681,8 +687,13 @@ def topics_set(domain: str, labels: tuple[str, ...], db: str | None) -> None:
             await store.set_consolidation_value(
                 f"entity_labels:{domain}", json.dumps(label_list)
             )
+            # Store the keep_universal preference
+            await store.set_consolidation_value(
+                "_keep_universal", json.dumps(keep_universal)
+            )
+            mode = "additive (universal + domain)" if keep_universal else "replace (domain only)"
             console.print(
-                f"[green]Set {len(label_list)} labels for domain '{domain}':[/] "
+                f"[green]Set {len(label_list)} labels for domain '{domain}' ({mode}):[/] "
                 + ", ".join(label_list)
             )
         finally:
