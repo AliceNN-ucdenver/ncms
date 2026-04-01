@@ -187,6 +187,82 @@ def format_search_results(searches: list[dict]) -> str:
     return "\n".join(parts)
 
 
+# ── ArXiv Search (with caching) ──────────────────────────────────────────────
+
+
+async def arxiv_search(query: str, max_results: int = 5) -> list[dict]:
+    """Search ArXiv for recent papers. Returns list of {title, url, summary, published}."""
+    import arxiv as _arxiv
+    from datetime import datetime, timedelta
+
+    # Search for papers from last 6 months
+    search = _arxiv.Search(
+        query=query,
+        max_results=max_results,
+        sort_by=_arxiv.SortCriterion.SubmittedDate,
+        sort_order=_arxiv.SortOrder.Descending,
+    )
+
+    results = []
+    client = _arxiv.Client()
+    for paper in client.results(search):
+        # Filter to last 6 months
+        if paper.published and paper.published < datetime.now(paper.published.tzinfo) - timedelta(days=180):
+            continue
+        results.append({
+            "title": paper.title,
+            "url": paper.entry_id,
+            "summary": paper.summary[:1500],
+            "published": paper.published.isoformat() if paper.published else "",
+            "authors": ", ".join(a.name for a in paper.authors[:3]),
+        })
+    return results
+
+
+async def run_arxiv_searches(queries: list[str], cache_key: str) -> list[dict]:
+    """Run ArXiv searches with disk cache."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = CACHE_DIR / f"{cache_key}_arxiv.json"
+
+    if cache_file.exists():
+        logger.info("Using cached ArXiv results: %s", cache_file.name)
+        return json.loads(cache_file.read_text())
+
+    logger.info("Running %d ArXiv searches...", len(queries))
+    all_results: list[dict] = []
+    for i, q in enumerate(queries):
+        logger.info("  ArXiv %d/%d: %s", i + 1, len(queries), q[:80])
+        try:
+            papers = await asyncio.to_thread(arxiv_search, q)
+            all_results.append({"query": q, "papers": papers})
+            logger.info("    Found %d recent papers", len(papers))
+        except Exception as e:
+            logger.warning("  ArXiv search %d failed: %s", i + 1, e)
+            all_results.append({"query": q, "papers": [], "error": str(e)})
+
+    cache_file.write_text(json.dumps(all_results, indent=2))
+    logger.info("Cached ArXiv results to %s", cache_file.name)
+    return all_results
+
+
+def format_arxiv_results(searches: list[dict]) -> str:
+    """Format ArXiv results as markdown."""
+    parts = ["## Academic Papers (ArXiv — last 6 months)\n"]
+    paper_num = 0
+    for sr in searches:
+        for p in sr.get("papers", []):
+            paper_num += 1
+            parts.append(f"### Paper {paper_num}: {p['title']}")
+            parts.append(f"**Authors:** {p.get('authors', 'Unknown')}")
+            parts.append(f"**Published:** {p.get('published', '')[:10]}")
+            parts.append(f"**URL:** {p['url']}")
+            parts.append(f"{p['summary'][:1000]}")
+            parts.append("")
+    if paper_num == 0:
+        parts.append("(No recent papers found for the given queries)")
+    return "\n".join(parts)
+
+
 # ── Query Planning ────────────────────────────────────────────────────────────
 
 
@@ -202,17 +278,24 @@ Return ONLY a JSON array like: ["query 1", "query 2", ...]
 """
 
 GAP_ANALYSIS_PROMPT = """\
-You analyzed search results for: {topic}
+You are a research analyst reviewing initial search results for: {topic}
 
-Here are the search results from the first round:
+Here is a summary of what the first round of searches found:
 {search_results}
 
-Identify 3 specific evidence gaps — topics where the search results are thin, \
-contradictory, or missing entirely. For each gap, write a targeted search query \
-that would fill it.
+Your task: identify 3 specific EVIDENCE GAPS — topics where the results above \
+are thin (only 1 source), contradictory, or completely missing. Then write a \
+concrete, specific web search query for each gap that would find NEW information \
+not already covered.
 
-Return ONLY a JSON array of 3 search query strings:
-["targeted query 1", "targeted query 2", "targeted query 3"]
+IMPORTANT: Each query must be a real, specific search string — NOT a placeholder. \
+Good example: "GDPR identity verification compliance requirements 2025 2026"
+Bad example: "gap-specific query 1"
+
+Return ONLY a valid JSON array with exactly 3 search query strings. Example format:
+["NIST 800-63B digital identity implementation cost ROI enterprise", \
+"biometric authentication privacy regulation GDPR CCPA 2025", \
+"zero trust architecture identity service migration case study"]
 """
 
 
@@ -326,9 +409,10 @@ async def main():
     parser = argparse.ArgumentParser(description="Structured prompt experiment harness")
     parser.add_argument("--topic", required=True, help="Research topic")
     parser.add_argument("--two-stage", action="store_true", help="Enable two-stage refinement")
+    parser.add_argument("--arxiv", action="store_true", help="Include ArXiv academic paper search")
     parser.add_argument("--prompt", choices=["standard", "semiformal", "all"], default="all")
     parser.add_argument("--thinking", action="store_true", help="Enable CoT (use --all-modes for matrix)")
-    parser.add_argument("--all-modes", action="store_true", help="Run full 4-way (or 8-way with --two-stage) matrix")
+    parser.add_argument("--all-modes", action="store_true", help="Run full matrix")
     parser.add_argument("--output-dir", default=str(RESULTS_DIR))
     args = parser.parse_args()
 
@@ -353,24 +437,75 @@ async def main():
     stage1_results = await run_searches(queries, cache_key)
     stage1_text = format_search_results(stage1_results)
     total_sources = sum(len(r.get("results", [])) for r in stage1_results)
-    logger.info("Stage 1: %d queries, %d results, %d chars", len(queries), total_sources, len(stage1_text))
+    logger.info("Stage 1 web: %d queries, %d results, %d chars", len(queries), total_sources, len(stage1_text))
+
+    # ── ArXiv academic papers (optional) ──
+    arxiv_text = ""
+    arxiv_paper_count = 0
+    if args.arxiv:
+        logger.info("=== ArXiv: Academic paper search ===")
+        arxiv_queries = await plan_queries(
+            topic, count=3,
+            guidance=(
+                "Generate 3 academic search queries for ArXiv papers.\n"
+                "Focus on: formal methods, security proofs, protocol analysis,\n"
+                "benchmark evaluations, and novel approaches.\n"
+                "Use technical/academic language, not marketing terms."
+            ),
+        )
+        logger.info("ArXiv queries: %s", arxiv_queries)
+        arxiv_results = await run_arxiv_searches(arxiv_queries, cache_key)
+        arxiv_text = format_arxiv_results(arxiv_results)
+        arxiv_paper_count = sum(len(r.get("papers", [])) for r in arxiv_results)
+        logger.info("ArXiv: %d queries, %d papers, %d chars", len(arxiv_queries), arxiv_paper_count, len(arxiv_text))
+
+    # Combine web + academic
+    stage1_combined = stage1_text
+    if arxiv_text:
+        stage1_combined += "\n---\n\n" + arxiv_text
 
     # ── Stage 2: Gap-driven refinement (optional) ──
+    refined_sources = 0
+    gap_queries: list[str] = []
     if args.two_stage:
         logger.info("=== Stage 2: Evidence gap refinement ===")
-        gap_queries = await identify_gaps(topic, stage1_text)
+        gap_queries = await identify_gaps(topic, stage1_combined)
         logger.info("Gap queries: %s", gap_queries)
-        cache_key_s2 = f"search_{slug}_refined"
+
+        # Clear old bad cache if it exists
+        old_cache = CACHE_DIR / f"search_{slug}_refined.json"
+        if old_cache.exists():
+            old_data = json.loads(old_cache.read_text())
+            if any("gap" in r.get("query", "").lower() and "specific" in r.get("query", "").lower() for r in old_data):
+                logger.info("Clearing stale gap cache (had placeholder queries)")
+                old_cache.unlink()
+
+        cache_key_s2 = f"search_{slug}_refined_v2"
         stage2_results = await run_searches(gap_queries, cache_key_s2)
         stage2_text = format_search_results(stage2_results)
         refined_sources = sum(len(r.get("results", [])) for r in stage2_results)
         logger.info("Stage 2: %d queries, %d results, %d chars", len(gap_queries), refined_sources, len(stage2_text))
 
-        # Merge: all results combined
-        all_search_text = stage1_text + "\n---\n\n### Refined Search Results (Gap-Driven)\n\n" + stage2_text
-        logger.info("Combined: %d chars from %d total sources", len(all_search_text), total_sources + refined_sources)
+        # ArXiv refinement too
+        arxiv_refined_text = ""
+        if args.arxiv:
+            arxiv_refined = await run_arxiv_searches(
+                [f"{q} formal analysis" for q in gap_queries[:2]], f"{cache_key}_refined",
+            )
+            arxiv_refined_text = format_arxiv_results(arxiv_refined)
+            arxiv_paper_count += sum(len(r.get("papers", [])) for r in arxiv_refined)
+
+        all_search_text = (
+            stage1_combined
+            + "\n---\n\n### Refined Search Results (Gap-Driven)\n\n" + stage2_text
+            + ("\n" + arxiv_refined_text if arxiv_refined_text else "")
+        )
+        logger.info(
+            "Combined: %d chars from %d web + %d academic sources",
+            len(all_search_text), total_sources + refined_sources, arxiv_paper_count,
+        )
     else:
-        all_search_text = stage1_text
+        all_search_text = stage1_combined
 
     # ── Determine variants to run ──
     if args.all_modes:
@@ -384,8 +519,8 @@ async def main():
     results = []
     for prompt_type in prompts:
         for thinking in thinking_modes:
-            # One-shot (stage 1 only)
-            r = await run_experiment(topic, prompt_type, thinking, stage1_text, two_stage=False)
+            # One-shot (stage 1 + arxiv if enabled)
+            r = await run_experiment(topic, prompt_type, thinking, stage1_combined, two_stage=False)
             results.append(r)
 
             # Two-stage (if enabled)
@@ -409,8 +544,10 @@ async def main():
         "topic": topic,
         "timestamp": timestamp,
         "two_stage": args.two_stage,
+        "arxiv": args.arxiv,
         "stage1_queries": queries,
-        "stage1_sources": total_sources,
+        "stage1_web_sources": total_sources,
+        "stage1_arxiv_papers": arxiv_paper_count,
         "stage2_queries": gap_queries if args.two_stage else [],
         "stage2_sources": refined_sources if args.two_stage else 0,
         "variants": [
@@ -434,7 +571,12 @@ async def main():
     print("\n" + "=" * 60)
     print(f"EXPERIMENT RESULTS: {topic}")
     print(f"Stage: {'Two-stage (gap refinement)' if args.two_stage else 'One-shot'}")
-    print(f"Sources: {total_sources}" + (f" + {refined_sources} refined" if args.two_stage else ""))
+    src_summary = f"Web: {total_sources}"
+    if arxiv_paper_count:
+        src_summary += f" | ArXiv: {arxiv_paper_count}"
+    if args.two_stage:
+        src_summary += f" | Refined: {refined_sources}"
+    print(f"Sources: {src_summary}")
     print("=" * 60)
     for r in results:
         print(f"  {r['label']:35s}  {r['output_chars']:>6,d} chars  {r['filename']}")

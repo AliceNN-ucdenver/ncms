@@ -32,6 +32,7 @@ dependencies = [
     "gliner>=0.2.10,<1.0",
     "sentence-transformers>=5.0,<6.0",
     "json-repair>=0.39,<1.0",
+    "arxiv>=2.4.1",
 ]
 
 [project.optional-dependencies]
