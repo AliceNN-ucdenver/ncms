@@ -19,12 +19,14 @@ Before you start:
 3. **DGX Spark or other vLLM endpoint** -- serving a model accessible from your network. This guide uses a DGX Spark at `spark-ee7d.local:8000` running Nemotron-3-Nano-30B via the NGC vLLM container.
 4. **HF_TOKEN** -- a HuggingFace token with access to gated models (SPLADE v3 requires it).
 5. **TAVILY_API_KEY** -- a Tavily API key for the Researcher's web search. Get one at tavily.com.
-6. **A `.env` file** in the project root (`~/ncms/.env`) with your keys:
+6. **GITHUB_PERSONAL_ACCESS_TOKEN** (optional) -- a GitHub PAT for the Archeologist agent's repository analysis. Without it, the Archeologist uses unauthenticated API calls (60 requests/hour). With it, 5000 requests/hour. Generate at github.com → Settings → Developer settings → Personal access tokens.
+7. **A `.env` file** in the project root (`~/ncms/.env`) with your keys:
    ```bash
    HF_TOKEN=hf_your_token_here
    TAVILY_API_KEY=tvly-your_key_here
+   GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token_here
    ```
-   The setup script auto-loads this file. No need to export variables manually.
+   The setup script auto-loads this file. No need to export variables manually. The setup script creates named providers for Tavily and GitHub, injecting the tokens into the appropriate agent sandboxes.
 7. **Python 3.12+ with uv** -- the NCMS build toolchain:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh

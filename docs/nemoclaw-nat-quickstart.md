@@ -35,13 +35,16 @@ When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, 
 
 ## What You Are Building
 
-Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
+Six specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. Two entry paths feed the same downstream pipeline: the **Researcher** starts from a topic and searches the web; the **Archeologist** starts from an existing GitHub repository and analyzes the codebase. Both produce a grounded research report that the Product Owner consumes to generate a PRD.
 
-A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that propagates through every agent in the chain. Each document, telemetry event, and review score links back to the originating project, giving the dashboard a project-centric view with per-node pipeline progress instead of a flat document list.
+LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
+
+A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that propagates through every agent in the chain. A "+ Start Archaeology" option lets you browse GitHub repositories and start from existing code. Each document, telemetry event, and review score links back to the originating project. Published documents are enriched with GLiNER entity extraction at publish time, and entity metadata persists across hub restarts via JSON sidecar files.
 
 | Agent | Type | Pipeline |
 |-------|------|----------|
 | **Researcher** | LangGraph | check_guardrails → plan → search (5x parallel) → synthesize → publish → trigger PO |
+| **Archeologist** | LangGraph | check_guardrails → clone_and_index → analyze_architecture → identify_gaps → web_research → synthesize_report → publish → trigger PO |
 | **Product Owner** | LangGraph | check_guardrails → read_doc → ask_experts (parallel) → synthesize_prd → generate_manifest → publish → trigger Builder |
 | **Builder** | LangGraph | check_guardrails → read_doc → ask_experts → synthesize → validate_completeness → check_output_guardrails → publish → review ⟲ → verify → generate_contracts |
 | **Architect** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
@@ -54,8 +57,10 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 | Layer | Technology | Detail |
 |-------|-----------|--------|
 | **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph, nDCG@10 = 0.7206 |
-| **Orchestration** | LangGraph | Deterministic pipelines for Researcher, PO, Builder |
+| **Orchestration** | LangGraph | Deterministic pipelines for Researcher, Archeologist, PO, Builder |
 | **Experts** | LangGraph (dual-mode) | Architect + Security: classify → search_memory → answer or structured_review |
+| **Codebase Analysis** | GitHub REST API | Archeologist agent: repo tree, file content, dependencies, commits, issues via PAT |
+| **Document Intelligence** | GLiNER NER | Entity extraction at publish time, JSON sidecar persistence, entity-enriched expert search |
 | **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB) |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
@@ -192,8 +197,10 @@ All agents generated complete traces during the test run. Full visibility into e
 ### Pipeline Infrastructure
 
 - **Lightweight telemetry channel.** A dedicated `POST /api/v1/pipeline/events` endpoint relays per-node status events via SSE without storing them as memories. Each LangGraph node calls this endpoint at entry and exit. The dashboard subscribes to `pipeline.node` events for real-time progress visualization. This is deliberately separate from the knowledge bus, which is reserved for meaningful events like document publications and review scores.
+- **Pipeline interrupt.** Every pipeline node checks for interrupt signals between steps. The dashboard progress bar has clickable interrupt buttons. When interrupted, remaining nodes skip and the progress bar shows amber stop icons. The interrupt flag is consumed on read (single-fire).
+- **Document intelligence.** Every published document is enriched with GLiNER entity extraction (20 entities per document). Metadata persists as JSON sidecar files alongside the markdown, surviving hub restarts. Expert agents use entity keywords from document sidecars for targeted NCMS memory retrieval instead of raw text excerpts. PO and Builder `ask_experts` nodes append entity context to expert questions.
 - **Guardrails as pipeline bookends.** Every pipeline agent starts with a `check_guardrails` node that validates topics against domain and technology policies stored in the hub. The Builder additionally runs `check_output_guardrails` before publishing, scanning for hardcoded secrets and prohibited patterns. Policies are versioned documents editable from the dashboard's policy editor.
-- **Prompt extraction.** Agent prompts are extracted into separate `*_prompts.py` modules (`research_prompts.py`, `prd_prompts.py`, `design_prompts.py`, `expert_prompts.py`). The hub provides a prompt store API and the dashboard includes a prompt editor for versioning and editing prompts without rebuilding sandboxes.
+- **Prompt extraction.** Agent prompts are extracted into separate `*_prompts.py` modules (`research_prompts.py`, `prd_prompts.py`, `design_prompts.py`, `expert_prompts.py`, `archeologist_prompts.py`). The hub provides a prompt store API and the dashboard includes a prompt editor for versioning and editing prompts without rebuilding sandboxes.
 - **Policy storage.** Guardrails policies (domain scope, technology scope, compliance requirements) are stored via the hub's policy API and managed from the dashboard policy editor. Agents load policies at pipeline start.
 
 ---
@@ -208,30 +215,22 @@ Quick summary: configure your DGX Spark inference provider, deploy vLLM with 512
 
 ## What's Next
 
-The pipeline runs end-to-end with guardrails, spec validation, contract generation, project tracking, and per-node telemetry. The foundation is solid. Here is where it goes from here.
+The pipeline runs end-to-end with two entry paths (green-field research and existing codebase archaeology), guardrails, spec validation, contract generation, project tracking, per-node telemetry with interrupt support, and document intelligence with entity-enriched expert search. The full [dashboard evolution design](dashboard-evolution-design.md) describes four phases of features.
 
-### Coding Agent (Claude Code in a Sandbox)
+### Phase 2 Remaining: Validation and Reliability
 
-The most immediate next step. NemoClaw sandboxes already include the Claude CLI. A sixth LangGraph agent receives the Builder's approved implementation design, passes it to Claude Code as a specification, and orchestrates the actual code generation: source files, unit tests, integration tests, Dockerfiles, and CI configuration. The human approves the design before code generation begins. The agent monitors Claude Code's output, runs the test suite, and publishes the results. If tests fail, it feeds the errors back for a fix-and-retry loop, the same pattern as the Builder's review loop but applied to code execution.
+- **Entity recall validation.** A/B comparison of entity-enriched search vs the prior raw text excerpt approach. Measure retrieval quality, expert answer grounding, and review scores across both modes.
+- **Bus-based agent triggering.** Replace direct HTTP `/generate` calls from `create_project()` with bus announcements to `trigger-researcher`/`trigger-archeologist`. Eliminates port forward dependency for initial project trigger (the known failure mode where long-lived HTTP requests crash SSH tunnels).
+- **Document diff view.** Side-by-side comparison of design revisions with review comment annotations.
+- **Template library.** Reusable design fragments from high-scoring pipeline runs.
 
-### Human-in-the-Loop Before Implementation
+### Phase 3: Coding Agent and Governance
 
-The pipeline currently runs fully autonomously from research to approved design. Before handing off to a coding agent, the human needs a gate. The dashboard already supports approval workflows. The next step is wiring the Builder's approved design into the approval queue so the human can review the final design, request changes, or approve for implementation. This creates a clear boundary: autonomous research-to-design, human-approved design-to-code.
-
-### Telegram Trigger
-
-A Telegram bot integration that accepts research prompts and kicks off the full pipeline. Send a message to the bot, watch the dashboard light up as agents chain through research, PRD, design, and review. Receive a notification when the pipeline completes with links to the published documents. This makes the pipeline accessible from anywhere without opening the dashboard.
-
-### Dashboard: Phase 2
-
-The project view, pipeline progress, and policy/prompt editors are implemented. The next dashboard features from [dashboard-evolution-design.md](dashboard-evolution-design.md) are:
-
-- **Compliance Dashboard.** Aggregate review scores across all projects. ADR compliance rates, STRIDE coverage heat maps, quality trends over time, knowledge grounding metrics, and drift scores using the Looking Glass severity formula.
-- **Document Diff View.** Side-by-side comparison of design revisions highlighting sections added or modified in response to review feedback, with review comments mapped to the changes they influenced.
-- **Knowledge Grounding Inspector.** Click any reference in a document (e.g., "ADR-003") to see the actual memory that was retrieved, its retrieval score, which agent used it, and the full provenance chain from seed file to review to design.
-- **Contextual Approval Queue.** Full-width approval overlay showing the design, review report, and coding plan before the human approves implementation. Estimated cost, previous approval history, and one-click approve/reject.
-- **Phoenix trace link resolution.** Resolve project IDs via the Phoenix API before constructing URLs.
-- **Event filtering.** Filter agent activity by type (announcements, reviews, triggers, documents).
+- **Coding agent (Claude Code in a sandbox).** A seventh LangGraph agent receives the Builder's approved implementation design, passes it to Claude Code as a specification, and orchestrates code generation with test-fix-retry loops.
+- **Contextual approval queue.** Full-context human gate before code generation. Design + review scores + cost estimate in one approval view.
+- **Compliance dashboard.** Aggregate governance visibility across all projects. ADR matrix, STRIDE heat map, quality trends, drift scores.
+- **Audit trail.** Complete execution records for reproducibility and compliance.
+- **Code-to-design feedback loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder.
 
 ### Resilience and Observability
 
