@@ -46,9 +46,9 @@ def ncms_search_to_memory_item(result: dict[str, Any], user_id: str) -> MemoryIt
             "type": result.get("type"),
             "domains": result.get("domains", []),
             "bm25_score": result.get("bm25_score"),
-            "combined_score": result.get("combined_score"),
+            "score": result.get("score", result.get("combined_score")),
         },
-        similarity_score=result.get("combined_score") or result.get("bm25_score"),
+        similarity_score=result.get("score") or result.get("combined_score") or result.get("bm25_score"),
     )
 
 

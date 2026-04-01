@@ -679,8 +679,10 @@ class DesignAgent:
         # Publish review report as a separate document artifact
         clean_topic = extract_topic(topic)
         feedback = state.get("review_feedback", {})
+        project_id = state.get("project_id", "")
+        project_tag = f"<!-- project_id: {project_id} -->\n" if project_id else ""
         review_doc = (
-            f"# Design Review Report — {clean_topic}\n\n"
+            f"{project_tag}# Design Review Report — {clean_topic}\n\n"
             f"**Status:** {status}\n"
             f"**Design Document:** {doc_id}\n"
             f"**Review Rounds:** {iteration + 1}\n"
@@ -771,6 +773,11 @@ class DesignAgent:
 
             contract = response.content
             logger.info("[design_agent] OpenAPI contract generated: %d chars", len(contract))
+
+            # Embed project_id for association
+            project_id = state.get("project_id", "")
+            if project_id:
+                contract = f"<!-- project_id: {project_id} -->\n{contract}"
 
             # Publish as a separate document
             try:

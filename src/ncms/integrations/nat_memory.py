@@ -198,7 +198,7 @@ class NCMSMemoryEditor:
                         ] if r.context.entity_states else [],
                     },
                     id=r.memory.memory.id,
-                    score=r.memory.combined_score,
+                    score=r.memory.total_activation,
                 )
                 for r in results
             ]
@@ -214,7 +214,7 @@ class NCMSMemoryEditor:
                         "domains": r.memory.domains,
                     },
                     id=r.memory.id,
-                    score=r.combined_score,
+                    score=r.total_activation,
                 )
                 for r in results
             ]

@@ -116,9 +116,9 @@ def create_api_app(
                 )
                 for r in domain_results:
                     mid = r.memory.id
-                    if mid not in seen or r.combined_score > seen[mid].combined_score:
+                    if mid not in seen or r.total_activation > seen[mid].combined_score:
                         seen[mid] = r
-            results = sorted(seen.values(), key=lambda r: r.combined_score, reverse=True)[:limit]
+            results = sorted(seen.values(), key=lambda r: r.total_activation, reverse=True)[:limit]
         else:
             results = await memory_svc.search(
                 query=query, domain=domain_param, limit=limit, intent_override=intent,
@@ -131,7 +131,7 @@ def create_api_app(
                     "content": r.memory.content,
                     "type": r.memory.type,
                     "domains": r.memory.domains,
-                    "combined_score": r.combined_score,
+                    "score": r.total_activation,
                     "bm25_score": r.bm25_score,
                     "created_at": (
                         r.memory.created_at.isoformat() if r.memory.created_at else None

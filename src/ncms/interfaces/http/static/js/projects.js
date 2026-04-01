@@ -13,12 +13,21 @@ async function loadProjects() {
     if (!resp.ok) return;
     const projects = await resp.json();
 
-    // Preserve _expanded state from previous render
-    const expandedIds = new Set(
-      (state.projects || []).filter(p => p._expanded).map(p => p.project_id)
-    );
+    // Preserve _expanded state and loaded documents from previous render
+    const prevMap = {};
+    for (const p of (state.projects || [])) {
+      if (p._expanded) prevMap[p.project_id] = p;
+    }
     for (const p of projects) {
-      if (expandedIds.has(p.project_id)) p._expanded = true;
+      const prev = prevMap[p.project_id];
+      if (prev) {
+        p._expanded = true;
+        // Preserve loaded documents if the fresh data has an empty list
+        if (prev.documents && prev.documents.length > 0
+            && (!p.documents || p.documents.length === 0)) {
+          p.documents = prev.documents;
+        }
+      }
     }
 
     state.projects = projects;

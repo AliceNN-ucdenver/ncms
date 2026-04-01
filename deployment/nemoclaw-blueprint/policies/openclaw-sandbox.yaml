@@ -190,6 +190,7 @@ network_policies:
     binaries:
       - { path: /usr/bin/git }
       - { path: /usr/bin/gh }
+      - { path: /sandbox/.uv/python/*/bin/python* }
 
   # ── Python packages (PyPI + uv) ────────────────────────────────────
   python_packages:

@@ -59,7 +59,7 @@ class TestNcmsSearchToMemoryItem:
             "type": "architecture-decision",
             "domains": ["architecture"],
             "bm25_score": 10.2,
-            "combined_score": 15.8,
+            "score": 15.8,
         }
         item = ncms_search_to_memory_item(result, user_id="builder")
         assert item.memory == "Express.js API gateway pattern"

@@ -25,17 +25,24 @@ class CrossEncoderReranker:
         self._model_name = model_name
         self._cache_dir = cache_dir
         self._model: CrossEncoder | None = None
+        self._load_failed: bool = False
 
     def _ensure_model(self) -> None:
-        if self._model is None:
-            from sentence_transformers import CrossEncoder
+        if self._model is None and not self._load_failed:
+            try:
+                from sentence_transformers import CrossEncoder
 
-            kwargs: dict = {}
-            if self._cache_dir:
-                kwargs["cache_folder"] = self._cache_dir
-            logger.info("Loading cross-encoder model: %s", self._model_name)
-            self._model = CrossEncoder(self._model_name, **kwargs)
-            logger.info("Cross-encoder model loaded")
+                kwargs: dict = {}
+                if self._cache_dir:
+                    kwargs["cache_folder"] = self._cache_dir
+                logger.info("Loading cross-encoder model: %s", self._model_name)
+                self._model = CrossEncoder(self._model_name, **kwargs)
+                logger.info("Cross-encoder model loaded")
+            except Exception as e:
+                logger.warning(
+                    "Cross-encoder load failed (reranking disabled): %s", e,
+                )
+                self._load_failed = True
 
     def rerank(
         self,
@@ -54,7 +61,9 @@ class CrossEncoderReranker:
             List of (memory_id, ce_score) sorted by score descending.
         """
         self._ensure_model()
-        assert self._model is not None  # noqa: S101
+        if self._model is None:
+            # Model failed to load — return candidates with zero scores
+            return [(mid, 0.0) for mid, _ in candidates[:top_k]]
 
         if not candidates:
             return []

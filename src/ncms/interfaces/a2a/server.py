@@ -173,7 +173,7 @@ def create_a2a_routes(
                     {
                         "memory_id": r.memory.memory.id,
                         "content": r.memory.memory.content[:500],
-                        "score": r.memory.combined_score,
+                        "score": r.memory.total_activation,
                         "retrieval_path": r.retrieval_path,
                     }
                     for r in results
@@ -192,7 +192,7 @@ def create_a2a_routes(
                     {
                         "memory_id": r.memory.id,
                         "content": r.memory.content[:500],
-                        "score": r.combined_score,
+                        "score": r.total_activation,
                     }
                     for r in results
                 ],
