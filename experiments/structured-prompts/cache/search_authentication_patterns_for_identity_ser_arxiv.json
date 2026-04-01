@@ -1,21 +1,79 @@
 [
   {
-    "query": "formal methods for authentication protocol verification in identity service architectures",
-    "papers": []
-  },
-  {
-    "query": "cryptographic security proofs of multi-factor authentication schemes in federated identity systems",
-    "papers": []
-  },
-  {
-    "query": "benchmark evaluations of zero-knowledge proof protocols for scalable identity authentication",
+    "query": "formal authentication patterns attribute-based access control",
     "papers": [
       {
-        "title": "DIAP: A Decentralized Agent Identity Protocol with Zero-Knowledge Proofs and a Hybrid P2P Stack",
-        "url": "http://arxiv.org/abs/2511.11619v1",
-        "summary": "The absence of a fully decentralized, verifiable, and privacy-preserving communication protocol for autonomous agents remains a core challenge in decentralized computing. Existing systems often rely on centralized intermediaries, which reintroduce trust bottlenecks, or lack decentralized identity-resolution mechanisms, limiting persistence and cross-network interoperability.\n  We propose the Decentralized Interstellar Agent Protocol (DIAP), a novel framework for agent identity and communication that enables persistent, verifiable, and trustless interoperability in fully decentralized environments. DIAP binds an agent's identity to an immutable IPFS or IPNS content identifier and uses zero-knowledge proofs (ZKP) to dynamically and statelessly prove ownership, removing the need for record updates.\n  We present a Rust SDK that integrates Noir (for zero-knowledge proofs), DID-Key, IPFS, and a hybrid peer-to-peer stack combining Libp2p GossipSub for discovery and Iroh for high-performance, QUIC based data exchange. DIAP introduces a zero-dependency ZKP deployment model through a universal proof manager and compile-time build script that embeds a precompiled Noir circuit, eliminating the need for external ZKP toolchains. This enables instant, verifiable, and privacy-preserving identity proofs.\n  This work establishes a practical, high-performance foundation for next-generation autonomous agent ecosystems and agent-to-agent (A to A) economies.",
-        "published": "2025-11-06T06:00:18+00:00",
-        "authors": "Yuanjie Liu, Wenpeng Xing, Ye Zhou"
+        "title": "Authentication and authorization in Data Spaces: A relationship-based access control approach for policy specification based on ODRL",
+        "url": "http://arxiv.org/abs/2505.24742v1",
+        "summary": "Data has become a crucial resource in the digital economy, fostering initiatives for secure and sovereign data sharing frameworks such as Data Spaces. However, these distributed environments require fine-grained access control mechanisms that balance openness with sovereignty and security. This paper proposes an extension of the Open Digital Rights Language (ODRL) standard, the ODRL Data Spaces (ODS) profile, aimed at supporting authorization and complementing existing authentication mechanisms throughout the data lifecycle. Additionally, a policy execution engine is introduced to translate ODRL policies into executable formats, enabling effective enforcement. The approach is validated through a use case involving OpenFGA, demonstrating its applicability to relationship-based access control scenarios.",
+        "published": "2025-05-30T16:00:24+00:00",
+        "authors": "Irene Plaza-Ortiz, Andres Munoz-Arcentales, Joaqu\u00edn Salvach\u00faa"
+      }
+    ]
+  },
+  {
+    "query": "protocol composition verification zero-trust identity components",
+    "papers": [
+      {
+        "title": "Identity Control Plane: The Unifying Layer for Zero Trust Infrastructure",
+        "url": "http://arxiv.org/abs/2504.17759v1",
+        "summary": "This paper introduces the Identity Control Plane (ICP), an architectural framework for enforcing identity-aware Zero Trust access across human users, workloads, and automation systems. The ICP model unifies SPIFFE-based workload identity, OIDC/SAML user identity, and scoped automation credentials via broker-issued transaction tokens. We propose a composable enforcement layer using ABAC policy engines (e.g., OPA, Cedar), aligned with IETF WIMSE drafts and OAuth transaction tokens. The paper includes architectural components, integration patterns, use cases, a comparative analysis with current models, and theorized performance metrics. A FedRAMP and SLSA compliance mapping is also presented. This is a theoretical infrastructure architecture paper intended for security researchers and platform architects. No prior version of this work has been published.",
+        "published": "2025-04-24T17:21:00+00:00",
+        "authors": "Surya Teja Avirneni"
+      },
+      {
+        "title": "Establishing Workload Identity for Zero Trust CI/CD: From Secrets to SPIFFE-Based Authentication",
+        "url": "http://arxiv.org/abs/2504.14760v1",
+        "summary": "CI/CD systems have become privileged automation agents in modern infrastructure, but their identity is still based on secrets or temporary credentials passed between systems. In enterprise environments, these platforms are centralized and shared across teams, often with broad cloud permissions and limited isolation. These conditions introduce risk, especially in the era of supply chain attacks, where implicit trust and static credentials leave systems exposed. This paper describes the shift from static credentials to OpenID Connect (OIDC) federation, and introduces SPIFFE (Secure Production Identity Framework for Everyone) as a runtime-issued, platform-neutral identity model for non-human actors. SPIFFE decouples identity from infrastructure, enabling strong, portable authentication across job runners and deployed workloads. We show how SPIFFE identities support policy alignment, workload attestation, and mutual authentication. The paper concludes by outlining next steps in enabling policy-based access, forming the basis of a broader Zero Trust architecture for CI/CD.",
+        "published": "2025-04-20T23:06:03+00:00",
+        "authors": "Surya Teja Avirneni"
+      },
+      {
+        "title": "Intent-Aware Authorization for Zero Trust CI/CD",
+        "url": "http://arxiv.org/abs/2504.14777v1",
+        "summary": "This paper introduces intent-aware authorization for Zero Trust CI/CD systems. Identity establishes who is making the request, but additional signals are required to decide whether access should be granted. We describe a control loop architecture where policy engines such as OPA and Cedar evaluate runtime context, justification, and human approvals before issuing access credentials. The system builds on SPIFFE-based workload identity and credential brokers, and enables fine-grained, auditable authorization. This is the third paper in a series on Zero Trust CI/CD design patterns.",
+        "published": "2025-04-21T00:25:35+00:00",
+        "authors": "Surya Teja Avirneni"
+      },
+      {
+        "title": "SecureBank: A Financially-Aware Zero Trust Architecture for High-Assurance Banking Systems",
+        "url": "http://arxiv.org/abs/2512.23124v1",
+        "summary": "Financial institutions increasingly rely on distributed architectures, open banking APIs, cloud native infrastructures, and high frequency digital transactions. These transformations expand the attack surface and expose limitations in traditional perimeter based security models. While Zero Trust architectures provide essential security principles, most existing frameworks do not explicitly incorporate transactional semantics, financial risk modeling, adaptive identity trust, or automation weighted by economic impact.\n  This paper introduces SecureBank, a financially aware and context adaptive Zero Trust architecture designed specifically for high assurance banking systems. The proposed framework integrates Financial Zero Trust, Adaptive Identity Scoring, Contextual Micro Segmentation, and Impact Driven Security Automation. A Monte Carlo simulation evaluates SecureBank against a representative rule based baseline architecture using metrics such as the Transactional Integrity Index (TII), Identity Trust Adaptation Level (ITAL), and Security Automation Efficiency (SAE).\n  The results demonstrate that SecureBank significantly improves automated attack handling and accelerates identity trust adaptation while preserving conservative and regulator aligned levels of transactional integrity. Beyond experimental validation, SecureBank is intended to serve as a reference architecture and evaluation baseline for financially aware Zero Trust systems in regulated financial environments.",
+        "published": "2025-12-29T00:53:18+00:00",
+        "authors": "Paulo Fernandes Biao"
+      },
+      {
+        "title": "Zero-Trust Runtime Verification for Agentic Payment Protocols: Mitigating Replay and Context-Binding Failures in AP2",
+        "url": "http://arxiv.org/abs/2602.06345v1",
+        "summary": "The deployment of autonomous AI agents capable of executing commercial transactions has motivated the adoption of mandate-based payment authorization protocols, including the Universal Commerce Protocol (UCP) and the Agent Payments Protocol (AP2). These protocols replace interactive, session-based authorization with cryptographically issued mandates, enabling asynchronous and autonomous execution. While AP2 provides specification-level guarantees through signature verification, explicit binding, and expiration semantics, real-world agentic execution introduces runtime behaviors such as retries, concurrency, and orchestration that challenge implicit assumptions about mandate usage.\n  In this work, we present a security analysis of the AP2 mandate lifecycle and identify enforcement gaps that arise during runtime in agent-based payment systems. We propose a zero-trust runtime verification framework that enforces explicit context binding and consume-once mandate semantics using dynamically generated, time-bound nonces, ensuring that authorization decisions are evaluated at execution time rather than assumed from static issuance properties.\n  Through simulation-based evaluation under high concurrency, we show that context-aware binding and consume-once enforcement address distinct and complementary attack classes, and that both are required to prevent replay and context-redirect attacks. The proposed framework mitigates all evaluated attacks while maintaining stable verification l",
+        "published": "2026-02-06T03:22:11+00:00",
+        "authors": "Qianlong Lan, Anuj Kaul, Shaun Jones"
+      }
+    ]
+  },
+  {
+    "query": "benchmark evaluation federated identity standards mutual TLS",
+    "papers": [
+      {
+        "title": "Sola-Visibility-ISPM: Benchmarking Agentic AI for Identity Security Posture Management Visibility",
+        "url": "http://arxiv.org/abs/2601.07880v1",
+        "summary": "Identity Security Posture Management (ISPM) is a core challenge for modern enterprises operating across cloud and SaaS environments. Answering basic ISPM visibility questions, such as understanding identity inventory and configuration hygiene, requires interpreting complex identity data, motivating growing interest in agentic AI systems. Despite this interest, there is currently no standardized way to evaluate how well such systems perform ISPM visibility tasks on real enterprise data. We introduce the Sola Visibility ISPM Benchmark, the first benchmark designed to evaluate agentic AI systems on foundational ISPM visibility tasks using a live, production-grade identity environment spanning AWS, Okta, and Google Workspace. The benchmark focuses on identity inventory and hygiene questions and is accompanied by the Sola AI Agent, a tool-using agent that translates natural-language queries into executable data exploration steps and produces verifiable, evidence-backed answers. Across 77 benchmark questions, the agent achieves strong overall performance, with an expert accuracy of 0.84 and a strict success rate of 0.77. Performance is highest on AWS hygiene tasks, where expert accuracy reaches 0.94, while results on Google Workspace and Okta hygiene tasks are more moderate, yet competitive. Overall, this work provides a practical and reproducible benchmark for evaluating agentic AI systems in identity security and establishes a foundation for future ISPM benchmarks covering more a",
+        "published": "2026-01-11T18:36:33+00:00",
+        "authors": "Gal Engelberg, Konstantin Koutsyi, Leon Goldberg"
+      },
+      {
+        "title": "ATR-Bench: A Federated Learning Benchmark for Adaptation, Trust, and Reasoning",
+        "url": "http://arxiv.org/abs/2505.16850v1",
+        "summary": "Federated Learning (FL) has emerged as a promising paradigm for collaborative model training while preserving data privacy across decentralized participants. As FL adoption grows, numerous techniques have been proposed to tackle its practical challenges. However, the lack of standardized evaluation across key dimensions hampers systematic progress and fair comparison of FL methods. In this work, we introduce ATR-Bench, a unified framework for analyzing federated learning through three foundational dimensions: Adaptation, Trust, and Reasoning. We provide an in-depth examination of the conceptual foundations, task formulations, and open research challenges associated with each theme. We have extensively benchmarked representative methods and datasets for adaptation to heterogeneous clients and trustworthiness in adversarial or unreliable environments. Due to the lack of reliable metrics and models for reasoning in FL, we only provide literature-driven insights for this dimension. ATR-Bench lays the groundwork for a systematic and holistic evaluation of federated learning with real-world relevance. We will make our complete codebase publicly accessible and a curated repository that continuously tracks new developments and research in the FL literature.",
+        "published": "2025-05-22T16:11:38+00:00",
+        "authors": "Tajamul Ashraf, Mohammed Mohsen Peerzada, Moloud Abdar"
+      },
+      {
+        "title": "SECQUE: A Benchmark for Evaluating Real-World Financial Analysis Capabilities",
+        "url": "http://arxiv.org/abs/2504.04596v1",
+        "summary": "We introduce SECQUE, a comprehensive benchmark for evaluating large language models (LLMs) in financial analysis tasks. SECQUE comprises 565 expert-written questions covering SEC filings analysis across four key categories: comparison analysis, ratio calculation, risk assessment, and financial insight generation. To assess model performance, we develop SECQUE-Judge, an evaluation mechanism leveraging multiple LLM-based judges, which demonstrates strong alignment with human evaluations. Additionally, we provide an extensive analysis of various models' performance on our benchmark. By making SECQUE publicly available, we aim to facilitate further research and advancements in financial AI.",
+        "published": "2025-04-06T19:59:41+00:00",
+        "authors": "Noga Ben Yoash, Meni Brief, Oded Ovadia"
       }
     ]
   }

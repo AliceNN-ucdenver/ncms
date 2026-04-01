@@ -96,7 +96,7 @@ async def call_llm(
         "chat_template_kwargs": {"enable_thinking": enable_thinking},
     }
 
-    async with httpx.AsyncClient(timeout=600.0) as client:
+    async with httpx.AsyncClient(timeout=900.0) as client:
         resp = await client.post(url, json=body)
         resp.raise_for_status()
         data = resp.json()
@@ -197,7 +197,7 @@ def arxiv_search_sync(query: str, max_results: int = 5) -> list[dict]:
 
     search = _arxiv.Search(
         query=query,
-        max_results=max_results * 2,  # Fetch extra to filter by date
+        max_results=min(max_results * 2, 20),  # Fetch extra to filter by date, cap at 20
         sort_by=_arxiv.SortCriterion.Relevance,
     )
 

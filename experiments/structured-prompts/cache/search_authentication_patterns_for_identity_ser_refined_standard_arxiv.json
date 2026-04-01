@@ -1,0 +1,61 @@
+[
+  {
+    "query": "2025 2026 ISO/IEC 24760 revision visionary vendors alternatives",
+    "papers": [
+      {
+        "title": "ClimateCheck 2026: Scientific Fact-Checking and Disinformation Narrative Classification of Climate-related Claims",
+        "url": "http://arxiv.org/abs/2603.26449v1",
+        "summary": "Automatically verifying climate-related claims against scientific literature is a challenging task, complicated by the specialised nature of scholarly evidence and the diversity of rhetorical strategies underlying climate disinformation. ClimateCheck 2026 is the second iteration of a shared task addressing this challenge, expanding on the 2025 edition with tripled training data and a new disinformation narrative classification task. Running from January to February 2026 on the CodaBench platform, the competition attracted 20 registered participants and 8 leaderboard submissions, with systems combining dense retrieval pipelines, cross-encoder ensembles, and large language models with structured hierarchical reasoning. In addition to standard evaluation metrics (Recall@K and Binary Preference), we adapt an automated framework to assess retrieval quality under incomplete annotations, exposing systematic biases in how conventional metrics rank systems. A cross-task analysis further reveals that not all climate disinformation is equally verifiable, potentially implicating how future fact-checking systems should be designed.",
+        "published": "2026-03-27T14:18:47+00:00",
+        "authors": "Raia Abu Ahmad, Max Upravitelev, Aida Usmanova"
+      },
+      {
+        "title": "Visionary: The World Model Carrier Built on WebGPU-Powered Gaussian Splatting Platform",
+        "url": "http://arxiv.org/abs/2512.08478v1",
+        "summary": "Neural rendering, particularly 3D Gaussian Splatting (3DGS), has evolved rapidly and become a key component for building world models. However, existing viewer solutions remain fragmented, heavy, or constrained by legacy pipelines, resulting in high deployment friction and limited support for dynamic content and generative models. In this work, we present Visionary, an open, web-native platform for real-time various Gaussian Splatting and meshes rendering. Built on an efficient WebGPU renderer with per-frame ONNX inference, Visionary enables dynamic neural processing while maintaining a lightweight, \"click-to-run\" browser experience. It introduces a standardized Gaussian Generator contract, which not only supports standard 3DGS rendering but also allows plug-and-play algorithms to generate or update Gaussians each frame. Such inference also enables us to apply feedforward generative post-processing. The platform further offers a plug in three.js library with a concise TypeScript API for seamless integration into existing web applications. Experiments show that, under identical 3DGS assets, Visionary achieves superior rendering efficiency compared to current Web viewers due to GPU-based primitive sorting. It already supports multiple variants, including MLP-based 3DGS, 4DGS, neural avatars, and style transformation or enhancement networks. By unifying inference and rendering directly in the browser, Visionary significantly lowers the barrier to reproduction, comparison, and de",
+        "published": "2025-12-09T10:54:58+00:00",
+        "authors": "Yuning Gong, Yifei Liu, Yifan Zhan"
+      },
+      {
+        "title": "VQualA 2025 Challenge on Engagement Prediction for Short Videos: Methods and Results",
+        "url": "http://arxiv.org/abs/2509.02969v1",
+        "summary": "This paper presents an overview of the VQualA 2025 Challenge on Engagement Prediction for Short Videos, held in conjunction with ICCV 2025. The challenge focuses on understanding and modeling the popularity of user-generated content (UGC) short videos on social media platforms. To support this goal, the challenge uses a new short-form UGC dataset featuring engagement metrics derived from real-world user interactions. This objective of the Challenge is to promote robust modeling strategies that capture the complex factors influencing user engagement. Participants explored a variety of multi-modal features, including visual content, audio, and metadata provided by creators. The challenge attracted 97 participants and received 15 valid test submissions, contributing significantly to progress in short-form UGC video engagement prediction.",
+        "published": "2025-09-03T03:14:23+00:00",
+        "authors": "Dasong Li, Sizhuo Ma, Hang Hua"
+      },
+      {
+        "title": "The ICASSP 2026 Automatic Song Aesthetics Evaluation Challenge",
+        "url": "http://arxiv.org/abs/2601.07237v1",
+        "summary": "This paper summarizes the ICASSP 2026 Automatic Song Aesthetics Evaluation (ASAE) Challenge, which focuses on predicting the subjective aesthetic scores of AI-generated songs. The challenge consists of two tracks: Track 1 targets the prediction of the overall musicality score, while Track 2 focuses on predicting five fine-grained aesthetic scores. The challenge attracted strong interest from the research community and received numerous submissions from both academia and industry. Top-performing systems significantly surpassed the official baseline, demonstrating substantial progress in aligning objective metrics with human aesthetic preferences. The outcomes establish a standardized benchmark and advance human-aligned evaluation methodologies for modern music generation systems.",
+        "published": "2026-01-12T06:15:30+00:00",
+        "authors": "Guobin Ma, Yuxuan Xia, Jixun Yao"
+      },
+      {
+        "title": "A Response to paper Critical Evaluation of Studies Alleging Evidence for Technosignatures in the POSS1-E Photographic Plates by Watters et al. (2026)",
+        "url": "http://arxiv.org/abs/2602.15171v1",
+        "summary": "We respond to the critique by Watters et al. (2026) of the statistical analyses in Villarroel et al. (2025) and Bruehl & Villarroel (2025). We argue that the critique conflates object-level validation with ensemble-level statistical inference and relies on a reduced, heterogeneously filtered subset originally constructed for a different scientific purpose. We further question whether the aggressively filtered subset used in Watters et al. (2026) demonstrates a meaningful improvement in sample purity, given the twenty-fold reduction in sample size. Our simple, visual check does not suggest that it does. The subset further lacks complete temporal information and is seriously statistically underpowered for testing the reported Earth-shadow deficit. We emphasise that the horizontal separation metric used for plate assignment and time reconstruction as in Watters et al. (2026) depends on the inclusion of the cos(Dec) factor to ensure geometric consistency. Any omission would alter plate assignment and inferred observation times. Moreover, the analyses presented in Watters et al. (2026) do not include uncertainty estimates or error propagation, limiting the interpretability of the claimed null results. We conclude that the principal findings reported in Villarroel et al. (2025) and Bruehl & Villarroel (2025) are not invalidated by the analyses presented in Watters et al. (2026).",
+        "published": "2026-02-16T20:21:37+00:00",
+        "authors": "Beatriz Villarroel, Alina Streblyanska, Stephen Bruehl"
+      }
+    ]
+  },
+  {
+    "query": "2025 PIV-based credential support in Windows 11 Windows Hello for Business PIV policy extensions",
+    "papers": [
+      {
+        "title": "PIV-FlowDiffuser:Transfer-learning-based denoising diffusion models for PIV",
+        "url": "http://arxiv.org/abs/2504.14952v1",
+        "summary": "Deep learning algorithms have significantly reduced the computational time and improved the spatial resolution of particle image velocimetry~(PIV). However, the models trained on synthetic datasets might have a degraded performance on practical particle images due to domain gaps. As a result, special residual patterns are often observed for the vector fields of deep learning-based estimators. To reduce the special noise step-by-step, we employ a denoising diffusion model~(FlowDiffuser) for PIV analysis. And the data-hungry iterative denoising diffusion model is trained via a transfer learning strategy, resulting in our PIV-FlowDiffuser method. Specifically, (1) pre-training a FlowDiffuser model with multiple optical flow datasets of the computer vision community, such as Sintel, KITTI, etc; (2) fine-tuning the pre-trained model on synthetic PIV datasets. Note that the PIV images are upsampled by a factor of two to resolve the small-scale turbulent flow structures. The visualized results indicate that our PIV-FlowDiffuser effectively suppresses the noise patterns. Therefore, the denoising diffusion model reduces the average end-point error~($AEE$) by 59.4% over RAFT256-PIV baseline on the classic Cai's dataset. Besides, PIV-FlowDiffuser exhibits enhanced generalization performance on unseen particle images due to transfer learning. Overall, this study highlights the transfer-learning-based denoising diffusion models for PIV. And a detailed implementation is recommended for int",
+        "published": "2025-04-21T08:22:58+00:00",
+        "authors": "Qianyu Zhu, Junjie Wang, Jeremiah Hu"
+      },
+      {
+        "title": "VQualA 2025 Challenge on Engagement Prediction for Short Videos: Methods and Results",
+        "url": "http://arxiv.org/abs/2509.02969v1",
+        "summary": "This paper presents an overview of the VQualA 2025 Challenge on Engagement Prediction for Short Videos, held in conjunction with ICCV 2025. The challenge focuses on understanding and modeling the popularity of user-generated content (UGC) short videos on social media platforms. To support this goal, the challenge uses a new short-form UGC dataset featuring engagement metrics derived from real-world user interactions. This objective of the Challenge is to promote robust modeling strategies that capture the complex factors influencing user engagement. Participants explored a variety of multi-modal features, including visual content, audio, and metadata provided by creators. The challenge attracted 97 participants and received 15 valid test submissions, contributing significantly to progress in short-form UGC video engagement prediction.",
+        "published": "2025-09-03T03:14:23+00:00",
+        "authors": "Dasong Li, Sizhuo Ma, Hang Hua"
+      }
+    ]
+  }
+]

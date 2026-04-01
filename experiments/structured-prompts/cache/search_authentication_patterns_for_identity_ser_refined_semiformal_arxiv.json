@@ -1,0 +1,12 @@
+[
+  {
+    "query": "2025 max FIPS 140-3 authentication standard update",
+    "papers": [],
+    "error": "Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=2025+max+FIPS+140-3+authentication+standard+update&id_list=&sortBy=relevance&sortOrder=descending&start=0&max_results=100)"
+  },
+  {
+    "query": "NIST SP 800-63B cryptographic key export prohibition conflict replacement",
+    "papers": [],
+    "error": "Page request resulted in HTTP 429 (https://export.arxiv.org/api/query?search_query=NIST+SP+800-63B+cryptographic+key+export+prohibition+conflict+replacement&id_list=&sortBy=relevance&sortOrder=descending&start=0&max_results=100)"
+  }
+]

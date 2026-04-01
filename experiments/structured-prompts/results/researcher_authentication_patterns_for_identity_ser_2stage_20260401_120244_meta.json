@@ -1,0 +1,102 @@
+{
+  "topic": "Authentication patterns for identity services",
+  "timestamp": "20260401_120244",
+  "two_stage": true,
+  "arxiv": true,
+  "stage1_web_queries": [
+    "2025 identity service market size growth projections key vendors competitive landscape IDC",
+    "NIST SP 800-63B 2026 OWASP Authentication guidance ISO/IEC 24765 implementation standards",
+    "2025 credential stuffing attack statistics phishing simulation breach data-security industry report",
+    "spveled architecture patterns technology stack microservices OIDC SAML federation trade-offs scalability",
+    "Pinterest SSO migration 2024 latency reduction 30% conversion increase case study auth0 implementation"
+  ],
+  "stage1_web_sources": 22,
+  "stage1_arxiv_papers": 16,
+  "stage2_gap_queries": {
+    "standard": [
+      "2025 SAML vs OIDC failure rate comparison site:acm.org OR site:ieee.org",
+      "2024 Salesforce Identity Fabric cost analysis official Salesforce ROI report",
+      "2025 phishing-resistant MFA adoption rate Cisco Duo MFA usage statistics 2025"
+    ],
+    "semiformal": [
+      "Gartner 2026 identity governance competitor alternatives One Identity",
+      "NIST SP 800-63B Revision 4 phishing-resistant authenticator requirements -site:gov",
+      "OAuth 2.1 openid-connect implementation Azure AD multi-cloud integration Kubernetes service mesh"
+    ]
+  },
+  "stage2_refined_web": 30,
+  "variants": [
+    {
+      "label": "standard/nocot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_nocot_1stage_20260401_120244.md",
+      "prompt_type": "standard",
+      "thinking": false,
+      "two_stage": false,
+      "output_chars": 12440,
+      "input_chars": 27996
+    },
+    {
+      "label": "standard/nocot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_nocot_2stage_20260401_120244.md",
+      "prompt_type": "standard",
+      "thinking": false,
+      "two_stage": true,
+      "output_chars": 15404,
+      "input_chars": 49853
+    },
+    {
+      "label": "standard/cot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_cot_1stage_20260401_120244.md",
+      "prompt_type": "standard",
+      "thinking": true,
+      "two_stage": false,
+      "output_chars": 10361,
+      "input_chars": 27996
+    },
+    {
+      "label": "standard/cot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_cot_2stage_20260401_120244.md",
+      "prompt_type": "standard",
+      "thinking": true,
+      "two_stage": true,
+      "output_chars": 10482,
+      "input_chars": 49853
+    },
+    {
+      "label": "semiformal/nocot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_nocot_1stage_20260401_120244.md",
+      "prompt_type": "semiformal",
+      "thinking": false,
+      "two_stage": false,
+      "output_chars": 15716,
+      "input_chars": 27996
+    },
+    {
+      "label": "semiformal/nocot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_nocot_2stage_20260401_120244.md",
+      "prompt_type": "semiformal",
+      "thinking": false,
+      "two_stage": true,
+      "output_chars": 12428,
+      "input_chars": 39929
+    },
+    {
+      "label": "semiformal/cot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_cot_1stage_20260401_120244.md",
+      "prompt_type": "semiformal",
+      "thinking": true,
+      "two_stage": false,
+      "output_chars": 17374,
+      "input_chars": 27996
+    },
+    {
+      "label": "semiformal/cot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_cot_2stage_20260401_120244.md",
+      "prompt_type": "semiformal",
+      "thinking": true,
+      "two_stage": true,
+      "output_chars": 13593,
+      "input_chars": 39929
+    }
+  ]
+}

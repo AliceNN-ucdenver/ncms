@@ -1,0 +1,95 @@
+[
+  {
+    "query": "2025 max FIPS 140-3 authentication standard update",
+    "answer": "FIPS 140-3 replaced FIPS 140-2 by 2026, bringing stricter validation for cryptographic modules. Compliance is required for sensitive government systems. FIPS 140-3 is now mandatory for U.S. government contractors.",
+    "results": [
+      {
+        "title": "2025 in Review: FIPS 140-3, Post-Quantum Readiness, & Crypto ...",
+        "url": "https://www.safelogic.com/blog/2025-in-review-fips-140-3-post-quantum-readiness-crypto-agility",
+        "content": "We also focused on ensuring that SafeLogic\u2019s cryptographic software subscriptions can effectively future-proof our customers for the changes in the world of cryptography, both now and in the future. On the **FIPS 140-3 Validated Software** pillar, all of SafeLogic\u2019s major cryptographic products have achieved full FIPS 140-3 validation from the NIST CMVP, and we spent most of 2025 working with our customers to upgrade to FIPS 140-3. On Post-Quantum Cryptography pillar, SafeLogic rolled out PQC capabilities in almost all of its cryptographic products, including CryptoComply Core v3.5, CryptoComply Mobile v3.5, CryptoComply Java v4, and CryptoComply Go v4, where SafeLogic is the very first organization to offer comprehensive PQC support to Go developers. SafeLogic had been focused on delivering cryptographic software capabilities across all the above pillars, while also continuing to grow its catalog of cryptographic software products and support for various operating environments (OEs), while remaining API-compatible with popular open-source libraries. Finally, in 2025, SafeLogic added explicit support for popular use cases where FIPS 140-validated cryptography is often required."
+      },
+      {
+        "title": "[PDF] Implementation Guidance for FIPS 140-3",
+        "url": "https://csrc.nist.gov/csrc/media/Projects/cryptographic-module-validation-program/documents/fips%20140-3/Archived/FIPS%20140-3%20IG%20%5B2025-04-17%5D.pdf",
+        "content": "\u2022 05/04/21: D.J Entropy Estimation and Compliance with SP 800-90B - Updated to align ENT references with that of IG D.O. Implementation Guidance for FIPS PUB 140-3 and the Cryptographic Module Validation Program National Institute of Standards and Technology CMVP 204 04/18/2025 Mapping FIPS 140-2 IGs to FIPS 140-3 FIPS 140-2 IG FIPS 140-3 Management Manual G.2 Completion of a test report: Information that must be provided to NIST and CCCS WebCryptik User\u2019s Guide (see SP 800-140B supplemental documents) G.13 Instructions for Validation Information Formatting CMVP webpage: Caveats and SP 800-140B supplemental documents G.1 Request for Guidance from the CMVP and CAVP 2.5 Request for Guidance from CMVP G.7 Relationships Among Vendors, Laboratories, and NIST/CCCS 2.5 Request for Guidance from CMVP G.12 Post-Validation Inquiries 2.5.3 Post Validation Inquiries G.4 Design and testing of cryptographic modules 2.6.2 Cryptographic and Security Testing Laboratory G.9 FSM, Security Policy, User Guidance and Crypto Officer Guidance Documentation 2.6.2 Cryptographic and Security Testing Laboratory G.16 Requesting an Invoice Before Submitting a Report 4.6.4 Invoice for a Report Submission G.8 Revalidation Requirements 7.1 Submission Scenarios A.3 Vendor Affirmation of Cryptographic Security Methods 7.2 CMVP requirements pertaining to testing and approved algorithms G.11 Testing using Emulators and Simulators 7.3 Testing using Emulators and Simulators G.17 Remote Testing for Software Modules 7.4 Remote Testing of Software Modules G.3 Partial Validations and Not Applicable Areas of FIPS 140-2 7.5 Partial validations and non-applicable areas 1.18 PIV Reference 7.6 CMVP requirements for PIV validations 1.22 Module Count Definition 7.7 Module count definition G.5 Maintaining validation compliance of software or firmware cryptographic modules 7.9 Vendor or User Affirmation of Modules G.19 Operational Equivalency Testing for HW Modules 7.10 Operational Equivalency Testing for HW Modules "
+      },
+      {
+        "title": "FIPS 140-3: Everything you need to know - Chainguard",
+        "url": "https://www.chainguard.dev/supply-chain-security-101/fips-140-3-everything-you-need-to-know",
+        "content": "* FIPS 140-3 will replace FIPS 140-2 by 2026, bringing stricter validation, global alignment, and clearer rules for cryptographic modules. * Compliance extends beyond government, with banks, healthcare, SaaS, and procurement teams treating FIPS validation as a trust baseline. Introduced in 2019 by NIST, it replaced the older FIPS 140-2 and is enforced through the Cryptographic Module Validation Program (CMVP), run jointly by NIST and the Canadian Centre for Cyber Security. Just as a restaurant must pass a safety inspection before serving food, cryptographic software and hardware can\u2019t be used in sensitive government systems without being FIPS-validated. If you work with U.S. government agencies or a contractor handling sensitive data, you must use validated cryptographic modules, which soon will mean FIPS 140-3. ## The FIPS 140-3 validation process and governance. * **FIPS 140-3 Compliant Images**: Chainguard provides hundreds of container images with validated cryptographic modules already baked in. Using pre-validated base images and reproducible builds helps cloud-native teams ship faster while staying within FIPS rules."
+      },
+      {
+        "title": "FIPS 140-3 for CMMC Compliance: Advanced Cryptography for CUI ...",
+        "url": "https://www.kiteworks.com/cmmc-compliance/fips-140-3-cryptography/",
+        "content": "With FIPS 140-2 validated modules only accepted through September 21, 2026, organizations must plan their transition to FIPS 140-3 validated"
+      },
+      {
+        "title": "FIPS 140-3 \u2013 The New Sheriff in HSM Town - Utimaco",
+        "url": "https://utimaco.com/news/blog-posts/fips-140-3-new-sheriff-hsm-town",
+        "content": "However, change is on the horizon \u2013 FIPS 140-3 is scheduled to completely replace its predecessor on September 21, 2026. In fact, as of April 1,"
+      }
+    ]
+  },
+  {
+    "query": "NIST SP 800-63B cryptographic key export prohibition conflict replacement",
+    "answer": "NIST SP 800-63B prohibits cryptographic key export, emphasizes phishing-resistant authenticators, and mandates secure account recovery processes. Revision 4 focuses on FIDO2 and WebAuthn for stronger security. Passkeys offer secure, passwordless authentication across devices.",
+    "results": [
+      {
+        "title": "[PDF] NIST.SP.800-63B-4.pdf",
+        "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63B-4.pdf",
+        "content": "\u2022 Changes the name of memorized secrets to passwords \u2022 Section 2: Describes the use of fraud indicators rather than pre-authentication checks \u2022 Section 2.3.2: Reduces required FIPS 140 validation level for authenticators at AAL3 \u2022 Section 2.3.2: Requires a non-exportable cryptographic authenticator rather than a hardware-based authenticator at AAL3 \u2022 Section 3.1.1.2: Increases the minimum length of passwords used as a single authentication factor \u2022 Section 3.1.3: Disallows the comparison of secrets from primary and secondary channel for out-of-band authentication \u2022 Section 3.1.3.1: Removes the prohibition on the use of VoIP phone numbers for out-of-band authentication \u2022 Section 3.1.3.4: Recognizes multi-factor out-of-band authenticators that require an activation factor \u2022 Section 3.1.4 and Sec. 3.1.5: Removes \u201cdevices\u201d from the authenticator name to recognize OTP applications \u2022 Section 3.1.6 and Sec. 3.1.7: Removes \u201csoftware\u201d and \u201cdevice\u201d distinction from the authenticator name and refers to them as \u201cauthenticator characteristics\u201d \u2022 Section 3.1.7.3: Adds requirements for authentication using subscriber-controlled wallets \u2022 Section 3.1.7.4 and Appendix B: Adds requirements for syncable authenticators \u2022 Section 3.2.3: Updates biometric performance requirements and metrics \u2022 Section 3.2.3.2: Requires PAD for facial recognition and prohibits biometric comparison based on voice \u2022 Section 3.2.5: Adds a definition and updates requirements for phishing-resistant authenticators 117 NIST SP 800-63B-4 July 2025 Digital Identity Guidelines Authentication and Authenticator Management \u2022 Section 3.2.10: Establishes separate requirements for locally verified memorized secrets known as activation secrets \u2022 Section 3.2.11: Adds requirements for authenticators that are connected via wireless technologies, such as NFC and Bluetooth \u2022 Section 3.2.11.3: Recognizes hybrid connections as a class of connected authenticators \u2022 Section 3.2.12: Centralizes the requirements for random values us"
+      },
+      {
+        "title": "[PDF] NIST SP 800-63B-4 Second Public Draft, Digital Identity Guidelines",
+        "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63B-4.2pd.pdf",
+        "content": "List of Symbols, Abbreviations, and Acronyms 3045 AAL 3046 Authentication Assurance Level 3047 CSP 3048 Credential Service Provider 3049 CSRF 3050 Cross-Site Request Forgery 3051 XSS 3052 Cross-Site Scripting 3053 DNS 3054 Domain Name System 3055 FEDRAMP 3056 Federal Risk and Authorization Management Program 3057 FMR 3058 False Match Rate 3059 FNMR 3060 False Non-Match Rate 3061 IAL 3062 Identity Assurance Level 3063 IdP 3064 Identity Provider 3065 KBA 3066 Knowledge-Based Authentication 3067 MAC 3068 Message Authentication Code 3069 NARA 3070 National Archives and Records Administration 3071 95 NIST SP 800-63B-4 2pd August 2024 Digital Identity Guidelines Authentication and Authenticator Management OTP 3072 One-Time Password 3073 PAD 3074 Presentation Attack Detection 3075 PIA 3076 Privacy Impact Assessment 3077 PII 3078 Personally Identifiable Information 3079 PIN 3080 Personal Identification Number 3081 PKI 3082 Public Key Infrastructure 3083 PSTN 3084 Public Switched Telephone Network 3085 RP 3086 Relying Party 3087 SAOP 3088 Senior Agency Official for Privacy 3089 SSL 3090 Secure Sockets Layer 3091 SMS 3092 Short Message Service 3093 SORN 3094 System of Records Notice 3095 TEE 3096 Trusted Execution Environment 3097 TLS 3098 Transport Layer Security 3099 96 NIST SP 800-63B-4 2pd August 2024 Digital Identity Guidelines Authentication and Authenticator Management TPM 3100 Trusted Platform Module 3101 VOIP 3102 Voice-Over-IP 3103 XSS 3104 Cross-Site Scripting 3105 97 NIST SP 800-63B-4 2pd August 2024 Digital Identity Guidelines Authentication and Authenticator Management Appendix D."
+      },
+      {
+        "title": "DRAFT NIST Special Publication 800-63B",
+        "url": "https://openid-foundation-japan.github.io/800-63-3/sp800-63b.html",
+        "content": "The verifier SHALL use approved encryption and SHALL utilize an authenticated protected channel when requesting memorized secrets in order to provide resistance to eavesdropping and man-in-the-middle attacks. When look-up secrets have less than 64 bits of entropy, the verifier SHALL implement a throttling mechanism that effectively limits the number of failed authentication attempts an attacker can make on the subscriber\u2019s account as described in Section 5.2.2. The verifier SHALL use approved encryption and SHALL utilize an authenticated protected channel when requesting look-up secrets in order to provide resistance to eavesdropping and man-in-the-middle attacks. When a multi-factor OTP authenticator is being associated with a subscriber account, the verifier (or associated CSP) SHALL obtain secrets required to duplicate the authenticator output from the authenticator source (typically its manufacturer) using approved cryptography. Users access the authenticator output (i.e., one-time password) generated by the single-factor OTP device. Users access the authenticator output (i.e., one-time password) generated by the multi-factor OTP device that requires activation through a second authentication factor."
+      },
+      {
+        "title": "Mastering Authentication \u2013 Key Changes in NIST SP 800-63B ...",
+        "url": "https://uberether.com/mastering-authentication-nist-sp-800-63b-revision-4/",
+        "content": "# Mastering Authentication \u2013 Key Changes in NIST SP 800-63B Revision 4. Authentication stands at the core of securing digital identities, and NIST SP 800-63B Revision 4 introduces significant enhancements designed to address evolving cybersecurity threats. Revision 4 places significant emphasis on phishing-resistant authenticators such as FIDO2 and WebAuthn. These technologies substantially reduce vulnerabilities associated with traditional authentication methods like passwords and one-time passcodes (OTPs), greatly enhancing security. Syncable authenticators, often referred to as passkeys, offer users secure authentication across multiple devices. Passkeys leverage cryptographic key pairs stored securely on user devices, enabling passwordless and frictionless authentication. The guidelines significantly update account recovery processes, mandating secure mechanisms that maintain rigorous security standards without compromising user convenience. The authentication advancements in NIST SP 800-63B Revision 4 represent a significant stride toward stronger, more secure, and user-friendly authentication processes. NIST 800-63B Rev 4 makes it clear: phishing-resistant authentication isn\u2019t optional\u2014it\u2019s the baseline. UberEther helps federal agencies and security-conscious organizations implement FIDO2, passkeys, and syncable authenticators the right way."
+      },
+      {
+        "title": "[PDF] NIST SP 800-63B-4 ipd (initial public draft), Digital Identity Guidelines",
+        "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-63B-4.ipd.pdf",
+        "content": "Richer This publication is available free of charge from: https://doi.org/10.6028/NIST.SP.800-63b-4.ipd 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 NIST Special Publication NIST SP 800-63B-4 ipd Digital Identity Guidelines Authentication and Lifecycle Management Initial Public Draft David Temoshok Naomi Lefkovitz Applied Cybersecurity Division Information Technology Laboratory Yee-Yin Choong Information Access Division Information Technology Laboratory Andrew Regenscheid Computer Security Division Information Technology Laboratory James L."
+      }
+    ]
+  },
+  {
+    "query": "Zscalar FIPS 140-3 authentication stack cryptographic level comparison",
+    "answer": "Zscaler's authentication stack meets FIPS 140-3 Level 3 standards, ensuring robust cryptographic security and compliance with federal encryption requirements. FIPS 140-3 Level 3 includes identity-based authentication and key interface separation. The Cryptographic Module Validation Program mandates rigorous testing and validation.",
+    "results": [
+      {
+        "title": "FIPS 140-3 Compliance with Zscaler: Meeting the Highest ...",
+        "url": "https://hoop.dev/blog/fips-140-3-compliance-with-zscaler-meeting-the-highest-encryption-standards",
+        "content": "FIPS 140-3 sets the federal standard for cryptographic modules. It defines how encryption should be implemented, tested, and validated to"
+      },
+      {
+        "title": "Get ahead of the game with FIPS 140-3 certification",
+        "url": "https://trustedcomputinggroup.org/get-ahead-of-the-game-with-fips-140-3-certification/",
+        "content": "'Level 3' focuses on the use of identity-based authentication systems and a degree of separation for cryptographic key interfaces to ensure"
+      },
+      {
+        "title": "A Guide to FIPS 140-3 | Keyfactor",
+        "url": "https://www.keyfactor.com/blog/a-guide-to-fips-140-3/",
+        "content": "### What is FIPS 140-3? The FIPS series of standards is a product of the Cryptographic Module Validation Program (CMVP), a coordinated effort between NIST and the Canadian Centre for Cyber Security. The FIPS 140 series mandates a universal validation scheme for all cryptographic modules involved in technology programs used by the government and highly regulated industries. Mainly, FIPS 140-3 specifies security requirements at every stage of cryptographic module creation \u2014 design, implementation, and deployment phases \u2014 not just post-completion. ### Levels of FIPS 140-3. FIPS 140-3 considers four levels of security. To ensure the technology meets the necessary standard of security, the FIPS 140-3 certification assesses four levels of security. If a module wishes to support any of the PQC standards in FIPS-approved mode, it has to be FIPS 140-3 certified. It is very important for providers of cryptography modules that wish to go on to certify with the new PQC algorithms and become quantum-ready to develop a strategy for migration to FIPS 140-3 now."
+      },
+      {
+        "title": "FIPS 140-2 and 140-3 Validated Service Mesh - Buoyant.io",
+        "url": "https://www.buoyant.io/fips-kubernetes-service-mesh",
+        "content": "We've helped companies like Zscaler build Kubernetes applications using FIPS-validated cryptographic libraries. ... security requirements for cryptographic"
+      },
+      {
+        "title": "FIPS 140-2 vs 140-3: What's the difference? - Chainguard",
+        "url": "https://www.chainguard.dev/supply-chain-security-101/fips-140-2-vs-140-3-whats-the-difference",
+        "content": "* FIPS 140-3 introduces runtime self-tests, stricter documentation, and lifecycle validation to reflect modern, cloud-native systems. * Chainguard accelerates 140-3 readiness with minimal, kernel-independent FIPS-compliant images built for reproducible, cloud-native use. The Cryptographic Module Validation Program (CMVP) stopped accepting new FIPS 140-2 validation submissions in 2022, and on September 21, 2026, every existing FIPS 140-2 certificate will be archived. If you\u2019ve ever looked at FIPS 140-2 validation, you know the drill: approved cryptographic algorithms, required self-tests, and a certificate that says your module is good to go. FIPS 140-2 only requires modules to run self-tests at startup. For example, their support includes upgrading cryptographic modules like OpenSSL to meet the new requirements and submitting their modules for validation with emerging standards like FIPS 186-5. Chainguard images are minimal, kernel-independent, and reproducible, which means they come with signed provenance and built-in validated cryptographic modules. Chainguard provides FIPS-compliant images with kernel-independent cryptographic support, reproducible builds, and a modern validation path for 140-3."
+      }
+    ]
+  }
+]
