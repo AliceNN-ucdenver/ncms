@@ -1,0 +1,9 @@
+{
+  "agent": "prd",
+  "topic": "Authentication patterns for identity services",
+  "timestamp": "20260401_092044",
+  "standard_file": "prd_authentication_patterns_for_identity_ser_20260401_092044_standard.md",
+  "semiformal_file": "prd_authentication_patterns_for_identity_ser_20260401_092044_semiformal.md",
+  "standard_chars": 12489,
+  "semiformal_chars": 11947
+}

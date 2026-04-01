@@ -54,27 +54,53 @@ async def call_llm(
     model: str = DEFAULT_LLM_MODEL,
     api_base: str = DEFAULT_LLM_API_BASE,
     max_tokens: int = 32768,
+    enable_thinking: bool = False,
 ) -> str:
-    """Call the LLM via OpenAI-compatible endpoint (direct httpx, no SSL)."""
+    """Call the LLM via OpenAI-compatible endpoint (direct httpx, no SSL).
+
+    Args:
+        enable_thinking: If True, enables CoT reasoning via chat_template_kwargs.
+            The reasoning parser separates <think> tokens into reasoning_content.
+    """
     # Strip litellm prefixes
     clean_model = model.removeprefix("openai/")
     url = f"{api_base}/chat/completions"
 
+    body: dict = {
+        "model": clean_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
+    }
+
     async with httpx.AsyncClient(timeout=600.0) as client:
-        resp = await client.post(
-            url,
-            json={
-                "model": clean_model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "max_tokens": max_tokens,
-            },
-        )
+        resp = await client.post(url, json=body)
         resp.raise_for_status()
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        content = msg.get("content") or ""
+        reasoning = msg.get("reasoning_content") or ""
+
+        # Sanity check: verify thinking mode behaved as expected
+        if enable_thinking and reasoning:
+            logger.info(
+                "CoT reasoning: %d chars (content: %d chars)",
+                len(reasoning), len(content),
+            )
+        elif enable_thinking and not reasoning:
+            logger.warning(
+                "CoT enabled but reasoning_content is empty — "
+                "parser may not be working (content: %d chars)", len(content),
+            )
+            # Fallback: strip leaked <think> tags from content
+            import re as _re
+            content = _re.sub(
+                r"^.*?</think>\s*", "", content, count=1, flags=_re.DOTALL,
+            )
+        return content
 
 
 async def fetch_document(hub_url: str, doc_id: str) -> dict:
@@ -96,7 +122,7 @@ async def search_memories(hub_url: str, query: str, domain: str | None = None, l
         return resp.json().get("results", resp.json() if isinstance(resp.json(), list) else [])
 
 
-async def run_researcher_experiment(topic: str, hub_url: str) -> dict:
+async def run_researcher_experiment(topic: str, hub_url: str, enable_thinking: bool = False) -> dict:
     """Run researcher synthesis with both prompt formats."""
     # Load prompts directly (avoid module import issues with hyphenated dirs)
     prompt_dir = Path(__file__).parent / "prompts"
@@ -153,33 +179,37 @@ async def run_researcher_experiment(topic: str, hub_url: str) -> dict:
         search_results = "\n\n".join(results)
 
     # Step 2: Generate with standard prompt
-    logger.info("Generating with STANDARD prompt...")
+    thinking_label = "thinking-ON" if enable_thinking else "thinking-OFF"
+    logger.info("Generating with STANDARD prompt (%s)...", thinking_label)
     standard_prompt = SYNTHESIZE_PROMPT.format(topic=topic, search_results=search_results)
     standard_output = await call_llm(
         standard_prompt,
         system="You are a market research analyst. Be specific and cite sources.",
+        enable_thinking=enable_thinking,
     )
 
     # Step 3: Generate with semi-formal prompt
-    logger.info("Generating with SEMI-FORMAL prompt...")
+    logger.info("Generating with SEMI-FORMAL prompt (%s)...", thinking_label)
     semiformal_prompt = SYNTHESIZE_SEMIFORMAL_PROMPT.format(
         topic=topic, search_results=search_results,
     )
     semiformal_output = await call_llm(
         semiformal_prompt,
         system="You are a market research analyst. Follow the certificate structure exactly.",
+        enable_thinking=enable_thinking,
     )
 
     return {
         "agent": "researcher",
         "topic": topic,
+        "thinking": enable_thinking,
         "standard": standard_output,
         "semiformal": semiformal_output,
         "search_results_chars": len(search_results),
     }
 
 
-async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None = None) -> dict:
+async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None = None, enable_thinking: bool = False) -> dict:
     """Run PRD synthesis with both prompt formats."""
     prompt_dir = Path(__file__).parent / "prompts"
     ns = {}
@@ -224,7 +254,8 @@ async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None
     ) or "(No security input available)"
 
     # Standard
-    logger.info("Generating PRD with STANDARD prompt...")
+    thinking_label = "thinking-ON" if enable_thinking else "thinking-OFF"
+    logger.info("Generating PRD with STANDARD prompt (%s)...", thinking_label)
     standard_prompt = SYNTHESIZE_PRD_PROMPT.format(
         topic=topic, source_content=source_content[:8000],
         architect_input=architect_input, security_input=security_input,
@@ -232,10 +263,11 @@ async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None
     standard_output = await call_llm(
         standard_prompt,
         system="You are a senior product owner writing a PRD.",
+        enable_thinking=enable_thinking,
     )
 
     # Semi-formal
-    logger.info("Generating PRD with SEMI-FORMAL prompt...")
+    logger.info("Generating PRD with SEMI-FORMAL prompt (%s)...", thinking_label)
     semiformal_prompt = SYNTHESIZE_PRD_SEMIFORMAL_PROMPT.format(
         topic=topic, source_content=source_content[:8000],
         architect_input=architect_input, security_input=security_input,
@@ -243,10 +275,12 @@ async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None
     semiformal_output = await call_llm(
         semiformal_prompt,
         system="You are a senior product owner. Follow the certificate structure exactly.",
+        enable_thinking=enable_thinking,
     )
 
     return {
         "agent": "prd",
+        "thinking": enable_thinking,
         "topic": topic,
         "standard": standard_output,
         "semiformal": semiformal_output,
@@ -260,6 +294,7 @@ async def main():
     parser.add_argument("--agent", choices=["researcher", "prd", "archeologist"], required=True)
     parser.add_argument("--hub-url", default=DEFAULT_HUB_URL)
     parser.add_argument("--source-doc-id", default=None, help="Source document ID (for PRD)")
+    parser.add_argument("--thinking", action="store_true", help="Enable CoT thinking mode")
     parser.add_argument("--output-dir", default=str(RESULTS_DIR))
     args = parser.parse_args()
 
@@ -268,10 +303,12 @@ async def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    thinking_tag = "cot" if args.thinking else "nocot"
+
     if args.agent == "researcher":
-        result = await run_researcher_experiment(args.topic, args.hub_url)
+        result = await run_researcher_experiment(args.topic, args.hub_url, args.thinking)
     elif args.agent == "prd":
-        result = await run_prd_experiment(args.topic, args.hub_url, args.source_doc_id)
+        result = await run_prd_experiment(args.topic, args.hub_url, args.source_doc_id, args.thinking)
     else:
         logger.error("Archeologist experiment not yet implemented")
         return
@@ -283,7 +320,7 @@ async def main():
     # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     slug = args.topic[:40].replace(" ", "_").lower()
-    prefix = f"{result['agent']}_{slug}_{timestamp}"
+    prefix = f"{result['agent']}_{slug}_{thinking_tag}_{timestamp}"
 
     standard_path = output_dir / f"{prefix}_standard.md"
     semiformal_path = output_dir / f"{prefix}_semiformal.md"
@@ -294,6 +331,7 @@ async def main():
     meta_path.write_text(json.dumps({
         "agent": result["agent"],
         "topic": args.topic,
+        "thinking": args.thinking,
         "timestamp": timestamp,
         "standard_file": standard_path.name,
         "semiformal_file": semiformal_path.name,
@@ -304,9 +342,8 @@ async def main():
     logger.info("Results saved:")
     logger.info("  Standard:    %s (%d chars)", standard_path.name, len(result["standard"]))
     logger.info("  Semi-formal: %s (%d chars)", semiformal_path.name, len(result["semiformal"]))
+    logger.info("  Thinking:    %s", "ON" if args.thinking else "OFF")
     logger.info("  Metadata:    %s", meta_path.name)
-    logger.info("")
-    logger.info("Next: run judge.py to evaluate the pair")
 
 
 if __name__ == "__main__":
