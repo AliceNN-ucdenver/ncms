@@ -18,6 +18,8 @@ services:
       args:
         HF_TOKEN: ${HF_TOKEN:-}
     container_name: ncms-hub
+    env_file:
+      - ../../.env
     ports:
       - "9080:9080"
       - "8420:8420"
@@ -39,6 +41,8 @@ services:
       NCMS_RECONCILIATION_ENABLED: "true"
       NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
       NCMS_DREAM_CYCLE_ENABLED: "false"
+      # HuggingFace token for gated models (SPLADE v3)
+      HF_TOKEN: "${HF_TOKEN:-}"
     volumes:
       - ncms-data:/app/data
     extra_hosts:
