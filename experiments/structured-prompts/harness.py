@@ -203,7 +203,7 @@ def arxiv_search_sync(query: str, max_results: int = 5) -> list[dict]:
 
     results = []
     client = _arxiv.Client()
-    cutoff = datetime.now(timezone.utc) - timedelta(days=180)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
     for paper in client.results(search):
         if paper.published and paper.published < cutoff:
             continue
@@ -247,7 +247,7 @@ async def run_arxiv_searches(queries: list[str], cache_key: str) -> list[dict]:
 
 def format_arxiv_results(searches: list[dict]) -> str:
     """Format ArXiv results as markdown."""
-    parts = ["## Academic Papers (ArXiv — last 6 months)\n"]
+    parts = ["## Academic Papers (ArXiv — last 12 months)\n"]
     paper_num = 0
     for sr in searches:
         for p in sr.get("papers", []):
@@ -266,103 +266,142 @@ def format_arxiv_results(searches: list[dict]) -> str:
 # ── Query Planning ────────────────────────────────────────────────────────────
 
 
-PLAN_QUERIES_PROMPT = """\
-You are a research query planner. Given a topic, generate exactly {count} search \
-queries that cover different angles. Return ONLY a JSON array of strings.
-
-{guidance}
+PLAN_WEB_QUERIES_PROMPT = """\
+You are an expert research query planner. Given a topic, generate exactly 5 \
+high-quality web search queries. Each query should be specific enough to find \
+targeted results (not generic overviews) and include temporal markers (2025, 2026) \
+where relevant.
 
 Topic: {topic}
 
-Return ONLY a JSON array like: ["query 1", "query 2", ...]
+The 5 queries MUST cover these distinct angles:
+1. MARKET: Market size, growth projections, key vendors, competitive landscape
+2. STANDARDS: Specific standards (e.g., NIST, OWASP, ISO), frameworks, compliance requirements
+3. SECURITY: Threat landscape, specific attack vectors, vulnerability data, breach statistics
+4. IMPLEMENTATION: Architecture patterns, technology stacks, integration approaches, trade-offs
+5. EVIDENCE: Case studies with measurable outcomes (ROI, latency, conversion), real deployments
+
+Make each query specific with domain terminology. Include version numbers, years, \
+and specific framework names when possible.
+
+Return ONLY a JSON array of 5 strings.
 """
 
-GAP_ANALYSIS_PROMPT = """\
+PLAN_ARXIV_QUERIES_PROMPT = """\
+You are an academic research query planner. Given a topic, generate exactly 3 \
+search queries optimized for ArXiv academic papers. Use technical/formal language, \
+not marketing terms. Focus on: formal methods, protocol analysis, security proofs, \
+benchmark evaluations, and novel architectures.
+
+Topic: {topic}
+
+ArXiv search tips:
+- Use short keyword phrases (3-6 words work best)
+- Include CS subfields: "zero trust" NOT "zero-trust architecture solutions"
+- Prefer formal terms: "formal verification" over "testing"
+- Include specific protocols/standards by name
+
+Return ONLY a JSON array of 3 strings.
+"""
+
+GAP_ANALYSIS_STANDARD_PROMPT = """\
 You are a research analyst reviewing initial search results for: {topic}
 
-Here is a summary of what the first round of searches found:
+Here is what the first round of searches found:
 {search_results}
 
-Your task: identify 3 specific EVIDENCE GAPS — topics where the results above \
-are thin (only 1 source), contradictory, or completely missing. Then write a \
-concrete, specific web search query for each gap that would find NEW information \
-not already covered.
+Identify 3 specific EVIDENCE GAPS — topics where the results are thin (only 1 \
+source), contradictory, or completely missing. For each gap, write a concrete \
+web search query that would find NEW information not already covered.
 
-IMPORTANT: Each query must be a real, specific search string — NOT a placeholder. \
-Good example: "GDPR identity verification compliance requirements 2025 2026"
-Bad example: "gap-specific query 1"
+Each query must be a real, specific search string with domain terminology and \
+year markers. NOT placeholders.
 
-Return ONLY a valid JSON array with exactly 3 search query strings. Example format:
-["NIST 800-63B digital identity implementation cost ROI enterprise", \
-"biometric authentication privacy regulation GDPR CCPA 2025", \
-"zero trust architecture identity service migration case study"]
+Return ONLY a JSON array of 3 search query strings.
+"""
+
+GAP_ANALYSIS_SEMIFORMAL_PROMPT = """\
+You are a research analyst reviewing initial search results for: {topic}
+
+Here is what the first round of searches found:
+{search_results}
+
+Perform a STRUCTURED gap analysis:
+
+PREMISES: For each major finding, state how many independent sources support it.
+
+EVIDENCE GAPS: Identify exactly 3 topics where:
+- A finding has only 1 supporting source (needs independent confirmation)
+- Two sources contradict each other (needs resolution)
+- An important sub-topic has zero coverage (needs new research)
+
+For each gap, write a targeted web search query that would fill it.
+
+Each query must be a real, specific search string with domain terminology.
+
+Return ONLY a JSON array of 3 search query strings.
 """
 
 
-async def plan_queries(topic: str, count: int = 5, guidance: str = "") -> list[str]:
-    """LLM plans search queries for a topic."""
-    if not guidance:
-        guidance = (
-            f"The {count} queries must cover:\n"
-            "1. Broad topic overview and current landscape\n"
-            "2. Industry standards, frameworks, and best practices\n"
-            "3. Security, compliance, and regulatory aspects\n"
-            "4. Implementation patterns, architectures, and technology choices\n"
-            "5. Case studies, real-world examples, and lessons learned"
-        )
-
-    prompt = PLAN_QUERIES_PROMPT.format(topic=topic, count=count, guidance=guidance)
+async def _llm_to_json_array(prompt: str, count: int, fallback: list[str]) -> list[str]:
+    """Call LLM and parse JSON array, with fallback."""
     text = await call_llm(
         prompt,
         system="You output only valid JSON arrays. No markdown, no explanation.",
     )
-    # Strip markdown fences
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
     if text.endswith("```"):
         text = text[:-3].strip()
-
     try:
         queries = json.loads(text)
         if isinstance(queries, list):
             return [str(q) for q in queries[:count]]
     except json.JSONDecodeError:
-        logger.warning("Failed to parse query plan, using templates")
-
-    # Fallback
-    return [
-        f"{topic} overview current landscape 2025 2026",
-        f"{topic} industry standards frameworks best practices",
-        f"{topic} security compliance regulatory requirements",
-        f"{topic} implementation patterns architecture technology",
-        f"{topic} case studies real-world examples lessons learned",
-    ][:count]
+        logger.warning("Failed to parse LLM JSON output, using fallback")
+    return fallback[:count]
 
 
-async def identify_gaps(topic: str, search_results_text: str) -> list[str]:
-    """LLM identifies evidence gaps and generates refined search queries."""
-    prompt = GAP_ANALYSIS_PROMPT.format(topic=topic, search_results=search_results_text[:15000])
-    text = await call_llm(
-        prompt,
-        system="You output only valid JSON arrays. No markdown, no explanation.",
+async def plan_web_queries(topic: str) -> list[str]:
+    """LLM plans 5 web search queries."""
+    return await _llm_to_json_array(
+        PLAN_WEB_QUERIES_PROMPT.format(topic=topic),
+        count=5,
+        fallback=[
+            f"{topic} market size growth projections vendors 2025 2026",
+            f"{topic} NIST OWASP ISO standards compliance requirements",
+            f"{topic} security threats attack vectors breach statistics 2025",
+            f"{topic} architecture patterns technology stack implementation",
+            f"{topic} case study ROI deployment results enterprise",
+        ],
     )
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-    if text.endswith("```"):
-        text = text[:-3].strip()
 
-    try:
-        queries = json.loads(text)
-        if isinstance(queries, list):
-            return [str(q) for q in queries[:3]]
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse gap analysis, using fallback queries")
 
-    return [
-        f"{topic} regulatory compliance specific requirements",
-        f"{topic} ROI cost benefit analysis enterprise",
-        f"{topic} emerging threats vulnerabilities 2026",
-    ]
+async def plan_arxiv_queries(topic: str) -> list[str]:
+    """LLM plans 3 ArXiv search queries."""
+    return await _llm_to_json_array(
+        PLAN_ARXIV_QUERIES_PROMPT.format(topic=topic),
+        count=3,
+        fallback=[
+            f"authentication identity formal verification",
+            f"zero trust access control architecture",
+            f"multi-factor authentication security analysis",
+        ],
+    )
+
+
+async def identify_gaps(topic: str, search_results_text: str, semiformal: bool = False) -> list[str]:
+    """LLM identifies evidence gaps. Uses semiformal analysis if requested."""
+    template = GAP_ANALYSIS_SEMIFORMAL_PROMPT if semiformal else GAP_ANALYSIS_STANDARD_PROMPT
+    return await _llm_to_json_array(
+        template.format(topic=topic, search_results=search_results_text[:20000]),
+        count=3,
+        fallback=[
+            f"{topic} regulatory compliance specific requirements 2025 2026",
+            f"{topic} ROI cost benefit analysis enterprise deployment",
+            f"{topic} emerging threats vulnerabilities recent incidents",
+        ],
+    )
 
 
 # ── Experiment Runner ─────────────────────────────────────────────────────────
@@ -429,83 +468,74 @@ async def main():
     slug = topic[:40].replace(" ", "_").lower()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # ── Stage 1: Plan and run initial searches ──
-    logger.info("=== Stage 1: Initial search ===")
+    # ── Stage 1: Plan and run initial searches (shared across all variants) ──
+    logger.info("=== Stage 1: Initial web search ===")
     cache_key = f"search_{slug}"
-    queries = await plan_queries(topic, count=5)
-    logger.info("Planned queries: %s", queries)
-    stage1_results = await run_searches(queries, cache_key)
+    web_queries = await plan_web_queries(topic)
+    logger.info("Web queries: %s", web_queries)
+    stage1_results = await run_searches(web_queries, cache_key)
     stage1_text = format_search_results(stage1_results)
-    total_sources = sum(len(r.get("results", [])) for r in stage1_results)
-    logger.info("Stage 1 web: %d queries, %d results, %d chars", len(queries), total_sources, len(stage1_text))
+    total_web = sum(len(r.get("results", [])) for r in stage1_results)
+    logger.info("Stage 1 web: %d queries, %d results, %d chars", len(web_queries), total_web, len(stage1_text))
 
-    # ── ArXiv academic papers (optional) ──
+    # ── ArXiv academic papers (shared across all variants) ──
     arxiv_text = ""
-    arxiv_paper_count = 0
+    total_arxiv = 0
     if args.arxiv:
-        logger.info("=== ArXiv: Academic paper search ===")
-        arxiv_queries = await plan_queries(
-            topic, count=3,
-            guidance=(
-                "Generate 3 academic search queries for ArXiv papers.\n"
-                "Focus on: formal methods, security proofs, protocol analysis,\n"
-                "benchmark evaluations, and novel approaches.\n"
-                "Use technical/academic language, not marketing terms."
-            ),
-        )
+        logger.info("=== Stage 1: ArXiv academic papers ===")
+        arxiv_queries = await plan_arxiv_queries(topic)
         logger.info("ArXiv queries: %s", arxiv_queries)
         arxiv_results = await run_arxiv_searches(arxiv_queries, cache_key)
         arxiv_text = format_arxiv_results(arxiv_results)
-        arxiv_paper_count = sum(len(r.get("papers", [])) for r in arxiv_results)
-        logger.info("ArXiv: %d queries, %d papers, %d chars", len(arxiv_queries), arxiv_paper_count, len(arxiv_text))
+        total_arxiv = sum(len(r.get("papers", [])) for r in arxiv_results)
+        logger.info("ArXiv: %d queries, %d papers, %d chars", len(arxiv_queries), total_arxiv, len(arxiv_text))
 
-    # Combine web + academic
+    # Stage 1 combined (shared input for all one-shot variants)
     stage1_combined = stage1_text
     if arxiv_text:
         stage1_combined += "\n---\n\n" + arxiv_text
 
-    # ── Stage 2: Gap-driven refinement (optional) ──
-    refined_sources = 0
-    gap_queries: list[str] = []
+    # ── Stage 2: Consistent gap analysis per prompt type ──
+    # Standard variants get standard gap analysis → standard refined searches
+    # Semiformal variants get semiformal gap analysis → semiformal refined searches
+    # This ensures the two-stage pipeline is internally consistent
+    stage2_data: dict[str, str] = {}  # prompt_type -> combined search text
+    gap_queries_log: dict[str, list[str]] = {}
+    refined_web = 0
+
     if args.two_stage:
-        logger.info("=== Stage 2: Evidence gap refinement ===")
-        gap_queries = await identify_gaps(topic, stage1_combined)
-        logger.info("Gap queries: %s", gap_queries)
+        for prompt_type in (["standard", "semiformal"] if args.all_modes or args.prompt == "all" else [args.prompt]):
+            is_sf = prompt_type == "semiformal"
+            logger.info("=== Stage 2 (%s): Evidence gap refinement ===", prompt_type)
 
-        # Clear old bad cache if it exists
-        old_cache = CACHE_DIR / f"search_{slug}_refined.json"
-        if old_cache.exists():
-            old_data = json.loads(old_cache.read_text())
-            if any("gap" in r.get("query", "").lower() and "specific" in r.get("query", "").lower() for r in old_data):
-                logger.info("Clearing stale gap cache (had placeholder queries)")
-                old_cache.unlink()
+            gaps = await identify_gaps(topic, stage1_combined, semiformal=is_sf)
+            gap_queries_log[prompt_type] = gaps
+            logger.info("Gap queries (%s): %s", prompt_type, gaps)
 
-        cache_key_s2 = f"search_{slug}_refined_v2"
-        stage2_results = await run_searches(gap_queries, cache_key_s2)
-        stage2_text = format_search_results(stage2_results)
-        refined_sources = sum(len(r.get("results", [])) for r in stage2_results)
-        logger.info("Stage 2: %d queries, %d results, %d chars", len(gap_queries), refined_sources, len(stage2_text))
+            # Web refinement
+            s2_cache = f"search_{slug}_refined_{prompt_type}_v3"
+            s2_results = await run_searches(gaps, s2_cache)
+            s2_text = format_search_results(s2_results)
+            s2_count = sum(len(r.get("results", [])) for r in s2_results)
+            refined_web += s2_count
+            logger.info("Stage 2 web (%s): %d results, %d chars", prompt_type, s2_count, len(s2_text))
 
-        # ArXiv refinement too
-        arxiv_refined_text = ""
-        if args.arxiv:
-            arxiv_refined = await run_arxiv_searches(
-                [f"{q} formal analysis" for q in gap_queries[:2]], f"{cache_key}_refined",
+            # ArXiv refinement
+            arxiv_s2_text = ""
+            if args.arxiv:
+                arxiv_s2 = await run_arxiv_searches(gaps[:2], f"{cache_key}_refined_{prompt_type}")
+                arxiv_s2_text = format_arxiv_results(arxiv_s2)
+                s2_arxiv = sum(len(r.get("papers", [])) for r in arxiv_s2)
+                total_arxiv += s2_arxiv
+                logger.info("ArXiv refined (%s): %d papers", prompt_type, s2_arxiv)
+
+            stage2_data[prompt_type] = (
+                stage1_combined
+                + f"\n---\n\n### Refined Search Results ({prompt_type} gap analysis)\n\n"
+                + s2_text
+                + ("\n" + arxiv_s2_text if arxiv_s2_text else "")
             )
-            arxiv_refined_text = format_arxiv_results(arxiv_refined)
-            arxiv_paper_count += sum(len(r.get("papers", [])) for r in arxiv_refined)
-
-        all_search_text = (
-            stage1_combined
-            + "\n---\n\n### Refined Search Results (Gap-Driven)\n\n" + stage2_text
-            + ("\n" + arxiv_refined_text if arxiv_refined_text else "")
-        )
-        logger.info(
-            "Combined: %d chars from %d web + %d academic sources",
-            len(all_search_text), total_sources + refined_sources, arxiv_paper_count,
-        )
-    else:
-        all_search_text = stage1_combined
+            logger.info("Combined (%s): %d chars", prompt_type, len(stage2_data[prompt_type]))
 
     # ── Determine variants to run ──
     if args.all_modes:
@@ -519,13 +549,15 @@ async def main():
     results = []
     for prompt_type in prompts:
         for thinking in thinking_modes:
-            # One-shot (stage 1 + arxiv if enabled)
+            # One-shot (stage 1 input — shared across all variants)
             r = await run_experiment(topic, prompt_type, thinking, stage1_combined, two_stage=False)
             results.append(r)
 
-            # Two-stage (if enabled)
-            if args.two_stage:
-                r2 = await run_experiment(topic, prompt_type, thinking, all_search_text, two_stage=True)
+            # Two-stage (prompt-type-consistent gap analysis)
+            if args.two_stage and prompt_type in stage2_data:
+                r2 = await run_experiment(
+                    topic, prompt_type, thinking, stage2_data[prompt_type], two_stage=True,
+                )
                 results.append(r2)
 
     # ── Save results ──
@@ -545,11 +577,11 @@ async def main():
         "timestamp": timestamp,
         "two_stage": args.two_stage,
         "arxiv": args.arxiv,
-        "stage1_queries": queries,
-        "stage1_web_sources": total_sources,
-        "stage1_arxiv_papers": arxiv_paper_count,
-        "stage2_queries": gap_queries if args.two_stage else [],
-        "stage2_sources": refined_sources if args.two_stage else 0,
+        "stage1_web_queries": web_queries,
+        "stage1_web_sources": total_web,
+        "stage1_arxiv_papers": total_arxiv,
+        "stage2_gap_queries": gap_queries_log if args.two_stage else {},
+        "stage2_refined_web": refined_web if args.two_stage else 0,
         "variants": [
             {
                 "label": r["label"],
@@ -571,11 +603,11 @@ async def main():
     print("\n" + "=" * 60)
     print(f"EXPERIMENT RESULTS: {topic}")
     print(f"Stage: {'Two-stage (gap refinement)' if args.two_stage else 'One-shot'}")
-    src_summary = f"Web: {total_sources}"
-    if arxiv_paper_count:
-        src_summary += f" | ArXiv: {arxiv_paper_count}"
+    src_summary = f"Web: {total_web}"
+    if total_arxiv:
+        src_summary += f" | ArXiv: {total_arxiv}"
     if args.two_stage:
-        src_summary += f" | Refined: {refined_sources}"
+        src_summary += f" | Refined: {refined_web}"
     print(f"Sources: {src_summary}")
     print("=" * 60)
     for r in results:
