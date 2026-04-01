@@ -77,48 +77,50 @@ function projectCardHTML(project) {
   const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
   const createdAt = formatTime(project.created_at || '');
   const isExpanded = project._expanded === true;
+  const docCount = (project.documents || []).length;
+  const sourceType = project.source_type || 'research';
 
-  // Phase indicators
-  const phases = project.phases || [];
-  let phaseHTML = '';
-  for (const phase of phases) {
-    const pName = escapeHtml(phase.name || '');
-    const pStatus = phase.status || 'waiting';
-    let icon = '';
-    let cls = 'phase-indicator';
-    if (pStatus === 'completed') { icon = ' &#x2713;'; cls += ' completed'; }
-    else if (pStatus === 'active' || pStatus === 'in_progress') { icon = ' &#x25B6;'; cls += ' active'; }
-    else if (pStatus === 'failed') { icon = ' &#x2717;'; cls += ' failed'; }
-    else { cls += ' waiting'; }
-
-    // Show percentage if available
-    const pct = phase.progress != null ? Math.round(phase.progress) + '%' : '';
-    phaseHTML += `<span class="${cls}">${pName}${pct ? ' ' + pct : ''}${icon}</span>`;
+  // Determine the currently active agent from pipeline progress
+  const progress = state.pipelineProgress?.[project.project_id] || {};
+  let activeAgent = '';
+  for (const [, phaseData] of Object.entries(progress)) {
+    for (const [, nodeData] of Object.entries(phaseData)) {
+      if (nodeData.status === 'started' || nodeData.status === 'active') {
+        activeAgent = nodeData.agent || '';
+      }
+    }
   }
 
-  // Quality score
-  const quality = project.quality_score != null
-    ? `<span class="project-quality">Quality: ${Math.round(project.quality_score)}%</span>`
-    : '';
+  // Chevron
+  const chevron = isExpanded ? '&#x25B2;' : '&#x25BC;';
 
-  // Total time
-  const totalTime = project.total_time_ms != null
-    ? `<span class="project-time">${formatDurationMs(project.total_time_ms)}</span>`
-    : '';
+  // Compact summary chips
+  const chips = [];
+  if (sourceType === 'archaeology') {
+    chips.push(`<span class="project-chip repo">Repo</span>`);
+  }
+  if (activeAgent) {
+    chips.push(`<span class="project-chip agent">${escapeHtml(activeAgent)}</span>`);
+  }
+  if (docCount > 0) {
+    chips.push(`<span class="project-chip docs">${docCount} doc${docCount !== 1 ? 's' : ''}</span>`);
+  }
+  const chipHTML = chips.length > 0 ? `<span class="project-chips">${chips.join('')}</span>` : '';
 
   let html = `<div class="project-card${isExpanded ? ' expanded' : ''}" data-project-id="${id}">
     <div class="project-card-header" onclick="toggleProjectExpand('${id}')">
       <div class="project-card-title-row">
         <span class="project-topic">${topic}</span>
-        ${project.source_type === 'archaeology' ? `<span class="project-repo-badge" title="${escapeHtml(project.repository_url || '')}">Repo</span>` : ''}
-        <span class="project-status-badge ${status}">${statusLabel}</span>
+        <span class="project-card-right">
+          ${chipHTML}
+          <span class="project-status-badge ${status}">${statusLabel}</span>
+          <span class="project-chevron">${chevron}</span>
+        </span>
       </div>
       <div class="project-card-meta">
         <span class="project-id">${id}</span>
         <span class="project-created">${createdAt}</span>
-        ${quality}${totalTime}
       </div>
-      <div class="project-phases">${phaseHTML}</div>
     </div>`;
 
   if (isExpanded) {
