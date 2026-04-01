@@ -230,7 +230,7 @@ network_policies:
         rules:
           - allow: { method: GET, path: "/**" }
     binaries:
-      - { path: "*" }
+      - { path: "-" }
 
   # ── NVIDIA packages (NAT / NeMo Agent Toolkit) ────────────────
   nvidia_packages:
