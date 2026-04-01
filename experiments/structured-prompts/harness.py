@@ -190,12 +190,11 @@ def format_search_results(searches: list[dict]) -> str:
 # ── ArXiv Search (with caching) ──────────────────────────────────────────────
 
 
-async def arxiv_search(query: str, max_results: int = 5) -> list[dict]:
-    """Search ArXiv for recent papers. Returns list of {title, url, summary, published}."""
+def arxiv_search_sync(query: str, max_results: int = 5) -> list[dict]:
+    """Search ArXiv for recent papers (synchronous — run via to_thread)."""
     import arxiv as _arxiv
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    # Search for papers from last 6 months
     search = _arxiv.Search(
         query=query,
         max_results=max_results * 2,  # Fetch extra to filter by date
@@ -204,9 +203,9 @@ async def arxiv_search(query: str, max_results: int = 5) -> list[dict]:
 
     results = []
     client = _arxiv.Client()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=180)
     for paper in client.results(search):
-        # Filter to last 6 months
-        if paper.published and paper.published < datetime.now(paper.published.tzinfo) - timedelta(days=180):
+        if paper.published and paper.published < cutoff:
             continue
         results.append({
             "title": paper.title,
@@ -215,6 +214,8 @@ async def arxiv_search(query: str, max_results: int = 5) -> list[dict]:
             "published": paper.published.isoformat() if paper.published else "",
             "authors": ", ".join(a.name for a in paper.authors[:3]),
         })
+        if len(results) >= max_results:
+            break
     return results
 
 
@@ -232,7 +233,7 @@ async def run_arxiv_searches(queries: list[str], cache_key: str) -> list[dict]:
     for i, q in enumerate(queries):
         logger.info("  ArXiv %d/%d: %s", i + 1, len(queries), q[:80])
         try:
-            papers = await asyncio.to_thread(arxiv_search, q)
+            papers = await asyncio.to_thread(arxiv_search_sync, q)
             all_results.append({"query": q, "papers": papers})
             logger.info("    Found %d recent papers", len(papers))
         except Exception as e:

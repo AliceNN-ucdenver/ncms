@@ -1,0 +1,95 @@
+{
+  "topic": "Authentication patterns for identity services",
+  "timestamp": "20260401_105228",
+  "two_stage": true,
+  "arxiv": true,
+  "stage1_queries": [
+    "authentication patterns for identity services overview",
+    "industry standards and best practices for identity authentication",
+    "security compliance and regulatory requirements for identity services",
+    "implementation architectures and technology choices for authentication patterns",
+    "case studies of identity service authentication implementations and lessons learned"
+  ],
+  "stage1_web_sources": 25,
+  "stage1_arxiv_papers": 4,
+  "stage2_queries": [
+    "modern identity verification patterns beyond MFA compliance frameworks GDPR 2025",
+    "decentralized authentication architecture mitigation for identity data breaches",
+    "zero trust identity governance implementation challenges private sector case studies"
+  ],
+  "stage2_sources": 15,
+  "variants": [
+    {
+      "label": "standard/nocot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_nocot_1stage_20260401_105228.md",
+      "prompt_type": "standard",
+      "thinking": false,
+      "two_stage": false,
+      "output_chars": 14622,
+      "input_chars": 23773
+    },
+    {
+      "label": "standard/nocot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_nocot_2stage_20260401_105228.md",
+      "prompt_type": "standard",
+      "thinking": false,
+      "two_stage": true,
+      "output_chars": 12904,
+      "input_chars": 37483
+    },
+    {
+      "label": "standard/cot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_cot_1stage_20260401_105228.md",
+      "prompt_type": "standard",
+      "thinking": true,
+      "two_stage": false,
+      "output_chars": 16503,
+      "input_chars": 23773
+    },
+    {
+      "label": "standard/cot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_standard_cot_2stage_20260401_105228.md",
+      "prompt_type": "standard",
+      "thinking": true,
+      "two_stage": true,
+      "output_chars": 15645,
+      "input_chars": 37483
+    },
+    {
+      "label": "semiformal/nocot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_nocot_1stage_20260401_105228.md",
+      "prompt_type": "semiformal",
+      "thinking": false,
+      "two_stage": false,
+      "output_chars": 8554,
+      "input_chars": 23773
+    },
+    {
+      "label": "semiformal/nocot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_nocot_2stage_20260401_105228.md",
+      "prompt_type": "semiformal",
+      "thinking": false,
+      "two_stage": true,
+      "output_chars": 7483,
+      "input_chars": 37483
+    },
+    {
+      "label": "semiformal/cot",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_cot_1stage_20260401_105228.md",
+      "prompt_type": "semiformal",
+      "thinking": true,
+      "two_stage": false,
+      "output_chars": 18589,
+      "input_chars": 23773
+    },
+    {
+      "label": "semiformal/cot/two-stage",
+      "filename": "researcher_authentication_patterns_for_identity_ser_semiformal_cot_2stage_20260401_105228.md",
+      "prompt_type": "semiformal",
+      "thinking": true,
+      "two_stage": true,
+      "output_chars": 15161,
+      "input_chars": 37483
+    }
+  ]
+}

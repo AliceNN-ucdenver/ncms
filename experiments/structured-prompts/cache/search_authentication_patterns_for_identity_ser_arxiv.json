@@ -1,0 +1,22 @@
+[
+  {
+    "query": "formal methods for authentication protocol verification in identity service architectures",
+    "papers": []
+  },
+  {
+    "query": "cryptographic security proofs of multi-factor authentication schemes in federated identity systems",
+    "papers": []
+  },
+  {
+    "query": "benchmark evaluations of zero-knowledge proof protocols for scalable identity authentication",
+    "papers": [
+      {
+        "title": "DIAP: A Decentralized Agent Identity Protocol with Zero-Knowledge Proofs and a Hybrid P2P Stack",
+        "url": "http://arxiv.org/abs/2511.11619v1",
+        "summary": "The absence of a fully decentralized, verifiable, and privacy-preserving communication protocol for autonomous agents remains a core challenge in decentralized computing. Existing systems often rely on centralized intermediaries, which reintroduce trust bottlenecks, or lack decentralized identity-resolution mechanisms, limiting persistence and cross-network interoperability.\n  We propose the Decentralized Interstellar Agent Protocol (DIAP), a novel framework for agent identity and communication that enables persistent, verifiable, and trustless interoperability in fully decentralized environments. DIAP binds an agent's identity to an immutable IPFS or IPNS content identifier and uses zero-knowledge proofs (ZKP) to dynamically and statelessly prove ownership, removing the need for record updates.\n  We present a Rust SDK that integrates Noir (for zero-knowledge proofs), DID-Key, IPFS, and a hybrid peer-to-peer stack combining Libp2p GossipSub for discovery and Iroh for high-performance, QUIC based data exchange. DIAP introduces a zero-dependency ZKP deployment model through a universal proof manager and compile-time build script that embeds a precompiled Noir circuit, eliminating the need for external ZKP toolchains. This enables instant, verifiable, and privacy-preserving identity proofs.\n  This work establishes a practical, high-performance foundation for next-generation autonomous agent ecosystems and agent-to-agent (A to A) economies.",
+        "published": "2025-11-06T06:00:18+00:00",
+        "authors": "Yuanjie Liu, Wenpeng Xing, Ye Zhou"
+      }
+    ]
+  }
+]
