@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """Structured prompt experiment harness.
 
-Runs the same topic through both standard and semi-formal prompt formats
-using the live NCMS hub and Nemotron Nano on DGX Spark. Produces paired
-documents for blind evaluation by the judge.
+Runs the same topic through multiple prompt configurations using real Tavily
+searches and Nemotron Nano on DGX Spark. Cached search results ensure all
+experiment variants get identical raw input.
+
+Modes:
+  - one-shot: Plan 5 queries → search → synthesize (current pipeline)
+  - two-stage: Plan 5 queries → search → analyze gaps → plan 3 refined
+    queries → search again → synthesize from ALL results
 
 Usage:
+    # One-shot, all 4 variants (standard/semiformal x thinking on/off)
     uv run python experiments/structured-prompts/harness.py \
-        --topic "Authentication patterns for identity services" \
-        --agent researcher \
-        --hub-url http://localhost:9080
+        --topic "Authentication patterns for identity services"
 
+    # Two-stage refinement
     uv run python experiments/structured-prompts/harness.py \
         --topic "Authentication patterns for identity services" \
-        --agent prd \
-        --hub-url http://localhost:9080 \
-        --source-doc-id abc123  # research doc ID for PO input
+        --two-stage
+
+    # Single variant for testing
+    uv run python experiments/structured-prompts/harness.py \
+        --topic "Authentication patterns for identity services" \
+        --prompt semiformal --thinking
 """
 
 from __future__ import annotations
@@ -30,22 +38,40 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# Load .env from project root
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 logger = logging.getLogger(__name__)
 
-# LLM endpoint (Nemotron Nano on DGX Spark or Ollama)
+# LLM endpoint
 DEFAULT_LLM_MODEL = os.environ.get(
     "LLM_MODEL", "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 )
 DEFAULT_LLM_API_BASE = os.environ.get(
     "LLM_API_BASE", "http://spark-ee7d.local:8000/v1"
 )
-DEFAULT_HUB_URL = os.environ.get("NCMS_HUB_URL", "http://localhost:9080")
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
 RESULTS_DIR = Path(__file__).parent / "results"
+CACHE_DIR = Path(__file__).parent / "cache"
+
+# Load prompts
+PROMPT_DIR = Path(__file__).parent / "prompts"
+NAT_PROMPT_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "packages" / "nvidia-nat-ncms" / "src" / "nat" / "plugins" / "ncms"
+)
+
+
+def _load_prompt(path: Path, var_name: str) -> str:
+    ns: dict = {}
+    exec(path.read_text(), ns)
+    return ns[var_name]
+
+
+# ── LLM Call ──────────────────────────────────────────────────────────────────
 
 
 async def call_llm(
@@ -56,13 +82,7 @@ async def call_llm(
     max_tokens: int = 32768,
     enable_thinking: bool = False,
 ) -> str:
-    """Call the LLM via OpenAI-compatible endpoint (direct httpx, no SSL).
-
-    Args:
-        enable_thinking: If True, enables CoT reasoning via chat_template_kwargs.
-            The reasoning parser separates <think> tokens into reasoning_content.
-    """
-    # Strip litellm prefixes
+    """Call LLM via OpenAI-compatible endpoint."""
     clean_model = model.removeprefix("openai/")
     url = f"{api_base}/chat/completions"
 
@@ -84,266 +104,341 @@ async def call_llm(
         content = msg.get("content") or ""
         reasoning = msg.get("reasoning_content") or ""
 
-        # Sanity check: verify thinking mode behaved as expected
         if enable_thinking and reasoning:
-            logger.info(
-                "CoT reasoning: %d chars (content: %d chars)",
-                len(reasoning), len(content),
-            )
+            logger.info("CoT reasoning: %d chars (content: %d chars)", len(reasoning), len(content))
         elif enable_thinking and not reasoning:
-            logger.warning(
-                "CoT enabled but reasoning_content is empty — "
-                "parser may not be working (content: %d chars)", len(content),
-            )
-            # Fallback: strip leaked <think> tags from content
-            import re as _re
-            content = _re.sub(
-                r"^.*?</think>\s*", "", content, count=1, flags=_re.DOTALL,
-            )
+            logger.warning("CoT enabled but reasoning_content empty — stripping <think> tags")
+            import re
+            content = re.sub(r"^.*?</think>\s*", "", content, count=1, flags=re.DOTALL)
         return content
 
 
-async def fetch_document(hub_url: str, doc_id: str) -> dict:
-    """Fetch a document from the hub."""
+# ── Tavily Search (with caching) ─────────────────────────────────────────────
+
+
+async def tavily_search(query: str, max_results: int = 5) -> dict:
+    """Single Tavily search. Returns {query, answer, results: [{title, url, content}]}."""
+    if not TAVILY_API_KEY:
+        raise RuntimeError("TAVILY_API_KEY not set")
+
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{hub_url}/api/v1/documents/{doc_id}")
+        resp = await client.post(
+            "https://api.tavily.com/search",
+            json={
+                "query": query,
+                "search_depth": "basic",
+                "max_results": max_results,
+                "include_answer": "basic",
+            },
+            headers={"Authorization": f"Bearer {TAVILY_API_KEY}"},
+        )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        return {
+            "query": query,
+            "answer": data.get("answer", ""),
+            "results": [
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "content": r.get("content", "")[:2000],
+                }
+                for r in data.get("results", [])
+            ],
+        }
 
 
-async def search_memories(hub_url: str, query: str, domain: str | None = None, limit: int = 10) -> list:
-    """Search NCMS memories via recall endpoint."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        params = {"q": query, "limit": str(limit)}
-        if domain:
-            params["domain"] = domain
-        resp = await client.get(f"{hub_url}/api/v1/memories/recall", params=params)
-        resp.raise_for_status()
-        return resp.json().get("results", resp.json() if isinstance(resp.json(), list) else [])
+async def run_searches(queries: list[str], cache_key: str) -> list[dict]:
+    """Run Tavily searches with disk cache. Same cache_key = same results."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+
+    if cache_file.exists():
+        logger.info("Using cached search results: %s", cache_file.name)
+        return json.loads(cache_file.read_text())
+
+    logger.info("Running %d Tavily searches...", len(queries))
+    results = []
+    for i, q in enumerate(queries):
+        logger.info("  Search %d/%d: %s", i + 1, len(queries), q[:80])
+        try:
+            r = await tavily_search(q)
+            results.append(r)
+        except Exception as e:
+            logger.warning("  Search %d failed: %s", i + 1, e)
+            results.append({"query": q, "answer": "", "results": [], "error": str(e)})
+
+    cache_file.write_text(json.dumps(results, indent=2))
+    logger.info("Cached %d search results to %s", len(results), cache_file.name)
+    return results
 
 
-async def run_researcher_experiment(topic: str, hub_url: str, enable_thinking: bool = False) -> dict:
-    """Run researcher synthesis with both prompt formats."""
-    # Load prompts directly (avoid module import issues with hyphenated dirs)
-    prompt_dir = Path(__file__).parent / "prompts"
-    ns = {}
-    exec(Path(prompt_dir / "researcher_semiformal.py").read_text(), ns)
-    SYNTHESIZE_SEMIFORMAL_PROMPT = ns["SYNTHESIZE_SEMIFORMAL_PROMPT"]
+def format_search_results(searches: list[dict]) -> str:
+    """Format search results as markdown for prompt injection."""
+    parts = []
+    for i, sr in enumerate(searches, 1):
+        parts.append(f"### Search {i}: {sr['query']}")
+        if sr.get("answer"):
+            parts.append(f"**Summary:** {sr['answer']}")
+        for r in sr.get("results", []):
+            parts.append(f"- [{r['title']}]({r['url']})")
+            parts.append(f"  {r['content'][:800]}")
+        parts.append("")
+    return "\n".join(parts)
 
-    ns2 = {}
-    research_prompts_path = (
-        Path(__file__).resolve().parents[2]
-        / "packages" / "nvidia-nat-ncms" / "src" / "nat" / "plugins" / "ncms" / "research_prompts.py"
+
+# ── Query Planning ────────────────────────────────────────────────────────────
+
+
+PLAN_QUERIES_PROMPT = """\
+You are a research query planner. Given a topic, generate exactly {count} search \
+queries that cover different angles. Return ONLY a JSON array of strings.
+
+{guidance}
+
+Topic: {topic}
+
+Return ONLY a JSON array like: ["query 1", "query 2", ...]
+"""
+
+GAP_ANALYSIS_PROMPT = """\
+You analyzed search results for: {topic}
+
+Here are the search results from the first round:
+{search_results}
+
+Identify 3 specific evidence gaps — topics where the search results are thin, \
+contradictory, or missing entirely. For each gap, write a targeted search query \
+that would fill it.
+
+Return ONLY a JSON array of 3 search query strings:
+["targeted query 1", "targeted query 2", "targeted query 3"]
+"""
+
+
+async def plan_queries(topic: str, count: int = 5, guidance: str = "") -> list[str]:
+    """LLM plans search queries for a topic."""
+    if not guidance:
+        guidance = (
+            f"The {count} queries must cover:\n"
+            "1. Broad topic overview and current landscape\n"
+            "2. Industry standards, frameworks, and best practices\n"
+            "3. Security, compliance, and regulatory aspects\n"
+            "4. Implementation patterns, architectures, and technology choices\n"
+            "5. Case studies, real-world examples, and lessons learned"
+        )
+
+    prompt = PLAN_QUERIES_PROMPT.format(topic=topic, count=count, guidance=guidance)
+    text = await call_llm(
+        prompt,
+        system="You output only valid JSON arrays. No markdown, no explanation.",
     )
-    exec(research_prompts_path.read_text(), ns2)
-    SYNTHESIZE_PROMPT = ns2["SYNTHESIZE_PROMPT"]
+    # Strip markdown fences
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3].strip()
 
-    # Step 1: Get search results (use Tavily or fetch from a recent project)
-    logger.info("Searching for existing research documents...")
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(f"{hub_url}/api/v1/documents")
-        docs = resp.json()
+    try:
+        queries = json.loads(text)
+        if isinstance(queries, list):
+            return [str(q) for q in queries[:count]]
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse query plan, using templates")
 
-    # Find a researcher doc to use as search results source
-    research_docs = [d for d in docs if d.get("from_agent") == "researcher"]
-    if research_docs:
-        source = await fetch_document(hub_url, research_docs[0]["document_id"])
-        search_results = source.get("content", "")[:15000]
+    # Fallback
+    return [
+        f"{topic} overview current landscape 2025 2026",
+        f"{topic} industry standards frameworks best practices",
+        f"{topic} security compliance regulatory requirements",
+        f"{topic} implementation patterns architecture technology",
+        f"{topic} case studies real-world examples lessons learned",
+    ][:count]
+
+
+async def identify_gaps(topic: str, search_results_text: str) -> list[str]:
+    """LLM identifies evidence gaps and generates refined search queries."""
+    prompt = GAP_ANALYSIS_PROMPT.format(topic=topic, search_results=search_results_text[:15000])
+    text = await call_llm(
+        prompt,
+        system="You output only valid JSON arrays. No markdown, no explanation.",
+    )
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3].strip()
+
+    try:
+        queries = json.loads(text)
+        if isinstance(queries, list):
+            return [str(q) for q in queries[:3]]
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse gap analysis, using fallback queries")
+
+    return [
+        f"{topic} regulatory compliance specific requirements",
+        f"{topic} ROI cost benefit analysis enterprise",
+        f"{topic} emerging threats vulnerabilities 2026",
+    ]
+
+
+# ── Experiment Runner ─────────────────────────────────────────────────────────
+
+
+async def run_experiment(
+    topic: str,
+    prompt_type: str,  # "standard" or "semiformal"
+    enable_thinking: bool,
+    search_results_text: str,
+    two_stage: bool = False,
+) -> dict:
+    """Run a single experiment variant."""
+    if prompt_type == "semiformal":
+        PROMPT = _load_prompt(PROMPT_DIR / "researcher_semiformal.py", "SYNTHESIZE_SEMIFORMAL_PROMPT")
+        system = "You are a market research analyst. Follow the certificate structure exactly."
     else:
-        # Fallback: run actual Tavily searches
-        logger.info("No existing research docs, running Tavily searches...")
-        tavily_key = os.environ.get("TAVILY_API_KEY", "")
-        if not tavily_key:
-            logger.error("No TAVILY_API_KEY and no existing research docs")
-            return {"error": "No search results available"}
+        PROMPT = _load_prompt(NAT_PROMPT_DIR / "research_prompts.py", "SYNTHESIZE_PROMPT")
+        system = "You are a market research analyst. Be specific and cite sources."
 
-        queries = [
-            f"{topic} overview current landscape 2025 2026",
-            f"{topic} industry standards frameworks best practices",
-            f"{topic} security compliance regulatory requirements",
-            f"{topic} implementation patterns architecture",
-            f"{topic} case studies real-world examples",
-        ]
-        results = []
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for q in queries:
-                resp = await client.post(
-                    "https://api.tavily.com/search",
-                    json={"query": q, "search_depth": "basic", "max_results": 5},
-                    headers={"Authorization": f"Bearer {tavily_key}"},
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for r in data.get("results", []):
-                        results.append(f"### {r.get('title', '')}\nURL: {r.get('url', '')}\n{r.get('content', '')[:1000]}")
-        search_results = "\n\n".join(results)
+    label = f"{prompt_type}/{'cot' if enable_thinking else 'nocot'}"
+    if two_stage:
+        label += "/two-stage"
+    logger.info("Generating: %s (%d chars input)...", label, len(search_results_text))
 
-    # Step 2: Generate with standard prompt
-    thinking_label = "thinking-ON" if enable_thinking else "thinking-OFF"
-    logger.info("Generating with STANDARD prompt (%s)...", thinking_label)
-    standard_prompt = SYNTHESIZE_PROMPT.format(topic=topic, search_results=search_results)
-    standard_output = await call_llm(
-        standard_prompt,
-        system="You are a market research analyst. Be specific and cite sources.",
-        enable_thinking=enable_thinking,
-    )
-
-    # Step 3: Generate with semi-formal prompt
-    logger.info("Generating with SEMI-FORMAL prompt (%s)...", thinking_label)
-    semiformal_prompt = SYNTHESIZE_SEMIFORMAL_PROMPT.format(
-        topic=topic, search_results=search_results,
-    )
-    semiformal_output = await call_llm(
-        semiformal_prompt,
-        system="You are a market research analyst. Follow the certificate structure exactly.",
+    output = await call_llm(
+        PROMPT.format(topic=topic, search_results=search_results_text),
+        system=system,
         enable_thinking=enable_thinking,
     )
 
     return {
-        "agent": "researcher",
-        "topic": topic,
+        "label": label,
+        "prompt_type": prompt_type,
         "thinking": enable_thinking,
-        "standard": standard_output,
-        "semiformal": semiformal_output,
-        "search_results_chars": len(search_results),
-    }
-
-
-async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None = None, enable_thinking: bool = False) -> dict:
-    """Run PRD synthesis with both prompt formats."""
-    prompt_dir = Path(__file__).parent / "prompts"
-    ns = {}
-    exec(Path(prompt_dir / "prd_semiformal.py").read_text(), ns)
-    SYNTHESIZE_PRD_SEMIFORMAL_PROMPT = ns["SYNTHESIZE_PRD_SEMIFORMAL_PROMPT"]
-
-    ns2 = {}
-    prd_prompts_path = (
-        Path(__file__).resolve().parents[2]
-        / "packages" / "nvidia-nat-ncms" / "src" / "nat" / "plugins" / "ncms" / "prd_prompts.py"
-    )
-    exec(prd_prompts_path.read_text(), ns2)
-    SYNTHESIZE_PRD_PROMPT = ns2["SYNTHESIZE_PRD_PROMPT"]
-
-    # Get source content (research report)
-    if source_doc_id:
-        source = await fetch_document(hub_url, source_doc_id)
-        source_content = source.get("content", "")
-    else:
-        # Find latest researcher doc
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(f"{hub_url}/api/v1/documents")
-            docs = resp.json()
-        research_docs = [d for d in docs if d.get("from_agent") == "researcher"]
-        if not research_docs:
-            return {"error": "No research document available"}
-        source = await fetch_document(hub_url, research_docs[0]["document_id"])
-        source_content = source.get("content", "")
-
-    # Get expert input from NCMS memory
-    arch_results = await search_memories(hub_url, f"{topic} architecture ADR patterns", "architecture", 5)
-    sec_results = await search_memories(hub_url, f"{topic} security threats STRIDE OWASP", "security", 5)
-
-    architect_input = "\n\n".join(
-        r.get("content", r.get("memory", {}).get("content", ""))[:1000]
-        for r in arch_results[:3]
-    ) or "(No architect input available)"
-
-    security_input = "\n\n".join(
-        r.get("content", r.get("memory", {}).get("content", ""))[:1000]
-        for r in sec_results[:3]
-    ) or "(No security input available)"
-
-    # Standard
-    thinking_label = "thinking-ON" if enable_thinking else "thinking-OFF"
-    logger.info("Generating PRD with STANDARD prompt (%s)...", thinking_label)
-    standard_prompt = SYNTHESIZE_PRD_PROMPT.format(
-        topic=topic, source_content=source_content[:8000],
-        architect_input=architect_input, security_input=security_input,
-    )
-    standard_output = await call_llm(
-        standard_prompt,
-        system="You are a senior product owner writing a PRD.",
-        enable_thinking=enable_thinking,
-    )
-
-    # Semi-formal
-    logger.info("Generating PRD with SEMI-FORMAL prompt (%s)...", thinking_label)
-    semiformal_prompt = SYNTHESIZE_PRD_SEMIFORMAL_PROMPT.format(
-        topic=topic, source_content=source_content[:8000],
-        architect_input=architect_input, security_input=security_input,
-    )
-    semiformal_output = await call_llm(
-        semiformal_prompt,
-        system="You are a senior product owner. Follow the certificate structure exactly.",
-        enable_thinking=enable_thinking,
-    )
-
-    return {
-        "agent": "prd",
-        "thinking": enable_thinking,
-        "topic": topic,
-        "standard": standard_output,
-        "semiformal": semiformal_output,
-        "source_chars": len(source_content),
+        "two_stage": two_stage,
+        "output": output,
+        "output_chars": len(output),
+        "input_chars": len(search_results_text),
     }
 
 
 async def main():
     parser = argparse.ArgumentParser(description="Structured prompt experiment harness")
     parser.add_argument("--topic", required=True, help="Research topic")
-    parser.add_argument("--agent", choices=["researcher", "prd", "archeologist"], required=True)
-    parser.add_argument("--hub-url", default=DEFAULT_HUB_URL)
-    parser.add_argument("--source-doc-id", default=None, help="Source document ID (for PRD)")
-    parser.add_argument("--thinking", action="store_true", help="Enable CoT thinking mode")
+    parser.add_argument("--two-stage", action="store_true", help="Enable two-stage refinement")
+    parser.add_argument("--prompt", choices=["standard", "semiformal", "all"], default="all")
+    parser.add_argument("--thinking", action="store_true", help="Enable CoT (use --all-modes for matrix)")
+    parser.add_argument("--all-modes", action="store_true", help="Run full 4-way (or 8-way with --two-stage) matrix")
     parser.add_argument("--output-dir", default=str(RESULTS_DIR))
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    if not TAVILY_API_KEY:
+        logger.error("TAVILY_API_KEY not set — check .env file")
+        return
+
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    thinking_tag = "cot" if args.thinking else "nocot"
-
-    if args.agent == "researcher":
-        result = await run_researcher_experiment(args.topic, args.hub_url, args.thinking)
-    elif args.agent == "prd":
-        result = await run_prd_experiment(args.topic, args.hub_url, args.source_doc_id, args.thinking)
-    else:
-        logger.error("Archeologist experiment not yet implemented")
-        return
-
-    if "error" in result:
-        logger.error("Experiment failed: %s", result["error"])
-        return
-
-    # Save results
+    topic = args.topic
+    slug = topic[:40].replace(" ", "_").lower()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    slug = args.topic[:40].replace(" ", "_").lower()
-    prefix = f"{result['agent']}_{slug}_{thinking_tag}_{timestamp}"
 
-    standard_path = output_dir / f"{prefix}_standard.md"
-    semiformal_path = output_dir / f"{prefix}_semiformal.md"
-    meta_path = output_dir / f"{prefix}_meta.json"
+    # ── Stage 1: Plan and run initial searches ──
+    logger.info("=== Stage 1: Initial search ===")
+    cache_key = f"search_{slug}"
+    queries = await plan_queries(topic, count=5)
+    logger.info("Planned queries: %s", queries)
+    stage1_results = await run_searches(queries, cache_key)
+    stage1_text = format_search_results(stage1_results)
+    total_sources = sum(len(r.get("results", [])) for r in stage1_results)
+    logger.info("Stage 1: %d queries, %d results, %d chars", len(queries), total_sources, len(stage1_text))
 
-    standard_path.write_text(result["standard"], encoding="utf-8")
-    semiformal_path.write_text(result["semiformal"], encoding="utf-8")
-    meta_path.write_text(json.dumps({
-        "agent": result["agent"],
-        "topic": args.topic,
-        "thinking": args.thinking,
+    # ── Stage 2: Gap-driven refinement (optional) ──
+    if args.two_stage:
+        logger.info("=== Stage 2: Evidence gap refinement ===")
+        gap_queries = await identify_gaps(topic, stage1_text)
+        logger.info("Gap queries: %s", gap_queries)
+        cache_key_s2 = f"search_{slug}_refined"
+        stage2_results = await run_searches(gap_queries, cache_key_s2)
+        stage2_text = format_search_results(stage2_results)
+        refined_sources = sum(len(r.get("results", [])) for r in stage2_results)
+        logger.info("Stage 2: %d queries, %d results, %d chars", len(gap_queries), refined_sources, len(stage2_text))
+
+        # Merge: all results combined
+        all_search_text = stage1_text + "\n---\n\n### Refined Search Results (Gap-Driven)\n\n" + stage2_text
+        logger.info("Combined: %d chars from %d total sources", len(all_search_text), total_sources + refined_sources)
+    else:
+        all_search_text = stage1_text
+
+    # ── Determine variants to run ──
+    if args.all_modes:
+        prompts = ["standard", "semiformal"]
+        thinking_modes = [False, True]
+    else:
+        prompts = ["standard", "semiformal"] if args.prompt == "all" else [args.prompt]
+        thinking_modes = [args.thinking]
+
+    # ── Run experiments ──
+    results = []
+    for prompt_type in prompts:
+        for thinking in thinking_modes:
+            # One-shot (stage 1 only)
+            r = await run_experiment(topic, prompt_type, thinking, stage1_text, two_stage=False)
+            results.append(r)
+
+            # Two-stage (if enabled)
+            if args.two_stage:
+                r2 = await run_experiment(topic, prompt_type, thinking, all_search_text, two_stage=True)
+                results.append(r2)
+
+    # ── Save results ──
+    stage_tag = "2stage" if args.two_stage else "1stage"
+    for r in results:
+        thinking_tag = "cot" if r["thinking"] else "nocot"
+        stage = "2stage" if r["two_stage"] else "1stage"
+        filename = f"researcher_{slug}_{r['prompt_type']}_{thinking_tag}_{stage}_{timestamp}.md"
+        filepath = output_dir / filename
+        filepath.write_text(r["output"], encoding="utf-8")
+        r["filename"] = filename
+        logger.info("  %s: %s (%d chars)", r["label"], filename, r["output_chars"])
+
+    # Save metadata
+    meta = {
+        "topic": topic,
         "timestamp": timestamp,
-        "standard_file": standard_path.name,
-        "semiformal_file": semiformal_path.name,
-        "standard_chars": len(result["standard"]),
-        "semiformal_chars": len(result["semiformal"]),
-    }, indent=2), encoding="utf-8")
+        "two_stage": args.two_stage,
+        "stage1_queries": queries,
+        "stage1_sources": total_sources,
+        "stage2_queries": gap_queries if args.two_stage else [],
+        "stage2_sources": refined_sources if args.two_stage else 0,
+        "variants": [
+            {
+                "label": r["label"],
+                "filename": r["filename"],
+                "prompt_type": r["prompt_type"],
+                "thinking": r["thinking"],
+                "two_stage": r["two_stage"],
+                "output_chars": r["output_chars"],
+                "input_chars": r["input_chars"],
+            }
+            for r in results
+        ],
+    }
+    meta_path = output_dir / f"researcher_{slug}_{stage_tag}_{timestamp}_meta.json"
+    meta_path.write_text(json.dumps(meta, indent=2))
+    logger.info("Metadata: %s", meta_path.name)
 
-    logger.info("Results saved:")
-    logger.info("  Standard:    %s (%d chars)", standard_path.name, len(result["standard"]))
-    logger.info("  Semi-formal: %s (%d chars)", semiformal_path.name, len(result["semiformal"]))
-    logger.info("  Thinking:    %s", "ON" if args.thinking else "OFF")
-    logger.info("  Metadata:    %s", meta_path.name)
+    # ── Summary ──
+    print("\n" + "=" * 60)
+    print(f"EXPERIMENT RESULTS: {topic}")
+    print(f"Stage: {'Two-stage (gap refinement)' if args.two_stage else 'One-shot'}")
+    print(f"Sources: {total_sources}" + (f" + {refined_sources} refined" if args.two_stage else ""))
+    print("=" * 60)
+    for r in results:
+        print(f"  {r['label']:35s}  {r['output_chars']:>6,d} chars  {r['filename']}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,95 @@
+[
+  {
+    "query": "gap\u2011specific query\u202f1",
+    "answer": "The `gap` property in CSS defines space between elements in grid, flex, and multi-column layouts. In SQL, gaps in a sequence can be detected using queries that compare row numbers. Gap analysis identifies missing data points or intervals in datasets.",
+    "results": [
+      {
+        "title": "gap | CSS-Tricks",
+        "url": "https://css-tricks.com/almanac/properties/g/gap/",
+        "content": "The gap property in CSS is a shorthand for `row-gap` and `column-gap`, specifying the size of gutters, which is the space between rows and columns within grid, flex, and multi-column layouts. /* Grid layout */ .container { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 2fr 1fr; gap: 30px 20px; } /* Flex layout */ .container { \u00a0 display: flex; \u00a0 gap: 10%; } /* Multi-column layout */ .container { column-count: 5; gap: 20px; }. The specification for the CSS Grid Layout Module defined the space between grid tracks using the `grid-gap` property. **In a flex layout,** percentages resolve against zero in all cases, meaning that gaps will not apply when the size of the container is not known to the browser:. The `gap` property is designed for use in grid, flex and multi-column layouts. As you can see in the next demo, although the `gap` property has a value of 2rem, it\u2019s only separating items horizontally instead of both directions since we\u2019re working in columns:."
+      },
+      {
+        "title": "Query to Detect Gaps in Data - Google Interview Question",
+        "url": "https://prepare.sh/interview/data-analysis/code/query-to-detect-gaps-in-data",
+        "content": "Objective. You are provided with a table that lists specific dates. Your task is to identify all the gaps between these consecutive dates."
+      },
+      {
+        "title": "gap - CSS - MDN Web Docs - Mozilla",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/gap",
+        "content": "This property defines gaps between columns in CSS multi-column layout, between flex items and flex lines in CSS flexible box layout, and between rows and columns in CSS grid layout. In multi-column containers, the first value defines the gap between columns. Percentage gap values are always calculated against the content box size of the container element. As these three layout modes (multi-column, flex, and grid) treat cyclic percentage sizes differently, `gap` also does so. Two examples below demonstrate percentage gap values with explicit container size and implicit container size in the examples section. ### Percentage gap value and explicit container size. ### Percentage gap value and implicit container size. If size is not explicitly set on the container, then the percentage gap behaves differently in case of grid and flex layouts. In case of the flex layout, the percentage gap always results in zero value."
+      },
+      {
+        "title": "How do I find a \"gap\" in running counter with SQL? - Stack Overflow",
+        "url": "https://stackoverflow.com/questions/1312101/how-do-i-find-a-gap-in-running-counter-with-sql",
+        "content": "I'd like to find the first \"gap\" in a counter column in an SQL table. SELECT id + 1 AS gap. Your answers all work fine if you have a first value id = 1, otherwise this gap will not be detected. For instance if your table id values are 3,4,5, your queries will return 6. `SELECT MIN(ID+1) FROM (. RECURSIVE a(id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM a WHERE id < 100), -- range 1..100. b AS (SELECT id FROM my_table) -- your table ID list. SELECT a.id -- find numbers from the range that do not exist in main table. select `ID_Column`, Row_Number() over(order by `ID_Column`) as RowID. -- IN MY EXAMPLE, THE TABLE NAME IS = SHOW_GAPS AND COLUMN NAME IS = ID. FROM (SELECT ROW_NUMBER() OVER () AS NUM FROM 'TABLE-NAME') AS TEMP. WHERE ID NOT IN (SELECT ID FROM 'TABLE-NAME'). SELECT ID+1 FROM table WHERE ID+1 NOT IN (SELECT ID FROM table) ORDER BY 1;."
+      },
+      {
+        "title": "Solved - Is it possible to search for gaps between records?",
+        "url": "https://www.access-programmers.co.uk/forums/threads/is-it-possible-to-search-for-gaps-between-records.323412/",
+        "content": "I'm attempting to do a \"Gap Analysis\" where I look for gaps in our data. Here's an example table: For California, there is a gap between 4.7 (end mile of"
+      }
+    ]
+  },
+  {
+    "query": "gap\u2011specific query\u202f2",
+    "answer": "To detect gaps in data, use SQL to find missing consecutive values in a sequence. A common method is to compare row numbers with ordered values. This identifies gaps between expected and actual entries.",
+    "results": [
+      {
+        "title": "Query to Detect Gaps in Data - Google Interview Question",
+        "url": "https://prepare.sh/interview/data-analysis/code/query-to-detect-gaps-in-data",
+        "content": "Objective. You are provided with a table that lists specific dates. Your task is to identify all the gaps between these consecutive dates."
+      },
+      {
+        "title": "Gap between 2 queries : r/SQLServer - Reddit",
+        "url": "https://www.reddit.com/r/SQLServer/comments/bb9jv0/gap_between_2_queries/",
+        "content": "Gap between 2 queries ... There are many possibilities regarding the interaction of data between the two tables based on your query criteria."
+      },
+      {
+        "title": "SQL Query to find gaps in date ranges - Ask TOM",
+        "url": "https://asktom.oracle.com/ords/f?p=100:11:0::::P11_QUESTION_ID:529176000346581356",
+        "content": "I would like to Get the Gaps between two different Dates with in my user specified date range. Ex : I have dates in table stt_dt end_dt 10/01/2008 09/30"
+      },
+      {
+        "title": "How do I find a \"gap\" in running counter with SQL? - Stack Overflow",
+        "url": "https://stackoverflow.com/questions/1312101/how-do-i-find-a-gap-in-running-counter-with-sql",
+        "content": "I'd like to find the first \"gap\" in a counter column in an SQL table. SELECT id + 1 AS gap. Your answers all work fine if you have a first value id = 1, otherwise this gap will not be detected. For instance if your table id values are 3,4,5, your queries will return 6. `SELECT MIN(ID+1) FROM (. RECURSIVE a(id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM a WHERE id < 100), -- range 1..100. b AS (SELECT id FROM my_table) -- your table ID list. SELECT a.id -- find numbers from the range that do not exist in main table. select `ID_Column`, Row_Number() over(order by `ID_Column`) as RowID. -- IN MY EXAMPLE, THE TABLE NAME IS = SHOW_GAPS AND COLUMN NAME IS = ID. FROM (SELECT ROW_NUMBER() OVER () AS NUM FROM 'TABLE-NAME') AS TEMP. WHERE ID NOT IN (SELECT ID FROM 'TABLE-NAME'). SELECT ID+1 FROM table WHERE ID+1 NOT IN (SELECT ID FROM table) ORDER BY 1;."
+      },
+      {
+        "title": "Gaps and Islands in SQL: Techniques & Examples - Redgate Software",
+        "url": "https://www.red-gate.com/simple-talk/databases/sql-server/t-sql-programming-sql-server/introduction-to-gaps-and-islands-analysis/",
+        "content": "Gaps and islands analysis is a SQL technique for finding consecutive sequences (islands) and missing values (gaps) in ordered data. For these examples, an island of data could be defined as a sequence of consecutive values. If the list of gaps or islands is our result set, then its size and contents will vary organically based on the data we apply our analysis to. If we were to perform a gaps/islands analysis on this data, we would find the following islands:. We can then use T-SQL to demonstrate how we can crunch the data above into a set of gaps or islands:. By subtracting the row number from the integer ID, we were able to determine the difference and knew that whenever that number increments, a new gap has been passed in the data set. Gaps and islands analysis allows us to crunch data based on proximity rather than fixed groupings."
+      }
+    ]
+  },
+  {
+    "query": "gap\u2011specific query\u202f3",
+    "answer": "To find gaps in sequential data, use SQL to identify missing values in a counter column or date ranges. Common methods include recursive queries and date difference calculations. Essential SQL functions include MIN, DATEDIFF, and ROW_NUMBER.",
+    "results": [
+      {
+        "title": "Finding Gaps with SQL - by Josh Berry - Medium",
+        "url": "https://medium.com/learning-sql/finding-gaps-with-sql-4f62982f797d",
+        "content": "### Islands, Step 3/4 \u2014 Calculate Island Starts/Ends. Before we look for gaps, the best approach is to consolidate the data into islands. Example \u2014 a buffer of 7 days means that if we ever see 7 days elapse without a valid row, we will consider that 2 islands separated by a gap. ### Islands, Step 1 \u2014 Identify a valid condition. CTE_ISLAND_START AS (SELECT   ROW_NUMBER() OVER (    PARTITION BY MACHINEID     ORDER BY       dtm  ) AS island_number,   MACHINEID,   dtm AS island_start_datetime,   island_location AS island_start_location FROM   CTE_LAGGED WHERE     DATEDIFF(day, previous_datetime, dtm) > 7     OR CTE_LAGGED.previous_datetime IS NULL),CTE_ISLAND_END AS (SELECT   ROW_NUMBER() OVER (    PARTITION BY MACHINEID     ORDER BY       dtm  ) AS island_number,   MACHINEID,   dtm AS island_end_datetime,   island_location AS island_end_location FROM   CTE_LAGGED WHERE   DATEDIFF(day, dtm, next_datetime) > 7   OR CTE_LAGGED.next_datetime IS NULL). If you aren\u2019t using Rasgo and you\u2019re just looking to jumpstart your SQL, I also built the function `summarize_islands` into our free online tool, SQL Generator."
+      },
+      {
+        "title": "Dealing with Gaps and Islands in Power Query - Apex Insights",
+        "url": "https://apexinsights.net/blog/gaps-and-islands-in-power-query",
+        "content": "I've also generalised it so that you can specify the name of the Category against which islands may exist (i.e. Salesperson in this example), the name of the Date column, and the name of the output columns for Start Date and End Date\u2026. #\"Grouped Date by Island\"\u00a0=\u00a0Table.Group(#\"Added Island ID\",\u00a0{\"Island ID\"},\u00a0{{Start\\_Date\\_Column\\_Name,\u00a0each\u00a0List.Min([Date]),\u00a0type\u00a0nullable\u00a0date},\u00a0{End\\_Date\\_Column\\_Name,\u00a0each\u00a0List.Max([Date]),\u00a0type\u00a0nullable\u00a0date}}),. #\"Grouped by Category\"\u00a0=\u00a0Table.Group(Source,\u00a0{category\\_column\\_name},\u00a0{{\"All Rows\",\u00a0each\u00a0fn\\_Group\\_Islands\\_By\\_Category(Table.SelectColumns(\\_,{category\\_column\\_name,\u00a0Date\\_Column\\_Name}),\u00a0Date\\_Column\\_Name,\u00a0Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name),\u00a0type\u00a0table}}),. #\"Expanded Islands\"\u00a0=\u00a0Table.ExpandTableColumn(#\"Grouped by Category\",\u00a0\"All Rows\",\u00a0{Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name},\u00a0{Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name}),. #\"Restored Date Types\"\u00a0=\u00a0Table.TransformColumnTypes(#\"Expanded Islands\",{{Start\\_Date\\_Column\\_Name,\u00a0type\u00a0date},\u00a0{End\\_Date\\_Column\\_Name,\u00a0type\u00a0date}}). As with the islands function, you can define the names of the date column, outputted start date column and outputted end date column names as optional parameters. #\"Grouped by Category\"\u00a0=\u00a0Table.Group(Source,\u00a0{category\\_column\\_name},\u00a0{{\"All Rows\",\u00a0each\u00a0fn\\_Group\\_Gaps\\_By\\_Category(Table.SelectColumns(\\_,{category\\_column\\_name,\u00a0Date\\_Column\\_Name}),\u00a0Date\\_Column\\_Name,\u00a0Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name),\u00a0type\u00a0table}}),. #\"Expanded Gaps\"\u00a0=\u00a0Table.ExpandTableColumn(#\"Grouped by Category\",\u00a0\"All Rows\",\u00a0{Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name},\u00a0{Start\\_Date\\_Column\\_Name,\u00a0End\\_Date\\_Column\\_Name}),. #\"Restored Date Types\"\u00a0=\u00a0Table.TransformColumnTypes(#\"Expanded Gaps\",{{Start\\_Date\\_Column\\_Name,\u00a0type\u00a0date},\u00a0{End\\_Date\\_Column\\_Name,\u00a0type\u00a0date}}),."
+      },
+      {
+        "title": "SQL Query to find gaps in date ranges - Ask TOM",
+        "url": "https://asktom.oracle.com/ords/f?p=100:11:0::::P11_QUESTION_ID:529176000346581356",
+        "content": "I would like to Get the Gaps between two different Dates with in my user specified date range. Ex : I have dates in table stt_dt end_dt 10/01/2008 09/30"
+      },
+      {
+        "title": "How do I find a \"gap\" in running counter with SQL? - Stack Overflow",
+        "url": "https://stackoverflow.com/questions/1312101/how-do-i-find-a-gap-in-running-counter-with-sql",
+        "content": "I'd like to find the first \"gap\" in a counter column in an SQL table. SELECT id + 1 AS gap. Your answers all work fine if you have a first value id = 1, otherwise this gap will not be detected. For instance if your table id values are 3,4,5, your queries will return 6. `SELECT MIN(ID+1) FROM (. RECURSIVE a(id) AS (VALUES (1) UNION ALL SELECT id + 1 FROM a WHERE id < 100), -- range 1..100. b AS (SELECT id FROM my_table) -- your table ID list. SELECT a.id -- find numbers from the range that do not exist in main table. select `ID_Column`, Row_Number() over(order by `ID_Column`) as RowID. -- IN MY EXAMPLE, THE TABLE NAME IS = SHOW_GAPS AND COLUMN NAME IS = ID. FROM (SELECT ROW_NUMBER() OVER () AS NUM FROM 'TABLE-NAME') AS TEMP. WHERE ID NOT IN (SELECT ID FROM 'TABLE-NAME'). SELECT ID+1 FROM table WHERE ID+1 NOT IN (SELECT ID FROM table) ORDER BY 1;."
+      },
+      {
+        "title": "How do I find gaps between ranges of numbers?",
+        "url": "https://dba.stackexchange.com/questions/102064/how-do-i-find-gaps-between-ranges-of-numbers",
+        "content": "To check for gaps at the ends of the 0 and 1 range, we can use the following queries. For gaps starting at 0: SELECT 0 AS GAP_START, MIN(T_START) AS GAP_END"
+      }
+    ]
+  }
+]
