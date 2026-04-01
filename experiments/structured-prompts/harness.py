@@ -55,21 +55,26 @@ async def call_llm(
     api_base: str = DEFAULT_LLM_API_BASE,
     max_tokens: int = 32768,
 ) -> str:
-    """Call the LLM via litellm-compatible endpoint."""
-    import litellm
+    """Call the LLM via OpenAI-compatible endpoint (direct httpx, no SSL)."""
+    # Strip litellm prefixes
+    clean_model = model.removeprefix("openai/")
+    url = f"{api_base}/chat/completions"
 
-    litellm.api_base = api_base if api_base else None
-
-    response = await litellm.acompletion(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=max_tokens,
-        api_base=api_base if api_base else None,
-    )
-    return response.choices[0].message.content
+    async with httpx.AsyncClient(timeout=600.0) as client:
+        resp = await client.post(
+            url,
+            json={
+                "model": clean_model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": max_tokens,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
 
 
 async def fetch_document(hub_url: str, doc_id: str) -> dict:
@@ -93,13 +98,19 @@ async def search_memories(hub_url: str, query: str, domain: str | None = None, l
 
 async def run_researcher_experiment(topic: str, hub_url: str) -> dict:
     """Run researcher synthesis with both prompt formats."""
-    from experiments.structured_prompts.prompts.researcher_semiformal import (
-        SYNTHESIZE_SEMIFORMAL_PROMPT,
-    )
+    # Load prompts directly (avoid module import issues with hyphenated dirs)
+    prompt_dir = Path(__file__).parent / "prompts"
+    ns = {}
+    exec(Path(prompt_dir / "researcher_semiformal.py").read_text(), ns)
+    SYNTHESIZE_SEMIFORMAL_PROMPT = ns["SYNTHESIZE_SEMIFORMAL_PROMPT"]
 
-    # Import standard prompt
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "packages" / "nvidia-nat-ncms" / "src"))
-    from nat.plugins.ncms.research_prompts import SYNTHESIZE_PROMPT
+    ns2 = {}
+    research_prompts_path = (
+        Path(__file__).resolve().parents[2]
+        / "packages" / "nvidia-nat-ncms" / "src" / "nat" / "plugins" / "ncms" / "research_prompts.py"
+    )
+    exec(research_prompts_path.read_text(), ns2)
+    SYNTHESIZE_PROMPT = ns2["SYNTHESIZE_PROMPT"]
 
     # Step 1: Get search results (use Tavily or fetch from a recent project)
     logger.info("Searching for existing research documents...")
@@ -170,12 +181,18 @@ async def run_researcher_experiment(topic: str, hub_url: str) -> dict:
 
 async def run_prd_experiment(topic: str, hub_url: str, source_doc_id: str | None = None) -> dict:
     """Run PRD synthesis with both prompt formats."""
-    from experiments.structured_prompts.prompts.prd_semiformal import (
-        SYNTHESIZE_PRD_SEMIFORMAL_PROMPT,
-    )
+    prompt_dir = Path(__file__).parent / "prompts"
+    ns = {}
+    exec(Path(prompt_dir / "prd_semiformal.py").read_text(), ns)
+    SYNTHESIZE_PRD_SEMIFORMAL_PROMPT = ns["SYNTHESIZE_PRD_SEMIFORMAL_PROMPT"]
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "packages" / "nvidia-nat-ncms" / "src"))
-    from nat.plugins.ncms.prd_prompts import SYNTHESIZE_PRD_PROMPT
+    ns2 = {}
+    prd_prompts_path = (
+        Path(__file__).resolve().parents[2]
+        / "packages" / "nvidia-nat-ncms" / "src" / "nat" / "plugins" / "ncms" / "prd_prompts.py"
+    )
+    exec(prd_prompts_path.read_text(), ns2)
+    SYNTHESIZE_PRD_PROMPT = ns2["SYNTHESIZE_PRD_PROMPT"]
 
     # Get source content (research report)
     if source_doc_id:

@@ -56,21 +56,26 @@ After this, any sandbox can reach the LLM at `https://inference.local/v1` and Ne
 ### Step 2: Deploy vLLM with 512K Context
 
 ```bash
+# Download the Nemotron Nano reasoning parser plugin (enables thinking mode)
+wget -P /root/ https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/main/nano_v3_reasoning_parser.py
+
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   --name vllm-nemotron-nano \
   -p 8000:8000 \
   -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
+  -v /root/nano_v3_reasoning_parser.py:/app/nano_v3_reasoning_parser.py \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
     --host 0.0.0.0 --port 8000 \
     --trust-remote-code \
     --max-model-len 524288 \
     --enable-auto-tool-choice \
-    --tool-call-parser qwen3_coder
+    --tool-call-parser qwen3_coder \
+    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py
 ```
 
-512K context window with `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling). At 512K, the model uses less than 0.5% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly.
+512K context window with `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling). At 512K, the model uses less than 0.5% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly. The `--reasoning-parser-plugin` flag enables proper handling of `<think>` tags when thinking mode is on — without it, thinking tokens leak into the output content.
 
 ### Step 3: One-Command Deploy
 
