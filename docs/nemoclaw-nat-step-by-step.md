@@ -73,7 +73,8 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --max-model-len 524288 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder \
-    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py
+    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py \
+    --reasoning-parser nano_v3
 ```
 
 512K context window with `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling). At 512K, the model uses less than 0.5% of available KV cache on the 128GB Spark. The `--tool-call-parser qwen3_coder` flag is critical -- Nemotron Nano emits tool calls in the `<tool_call><function=name>` format, and `qwen3_coder` is the only vLLM parser that handles this correctly. The `--reasoning-parser-plugin` flag enables proper handling of `<think>` tags when thinking mode is on — without it, thinking tokens leak into the output content.

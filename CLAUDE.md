@@ -350,7 +350,8 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --max-model-len 524288 \
     --enable-auto-tool-choice \
     --tool-call-parser qwen3_coder \
-    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py
+    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py \
+    --reasoning-parser nano_v3
 
 # Verify serving
 curl http://spark-ee7d.local:8000/v1/models
@@ -365,7 +366,7 @@ curl http://spark-ee7d.local:8000/v1/chat/completions \
 - `--max-model-len 524288` — 512K context window (requires `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` env var; model ~60GB, KV cache <0.5% on 128GB Spark). Model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling.
 - `--enable-auto-tool-choice` — required for structured tool calling via OpenAI-compatible API
 - `--tool-call-parser qwen3_coder` — Nemotron Nano uses `<tool_call><function=name>` format, parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param present in request; regular chat completions unaffected
-- `--reasoning-parser-plugin /app/nano_v3_reasoning_parser.py` — Handles `<think>` tags properly when thinking mode is on. Without it, thinking tokens leak into the output content. The plugin is downloaded from the model's HuggingFace repo and mounted into the container.
+- `--reasoning-parser-plugin /app/nano_v3_reasoning_parser.py` + `--reasoning-parser nano_v3` — The plugin registers the `nano_v3` parser (extends DeepSeek R1 parser for Nemotron's `<think>` tags). The `--reasoning-parser-plugin` loads the module, `--reasoning-parser nano_v3` activates it. Separates thinking tokens into `reasoning_content` field instead of leaking them into output content. Downloaded from the model's HuggingFace repo.
 
 Enable LLM features via Spark:
 
