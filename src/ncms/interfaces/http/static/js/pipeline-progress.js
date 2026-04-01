@@ -9,9 +9,10 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 // Each phase defines its agent and the ordered processing nodes.
 
 const PIPELINE_PHASES = {
-  research:  { agent: 'researcher',     label: 'Research',  nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
-  prd:       { agent: 'product_owner',  label: 'PRD',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
-  design:    { agent: 'builder',        label: 'Design',    nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify', 'generate_contracts'] },
+  research:    { agent: 'researcher',     label: 'Research',     nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
+  archaeology: { agent: 'archeologist',   label: 'Archaeology',  nodes: ['check_guardrails', 'clone_and_index', 'analyze_architecture', 'identify_gaps', 'web_research', 'synthesize_report', 'publish_and_trigger'] },
+  prd:         { agent: 'product_owner',  label: 'PRD',          nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
+  design:      { agent: 'builder',        label: 'Design',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify', 'generate_contracts'] },
 };
 
 const NODE_LABELS = {
@@ -35,6 +36,13 @@ const NODE_LABELS = {
   revise_design: 'Revise',
   generate_manifest: 'Manifest',
   test: 'Test',
+  // Archeologist nodes
+  clone_and_index: 'Clone',
+  analyze_architecture: 'Analyze',
+  identify_gaps: 'Gaps',
+  web_research: 'Research',
+  synthesize_report: 'Synthesize',
+  publish_and_trigger: 'Publish',
 };
 
 // ── Render ───────────────────────────────────────────────────────────
@@ -61,7 +69,11 @@ async function renderPipelineProgress(projectId, containerId) {
 
   // Find the project to determine which phases are in scope
   const project = (state.projects || []).find(p => p.project_id === projectId);
-  const scope = project?.scope || ['research', 'prd', 'design'];
+  // Archaeology projects replace the research phase with archaeology
+  let scope = project?.scope || ['research', 'prd', 'design'];
+  if (project?.source_type === 'archaeology') {
+    scope = scope.map(s => s === 'research' ? 'archaeology' : s);
+  }
   const progressData = state.pipelineProgress[projectId] || {};
 
   let html = '<div class="pipeline-progress-bar">';

@@ -61,8 +61,8 @@ function handleEvent(event) {
     }
   }
 
-  // Route events to agent activity lists
-  if (event.agent_id) {
+  // Route events to agent activity lists (suppress pipeline.node — visible in project progress)
+  if (event.agent_id && event.type !== 'pipeline.node') {
     addAgentActivity(event.agent_id, event);
   }
 

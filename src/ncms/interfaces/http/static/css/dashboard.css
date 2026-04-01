@@ -233,8 +233,8 @@
   .main-left {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 24px 32px 16px;
+    align-items: stretch;
+    padding: 24px 20px 16px;
     gap: 0;
     overflow: auto;
   }
@@ -268,10 +268,10 @@
   /* ── Agent Area (responsive grid) ──────────────────────────── */
   .agents-area {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
     width: 100%;
-    max-width: 1400px;
+    max-width: 100%;
     margin-bottom: 0;
   }
 
