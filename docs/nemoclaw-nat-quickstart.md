@@ -173,6 +173,7 @@ All agents generated complete traces during the test run. Full visibility into e
 - **Model:** Nemotron Nano 30B, a mixture-of-experts model with 256 experts and only 3B active parameters per inference pass. Supports up to 1M context tokens.
 - **Serving:** NGC vLLM container on a DGX Spark (128GB memory), configured with 512K context via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`. KV cache usage under 0.5%, with massive headroom.
 - **Tool call parser:** `qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
+- **Reasoning parser:** `nano_v3_reasoning_parser.py` plugin (from the model's HuggingFace repo) mounted into the container and activated via `--reasoning-parser-plugin`. Handles `<think>` tags properly so thinking tokens don't leak into output content. Enables the 4-way experiment matrix: standard/semi-formal prompts x thinking-on/thinking-off.
 - **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000`, bypassing the NemoClaw `inference.local` proxy which imposes a 60-second timeout insufficient for large document synthesis.
 - **Thinking mode off:** `enable_thinking: false` prevents thinking-mode tokens from consuming the output budget. Valuable for open-ended reasoning, but wasteful in structured pipelines.

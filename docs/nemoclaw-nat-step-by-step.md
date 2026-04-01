@@ -57,7 +57,8 @@ After this, any sandbox can reach the LLM at `https://inference.local/v1` and Ne
 
 ```bash
 # Download the Nemotron Nano reasoning parser plugin (enables thinking mode)
-wget -P /root/ https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/main/nano_v3_reasoning_parser.py
+sudo wget -O /root/nano_v3_reasoning_parser.py \
+  https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/main/nano_v3_reasoning_parser.py
 
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   --name vllm-nemotron-nano \

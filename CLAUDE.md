@@ -331,12 +331,17 @@ Thinking mode is auto-disabled for `ollama` models to get clean JSON output.
 A DGX Spark at `spark-ee7d.local` (128GB) serves Nemotron 3 Nano via NGC vLLM container:
 
 ```bash
+# Download the Nemotron Nano reasoning parser plugin (enables thinking mode)
+sudo wget -O /root/nano_v3_reasoning_parser.py \
+  https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/main/nano_v3_reasoning_parser.py
+
 # Deploy on Spark (via Portainer or SSH — use sudo if not in docker group)
 sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
   --name vllm-nemotron-nano \
   -p 8000:8000 \
   -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
   -v /root/.cache/huggingface:/root/.cache/huggingface \
+  -v /root/nano_v3_reasoning_parser.py:/app/nano_v3_reasoning_parser.py \
   nvcr.io/nvidia/vllm:26.01-py3 \
   vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
     --host 0.0.0.0 \
@@ -344,7 +349,8 @@ sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
     --trust-remote-code \
     --max-model-len 524288 \
     --enable-auto-tool-choice \
-    --tool-call-parser qwen3_coder
+    --tool-call-parser qwen3_coder \
+    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py
 
 # Verify serving
 curl http://spark-ee7d.local:8000/v1/models
@@ -359,6 +365,7 @@ curl http://spark-ee7d.local:8000/v1/chat/completions \
 - `--max-model-len 524288` — 512K context window (requires `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` env var; model ~60GB, KV cache <0.5% on 128GB Spark). Model's max_position_embeddings is 262144 but NVIDIA documents support up to 1M via RoPE scaling.
 - `--enable-auto-tool-choice` — required for structured tool calling via OpenAI-compatible API
 - `--tool-call-parser qwen3_coder` — Nemotron Nano uses `<tool_call><function=name>` format, parsed by `qwen3_coder` (NOT `hermes`). Only activates when `tools` param present in request; regular chat completions unaffected
+- `--reasoning-parser-plugin /app/nano_v3_reasoning_parser.py` — Handles `<think>` tags properly when thinking mode is on. Without it, thinking tokens leak into the output content. The plugin is downloaded from the model's HuggingFace repo and mounted into the container.
 
 Enable LLM features via Spark:
 
