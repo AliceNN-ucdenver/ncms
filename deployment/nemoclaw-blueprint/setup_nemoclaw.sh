@@ -456,10 +456,17 @@ setup_agent_sandbox() {
   # Provider-injected env vars (e.g. TAVILY_API_KEY) are available automatically.
   # NAT_PORT tells the SSE listener which port to self-call /generate on.
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && \
-    NAT_PORT=$agent_port nohup /sandbox/.venv/bin/nat start fastapi \
-      --config_file /sandbox/configs/$config_file \
-      --host 0.0.0.0 --port $agent_port \
-    > /tmp/ncms-nat-agent.log 2>&1 & \
+    nohup bash -c '
+      echo \"[NAT] Starting $agent_id on port $agent_port at \$(date)\" >> /tmp/ncms-nat-agent.log 2>&1
+      NAT_PORT=$agent_port /sandbox/.venv/bin/nat start fastapi \
+        --config_file /sandbox/configs/$config_file \
+        --host 0.0.0.0 --port $agent_port \
+        >> /tmp/ncms-nat-agent.log 2>&1
+      EXIT_CODE=\$?
+      echo \"[NAT] Process exited with code \$EXIT_CODE at \$(date)\" >> /tmp/ncms-nat-agent.log 2>&1
+      echo \"[NAT] Last 5 dmesg lines:\" >> /tmp/ncms-nat-agent.log 2>&1
+      dmesg 2>/dev/null | tail -5 >> /tmp/ncms-nat-agent.log 2>&1
+    ' > /dev/null 2>&1 & \
     echo 'NAT agent started for $agent_id on port $agent_port'" \
     || warn "NAT agent failed"
 
