@@ -254,6 +254,23 @@ setup_providers() {
   else
     warn "TAVILY_API_KEY not set — Product Owner web_search will be disabled"
   fi
+
+  # GitHub API for Archeologist agent
+  if [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
+    if openshell provider list 2>/dev/null | grep -q "github"; then
+      ok "Provider 'github' already exists"
+    else
+      info "Creating GitHub provider..."
+      openshell provider create \
+        --name github \
+        --type generic \
+        --credential "GITHUB_PERSONAL_ACCESS_TOKEN=${GITHUB_PERSONAL_ACCESS_TOKEN}" \
+        && ok "Provider 'github' created" \
+        || warn "Failed to create github provider — archeologist will be rate-limited"
+    fi
+  else
+    warn "GITHUB_PERSONAL_ACCESS_TOKEN not set — Archeologist will use unauthenticated API (60 req/hr)"
+  fi
 }
 
 # ── Create sandbox ──────────────────────────────────────────────────────────
@@ -339,6 +356,9 @@ setup_agent_sandbox() {
   local providers=()
   if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "researcher" ] || [ "$agent_id" = "archeologist" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
     providers+=(tavily)
+  fi
+  if [ "$agent_id" = "archeologist" ] && [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
+    providers+=(github)
   fi
   create_sandbox "$sandbox_name" ${providers[@]+"${providers[@]}"}
 

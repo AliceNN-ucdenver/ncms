@@ -10,12 +10,17 @@ Typical latency: ~30-80ms for 50 candidates on Apple Silicon (MPS).
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
+
+# Global lock to prevent concurrent model loads (transformers monkey-patches
+# nn.Module.register_parameter during from_pretrained — not thread-safe)
+_model_load_lock = threading.Lock()
 
 
 class CrossEncoderReranker:
@@ -29,20 +34,23 @@ class CrossEncoderReranker:
 
     def _ensure_model(self) -> None:
         if self._model is None and not self._load_failed:
-            try:
-                from sentence_transformers import CrossEncoder
+            with _model_load_lock:
+                if self._model is not None:
+                    return  # Another thread loaded while we waited
+                try:
+                    from sentence_transformers import CrossEncoder
 
-                kwargs: dict = {}
-                if self._cache_dir:
-                    kwargs["cache_folder"] = self._cache_dir
-                logger.info("Loading cross-encoder model: %s", self._model_name)
-                self._model = CrossEncoder(self._model_name, **kwargs)
-                logger.info("Cross-encoder model loaded")
-            except Exception as e:
-                logger.warning(
-                    "Cross-encoder load failed (reranking disabled): %s", e,
-                )
-                self._load_failed = True
+                    kwargs: dict = {}
+                    if self._cache_dir:
+                        kwargs["cache_folder"] = self._cache_dir
+                    logger.info("Loading cross-encoder model: %s", self._model_name)
+                    self._model = CrossEncoder(self._model_name, **kwargs)
+                    logger.info("Cross-encoder model loaded")
+                except Exception as e:
+                    logger.warning(
+                        "Cross-encoder load failed (reranking disabled): %s", e,
+                    )
+                    self._load_failed = True
 
     def rerank(
         self,

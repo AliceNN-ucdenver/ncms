@@ -129,7 +129,7 @@ class SpladeEngine:
             )
             kwargs: dict[str, object] = {}
             if self._cache_dir:
-                kwargs["cache_dir"] = self._cache_dir
+                kwargs["cache_folder"] = self._cache_dir
             self._model = SparseEncoder(self._model_name, device=device, **kwargs)
             logger.info("SPLADE model loaded on %s", device)
 

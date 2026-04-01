@@ -589,10 +589,10 @@ def create_api_app(
                 data={"project_id": project_id, "topic": topic},
             ))
 
-        # Fire-and-forget: trigger the researcher agent from the hub
-        # (runs inside Docker, so host.docker.internal resolves correctly)
+        # Fire-and-forget: trigger the first agent based on source type
+        # Archaeology → archeologist, Research → researcher (mutually exclusive)
         researcher_port = _AGENT_PORTS.get("researcher")
-        if researcher_port and "research" in body.get("scope", []):
+        if researcher_port and source_type != "archaeology" and "research" in body.get("scope", []):
             target = body.get("target", "")
             prompt = (
                 f"Research {topic}"
@@ -740,8 +740,14 @@ def create_api_app(
     _interrupts: dict[str, bool] = {}  # agent_id -> interrupted
 
     async def interrupt_agent(request: Request) -> JSONResponse:
-        """Signal an agent to interrupt its current pipeline."""
+        """POST: signal interrupt. GET: check interrupt status (and clear flag)."""
         agent_id = request.path_params["agent_id"]
+
+        if request.method == "GET":
+            interrupted = _interrupts.pop(agent_id, False)
+            return JSONResponse({"interrupted": interrupted, "agent_id": agent_id})
+
+        # POST: set interrupt flag
         _interrupts[agent_id] = True
         logger.info("Interrupt signal sent to agent %s", agent_id)
 
@@ -1035,7 +1041,7 @@ def create_api_app(
         # Pipeline telemetry + control
         Route("/api/v1/pipeline/events", post_pipeline_event, methods=["POST"]),
         Route("/api/v1/pipeline/events/{project_id}", get_pipeline_events, methods=["GET"]),
-        Route("/api/v1/pipeline/interrupt/{agent_id}", interrupt_agent, methods=["POST"]),
+        Route("/api/v1/pipeline/interrupt/{agent_id}", interrupt_agent, methods=["GET", "POST"]),
 
         # Prompts
         Route("/api/v1/prompts", store_prompt, methods=["POST"]),
