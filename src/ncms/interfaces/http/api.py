@@ -914,8 +914,23 @@ def create_api_app(
             except Exception:
                 labels = list(UNIVERSAL_LABELS)
 
+            domain_labels = [l for l in labels if l not in UNIVERSAL_LABELS]
+            if domain_labels:
+                logger.info(
+                    "GLiNER for %s: %d labels (%d universal + %d domain: %s)",
+                    doc_id, len(labels), len(UNIVERSAL_LABELS),
+                    len(domain_labels), ", ".join(domain_labels[:5]),
+                )
+            else:
+                logger.info("GLiNER for %s: %d universal labels (no domain topics cached)", doc_id, len(labels))
+
             entities = await asyncio.to_thread(
                 extract_entities_gliner, content, labels=labels,
+            )
+            logger.info(
+                "GLiNER extracted %d entities for %s: %s",
+                len(entities), doc_id,
+                ", ".join(f"{e['name']}({e['type']})" for e in entities[:5]),
             )
         except Exception as e:
             logger.warning("GLiNER extraction failed for %s: %s", doc_id, e)

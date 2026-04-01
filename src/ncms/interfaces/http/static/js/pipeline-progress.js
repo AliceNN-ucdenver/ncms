@@ -9,7 +9,7 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 // Each phase defines its agent and the ordered processing nodes.
 
 const PIPELINE_PHASES = {
-  research:    { agent: 'researcher',     label: 'Research',     nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'synthesize', 'publish', 'verify'] },
+  research:    { agent: 'researcher',     label: 'Research',     nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'arxiv_search', 'synthesize', 'publish', 'verify'] },
   archaeology: { agent: 'archeologist',   label: 'Archaeology',  nodes: ['check_guardrails', 'clone_and_index', 'analyze_architecture', 'identify_gaps', 'web_research', 'synthesize_report', 'publish_and_trigger'] },
   prd:         { agent: 'product_owner',  label: 'PRD',          nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
   design:      { agent: 'builder',        label: 'Design',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify', 'generate_contracts'] },
@@ -36,6 +36,8 @@ const NODE_LABELS = {
   revise_design: 'Revise',
   generate_manifest: 'Manifest',
   test: 'Test',
+  // Research nodes
+  arxiv_search: 'ArXiv',
   // Archeologist nodes
   clone_and_index: 'Clone',
   analyze_architecture: 'Analyze',

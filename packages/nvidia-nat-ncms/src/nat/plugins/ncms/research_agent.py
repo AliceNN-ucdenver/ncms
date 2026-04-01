@@ -43,6 +43,7 @@ class ResearchState(TypedDict):
     topic: str  # Original research topic
     search_queries: list[str]  # 5 planned queries
     search_results: list[dict]  # Tavily results per query
+    arxiv_results: list[dict]  # ArXiv paper results
     synthesis: str  # Markdown report
     document_id: str | None  # Published doc ID
     messages: list[BaseMessage]  # LangGraph compat
@@ -111,6 +112,7 @@ class ResearchAgent:
         graph.add_node("check_guardrails", self.check_guardrails)
         graph.add_node("plan_queries", self.plan_queries)
         graph.add_node("parallel_search", self.parallel_search)
+        graph.add_node("arxiv_search", self.arxiv_search)
         graph.add_node("synthesize", self.synthesize)
         graph.add_node("publish", self.publish)
         graph.add_node("verify", self.verify)
@@ -119,13 +121,14 @@ class ResearchAgent:
         graph.add_edge(START, "check_guardrails")
         graph.add_edge("check_guardrails", "plan_queries")
         graph.add_edge("plan_queries", "parallel_search")
-        graph.add_edge("parallel_search", "synthesize")
+        graph.add_edge("parallel_search", "arxiv_search")
+        graph.add_edge("arxiv_search", "synthesize")
         graph.add_edge("synthesize", "publish")
         graph.add_edge("publish", "verify")
         graph.add_edge("verify", END)
 
         compiled = graph.compile()
-        logger.info("[research_agent] Graph compiled: guardrails → plan → search → synthesize → publish → verify")
+        logger.info("[research_agent] Graph compiled: guardrails → plan → search → arxiv → synthesize → publish → verify")
         return compiled
 
     # ── Node 1: Plan Queries (LLM) ───────────────────────────────────────
@@ -265,7 +268,83 @@ class ResearchAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "parallel_search", "completed", f"{total_results} results")
         return state
 
-    # ── Node 3: Synthesize (LLM) ─────────────────────────────────────────
+    # ── Node 3: ArXiv Search (Pure Python) ────────────────────────────────
+
+    async def arxiv_search(self, state: ResearchState) -> ResearchState:
+        """Search ArXiv for recent academic papers on the topic. No LLM."""
+        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "arxiv_search", "started")
+        if await self._check_and_interrupt(state, "arxiv_search"):
+            return state
+
+        topic = state["topic"]
+        state["arxiv_results"] = []
+
+        try:
+            import arxiv as _arxiv
+            from datetime import datetime, timedelta, timezone
+
+            # Generate 3 academic-focused queries from the topic
+            arxiv_queries = [
+                f"{topic} formal verification security",
+                f"{topic} architecture benchmark evaluation",
+                f"{topic} zero trust access control protocol",
+            ]
+
+            cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+            all_papers: list[dict] = []
+
+            for q in arxiv_queries:
+                try:
+                    search = _arxiv.Search(
+                        query=q,
+                        max_results=20,
+                        sort_by=_arxiv.SortCriterion.Relevance,
+                    )
+                    client = _arxiv.Client()
+                    for paper in client.results(search):
+                        if paper.published and paper.published < cutoff:
+                            continue
+                        all_papers.append({
+                            "title": paper.title,
+                            "url": paper.entry_id,
+                            "summary": paper.summary[:1500],
+                            "published": paper.published.isoformat() if paper.published else "",
+                            "authors": ", ".join(a.name for a in paper.authors[:3]),
+                        })
+                        if len(all_papers) >= 5:
+                            break
+                except Exception as e:
+                    logger.debug("[research_agent] ArXiv query failed: %s", e)
+
+                if len(all_papers) >= 5:
+                    break
+
+            state["arxiv_results"] = all_papers
+            logger.info("[research_agent] ArXiv: %d papers found (last 12 months)", len(all_papers))
+
+            if all_papers:
+                try:
+                    titles = ", ".join(p["title"][:50] for p in all_papers[:3])
+                    await self.client.bus_announce(
+                        content=f"📚 ArXiv papers found: {len(all_papers)} — {titles}",
+                        domains=["research", "product"],
+                        from_agent=self.from_agent,
+                    )
+                except Exception:
+                    pass
+
+        except ImportError:
+            logger.warning("[research_agent] arxiv package not installed — skipping academic search")
+        except Exception as e:
+            logger.warning("[research_agent] ArXiv search failed: %s", e)
+
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"), self.from_agent,
+            "arxiv_search", "completed", f"{len(state['arxiv_results'])} papers",
+        )
+        return state
+
+    # ── Node 4: Synthesize (LLM) ─────────────────────────────────────────
 
     async def synthesize(self, state: ResearchState) -> ResearchState:
         """LLM synthesizes all search results into a structured report."""
@@ -285,8 +364,22 @@ class ResearchAgent:
                 section += f"- **{r['title']}** ({r['url']})\n  {r['content'][:500]}\n\n"
             parts.append(section)
 
+        # Append ArXiv papers if found
+        arxiv_papers = state.get("arxiv_results", [])
+        if arxiv_papers:
+            parts.append("\n---\n\n## Academic Papers (ArXiv — last 12 months)\n")
+            for i, p in enumerate(arxiv_papers, 1):
+                parts.append(
+                    f"### Paper {i}: {p['title']}\n"
+                    f"**Authors:** {p.get('authors', 'Unknown')}\n"
+                    f"**Published:** {p.get('published', '')[:10]}\n"
+                    f"**URL:** {p['url']}\n"
+                    f"{p['summary'][:1000]}\n"
+                )
+            logger.info("[research_agent] Added %d ArXiv papers to synthesis input", len(arxiv_papers))
+
         search_text = "\n".join(parts)
-        # Truncate to fit context window (~20K chars for search content)
+        # Truncate to fit context window
         if len(search_text) > 80000:
             search_text = search_text[:80000] + "\n\n[... truncated for context window ...]"
 
@@ -513,6 +606,7 @@ async def research_agent_fn(
             "topic": input_message,
             "search_queries": [],
             "search_results": [],
+            "arxiv_results": [],
             "synthesis": "",
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
