@@ -169,6 +169,25 @@ network_policies:
     binaries:
       - { path: /usr/local/bin/claude }
 
+  # ── ArXiv (academic paper search for researcher agent) ──────────────
+  arxiv:
+    name: arxiv
+    endpoints:
+      - host: export.arxiv.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/api/**" }
+      - host: arxiv.org
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+
   # ── GitHub ──────────────────────────────────────────────────────────
   github:
     name: github
