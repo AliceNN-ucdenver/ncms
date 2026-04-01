@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#0a0e1a;stop-opacity:1" />
@@ -66,26 +66,32 @@
     <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 1 L 10 5 L 0 9 z" fill="#a78bfa" opacity="0.9"/>
     </marker>
+    <marker id="arrowGrey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#94a3b8" opacity="0.7"/>
+    </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="1200" height="780" fill="url(#bgGrad)" rx="12"/>
+  <rect width="1200" height="820" fill="url(#bgGrad)" rx="12"/>
 
   <!-- ════════════════════ TITLE ════════════════════ -->
   <text x="600" y="32" text-anchor="middle" fill="#e2d5ff" font-size="20" font-weight="700" filter="url(#softGlow)">Multi-Agent Software Delivery Pipeline</text>
   <text x="600" y="50" text-anchor="middle" fill="#8b7bae" font-size="10">Research to Implementation Design  |  6 Agents  |  Semi-Formal CoT  |  Shared Memory  |  Full Observability</text>
 
   <!-- ════════════════════ EXTERNAL SOURCES (above hub) ════════════════════ -->
-  <rect x="80" y="60" width="70" height="28" rx="8" fill="#0a1a14" stroke="#06d6a0" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
-  <text x="115" y="78" text-anchor="middle" fill="#06d6a0" font-size="10" font-weight="600">Tavily</text>
-  <rect x="158" y="60" width="60" height="28" rx="8" fill="#0a1420" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
-  <text x="188" y="78" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">ArXiv</text>
-  <!-- Dashed lines from sources down to Researcher -->
-  <path d="M 115 88 L 140 118" fill="none" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
-  <path d="M 188 88 L 170 118" fill="none" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <rect x="70" y="60" width="60" height="28" rx="8" fill="#0a1a14" stroke="#06d6a0" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
+  <text x="100" y="78" text-anchor="middle" fill="#06d6a0" font-size="10" font-weight="600">Tavily</text>
+  <rect x="138" y="60" width="55" height="28" rx="8" fill="#0a1420" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
+  <text x="165" y="78" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">ArXiv</text>
+  <rect x="201" y="60" width="60" height="28" rx="8" fill="#0a1420" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
+  <text x="231" y="78" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600">GitHub</text>
+  <!-- Dashed lines from sources down to agents -->
+  <path d="M 100 88 L 130 155" fill="none" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <path d="M 165 88 L 155 155" fill="none" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <path d="M 231 88 L 170 355" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
 
   <!-- ════════════════════ NCMS KNOWLEDGE HUB ════════════════════ -->
-  <rect x="55" y="95" width="1090" height="390" rx="18" fill="url(#hubGrad)" stroke="#7c5cbf" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.8"/>
+  <rect x="55" y="95" width="1090" height="430" rx="18" fill="url(#hubGrad)" stroke="#7c5cbf" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.8"/>
   <!-- Hub label -->
   <text x="80" y="118" fill="#bb80ff" font-size="12" font-weight="700" filter="url(#softGlow)">NCMS Knowledge Hub</text>
   <text x="80" y="132" fill="#8b7bae" font-size="8">BM25 (Tantivy/Rust) + SPLADE v3 Sparse Neural + Graph Spreading Activation</text>
@@ -110,6 +116,24 @@
   <text x="170" y="280" text-anchor="middle" fill="#2a7a4a" font-size="7">Port 8005</text>
   <!-- 11KB label -->
   <text x="170" y="306" text-anchor="middle" fill="#10b981" font-size="8" opacity="0.7">11KB</text>
+
+  <!-- ════════════════════ ARCHEOLOGIST (below Researcher, alternate entry) ════════════════════ -->
+  <rect x="80" y="335" width="180" height="120" rx="14" fill="#0a1420" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <circle cx="105" cy="358" r="12" fill="#1a1a2e" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="105" y="362" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="700">A</text>
+  <text x="124" y="363" fill="#94a3b8" font-size="12" font-weight="700">Archeologist</text>
+  <line x1="92" y1="375" x2="248" y2="375" stroke="#3a3a5a" stroke-width="0.5"/>
+  <text x="92" y="390" fill="#cbd5e1" font-size="9">GitHub repo analysis</text>
+  <text x="92" y="403" fill="#cbd5e1" font-size="9">Codebase → gaps → research</text>
+  <text x="92" y="420" fill="#94a3b8" font-size="8" font-style="italic">7 nodes: clone → analyze → gaps → web → synth</text>
+  <rect x="92" y="430" width="156" height="16" rx="4" fill="#12121e" stroke="#3a3a5a" stroke-width="0.5"/>
+  <text x="170" y="441" text-anchor="middle" fill="#5a5a7a" font-size="7">Port 8006</text>
+
+  <!-- "OR" label between Researcher and Archeologist -->
+  <text x="170" y="328" text-anchor="middle" fill="#6b5b8e" font-size="9" font-weight="600">— OR —</text>
+
+  <!-- Arrow: Archeologist -> Research Artifact (merges with Researcher output) -->
+  <path d="M 260 385 L 290 385 L 312 260" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrowGrey)" opacity="0.7"/>
 
   <!-- Research Artifact (between Researcher and PO) -->
   <rect x="282" y="220" width="60" height="42" rx="6" fill="#061a10" stroke="#10b981" stroke-width="1.5"/>
@@ -273,8 +297,8 @@
 
   <!-- ════════════════════ DGX SPARK BAR ════════════════════ -->
   <rect x="55" y="580" width="1090" height="50" rx="10" fill="#08060e" stroke="#3a2a5a" stroke-width="1"/>
-  <text x="600" y="602" text-anchor="middle" fill="#bb80ff" font-size="11" font-weight="700" filter="url(#softGlow)">DGX Spark  |  Nemotron Nano 30B  |  256 Experts, 3B Active  |  128GB  |  512K Context  |  vLLM + qwen3_coder</text>
-  <text x="600" y="620" text-anchor="middle" fill="#5a4a7a" font-size="9">3B Active Params  |  DGX Spark  |  Zero Vector DBs</text>
+  <text x="600" y="602" text-anchor="middle" fill="#bb80ff" font-size="11" font-weight="700" filter="url(#softGlow)">DGX Spark  |  Nemotron Nano 30B (3B Active)  |  512K Context  |  CoT Reasoning  |  vLLM + nano_v3 Parser</text>
+  <text x="600" y="620" text-anchor="middle" fill="#5a4a7a" font-size="9">Semi-Formal Certificates (Meta arXiv:2603.01896)  |  +29% Traceability  |  Tavily + ArXiv Search  |  GLiNER Entity Intelligence</text>
 
   <!-- ════════════════════ LEGEND ════════════════════ -->
   <rect x="55" y="645" width="1090" height="35" rx="8" fill="#08060e" stroke="#2a2a3a" stroke-width="0.5"/>
