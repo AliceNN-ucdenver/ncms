@@ -268,11 +268,12 @@
   /* ── Agent Area (responsive grid) ──────────────────────────── */
   .agents-area {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
     width: 100%;
     max-width: 100%;
     margin-bottom: 0;
+    overflow-x: auto;
   }
 
   /* ── Agent Column: card + connector ─────────────────────────── */
@@ -388,17 +389,14 @@
   .agent-domains {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
-    padding: 0 12px 8px;
-    min-height: 40px;
-    max-height: 40px;
-    overflow: hidden;
+    gap: 3px;
+    padding: 0 10px 6px;
     align-content: flex-start;
   }
 
   .domain-tag {
-    font-size: 11px;
-    padding: 2px 6px;
+    font-size: 10px;
+    padding: 1px 5px;
     background: rgba(88, 166, 255, 0.1);
     color: var(--accent-blue);
     border-radius: 4px;
