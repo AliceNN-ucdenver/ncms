@@ -901,13 +901,21 @@ def create_api_app(
         # GLiNER entity extraction (non-blocking, best-effort)
         entities: list[dict[str, str]] = []
         try:
-            from ncms.domain.entity_extraction import UNIVERSAL_LABELS
+            from ncms.domain.entity_extraction import UNIVERSAL_LABELS, resolve_labels
             from ncms.infrastructure.extraction.gliner_extractor import (
                 extract_entities_gliner,
             )
 
+            # Use domain-specific labels if available (same as memory_service)
+            doc_domains = [d for d in [from_agent, "software"] if d]
+            try:
+                cached = await memory_svc._get_cached_labels(doc_domains)
+                labels = resolve_labels(doc_domains, cached_labels=cached)
+            except Exception:
+                labels = list(UNIVERSAL_LABELS)
+
             entities = await asyncio.to_thread(
-                extract_entities_gliner, content, labels=UNIVERSAL_LABELS,
+                extract_entities_gliner, content, labels=labels,
             )
         except Exception as e:
             logger.warning("GLiNER extraction failed for %s: %s", doc_id, e)

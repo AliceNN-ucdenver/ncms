@@ -27,7 +27,7 @@ Before you start:
    GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token_here
    ```
    The setup script auto-loads this file. No need to export variables manually. The setup script creates named providers for Tavily and GitHub, injecting the tokens into the appropriate agent sandboxes.
-7. **Python 3.12+ with uv** -- the NCMS build toolchain:
+8. **Python 3.12+ with uv** -- the NCMS build toolchain:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
@@ -213,6 +213,38 @@ This sends the research prompt programmatically and the auto-chain executes with
 ---
 
 ## Configuration Reference
+
+### Entity Labels (GLiNER Topics)
+
+GLiNER zero-shot NER extracts entities from every document and memory. Labels control what entity types the model looks for. NCMS uses two layers:
+
+**Universal labels** (always active, 10 labels): `person`, `organization`, `location`, `technology`, `concept`, `event`, `product`, `process`, `document`, `metric`
+
+**Domain-specific labels** (additive, configured per domain): The hub seeds a `software` domain on startup with 10 labels tuned for the software delivery pipeline:
+
+| Label | What it catches | Examples |
+|-------|----------------|----------|
+| `framework` | Application frameworks | NestJS, Express, FastAPI, React |
+| `database` | Data stores | MongoDB, PostgreSQL, Redis, DynamoDB |
+| `protocol` | Communication protocols | OAuth, OIDC, SAML, gRPC, REST, HTTPS |
+| `standard` | Compliance and governance | OWASP ASVS, NIST 800-63B, GDPR, ISO 27001 |
+| `threat` | Security threats | SQL injection, XSS, spoofing, DoS, CSRF |
+| `pattern` | Architecture patterns | CQRS, circuit breaker, rate limiting, saga |
+| `security_control` | Security mechanisms | MFA, RBAC, JWT signing, encryption, hashing |
+| `api_endpoint` | API routes | /auth/login, POST /users, GET /health |
+| `data_model` | Data structures | User schema, Session collection, Token entity |
+| `architecture_decision` | Design decisions | ADR-001, service boundary, microservice |
+
+Combined with universals, GLiNER extracts against 20 label types — matching the MAX_ENTITIES cap for rich entity coverage.
+
+**Custom domains:** Add domain-specific labels via CLI or programmatically:
+```bash
+uv run ncms topics set <domain> <label1> <label2> ...
+uv run ncms topics list              # Show all domains
+uv run ncms topics list software     # Show labels for a domain
+```
+
+The hub Docker container seeds topics automatically at startup via `entrypoint-hub.sh`. Labels persist in SQLite (`consolidation_state` table) and survive restarts.
 
 ### Agent Configs
 
