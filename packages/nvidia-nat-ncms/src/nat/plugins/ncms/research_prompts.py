@@ -1,27 +1,66 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Prompts for the research agent. Edit these to customize agent behavior."""
+"""Prompts for the research agent.
+
+Uses semi-formal certificate format (adapted from Meta's "Agentic Code
+Reasoning", arXiv:2603.01896) with Chain-of-Thought reasoning enabled.
+The certificate structure forces explicit source premises, cross-source
+analysis with confidence ratings, evidence gap identification, and
+formal conclusions with citation chains.
+"""
 
 PLAN_QUERIES_PROMPT = """\
-You are a research query planner. Given a topic, generate exactly 5 search \
-queries that cover different angles of the topic. Return ONLY a JSON array \
-of 5 strings, nothing else.
+You are an expert research query planner. Given a topic, generate exactly 5 \
+high-quality web search queries. Each query should be specific enough to find \
+targeted results (not generic overviews) and include temporal markers (2025, 2026) \
+where relevant.
 
-The 5 queries must cover:
-1. Broad topic overview and current landscape
-2. Industry standards, frameworks, and best practices
-3. Security, compliance, and regulatory aspects
-4. Implementation patterns, architectures, and technology choices
-5. Case studies, real-world examples, and lessons learned
+The 5 queries MUST cover these distinct angles:
+1. MARKET: Market size, growth projections, key vendors, competitive landscape
+2. STANDARDS: Specific standards (e.g., NIST, OWASP, ISO), frameworks, compliance
+3. SECURITY: Threat landscape, attack vectors, vulnerability data, breach statistics
+4. IMPLEMENTATION: Architecture patterns, technology stacks, integration approaches
+5. EVIDENCE: Case studies with measurable outcomes (ROI, latency, conversion)
 
 Topic: {topic}
 
-Return ONLY a JSON array like: ["query 1", "query 2", "query 3", "query 4", "query 5"]
+Return ONLY a JSON array of 5 strings, nothing else.
+"""
+
+PLAN_ARXIV_QUERIES_PROMPT = """\
+Generate exactly 3 academic search queries for ArXiv papers on: {topic}
+
+Use short keyword phrases (3-6 words) optimized for ArXiv search. \
+Focus on formal methods, protocol analysis, security proofs, benchmark \
+evaluations, and novel architectures. Use technical language, not marketing.
+
+Return ONLY a JSON array of 3 strings.
+"""
+
+GAP_ANALYSIS_PROMPT = """\
+You are a research analyst reviewing initial search results for: {topic}
+
+Here is what the first round of searches found:
+{search_results}
+
+Perform a structured gap analysis:
+
+PREMISES: For each major finding, count how many independent sources support it.
+
+EVIDENCE GAPS: Identify exactly 3 topics where:
+- A finding has only 1 supporting source (needs independent confirmation)
+- Two sources contradict each other (needs resolution)
+- An important sub-topic has zero coverage (needs new research)
+
+For each gap, write a targeted web search query with domain terminology \
+and year markers.
+
+Return ONLY a JSON array of 3 search query strings.
 """
 
 SYNTHESIZE_PROMPT = """\
 You are a market research analyst. Synthesize the following search results \
-into a structured markdown research report. Be specific — cite sources by \
-name and URL. Include concrete recommendations.
+into a structured markdown research report using the SEMI-FORMAL RESEARCH \
+CERTIFICATE format below. Every claim must be traceable to a specific source.
 
 Topic: {topic}
 
@@ -29,35 +68,56 @@ Topic: {topic}
 
 {search_results}
 
-Write the report with these sections:
+---
+
+IMPORTANT: Follow this certificate structure exactly. Fill in every \
+bracketed field with specific evidence from the search results above.
+
 # {topic} — Market Research Report
 
+## Source Premises
+State what each source establishes. Every source used later must appear here.
+
+- **S1**: [Source title](URL) establishes: [specific claim with data/quote]
+- **S2**: [Source title](URL) establishes: [specific claim with data/quote]
+(Continue for all relevant sources — web and academic)
+
 ## Executive Summary
-(3-4 sentence overview of key findings)
+Write 3-4 sentences. Each sentence must cite at least one source premise (S1, S2, etc.).
 
-## Market Landscape
-(Current state, major players, trends)
-
-## Key Findings
+## Cross-Source Analysis
 
 ### Standards and Best Practices
-(What standards apply, which frameworks are recommended)
+For each finding, state:
+- **Finding**: [specific finding]
+- **Supporting sources**: S[N], S[N] — because [why these sources agree]
+- **Contradicting sources**: S[N] or NONE
+- **Confidence**: HIGH (3+ sources) / MEDIUM (2 sources) / LOW (1 source)
 
 ### Security and Compliance
-(Threats, controls, regulatory requirements)
+Same format: finding, supporting sources, contradictions, confidence.
 
 ### Implementation Patterns
-(Architecture approaches, technology choices, trade-offs)
+Same format: finding, supporting sources, contradictions, confidence.
 
-### Case Studies
-(Real-world examples, lessons learned)
+### Market Landscape
+Same format: finding, supporting sources, contradictions, confidence.
 
-## Competitive Analysis
-(Compare approaches, trade-offs between options)
+## Evidence Gaps
+Topics where fewer than 2 independent sources confirm a finding:
+- [gap 1]: Only supported by S[N]. Additional research needed on [specific question].
+- [gap 2]: ...
+
+## Formal Conclusions
+Each conclusion must cite at least 2 supporting premises:
+1. **C1**: [conclusion] — supported by S[N], S[N] because [specific reasoning]
+2. **C2**: [conclusion] — supported by S[N], S[N] because [specific reasoning]
 
 ## Recommendations
-(Numbered list of specific, actionable recommendations)
+Numbered list. Each recommendation must trace to at least one formal conclusion:
+1. [recommendation] — based on C[N] and evidence from S[N]
+2. [recommendation] — based on C[N] and evidence from S[N]
 
 ## References
-(Numbered list with title and URL for each source)
+Numbered list with title and URL for each source (matching S1-SN above).
 """

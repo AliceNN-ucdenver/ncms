@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Prompts for the PRD agent. Edit these to customize agent behavior."""
+"""Prompts for the PRD agent.
+
+Uses semi-formal certificate format (adapted from Meta's "Agentic Code
+Reasoning", arXiv:2603.01896) with requirement traceability and coverage
+analysis. Every requirement traces to a research finding or expert
+recommendation. Coverage gaps are explicitly surfaced.
+"""
 
 SYNTHESIZE_PRD_PROMPT = """\
 You are a senior product owner writing a Product Requirements Document (PRD). \
-Synthesize the source research and expert input into a structured, actionable PRD. \
-Ground security and architecture sections in the expert input provided.
+Use the SEMI-FORMAL PRD CERTIFICATE format below. Every requirement must trace \
+to a specific research finding or expert recommendation.
 
 ## Topic
 {topic}
@@ -20,46 +26,94 @@ Ground security and architecture sections in the expert input provided.
 ### Security
 {security_input}
 
-Write the PRD with these sections:
+---
+
+IMPORTANT: Follow this certificate structure exactly. Fill in every \
+bracketed field with specific evidence from the inputs above.
 
 # {topic} — Product Requirements Document
 
+## Input Premises
+State what each input source establishes.
+
+### Research Premises
+- **R1**: Research establishes: [specific finding] — section: [which section]
+- **R2**: Research establishes: [specific finding] — section: [which section]
+(Continue for all key findings)
+
+### Expert Premises
+- **E1**: Architect recommends: [specific recommendation] — evidence: [quote]
+- **E2**: Security identifies: [specific threat/control] — evidence: [threat ID]
+(Continue for all key expert inputs)
+
 ## Problem Statement and Scope
-(Define the problem being solved, boundaries, and what is out of scope)
+Ground in research premises. Cite R[N] for each claim.
+
+**In Scope**: [list, each item citing R[N] or E[N]]
+**Out of Scope**: [list with justification for each exclusion]
 
 ## Goals and Non-Goals
-### Goals
-(Numbered list of measurable goals)
-### Non-Goals
-(Explicit list of what this effort will NOT address)
 
-## Functional Requirements
-(Numbered requirements, each with acceptance criteria)
+### Goals
+Each goal must trace to an input premise:
+1. [Goal] — traced to R[N], E[N] because [reasoning]
+
+### Non-Goals
+Each non-goal must justify why it's excluded:
+1. [Non-goal] — excluded because [reasoning]
+
+## Functional Requirements with Traceability
+
+| ID | Requirement | Traced To | Acceptance Criteria | Evidence |
+|----|-------------|-----------|---------------------|----------|
+| FR-01 | [requirement] | R[N], E[N] | [measurable criteria] | [why] |
+(Continue for all requirements)
+
+**Untraced requirements**: [list any with no research/expert backing]
 
 ## Non-Functional Requirements
 ### Performance
-(Latency, throughput, concurrency targets)
+- [requirement] — target derived from R[N]: [data point]
 ### Scalability
-(Growth projections, scaling strategy)
+- [requirement] — derived from R[N]: [projection]
 ### Compliance
-(Regulatory requirements, standards adherence)
+- [requirement] — mandated by E[N]: [standard reference]
 
-## Security Requirements
-(Grounded in security expert input — threats, controls, mitigations)
+## Security Requirements with Threat Tracing
+
+| Threat | Control | Expert Source | Standard | Implementation |
+|--------|---------|-------------|----------|----------------|
+| [threat] | [control] | E[N] | [OWASP/NIST] | [how] |
 
 ## Architecture Alignment
-(Grounded in architect expert input — patterns, decisions, constraints)
+Each decision must trace to an expert premise:
+- [decision] — recommended by E[N] based on [ADR or pattern]
+
+## Coverage Analysis
+
+### Research findings addressed:
+- R1: Addressed by FR-[N] [YES/PARTIAL/NO]
+(Continue for all R premises)
+
+### Expert recommendations addressed:
+- E1: Addressed by [section] [YES/PARTIAL/NO]
+(Continue for all E premises)
+
+### Coverage summary:
+- Research coverage: [X/Y] findings addressed ([percentage]%)
+- Expert coverage: [A/B] recommendations addressed ([percentage]%)
+- Gaps: [unaddressed items with justification]
 
 ## Risk Matrix
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-(Identify key risks with likelihood, impact, and mitigation strategies)
+| Risk | Likelihood | Impact | Mitigation | Traced To |
+|------|-----------|--------|------------|-----------|
 
 ## Success Metrics
-(Numbered list of measurable success criteria)
+Each metric traces to a goal:
+1. [metric] — measures Goal [N], target: [threshold from R[N]]
 
 ## References
-(Numbered list of sources referenced)
+Numbered list of all sources.
 """
 
 MANIFEST_PROMPT = """\

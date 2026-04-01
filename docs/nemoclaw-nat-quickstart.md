@@ -23,7 +23,7 @@ The memory layer underneath is NCMS: vector-free hybrid retrieval combining BM25
 >
 > Zero vector databases. Zero embedding API calls. Everything runs locally.
 
-### The Two Insights That Changed Everything
+### The Three Insights That Changed Everything
 
 > ***"Don't just tell the agent what to do. Tell it what it knows."***
 
@@ -32,6 +32,10 @@ When we added knowledge-aware prompts describing what each agent has access to (
 > ***"Don't let the LLM decide the workflow. Let the graph enforce it."***
 
 When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content. The graph enforces sequence, parallelism, and handoffs. One message produces four documents, every time, with no retries and no dead loops.
+
+> ***"Don't let the LLM skip steps. Make it fill in a certificate."***
+
+Adapted from Meta's "Agentic Code Reasoning" (arXiv:2603.01896), we replaced free-form RCTRO prompts with **semi-formal certificate templates** that force the LLM to state explicit source premises, trace evidence through cross-source analysis with confidence ratings, identify evidence gaps, and derive formal conclusions before making recommendations. In an 8-way experiment (standard/semi-formal x CoT-on/off x 1-stage/2-stage) with real Tavily web search and ArXiv academic papers, the semi-formal+CoT configuration scored **53/60** vs the standard baseline at **41/60** — a 29% improvement in traceability, coverage, and grounding. The model produced 25,884 characters of chain-of-thought reasoning before writing the certificate, cross-referencing sources that the standard prompt never bothered to verify. The Researcher and Product Owner now use semi-formal certificates with CoT reasoning enabled. The Builder keeps standard prompts where implementation actionability matters more than audit traceability.
 
 ## What You Are Building
 

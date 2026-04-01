@@ -294,12 +294,30 @@ class ResearchAgent:
 
         try:
             response = await self.llm.ainvoke([
-                SystemMessage(content="You are a thorough market research analyst. Write detailed, cited reports."),
+                SystemMessage(content=(
+                    "You are a thorough market research analyst using semi-formal "
+                    "certificate format. Follow the structure exactly. Every claim "
+                    "must trace to a specific source."
+                )),
                 HumanMessage(content=prompt),
             ])
             state["synthesis"] = response.content
+
+            # Validate CoT reasoning was used (if configured)
+            reasoning = getattr(response, "reasoning_content", None)
+            if not reasoning:
+                reasoning = (response.response_metadata or {}).get("reasoning_content", "")
+            if reasoning:
+                logger.info(
+                    "[research_agent] CoT reasoning: %d chars, synthesis: %d chars",
+                    len(reasoning), len(state["synthesis"]),
+                )
+            else:
+                logger.warning(
+                    "[research_agent] No reasoning_content detected — "
+                    "CoT may not be enabled or reasoning parser not active"
+                )
             logger.info("[research_agent] Synthesis complete: %d chars", len(state["synthesis"]))
-            logger.debug("[research_agent] Synthesis preview: %s", state["synthesis"][:500])
         except Exception as e:
             logger.error("[research_agent] Synthesis failed: %s", e)
             # Emergency fallback — return raw results as markdown

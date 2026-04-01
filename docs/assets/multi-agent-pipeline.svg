@@ -73,13 +73,16 @@
 
   <!-- ════════════════════ TITLE ════════════════════ -->
   <text x="600" y="32" text-anchor="middle" fill="#e2d5ff" font-size="20" font-weight="700" filter="url(#softGlow)">Multi-Agent Software Delivery Pipeline</text>
-  <text x="600" y="50" text-anchor="middle" fill="#8b7bae" font-size="10">Research to Implementation Design  |  5 Agents  |  Shared Persistent Memory  |  Full Observability</text>
+  <text x="600" y="50" text-anchor="middle" fill="#8b7bae" font-size="10">Research to Implementation Design  |  6 Agents  |  Semi-Formal CoT  |  Shared Memory  |  Full Observability</text>
 
-  <!-- ════════════════════ TAVILY CLOUD (external, above hub) ════════════════════ -->
-  <rect x="80" y="60" width="90" height="28" rx="8" fill="#0a1a14" stroke="#06d6a0" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
-  <text x="125" y="78" text-anchor="middle" fill="#06d6a0" font-size="10" font-weight="600">Tavily</text>
-  <!-- Dashed line from Tavily down to Researcher -->
-  <path d="M 125 88 L 145 118" fill="none" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <!-- ════════════════════ EXTERNAL SOURCES (above hub) ════════════════════ -->
+  <rect x="80" y="60" width="70" height="28" rx="8" fill="#0a1a14" stroke="#06d6a0" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
+  <text x="115" y="78" text-anchor="middle" fill="#06d6a0" font-size="10" font-weight="600">Tavily</text>
+  <rect x="158" y="60" width="60" height="28" rx="8" fill="#0a1420" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
+  <text x="188" y="78" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">ArXiv</text>
+  <!-- Dashed lines from sources down to Researcher -->
+  <path d="M 115 88 L 140 118" fill="none" stroke="#10b981" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
+  <path d="M 188 88 L 170 118" fill="none" stroke="#f59e0b" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>
 
   <!-- ════════════════════ NCMS KNOWLEDGE HUB ════════════════════ -->
   <rect x="55" y="95" width="1090" height="390" rx="18" fill="url(#hubGrad)" stroke="#7c5cbf" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.8"/>
@@ -100,9 +103,9 @@
   <text x="105" y="192" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">R</text>
   <text x="124" y="193" fill="#10b981" font-size="12" font-weight="700">Researcher</text>
   <line x1="92" y1="205" x2="248" y2="205" stroke="#1a4a32" stroke-width="0.5"/>
-  <text x="92" y="220" fill="#6ee7b7" font-size="9">Deep web research</text>
-  <text x="92" y="233" fill="#6ee7b7" font-size="9">Market analysis</text>
-  <text x="92" y="250" fill="#34d399" font-size="8" font-style="italic">Tools: tavily_search, publish</text>
+  <text x="92" y="220" fill="#6ee7b7" font-size="9">Semi-formal + CoT</text>
+  <text x="92" y="233" fill="#6ee7b7" font-size="9">Tavily + ArXiv search</text>
+  <text x="92" y="250" fill="#34d399" font-size="8" font-style="italic">Certificate: premises → analysis → conclusions</text>
   <rect x="92" y="268" width="156" height="18" rx="4" fill="#061a10" stroke="#1a4a32" stroke-width="0.5"/>
   <text x="170" y="280" text-anchor="middle" fill="#2a7a4a" font-size="7">Port 8005</text>
   <!-- 11KB label -->
@@ -124,9 +127,9 @@
   <text x="390" y="192" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="700">PO</text>
   <text x="410" y="193" fill="#22c55e" font-size="12" font-weight="700">Product Owner</text>
   <line x1="377" y1="205" x2="533" y2="205" stroke="#2a5a3a" stroke-width="0.5"/>
-  <text x="377" y="220" fill="#86efac" font-size="9">PRD authoring</text>
-  <text x="377" y="233" fill="#86efac" font-size="9">Requirements analysis</text>
-  <text x="377" y="250" fill="#5bb58b" font-size="8" font-style="italic">Tools: writeprd, ask_knowledge</text>
+  <text x="377" y="220" fill="#86efac" font-size="9">Semi-formal + CoT</text>
+  <text x="377" y="233" fill="#86efac" font-size="9">Requirement traceability</text>
+  <text x="377" y="250" fill="#5bb58b" font-size="8" font-style="italic">Certificate: R[N] → FR → coverage analysis</text>
   <rect x="377" y="268" width="156" height="18" rx="4" fill="#0e2218" stroke="#2a5a3a" stroke-width="0.5"/>
   <text x="455" y="280" text-anchor="middle" fill="#3a8a5a" font-size="7">Port 8004</text>
 

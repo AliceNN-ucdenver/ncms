@@ -335,15 +335,30 @@ class PRDAgent:
             response = await self.llm.ainvoke([
                 SystemMessage(
                     content=(
-                        "You are a senior product owner. Write precise, actionable PRDs "
-                        "with measurable acceptance criteria and success metrics."
+                        "You are a senior product owner using semi-formal certificate "
+                        "format. Follow the structure exactly. Every requirement must "
+                        "trace to a specific research finding or expert recommendation."
                     )
                 ),
                 HumanMessage(content=prompt),
             ])
             state["prd"] = response.content
+
+            # Validate CoT reasoning was used
+            reasoning = getattr(response, "reasoning_content", None)
+            if not reasoning:
+                reasoning = (response.response_metadata or {}).get("reasoning_content", "")
+            if reasoning:
+                logger.info(
+                    "[prd_agent] CoT reasoning: %d chars, PRD: %d chars",
+                    len(reasoning), len(state["prd"]),
+                )
+            else:
+                logger.warning(
+                    "[prd_agent] No reasoning_content detected — "
+                    "CoT may not be enabled or reasoning parser not active"
+                )
             logger.info("[prd_agent] PRD synthesized: %d chars", len(state["prd"]))
-            logger.debug("[prd_agent] PRD preview: %s", state["prd"][:500])
         except Exception as e:
             logger.error("[prd_agent] PRD synthesis failed: %s", e)
             # Emergency fallback — return a skeleton PRD
