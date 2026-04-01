@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_topic, emit_telemetry, build_prd_trigger
+from .pipeline_utils import extract_project_id, extract_topic, emit_telemetry, build_prd_trigger, check_interrupt
 from .research_prompts import PLAN_QUERIES_PROMPT, SYNTHESIZE_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ class ResearchState(TypedDict):
     document_id: str | None  # Published doc ID
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
+    interrupted: bool  # Set by check_interrupt, causes early exit
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -77,6 +78,20 @@ class ResearchAgent:
         self.tavily_api_key = tavily_api_key
         self.client = client
         self.max_search_results = max_search_results
+
+    async def _check_and_interrupt(self, state: ResearchState, node: str) -> bool:
+        """Check for interrupt signal. Returns True if interrupted."""
+        if state.get("interrupted"):
+            return True
+        if await check_interrupt(self.hub_url, self.from_agent):
+            state["interrupted"] = True
+            logger.info("[research_agent] Interrupted at node %s", node)
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, node, "interrupted",
+            )
+            return True
+        return False
 
     async def check_guardrails(self, state: ResearchState) -> ResearchState:
         """Check input guardrails before pipeline starts."""
@@ -118,6 +133,8 @@ class ResearchAgent:
     async def plan_queries(self, state: ResearchState) -> ResearchState:
         """LLM generates 5 search queries covering different research angles."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "plan_queries", "started")
+        if await self._check_and_interrupt(state, "plan_queries"):
+            return state
         topic = state["topic"]
         logger.info("[research_agent] Planning queries for topic: %s", topic[:100])
 
@@ -163,6 +180,8 @@ class ResearchAgent:
     async def parallel_search(self, state: ResearchState) -> ResearchState:
         """Run 5 concurrent Tavily searches. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "parallel_search", "started")
+        if await self._check_and_interrupt(state, "parallel_search"):
+            return state
         queries = state["search_queries"]
         logger.info("[research_agent] Starting %d parallel Tavily searches", len(queries))
 
@@ -251,6 +270,8 @@ class ResearchAgent:
     async def synthesize(self, state: ResearchState) -> ResearchState:
         """LLM synthesizes all search results into a structured report."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize", "started")
+        if await self._check_and_interrupt(state, "synthesize"):
+            return state
         topic = state["topic"]
         logger.info("[research_agent] Synthesizing report for: %s", topic[:100])
 
@@ -292,6 +313,8 @@ class ResearchAgent:
     async def publish(self, state: ResearchState) -> ResearchState:
         """Publish the report to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish", "started")
+        if await self._check_and_interrupt(state, "publish"):
+            return state
         topic = state["topic"]
         clean_topic = extract_topic(topic)
         synthesis = state["synthesis"]
@@ -338,6 +361,8 @@ class ResearchAgent:
     async def verify(self, state: ResearchState) -> ResearchState:
         """Verify publication and auto-trigger Product Owner if enabled."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "started")
+        if await self._check_and_interrupt(state, "verify"):
+            return state
         topic = state["topic"]
         doc_id = state.get("document_id")
 
@@ -474,6 +499,7 @@ async def research_agent_fn(
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
+            "interrupted": False,
         }, config={"recursion_limit": 30})
 
         synthesis = result.get("synthesis", "Research pipeline produced no output.")

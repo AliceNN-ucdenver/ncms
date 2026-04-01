@@ -34,6 +34,7 @@ from .github_provider import GitHubProvider
 from .http_client import NCMSHttpClient
 from .pipeline_utils import (
     build_prd_trigger,
+    check_interrupt,
     emit_telemetry,
     extract_goal,
     extract_project_id,
@@ -67,6 +68,7 @@ class ArcheologyState(TypedDict):
     document_id: str | None  # Published doc ID
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX
+    interrupted: bool
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -101,6 +103,20 @@ class ArcheologistAgent:
         self.client = client
         self.github = github
         self.max_search_results = max_search_results
+
+    async def _check_and_interrupt(self, state: ArcheologyState, node: str) -> bool:
+        """Check for interrupt signal. Returns True if interrupted."""
+        if state.get("interrupted"):
+            return True
+        if await check_interrupt(self.hub_url, self.from_agent):
+            state["interrupted"] = True
+            logger.info("[archeologist] Interrupted at node %s", node)
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, node, "interrupted",
+            )
+            return True
+        return False
 
     # ── Graph builder ────────────────────────────────────────────────────
 
@@ -173,6 +189,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "clone_and_index", "started",
         )
+        if await self._check_and_interrupt(state, "clone_and_index"):
+            return state
         repo_url = state["repository_url"]
         logger.info("[archeologist] Indexing repository: %s", repo_url)
 
@@ -249,6 +267,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "analyze_architecture", "started",
         )
+        if await self._check_and_interrupt(state, "analyze_architecture"):
+            return state
         repo_name = state.get("repo_info", {}).get("name", "unknown")
         logger.info("[archeologist] Analyzing architecture of %s", repo_name)
 
@@ -327,6 +347,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "identify_gaps", "started",
         )
+        if await self._check_and_interrupt(state, "identify_gaps"):
+            return state
         repo_name = state.get("repo_info", {}).get("name", "unknown")
         logger.info("[archeologist] Identifying gaps for %s", repo_name)
 
@@ -396,6 +418,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "web_research", "started",
         )
+        if await self._check_and_interrupt(state, "web_research"):
+            return state
 
         if not self.tavily_api_key:
             logger.warning("[archeologist] TAVILY_API_KEY not set — skipping web research")
@@ -477,6 +501,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "synthesize_report", "started",
         )
+        if await self._check_and_interrupt(state, "synthesize_report"):
+            return state
         repo_name = state.get("repo_info", {}).get("name", "unknown")
         logger.info("[archeologist] Synthesizing report for %s", repo_name)
 
@@ -530,6 +556,8 @@ class ArcheologistAgent:
             self.hub_url, state.get("project_id"),
             self.from_agent, "publish_and_trigger", "started",
         )
+        if await self._check_and_interrupt(state, "publish_and_trigger"):
+            return state
         repo_name = state.get("repo_info", {}).get("name", "unknown")
         synthesis = state.get("synthesis", "")
 
@@ -699,6 +727,7 @@ async def archeologist_agent_fn(
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
+            "interrupted": False,
         }, config={"recursion_limit": 30})
 
         synthesis = result.get("synthesis", "Archaeology pipeline produced no output.")

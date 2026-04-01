@@ -37,7 +37,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry
+from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry, check_interrupt
 from .design_prompts import (
     SYNTHESIZE_DESIGN_PROMPT,
     ARCHITECTURE_REVIEW_PROMPT,
@@ -70,6 +70,7 @@ class DesignState(TypedDict):
     guardrail_violations: list[str]  # List of violation messages from output guardrails
     guardrail_fix_iteration: int  # Current fix iteration (0 = first check)
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
+    interrupted: bool
 
 
 # -- Agent -------------------------------------------------------------------
@@ -100,6 +101,20 @@ class DesignAgent:
         self.quality_threshold = quality_threshold
         self.max_iterations = max_iterations
 
+    async def _check_and_interrupt(self, state: DesignState, node: str) -> bool:
+        """Check for interrupt signal. Returns True if interrupted."""
+        if state.get("interrupted"):
+            return True
+        if await check_interrupt(self.hub_url, self.from_agent):
+            state["interrupted"] = True
+            logger.info("[design_agent] Interrupted at node %s", node)
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, node, "interrupted",
+            )
+            return True
+        return False
+
     async def check_guardrails(self, state: DesignState) -> DesignState:
         """Check input guardrails before pipeline starts."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
@@ -114,6 +129,8 @@ class DesignAgent:
     async def validate_completeness(self, state: DesignState) -> DesignState:
         """Validate structural completeness. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "validate_completeness", "started")
+        if await self._check_and_interrupt(state, "validate_completeness"):
+            return state
         from .spec_validator import validate_design_completeness
         manifest = state.get("manifest") if isinstance(state.get("manifest"), dict) else None
         result = validate_design_completeness(
@@ -140,6 +157,8 @@ class DesignAgent:
         security patterns in their specifications.
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_output_guardrails", "started")
+        if await self._check_and_interrupt(state, "check_output_guardrails"):
+            return state
         from .guardrails import run_output_guardrails
 
         _, violations = await run_output_guardrails(
@@ -260,6 +279,8 @@ class DesignAgent:
     async def read_document(self, state: DesignState) -> DesignState:
         """Parse doc_id from input and fetch the PRD. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "started")
+        if await self._check_and_interrupt(state, "read_document"):
+            return state
         topic = state["topic"]
         logger.info("[design_agent] Reading source document for topic: %s", topic[:100])
 
@@ -322,12 +343,28 @@ class DesignAgent:
     async def ask_experts(self, state: DesignState) -> DesignState:
         """Parallel bus_ask to architecture and security experts. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "started")
+        if await self._check_and_interrupt(state, "ask_experts"):
+            return state
         topic = state["topic"]
         source = state.get("source_content", "")
         logger.info("[design_agent] Querying experts for: %s", topic[:100])
 
         # Include PRD context so experts can give grounded answers
         context_summary = source[:5000] if source else "(no PRD document available)"
+
+        # Fetch entity metadata from the PRD document for enriched expert search
+        entity_context = ""
+        source_doc_id = state.get("source_doc_id")
+        if source_doc_id:
+            try:
+                doc_meta = await self.client.read_document(source_doc_id)
+                doc_entities = doc_meta.get("entities", [])
+                if doc_entities:
+                    entity_names = [e["name"] for e in doc_entities[:10]]
+                    entity_context = f"\n\nKey entities: {', '.join(entity_names)}"
+                    logger.info("[design_agent] Entity context for experts: %s", entity_context[:100])
+            except Exception as e:
+                logger.debug("[design_agent] Failed to fetch entity metadata: %s", e)
 
         try:
             await self.client.bus_announce(
@@ -343,6 +380,7 @@ class DesignAgent:
                 question = (
                     f"What architectural patterns and ADRs apply to this implementation?\n\n"
                     f"PRD context:\n{context_summary}"
+                    f"{entity_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -362,6 +400,7 @@ class DesignAgent:
                 question = (
                     f"What security threats and controls apply to this implementation?\n\n"
                     f"PRD context:\n{context_summary}"
+                    f"{entity_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -398,6 +437,8 @@ class DesignAgent:
     async def synthesize_design(self, state: DesignState) -> DesignState:
         """LLM synthesizes PRD + expert input into an implementation design."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_design", "started")
+        if await self._check_and_interrupt(state, "synthesize_design"):
+            return state
         topic = state["topic"]
         logger.info("[design_agent] Synthesizing design for: %s", topic[:100])
 
@@ -454,6 +495,8 @@ class DesignAgent:
     async def publish_design(self, state: DesignState) -> DesignState:
         """Publish the design to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_design", "started")
+        if await self._check_and_interrupt(state, "publish_design"):
+            return state
         topic = state["topic"]
         clean_topic = extract_topic(topic)
         design = state["design"]
@@ -515,6 +558,8 @@ class DesignAgent:
         step always has feedback from BOTH reviewers.
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "request_review", "started")
+        if await self._check_and_interrupt(state, "request_review"):
+            return state
         design = state["design"]
         iteration = state.get("iteration", 0)
         logger.info("[design_agent] Requesting review (round %d)", iteration + 1)
@@ -598,6 +643,8 @@ class DesignAgent:
     async def revise_design(self, state: DesignState) -> DesignState:
         """LLM revises design based on review feedback."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "revise_design", "started")
+        if await self._check_and_interrupt(state, "revise_design"):
+            return state
         iteration = state.get("iteration", 0) + 1
         state["iteration"] = iteration
         logger.info("[design_agent] 🔄 Revising design (round %d)", iteration)
@@ -655,6 +702,8 @@ class DesignAgent:
     async def verify(self, state: DesignState) -> DesignState:
         """Final verification — log results and announce completion."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify", "started")
+        if await self._check_and_interrupt(state, "verify"):
+            return state
         topic = state["topic"]
         doc_id = state.get("document_id")
         scores = state.get("review_scores", {})
@@ -743,6 +792,8 @@ class DesignAgent:
         the coding agent unambiguous specifications.
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_contracts", "started")
+        if await self._check_and_interrupt(state, "generate_contracts"):
+            return state
         design = state["design"]
         clean_topic = extract_topic(state["topic"])
 
@@ -878,6 +929,7 @@ async def design_agent_fn(
             "guardrail_violations": [],
             "guardrail_fix_iteration": 0,
             "project_id": project_id,
+            "interrupted": False,
         }, config={"recursion_limit": 50})
 
         design = result.get("design", "Design pipeline produced no output.")

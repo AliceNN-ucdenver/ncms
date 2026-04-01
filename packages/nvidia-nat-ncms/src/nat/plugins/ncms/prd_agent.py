@@ -26,7 +26,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger
+from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger, check_interrupt
 from .prd_prompts import SYNTHESIZE_PRD_PROMPT, MANIFEST_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ class PRDState(TypedDict):
     document_id: str | None  # Published PRD doc ID
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
+    interrupted: bool
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
@@ -74,6 +75,20 @@ class PRDAgent:
         self.client = client
         self.trigger_next_agent = trigger_next_agent
 
+    async def _check_and_interrupt(self, state: PRDState, node: str) -> bool:
+        """Check for interrupt signal. Returns True if interrupted."""
+        if state.get("interrupted"):
+            return True
+        if await check_interrupt(self.hub_url, self.from_agent):
+            state["interrupted"] = True
+            logger.info("[prd_agent] Interrupted at node %s", node)
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, node, "interrupted",
+            )
+            return True
+        return False
+
     async def check_guardrails(self, state: PRDState) -> PRDState:
         """Check input guardrails before pipeline starts."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
@@ -88,6 +103,8 @@ class PRDAgent:
     async def generate_manifest(self, state: PRDState) -> PRDState:
         """Generate structured requirements manifest. Second LLM call."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_manifest", "started")
+        if await self._check_and_interrupt(state, "generate_manifest"):
+            return state
         prd = state["prd"]
         try:
             prompt = MANIFEST_PROMPT.format(prd_content=prd[:15000])
@@ -142,6 +159,8 @@ class PRDAgent:
     async def read_document(self, state: PRDState) -> PRDState:
         """Parse doc_id from input and fetch the researcher's report. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "started")
+        if await self._check_and_interrupt(state, "read_document"):
+            return state
         topic = state["topic"]
         logger.info("[prd_agent] Reading source document for topic: %s", topic[:100])
 
@@ -174,12 +193,28 @@ class PRDAgent:
     async def ask_experts(self, state: PRDState) -> PRDState:
         """Parallel bus_ask to architect and security experts. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "ask_experts", "started")
+        if await self._check_and_interrupt(state, "ask_experts"):
+            return state
         topic = state["topic"]
         source = state.get("source_content", "")
         logger.info("[prd_agent] Asking experts about: %s", topic[:100])
 
         # Include source document context so experts can give grounded answers
         context_summary = source[:5000] if source else "(no source document available)"
+
+        # Fetch entity metadata from the source document for enriched search
+        entity_context = ""
+        source_doc_id = state.get("source_doc_id")
+        if source_doc_id:
+            try:
+                doc_meta = await self.client.read_document(source_doc_id)
+                doc_entities = doc_meta.get("entities", [])
+                if doc_entities:
+                    entity_names = [e["name"] for e in doc_entities[:10]]
+                    entity_context = f"\n\nKey entities: {', '.join(entity_names)}"
+                    logger.info("[prd_agent] Entity context for experts: %s", entity_context[:100])
+            except Exception as e:
+                logger.debug("[prd_agent] Failed to fetch entity metadata: %s", e)
 
         # Announce progress to bus
         try:
@@ -196,6 +231,7 @@ class PRDAgent:
                 question = (
                     f"What architectural decisions and patterns apply to this project?\n\n"
                     f"Context from research:\n{context_summary}"
+                    f"{entity_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -215,6 +251,7 @@ class PRDAgent:
                 question = (
                     f"What security threats and requirements apply to this project?\n\n"
                     f"Context from research:\n{context_summary}"
+                    f"{entity_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -265,6 +302,8 @@ class PRDAgent:
     async def synthesize_prd(self, state: PRDState) -> PRDState:
         """LLM synthesizes source document and expert input into a structured PRD."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "synthesize_prd", "started")
+        if await self._check_and_interrupt(state, "synthesize_prd"):
+            return state
         topic = state["topic"]
         logger.info("[prd_agent] Synthesizing PRD for: %s", topic[:100])
 
@@ -324,6 +363,8 @@ class PRDAgent:
     async def publish_prd(self, state: PRDState) -> PRDState:
         """Publish the PRD to the NCMS document store. No LLM."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "publish_prd", "started")
+        if await self._check_and_interrupt(state, "publish_prd"):
+            return state
         topic = state["topic"]
         clean_topic = extract_topic(topic)
         prd = state["prd"]
@@ -387,6 +428,8 @@ class PRDAgent:
     async def verify_and_trigger(self, state: PRDState) -> PRDState:
         """Verify pipeline completion and optionally trigger the builder agent."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify_and_trigger", "started")
+        if await self._check_and_interrupt(state, "verify_and_trigger"):
+            return state
         topic = state["topic"]
         doc_id = state.get("document_id")
         prd = state.get("prd", "")
@@ -519,6 +562,7 @@ async def prd_agent_fn(
             "document_id": None,
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
+            "interrupted": False,
         }, config={"recursion_limit": 30})
 
         prd = result.get("prd", "PRD pipeline produced no output.")

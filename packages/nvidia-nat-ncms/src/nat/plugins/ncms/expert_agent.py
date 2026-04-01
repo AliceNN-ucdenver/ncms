@@ -56,7 +56,8 @@ class ExpertState(TypedDict):
 # ── Review detection pattern ────────────────────────────────────────────────
 
 _REVIEW_PATTERN = re.compile(
-    r"SCORE|IMPLEMENTATION DESIGN TO REVIEW|(?:review|evaluate)\s+.*design",
+    r"DESIGN TO REVIEW|IMPLEMENTATION DESIGN TO REVIEW|"
+    r"You are a (?:security|architecture) reviewer",
     re.IGNORECASE,
 )
 
@@ -118,7 +119,10 @@ class ExpertAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "started")
         input_text = state["input"]
 
-        if _REVIEW_PATTERN.search(input_text):
+        # Only check the question prefix (first 500 chars), not the appended
+        # PRD/research context which may contain words like "SCORE" or "review design"
+        question_prefix = input_text[:500]
+        if _REVIEW_PATTERN.search(question_prefix):
             state["request_type"] = "review"
         else:
             state["request_type"] = "question"
