@@ -80,9 +80,10 @@
     <circle cx="50" cy="18" r="14" fill="none" stroke="#64748b" stroke-width="1.5"/>
     <text x="50" y="23" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">2</text>
     <text x="72" y="23" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Research</text>
+    <text x="200" y="23" fill="#8b7bae" font-family="system-ui, sans-serif" font-size="9">(Semi-Formal + CoT  |  Tavily + ArXiv)</text>
 
     <!-- Researcher box -->
-    <rect x="30" y="36" width="870" height="68" rx="8" fill="url(#researchGrad)" stroke="#10b981" stroke-width="1" stroke-opacity="0.5"/>
+    <rect x="30" y="36" width="900" height="68" rx="8" fill="url(#researchGrad)" stroke="#10b981" stroke-width="1" stroke-opacity="0.5"/>
     <text x="46" y="52" fill="#10b981" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Researcher</text>
 
     <!-- Node: check_guardrails (cyan/shield) -->
@@ -108,32 +109,41 @@
     <text x="338" y="84" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">5x Tavily</text>
 
     <!-- Arrow -->
-    <line x1="398" y1="74" x2="420" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
-    <polygon points="418,70 426,74 418,78" fill="#34d399" fill-opacity="0.6"/>
+    <line x1="398" y1="74" x2="413" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
+    <polygon points="411,70 419,74 411,78" fill="#34d399" fill-opacity="0.6"/>
+
+    <!-- Node: arxiv_search -->
+    <rect x="419" y="56" width="80" height="36" rx="5" fill="#0f1528" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.6"/>
+    <text x="459" y="72" text-anchor="middle" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="9" font-weight="600">arxiv_search</text>
+    <text x="459" y="84" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">Academic</text>
+
+    <!-- Arrow -->
+    <line x1="499" y1="74" x2="514" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
+    <polygon points="512,70 520,74 512,78" fill="#34d399" fill-opacity="0.6"/>
 
     <!-- Node: synthesize -->
-    <rect x="426" y="60" width="86" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
-    <text x="469" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">synthesize</text>
+    <rect x="520" y="60" width="76" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
+    <text x="558" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">synthesize</text>
 
     <!-- Arrow -->
-    <line x1="512" y1="74" x2="534" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
-    <polygon points="532,70 540,74 532,78" fill="#34d399" fill-opacity="0.6"/>
+    <line x1="596" y1="74" x2="611" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
+    <polygon points="609,70 617,74 609,78" fill="#34d399" fill-opacity="0.6"/>
 
     <!-- Node: publish -->
-    <rect x="540" y="60" width="72" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
-    <text x="576" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">publish</text>
+    <rect x="617" y="60" width="62" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
+    <text x="648" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">publish</text>
 
     <!-- Arrow -->
-    <line x1="612" y1="74" x2="634" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
-    <polygon points="632,70 640,74 632,78" fill="#34d399" fill-opacity="0.6"/>
+    <line x1="679" y1="74" x2="694" y2="74" stroke="#34d399" stroke-width="1.2" stroke-opacity="0.5"/>
+    <polygon points="692,70 700,74 692,78" fill="#34d399" fill-opacity="0.6"/>
 
     <!-- Node: verify/trigger -->
-    <rect x="640" y="60" width="86" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
-    <text x="683" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">verify/trigger</text>
+    <rect x="700" y="60" width="76" height="28" rx="5" fill="#0f1528" stroke="#34d399" stroke-width="1" stroke-opacity="0.6"/>
+    <text x="738" y="78" text-anchor="middle" fill="#6ee7b7" font-family="system-ui, sans-serif" font-size="9" font-weight="600">verify/trigger</text>
 
     <!-- Output artifact -->
-    <rect x="744" y="60" width="72" height="28" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
-    <text x="780" y="78" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">11KB Report</text>
+    <rect x="794" y="60" width="72" height="28" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+    <text x="830" y="78" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="9" font-weight="600">Report</text>
   </g>
 
   <!-- Auto-trigger connector 2->3 -->
@@ -146,6 +156,7 @@
     <circle cx="50" cy="18" r="14" fill="none" stroke="#64748b" stroke-width="1.5"/>
     <text x="50" y="23" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">3</text>
     <text x="72" y="23" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="13" font-weight="600">PRD Creation</text>
+    <text x="200" y="23" fill="#8b7bae" font-family="system-ui, sans-serif" font-size="9">(Semi-Formal + CoT  |  Requirement Traceability)</text>
 
     <!-- Product Owner box -->
     <rect x="30" y="36" width="870" height="96" rx="8" fill="url(#poGrad)" stroke="#22c55e" stroke-width="1" stroke-opacity="0.5"/>
