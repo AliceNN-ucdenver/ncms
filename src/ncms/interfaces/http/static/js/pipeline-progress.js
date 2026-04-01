@@ -107,6 +107,7 @@ async function renderPipelineProgress(projectId, containerId) {
       let statusIcon = '';
       if (nodeStatus === 'completed') statusIcon = ' &#x2713;';
       else if (nodeStatus === 'failed') statusIcon = ' &#x2717;';
+      else if (nodeStatus === 'interrupted') statusIcon = ' &#x23F9;';
       else if (nodeStatus === 'started' || nodeStatus === 'active') statusIcon = '';
 
       // Guardrail status badge
