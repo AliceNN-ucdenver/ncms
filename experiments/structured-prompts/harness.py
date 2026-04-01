@@ -198,9 +198,8 @@ async def arxiv_search(query: str, max_results: int = 5) -> list[dict]:
     # Search for papers from last 6 months
     search = _arxiv.Search(
         query=query,
-        max_results=max_results,
-        sort_by=_arxiv.SortCriterion.SubmittedDate,
-        sort_order=_arxiv.SortOrder.Descending,
+        max_results=max_results * 2,  # Fetch extra to filter by date
+        sort_by=_arxiv.SortCriterion.Relevance,
     )
 
     results = []
