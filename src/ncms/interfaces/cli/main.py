@@ -41,6 +41,16 @@ def serve(
     dashboard_port: int | None,
 ) -> None:
     """Start the NCMS server (MCP stdio or HTTP REST)."""
+    import logging
+    import os
+
+    log_level = os.environ.get("NCMS_LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(asctime)s %(levelname)-5s [%(name)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
     from ncms.config import NCMSConfig
 
     config = NCMSConfig()
