@@ -10,7 +10,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -45,6 +44,7 @@ def create_api_app(
     consolidation_svc: object | None = None,
     event_log: EventLog | None = None,
     auth_token: str | None = None,
+    doc_svc: object | None = None,  # DocumentService (Phase 2.5)
     extra_routes: list[Route] | None = None,
 ) -> Starlette:
     """Create the NCMS HTTP REST API application."""
@@ -556,9 +556,7 @@ def create_api_app(
                 status_code=502,
             )
 
-    # -- Project Store ---------------------------------------------------------
-
-    _projects: dict[str, dict[str, Any]] = {}
+    # -- Project Store (Phase 2.5 — persistent in SQLite) ---------------------
 
     async def create_project(request: Request) -> JSONResponse:
         body = await request.json()
@@ -566,26 +564,23 @@ def create_api_app(
         if not topic:
             return JSONResponse({"error": "topic is required"}, status_code=400)
 
-        project_id = "PRJ-" + uuid.uuid4().hex[:8]
-        now = datetime.now(timezone.utc).isoformat()
-        source_type = body.get("source_type", "research")  # "research" or "archaeology"
+        source_type = body.get("source_type", "research")
         repository_url = body.get("repository_url", "")
-        meta: dict[str, Any] = {
-            "project_id": project_id,
-            "topic": topic,
-            "target": body.get("target", ""),
-            "scope": body.get("scope", []),
-            "source_type": source_type,
-            "status": "active",
-            "created_at": now,
-            "documents": [],
-            "phase": "pending",
-        }
-        if repository_url:
-            meta["repository_url"] = repository_url
-        _projects[project_id] = meta
 
-        # Also store as NCMS memory (non-blocking — don't let this break project creation)
+        if doc_svc:
+            project = await doc_svc.create_project(
+                topic=topic,
+                target=body.get("target", ""),
+                source_type=source_type,
+                repository_url=repository_url or None,
+                scope=body.get("scope", ["research", "prd", "design"]),
+            )
+            project_id = project.id
+        else:
+            # Fallback: in-memory (backwards compat if doc_svc not wired)
+            project_id = "PRJ-" + uuid.uuid4().hex[:8]
+
+        # Also store as NCMS memory (non-blocking)
         try:
             await memory_svc.store_memory(
                 content=f"Project {project_id}: {topic}",
@@ -617,7 +612,7 @@ def create_api_app(
                 + f"\n(project_id: {project_id})"
             )
             trigger_domain = "trigger-archeologist"
-            meta["phase"] = "archaeology"
+            phase = "archaeology"
         elif "research" in body.get("scope", []):
             trigger_msg = (
                 f"Research {topic}"
@@ -625,10 +620,11 @@ def create_api_app(
                 + f" (project_id: {project_id})"
             )
             trigger_domain = "trigger-researcher"
-            meta["phase"] = "research"
+            phase = "research"
         else:
             trigger_msg = ""
             trigger_domain = ""
+            phase = "pending"
 
         if trigger_msg and trigger_domain:
             announcement = KnowledgeAnnounce(
@@ -642,51 +638,53 @@ def create_api_app(
                 "Triggered %s for %s via bus announce",
                 trigger_domain, project_id,
             )
-            _projects[project_id] = meta
 
-        return JSONResponse(meta, status_code=201)
+        # Update project phase
+        if doc_svc:
+            await doc_svc.update_project_phase(project_id, phase)
+
+        # Return project data
+        if doc_svc:
+            proj = await doc_svc.get_project(project_id)
+            if proj:
+                return JSONResponse(proj.model_dump(mode="json"), status_code=201)
+        return JSONResponse({"project_id": project_id, "topic": topic}, status_code=201)
 
     async def list_projects(request: Request) -> JSONResponse:
         status_filter = request.query_params.get("status")
-        projects = list(_projects.values())
-        if status_filter:
-            projects = [p for p in projects if p.get("status") == status_filter]
-        projects.sort(key=lambda p: p.get("created_at", ""), reverse=True)
-        return JSONResponse(projects)
+        if doc_svc:
+            projects = await doc_svc.list_projects(status=status_filter)
+            return JSONResponse([p.model_dump(mode="json") for p in projects])
+        return JSONResponse([])
 
     async def get_project(request: Request) -> JSONResponse:
         project_id = request.path_params["project_id"]
-        meta = _projects.get(project_id)
-        if not meta:
-            return JSONResponse({"error": "Project not found"}, status_code=404)
-
-        # Collect linked documents (match by project_id in metadata)
-        linked_docs = [
-            doc for doc in _documents.values()
-            if doc.get("project_id") == project_id
-        ]
-        return JSONResponse({**meta, "documents": linked_docs})
+        if doc_svc:
+            summary = await doc_svc.get_project_summary(project_id)
+            if "error" in summary:
+                return JSONResponse(summary, status_code=404)
+            return JSONResponse(summary)
+        return JSONResponse({"error": "Project not found"}, status_code=404)
 
     async def archive_project(request: Request) -> JSONResponse:
         project_id = request.path_params["project_id"]
-        meta = _projects.get(project_id)
-        if not meta:
-            return JSONResponse({"error": "Project not found"}, status_code=404)
+        if doc_svc:
+            await doc_svc.update_project_status(project_id, "archived")
+            project = await doc_svc.get_project(project_id)
+            if not project:
+                return JSONResponse({"error": "Project not found"}, status_code=404)
 
-        meta["status"] = "archived"
+            if event_log:
+                from ncms.infrastructure.observability.event_log import DashboardEvent
+                event_log.emit(DashboardEvent(
+                    type="project.archived",
+                    data={"project_id": project_id},
+                ))
 
-        if event_log:
-            from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="project.archived",
-                data={"project_id": project_id},
-            ))
-
-        return JSONResponse(meta)
+            return JSONResponse(project.model_dump(mode="json"))
+        return JSONResponse({"error": "Not found"}, status_code=404)
 
     # -- Pipeline Telemetry ----------------------------------------------------
-
-    _pipeline_events: dict[str, list[dict[str, Any]]] = {}
 
     async def post_pipeline_event(request: Request) -> JSONResponse:
         body = await request.json()
@@ -703,13 +701,15 @@ def create_api_app(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-        if project_id not in _pipeline_events:
-            _pipeline_events[project_id] = []
-        buf = _pipeline_events[project_id]
-        buf.append(evt)
-        # Ring buffer: keep last 500
-        if len(buf) > 500:
-            _pipeline_events[project_id] = buf[-500:]
+        # Persist to DB (Phase 2.5)
+        if doc_svc:
+            await doc_svc.record_pipeline_event(
+                project_id=project_id,
+                agent=body.get("agent", ""),
+                node=body.get("node", ""),
+                status=body.get("status", ""),
+                detail=body.get("detail", ""),
+            )
 
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
@@ -723,8 +723,23 @@ def create_api_app(
 
     async def get_pipeline_events(request: Request) -> JSONResponse:
         project_id = request.path_params["project_id"]
-        events = _pipeline_events.get(project_id, [])
-        return JSONResponse(events)
+        if doc_svc:
+            events = await doc_svc.get_pipeline_events(project_id)
+            return JSONResponse([
+                {
+                    "project_id": e.project_id,
+                    "agent": e.agent,
+                    "node": e.node,
+                    "status": e.status,
+                    "detail": e.detail,
+                    "timestamp": (
+                        e.timestamp.isoformat()
+                        if hasattr(e.timestamp, "isoformat") else str(e.timestamp)
+                    ),
+                }
+                for e in events
+            ])
+        return JSONResponse([])
 
     # -- Pipeline Interrupt ----------------------------------------------------
 
@@ -846,33 +861,19 @@ def create_api_app(
             return JSONResponse({"error": "Policy not found"}, status_code=404)
         return JSONResponse(meta)
 
-    # -- Document Store -------------------------------------------------------
+    # -- Document Store (Phase 2.5 — persistent in SQLite) -------------------
 
-    _documents: dict[str, dict[str, Any]] = {}
     _documents_dir = Path(__file__).parent / "static" / "documents"
     _documents_dir.mkdir(parents=True, exist_ok=True)
 
-    # Rebuild document metadata from sidecar files (persistence across restarts)
-    for _sidecar in _documents_dir.glob("*.meta.json"):
-        try:
-            _meta = json.loads(_sidecar.read_text(encoding="utf-8"))
-            _did = _meta.get("document_id")
-            if _did:
-                _documents[_did] = _meta
-        except Exception:
-            logger.warning("Failed to load document sidecar: %s", _sidecar.name)
-    if _documents:
-        logger.info("Rebuilt %d documents from sidecar files", len(_documents))
-
     async def store_document(request: Request) -> JSONResponse:
-        """Store a design document (markdown) and return a download URL."""
+        """Store a document with entity extraction and persist to DB."""
         import re as _re
 
         body = await request.json()
         title = body.get("title", "Untitled")
         content = body.get("content", "")
         from_agent = body.get("from_agent")
-        plan_id = body.get("plan_id")
 
         if not content:
             return JSONResponse({"error": "content is required"}, status_code=400)
@@ -884,128 +885,123 @@ def create_api_app(
             if prj_match:
                 project_id = prj_match.group(1)
 
-        doc_id = uuid.uuid4().hex[:12]
-        filename = f"{doc_id}.md"
-        filepath = _documents_dir / filename
-        filepath.write_text(content, encoding="utf-8")
+        doc_type = body.get("doc_type")
+        parent_doc_id = body.get("parent_doc_id")
 
-        # GLiNER entity extraction (non-blocking, best-effort)
-        entities: list[dict[str, str]] = []
-        try:
-            from ncms.domain.entity_extraction import UNIVERSAL_LABELS, resolve_labels
-            from ncms.infrastructure.extraction.gliner_extractor import (
-                extract_entities_gliner,
+        if doc_svc:
+            # Phase 2.5: persistent document with entity extraction
+            doc = await doc_svc.publish_document(
+                title=title,
+                content=content,
+                from_agent=from_agent,
+                project_id=project_id,
+                doc_type=doc_type,
+                parent_doc_id=parent_doc_id,
+                metadata={"plan_id": body.get("plan_id")},
             )
 
-            # Use domain-specific labels if available (same as memory_service)
-            doc_domains = [d for d in [from_agent, "software"] if d]
+            # Also write to filesystem for static serving
+            filename = f"{doc.id}.md"
+            filepath = _documents_dir / filename
+            filepath.write_text(content, encoding="utf-8")
+
+            # Create NCMS memory for document (non-blocking)
             try:
-                cached = await memory_svc._get_cached_labels(doc_domains)
-                labels = resolve_labels(doc_domains, cached_labels=cached)
-            except Exception:
-                labels = list(UNIVERSAL_LABELS)
-
-            domain_labels = [lb for lb in labels if lb not in UNIVERSAL_LABELS]
-            if domain_labels:
-                logger.info(
-                    "GLiNER for %s: %d labels (%d universal + %d domain: %s)",
-                    doc_id, len(labels), len(UNIVERSAL_LABELS),
-                    len(domain_labels), ", ".join(domain_labels[:5]),
+                entity_names = [e["name"] for e in doc.entities[:5]]
+                summary = f"Document '{title}' by {from_agent}: {content[:300]}"
+                if entity_names:
+                    summary += f"\nKey entities: {', '.join(entity_names)}"
+                await memory_svc.store_memory(
+                    content=summary,
+                    memory_type="fact",
+                    domains=["documents"],
+                    tags=["document", doc.id] + [e["name"].lower() for e in doc.entities[:5]],
+                    importance=6.0,
+                    source_agent=from_agent,
+                    entities=doc.entities,
                 )
-            else:
-                logger.info(
-                    "GLiNER for %s: %d universal labels (no domain topics cached)",
-                    doc_id, len(labels),
-                )
+            except Exception as e:
+                logger.warning("Failed to store document memory for %s: %s", doc.id, e)
 
-            entities = await asyncio.to_thread(
-                extract_entities_gliner, content, labels=labels,
-            )
-            logger.info(
-                "GLiNER extracted %d entities for %s: %s",
-                len(entities), doc_id,
-                ", ".join(f"{e['name']}({e['type']})" for e in entities[:5]),
-            )
-        except Exception as e:
-            logger.warning("GLiNER extraction failed for %s: %s", doc_id, e)
+            # Emit SSE event
+            if event_log:
+                from ncms.infrastructure.observability.event_log import DashboardEvent
+                event_log.emit(DashboardEvent(
+                    type="document.published",
+                    data={
+                        "document_id": doc.id,
+                        "title": title,
+                        "from_agent": from_agent,
+                        "doc_type": doc_type,
+                        "content": content[:200],
+                    },
+                    agent_id=from_agent,
+                ))
 
-        meta = {
-            "document_id": doc_id,
-            "title": title,
-            "from_agent": from_agent,
-            "plan_id": plan_id,
-            "project_id": project_id,
-            "format": body.get("format", "markdown"),
-            "url": f"/documents/{filename}",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "size_bytes": len(content.encode("utf-8")),
-            "entities": entities,
-        }
-        _documents[doc_id] = meta
+            return JSONResponse({
+                "document_id": doc.id,
+                "title": doc.title,
+                "from_agent": doc.from_agent,
+                "project_id": doc.project_id,
+                "doc_type": doc.doc_type,
+                "version": doc.version,
+                "content_hash": doc.content_hash,
+                "format": doc.format,
+                "url": f"/documents/{filename}",
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "size_bytes": doc.size_bytes,
+                "entities": doc.entities,
+            }, status_code=201)
 
-        # Persist metadata as JSON sidecar (survives hub restarts)
-        try:
-            sidecar_path = _documents_dir / f"{doc_id}.meta.json"
-            sidecar_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        except Exception as e:
-            logger.warning("Failed to write document sidecar for %s: %s", doc_id, e)
-
-        # Create NCMS memory for document (summary + entities, not full content)
-        try:
-            entity_names = [e["name"] for e in entities[:5]]
-            summary = f"Document '{title}' by {from_agent}: {content[:300]}"
-            if entity_names:
-                summary += f"\nKey entities: {', '.join(entity_names)}"
-            await memory_svc.store_memory(
-                content=summary,
-                memory_type="fact",
-                domains=["documents"],
-                tags=["document", doc_id] + [e["name"].lower() for e in entities[:5]],
-                importance=6.0,
-                source_agent=from_agent,
-                entities=entities,
-            )
-        except Exception as e:
-            logger.warning("Failed to store document memory for %s: %s", doc_id, e)
-
-        # Emit SSE event so dashboard auto-refreshes documents
-        if event_log:
-            from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="document.published",
-                data={
-                    "document_id": doc_id,
-                    "title": title,
-                    "from_agent": from_agent,
-                    "content": content[:200],
-                },
-                agent_id=from_agent,
-            ))
-
-        return JSONResponse(meta, status_code=201)
+        # Fallback: no doc_svc (shouldn't happen in production)
+        return JSONResponse({"error": "DocumentService not available"}, status_code=503)
 
     async def list_documents(request: Request) -> JSONResponse:
         """List all published documents."""
-        docs = sorted(
-            _documents.values(),
-            key=lambda d: d.get("created_at", ""),
-            reverse=True,
-        )
-        return JSONResponse(docs)
+        if doc_svc:
+            project_id = request.query_params.get("project_id")
+            doc_type = request.query_params.get("doc_type")
+            docs = await doc_svc.list_documents(project_id=project_id, doc_type=doc_type)
+            return JSONResponse([
+                {
+                    "document_id": d.id,
+                    "title": d.title,
+                    "from_agent": d.from_agent,
+                    "project_id": d.project_id,
+                    "doc_type": d.doc_type,
+                    "version": d.version,
+                    "content_hash": d.content_hash,
+                    "url": f"/documents/{d.id}.md",
+                    "created_at": d.created_at.isoformat() if d.created_at else None,
+                    "size_bytes": d.size_bytes,
+                    "entities": d.entities,
+                }
+                for d in docs
+            ])
+        return JSONResponse([])
 
     async def get_document(request: Request) -> JSONResponse:
         """Return a single document with its full content."""
         doc_id = request.path_params["doc_id"]
-        meta = _documents.get(doc_id)
-        if not meta:
-            return JSONResponse({"error": "Document not found"}, status_code=404)
-
-        filepath = _documents_dir / f"{doc_id}.md"
-        content = ""
-        if filepath.exists():
-            content = filepath.read_text(encoding="utf-8")
-
-        return JSONResponse({**meta, "content": content})
+        if doc_svc:
+            doc = await doc_svc.get_document(doc_id)
+            if not doc:
+                return JSONResponse({"error": "Document not found"}, status_code=404)
+            return JSONResponse({
+                "document_id": doc.id,
+                "title": doc.title,
+                "from_agent": doc.from_agent,
+                "project_id": doc.project_id,
+                "doc_type": doc.doc_type,
+                "version": doc.version,
+                "content_hash": doc.content_hash,
+                "url": f"/documents/{doc.id}.md",
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "size_bytes": doc.size_bytes,
+                "entities": doc.entities,
+                "content": doc.content,
+            })
+        return JSONResponse({"error": "Document not found"}, status_code=404)
 
     # -- Routes --------------------------------------------------------------
 
@@ -1131,6 +1127,14 @@ async def run_http_server(
         await create_ncms_services(config)
     )
 
+    # Create DocumentService (Phase 2.5) using same DB connection
+    from ncms.application.document_service import DocumentService
+    from ncms.infrastructure.storage.document_store import SQLiteDocumentStore
+
+    doc_store = SQLiteDocumentStore(memory_svc._store.db)
+    doc_svc = DocumentService(store=doc_store, memory_svc=memory_svc)
+    logger.info("DocumentService initialized (Phase 2.5)")
+
     # Wire event log into services for dashboard visibility
     if hasattr(memory_svc, "_event_log"):
         memory_svc._event_log = event_log
@@ -1153,6 +1157,7 @@ async def run_http_server(
         consolidation_svc=consolidation_svc,
         event_log=event_log,
         auth_token=auth_token,
+        doc_svc=doc_svc,
         extra_routes=transport.starlette_routes() if transport else None,
     )
 
