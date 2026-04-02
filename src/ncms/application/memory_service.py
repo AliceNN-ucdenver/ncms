@@ -239,7 +239,9 @@ class MemoryService:
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
         admission_features: object | None = None  # AdmissionFeatures, preserved for L2 node
-        if self._admission is not None and self._config.admission_enabled:
+        # High-importance content (e.g. knowledge files at 9.0) skips admission
+        # scoring entirely — always persisted as atomic memories.
+        if self._admission is not None and self._config.admission_enabled and importance < 8.0:
             t0 = time.perf_counter()
             try:
                 from dataclasses import asdict as _asdict
