@@ -22,7 +22,8 @@ const LINK_TYPE_CONFIG = {
 
 // Card dimensions
 const CARD_W = 170;
-const CARD_H = 82;
+const CARD_H_BASE = 82;
+const CARD_H_PER_SCORE = 14;  // extra height per reviewer score line
 const CARD_GAP_X = 50;
 const CARD_GAP_Y = 16;
 const MARGIN = { top: 10, right: 16, bottom: 10, left: 16 };
@@ -39,11 +40,25 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     if (s.score != null) scoreMap[s.document_id].push(s.score);
   }
 
+  // Build per-reviewer score lookup: doc_id -> [{reviewer, score, round}]
+  const reviewerScoreMap = {};
+  for (const s of (reviewScores || [])) {
+    if (!reviewerScoreMap[s.document_id]) reviewerScoreMap[s.document_id] = [];
+    if (s.score != null) {
+      reviewerScoreMap[s.document_id].push({
+        reviewer: s.reviewer_agent || '?',
+        score: s.score,
+        round: s.review_round || 1,
+      });
+    }
+  }
+
   // Build nodes sorted by type order then creation time
   const nodes = documents.map(d => {
     const cfg = DOC_TYPE_CONFIG[d.doc_type] || { icon: '\uD83D\uDCC4', color: '#64748b', label: d.doc_type || 'Doc', order: 9 };
     const scores = scoreMap[d.id] || [];
     const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    const perReviewer = reviewerScoreMap[d.id] || [];
     return {
       id: d.id,
       title: d.title || 'Untitled',
@@ -57,6 +72,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       label: cfg.label,
       order: cfg.order,
       avgScore,
+      perReviewer,
     };
   }).sort((a, b) => a.order - b.order);
 
@@ -75,12 +91,22 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     colMap[n.doc_type].nodes.push(n);
   }
 
-  // Assign positions
-  let maxRows = 1;
-  columns.forEach(col => { maxRows = Math.max(maxRows, col.nodes.length); });
+  // Compute per-node card height (taller when review scores exist)
+  for (const n of nodes) {
+    n.cardH = CARD_H_BASE + (n.perReviewer.length > 0 ? n.perReviewer.length * CARD_H_PER_SCORE : 0);
+  }
+
+  // Assign positions — use max card height per column for vertical stacking
+  let maxColH = 0;
+  columns.forEach(col => {
+    let colH = 0;
+    col.nodes.forEach(n => { colH += n.cardH + CARD_GAP_Y; });
+    colH -= CARD_GAP_Y;
+    maxColH = Math.max(maxColH, colH);
+  });
 
   const totalW = columns.length * (CARD_W + CARD_GAP_X) - CARD_GAP_X + MARGIN.left + MARGIN.right;
-  const totalH = maxRows * (CARD_H + CARD_GAP_Y) - CARD_GAP_Y + MARGIN.top + MARGIN.bottom;
+  const totalH = maxColH + MARGIN.top + MARGIN.bottom;
   const width = Math.max(totalW, container.clientWidth || 400);
   const height = Math.max(totalH, 92);
 
@@ -89,9 +115,11 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
 
   columns.forEach((col, ci) => {
     const colX = startX + ci * (CARD_W + CARD_GAP_X);
-    col.nodes.forEach((n, ri) => {
+    let yOffset = MARGIN.top;
+    col.nodes.forEach(n => {
       n.x = colX;
-      n.y = MARGIN.top + ri * (CARD_H + CARD_GAP_Y);
+      n.y = yOffset;
+      yOffset += n.cardH + CARD_GAP_Y;
     });
   });
 
@@ -164,9 +192,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('class', 'doc-flow-edge')
     .attr('d', d => {
       const sx = d.source.x + CARD_W + 4;  // start past right edge
-      const sy = d.source.y + CARD_H / 2;
+      const sy = d.source.y + d.source.cardH / 2;
       const tx = d.target.x - 4;           // end before left edge
-      const ty = d.target.y + CARD_H / 2;
+      const ty = d.target.y + d.target.cardH / 2;
       const mx = (sx + tx) / 2;
       return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
     })
@@ -184,7 +212,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .append('text')
     .attr('class', 'doc-flow-edge-label')
     .attr('x', d => (d.source.x + CARD_W + d.target.x) / 2)
-    .attr('y', d => (d.source.y + d.target.y) / 2 + CARD_H / 2 - 8)
+    .attr('y', d => (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2 - 8)
     .attr('text-anchor', 'middle')
     .attr('fill', d => d.color)
     .attr('font-size', '9px')
@@ -206,7 +234,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   // Card background
   nodeGroup.append('rect')
     .attr('width', CARD_W)
-    .attr('height', CARD_H)
+    .attr('height', d => d.cardH)
     .attr('rx', 8).attr('ry', 8)
     .attr('fill', d => d.color + '12')
     .attr('stroke', d => d.color + '50')
@@ -215,7 +243,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   // Left color bar
   nodeGroup.append('rect')
     .attr('width', 4)
-    .attr('height', CARD_H - 8)
+    .attr('height', d => d.cardH - 8)
     .attr('x', 0).attr('y', 4)
     .attr('rx', 2)
     .attr('fill', d => d.color);
@@ -273,24 +301,41 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       } catch { return ''; }
     });
 
-  // Score badge (bottom-right corner)
+  // Per-reviewer score lines (below timestamp, inside the card)
   nodeGroup.each(function (d) {
-    if (d.avgScore == null) return;
-    const color = d.avgScore >= 80 ? '#10b981' : d.avgScore >= 60 ? '#f59e0b' : '#ef4444';
+    if (d.perReviewer.length === 0) return;
     const g = d3.select(this);
-    g.append('rect')
-      .attr('x', CARD_W - 38).attr('y', CARD_H - 20)
-      .attr('width', 34).attr('height', 16)
-      .attr('rx', 3)
-      .attr('fill', color + '25')
-      .attr('stroke', color + '60')
-      .attr('stroke-width', 1);
-    g.append('text')
-      .attr('x', CARD_W - 21).attr('y', CARD_H - 8)
-      .attr('text-anchor', 'middle')
-      .attr('fill', color)
-      .attr('font-size', '10px')
-      .attr('font-weight', '700')
-      .text(d.avgScore + '%');
+    // Separator line
+    g.append('line')
+      .attr('x1', 10).attr('x2', CARD_W - 10)
+      .attr('y1', CARD_H_BASE - 14).attr('y2', CARD_H_BASE - 14)
+      .attr('stroke', 'var(--border)').attr('stroke-width', 0.5);
+    // Each reviewer on its own line
+    d.perReviewer.forEach((rs, i) => {
+      const yPos = CARD_H_BASE - 4 + i * CARD_H_PER_SCORE;
+      const sc = rs.score;
+      const color = sc >= 80 ? '#10b981' : sc >= 60 ? '#f59e0b' : '#ef4444';
+      // Reviewer name
+      g.append('text')
+        .attr('x', 12).attr('y', yPos)
+        .attr('fill', 'var(--text-muted)')
+        .attr('font-size', '10px')
+        .text(rs.reviewer);
+      // Score value
+      g.append('text')
+        .attr('x', CARD_W - 12).attr('y', yPos)
+        .attr('text-anchor', 'end')
+        .attr('fill', color)
+        .attr('font-size', '10px')
+        .attr('font-weight', '700')
+        .text(sc + '%');
+      // Mini bar
+      g.append('rect')
+        .attr('x', 70).attr('y', yPos - 7)
+        .attr('width', Math.max(1, (sc / 100) * 60)).attr('height', 4)
+        .attr('rx', 2)
+        .attr('fill', color)
+        .attr('opacity', 0.5);
+    });
   });
 }
