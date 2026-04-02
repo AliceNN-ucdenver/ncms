@@ -164,59 +164,10 @@ function renderProjectDetail(project) {
     </div>`;
   }
 
-  // D3 Document Flow Graph (when documents + links exist)
+  // D3 Document Flow Graph — single view for all documents
   if (docs.length > 0 && typeof renderDocFlowGraph === 'function') {
     html += `<div class="doc-flow-container" id="doc-flow-${escapeHtml(id)}"></div>`;
-  }
-
-  // Phase timeline with documents
-  if (docs.length > 0) {
-    html += '<div class="phase-timeline">';
-    for (const doc of docs) {
-      const docId = doc.id || doc.document_id || '';
-      const docTitle = escapeHtml(doc.title || 'Untitled');
-      const docTime = formatTime(doc.created_at || '');
-      const docSize = doc.size_bytes != null ? formatDocSize(doc.size_bytes) : (doc.size != null ? formatDocSize(doc.size) : '');
-      const docType = doc.doc_type || '';
-      const typeConfig = { research: '#10b981', prd: '#22c55e', manifest: '#f97316', design: '#f59e0b', review: '#a78bfa', contract: '#8b5cf6' };
-      const typeColor = typeConfig[docType] || '#64748b';
-      const versionBadge = doc.version > 1 ? `<span class="doc-version-badge">v${doc.version}</span>` : '';
-      const docAgent = escapeHtml(doc.from_agent || '');
-
-      // Find review scores for this doc
-      const docScores = reviewScores.filter(s => s.document_id === docId && s.score != null);
-      let scoreHtml = '';
-      if (docScores.length > 0) {
-        scoreHtml = docScores.map(s => {
-          const sc = s.score;
-          const c = sc >= 80 ? '#10b981' : sc >= 60 ? '#f59e0b' : '#ef4444';
-          return `<span class="doc-score-badge" style="color:${c}">${escapeHtml(s.reviewer_agent || '?')} ${sc}%</span>`;
-        }).join(' ');
-      }
-
-      html += `<div class="phase-timeline-item">
-        <div class="phase-timeline-dot" style="background:${typeColor}"></div>
-        <div class="phase-timeline-content">
-          <div class="phase-timeline-header">
-            <span class="phase-timeline-title clickable" onclick="openDocumentViewer('${escapeHtml(docId)}')">${docTitle}</span>
-            <span class="phase-timeline-meta">
-              <span class="doc-type-chip" style="color:${typeColor};border-color:${typeColor}40">${escapeHtml(docType)}</span>
-              ${versionBadge}
-              <span class="phase-timeline-agent">${docAgent}</span>
-              ${docSize ? `<span class="phase-timeline-size">${docSize}</span>` : ''}
-              <span class="phase-timeline-time">${docTime}</span>
-              ${scoreHtml}
-            </span>
-          </div>
-          <div class="phase-timeline-actions">
-            ${doc.url ? `<a class="document-download-btn" href="${escapeHtml(doc.url)}" target="_blank" download>Download</a>` : ''}
-            ${doc.next_agent ? `<button class="doc-action-btn send-to-next" onclick="sendDocToAgent('${escapeHtml(doc.next_agent)}', '${escapeHtml(docId)}', '${escapeHtml((doc.title || '').replace(/'/g, "\\'"))}', 'Process this document')">Send to ${escapeHtml(doc.next_agent)}</button>` : ''}
-          </div>
-        </div>
-      </div>`;
-    }
-    html += '</div>';
-  } else {
+  } else if (docs.length === 0) {
     html += '<div class="phase-timeline-empty">No documents in this project yet</div>';
   }
 

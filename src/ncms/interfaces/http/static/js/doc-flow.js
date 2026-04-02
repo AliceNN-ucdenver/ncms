@@ -22,7 +22,7 @@ const LINK_TYPE_CONFIG = {
 
 // Card dimensions
 const CARD_W = 170;
-const CARD_H = 72;
+const CARD_H = 82;
 const CARD_GAP_X = 50;
 const CARD_GAP_Y = 16;
 const MARGIN = { top: 10, right: 16, bottom: 10, left: 16 };
@@ -163,9 +163,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .append('path')
     .attr('class', 'doc-flow-edge')
     .attr('d', d => {
-      const sx = d.source.x + CARD_W;
+      const sx = d.source.x + CARD_W + 4;  // start past right edge
       const sy = d.source.y + CARD_H / 2;
-      const tx = d.target.x;
+      const tx = d.target.x - 4;           // end before left edge
       const ty = d.target.y + CARD_H / 2;
       const mx = (sx + tx) / 2;
       return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
@@ -245,7 +245,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       return t.length > 24 ? t.substring(0, 22) + '..' : t;
     });
 
-  // Agent + size (bottom line)
+  // Agent + size (line 3)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 48)
     .attr('fill', 'var(--text-muted)')
@@ -255,7 +255,22 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       if (d.size_bytes > 0) parts.push((d.size_bytes / 1024).toFixed(1) + 'KB');
       if (d.entity_count > 0) parts.push(d.entity_count + ' ent');
       const full = parts.join(' \u00B7 ');
-      return full.length > 24 ? full.substring(0, 22) + '..' : full;
+      return full.length > 26 ? full.substring(0, 24) + '..' : full;
+    });
+
+  // Timestamp (line 4)
+  nodeGroup.append('text')
+    .attr('x', 12).attr('y', 60)
+    .attr('fill', 'var(--text-muted)')
+    .attr('font-size', '8px')
+    .attr('opacity', 0.6)
+    .text(d => {
+      if (!d.created_at) return '';
+      try {
+        const dt = new Date(d.created_at);
+        return dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+          + ' ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch { return ''; }
     });
 
   // Score badge (bottom-right corner)
