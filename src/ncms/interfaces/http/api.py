@@ -1260,6 +1260,21 @@ def create_api_app(
         )
         return JSONResponse({"ok": True}, status_code=201)
 
+    async def record_guardrail_violation_endpoint(request: Request) -> JSONResponse:
+        """Agent reports a guardrail violation for the audit trail."""
+        if not doc_svc:
+            return JSONResponse({"ok": True})
+        body = await request.json()
+        await doc_svc.record_guardrail_violation(
+            document_id=body.get("document_id"),
+            project_id=body.get("project_id"),
+            policy_type=body.get("policy_type", "unknown"),
+            rule=body.get("rule", "unknown"),
+            message=body.get("message", ""),
+            escalation=body.get("escalation", "warn"),
+        )
+        return JSONResponse({"ok": True}, status_code=201)
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1341,10 +1356,11 @@ def create_api_app(
         Route("/api/v1/approvals/{approval_id}", get_approval_endpoint, methods=["GET"]),
         Route("/api/v1/approvals/{approval_id}/decide", decide_approval_endpoint, methods=["POST"]),
 
-        # Audit Records (agents report LLM calls, config, grounding)
+        # Audit Records (agents report LLM calls, config, grounding, violations)
         Route("/api/v1/audit/llm-call", record_llm_call_endpoint, methods=["POST"]),
         Route("/api/v1/audit/config-snapshot", record_config_snapshot_endpoint, methods=["POST"]),
         Route("/api/v1/audit/grounding", record_grounding_endpoint, methods=["POST"]),
+        Route("/api/v1/audit/guardrail-violation", record_guardrail_violation_endpoint, methods=["POST"]),
     ]
 
     # Mount transport or other extra routes (e.g. HttpBusTransport SSE)

@@ -207,6 +207,20 @@ class DesignAgent:
         blocking = [v for v in violations if v.escalation in ("block", "reject")]
         warns = [v for v in violations if v.escalation == "warn"]
 
+        # Persist ALL violations (including warns) to guardrail_violations table
+        for v in violations:
+            try:
+                await self.client._client.post("/api/v1/audit/guardrail-violation", json={
+                    "document_id": state.get("document_id"),
+                    "project_id": state.get("project_id"),
+                    "policy_type": v.policy_type,
+                    "rule": v.rule,
+                    "message": v.message,
+                    "escalation": v.escalation,
+                })
+            except Exception:
+                pass
+
         # Always annotate warn-level items
         if warns:
             warning_section = (
@@ -252,10 +266,14 @@ class DesignAgent:
                     return state
             # If approval creation failed, continue with annotations (graceful degradation)
 
+        # Include actual violation details in telemetry so dashboard can show them
+        violation_details = "; ".join(
+            f"[{v.escalation}] {v.policy_type}: {v.message}" for v in violations
+        )
         await emit_telemetry(
             self.hub_url, state.get("project_id"), self.from_agent,
             "check_output_guardrails", "completed",
-            f"{len(violations)} items flagged ({len(blocking)} blocking, {len(warns)} warn)",
+            f"{len(violations)} items flagged ({len(blocking)} blocking, {len(warns)} warn): {violation_details[:300]}",
         )
         try:
             await self.client.bus_announce(
