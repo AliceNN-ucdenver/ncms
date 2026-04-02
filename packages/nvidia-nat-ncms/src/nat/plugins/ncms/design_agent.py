@@ -463,6 +463,7 @@ class DesignAgent:
         async def _ask_architect() -> str:
             try:
                 question = (
+                    f"[NCMS:question]\n"
                     f"What architectural patterns and ADRs apply to this implementation?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
@@ -483,6 +484,7 @@ class DesignAgent:
         async def _ask_security() -> str:
             try:
                 question = (
+                    f"[NCMS:question]\n"
                     f"What security threats and controls apply to this implementation?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
@@ -713,11 +715,14 @@ class DesignAgent:
             return 50, "Review failed"  # Unreachable but satisfies type checker
 
         # Document-by-reference: pass doc_id only, expert fetches content
+        # [NCMS:review] tag ensures deterministic routing to structured_review
         arch_prompt = (
+            f"[NCMS:review]\n"
             f"Review design document (doc_id: {doc_id}) (project_id: {project_id})\n"
             f"Use ARCHITECTURE review criteria."
         )
         sec_prompt = (
+            f"[NCMS:review]\n"
             f"Review design document (doc_id: {doc_id}) (project_id: {project_id})\n"
             f"Use SECURITY review criteria."
         )

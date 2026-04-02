@@ -56,6 +56,12 @@ class ExpertState(TypedDict):
 
 # ── Review detection pattern ────────────────────────────────────────────────
 
+# ── Deterministic request type tags ──────────────────────────────────────────
+# Callers tag messages with [NCMS:review] or [NCMS:question] for deterministic
+# routing. Falls back to regex for backward compatibility with untagged messages.
+_NCMS_REVIEW_TAG = "[NCMS:review]"
+_NCMS_QUESTION_TAG = "[NCMS:question]"
+
 _REVIEW_PATTERN = re.compile(
     r"DESIGN TO REVIEW|IMPLEMENTATION DESIGN TO REVIEW|"
     r"You are a (?:security|architecture) reviewer|"
@@ -119,27 +125,40 @@ class ExpertAgent:
     async def classify(self, state: ExpertState) -> ExpertState:
         """Classify the input as a question or a review request. No LLM.
 
-        Scans the FULL input text because NAT's auto_memory wrapper may
-        prepend memory context, pushing the actual request past any fixed
-        prefix window. With document-by-reference, review messages are
-        short ("Review design document (doc_id: xxx)") so false positives
-        from prepended context are unlikely.
+        Uses deterministic [NCMS:review] / [NCMS:question] tags inserted
+        by the calling agent. Falls back to regex for backward compatibility
+        with untagged messages (e.g., direct bus_ask from external callers).
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "started")
         input_text = state["input"]
 
-        if _REVIEW_PATTERN.search(input_text):
+        # Deterministic: explicit tags survive auto_memory prepending, any wrapping
+        if _NCMS_REVIEW_TAG in input_text:
             state["request_type"] = "review"
+            classify_source = "tag"
+        elif _NCMS_QUESTION_TAG in input_text:
+            state["request_type"] = "question"
+            classify_source = "tag"
+        elif _REVIEW_PATTERN.search(input_text):
+            # Fallback: regex for untagged messages
+            state["request_type"] = "review"
+            classify_source = "regex"
         else:
             state["request_type"] = "question"
+            classify_source = "default"
 
         logger.info(
-            "[expert_agent:%s] Classified as: %s (input: %d chars)",
+            "[expert_agent:%s] Classified as: %s (source=%s, input=%d chars)",
             self.from_agent,
             state["request_type"],
+            classify_source,
             len(input_text),
         )
-        await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "completed", state["request_type"])
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"), self.from_agent,
+            "classify", "completed",
+            f"{state['request_type']} (source={classify_source})",
+        )
         return state
 
     # ── Node 2: Search Memory (Pure Python) ──────────────────────────────

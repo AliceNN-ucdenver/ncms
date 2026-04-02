@@ -274,6 +274,7 @@ class PRDAgent:
         async def _ask_architect() -> str:
             try:
                 question = (
+                    f"[NCMS:question]\n"
                     f"What architectural decisions and patterns apply to this project?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
@@ -294,6 +295,7 @@ class PRDAgent:
         async def _ask_security() -> str:
             try:
                 question = (
+                    f"[NCMS:question]\n"
                     f"What security threats and requirements apply to this project?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
