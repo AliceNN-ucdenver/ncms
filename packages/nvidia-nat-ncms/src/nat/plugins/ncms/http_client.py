@@ -199,6 +199,8 @@ class NCMSHttpClient:
         *,
         from_agent: str | None = None,
         plan_id: str | None = None,
+        doc_type: str | None = None,
+        parent_doc_id: str | None = None,
         format: str = "markdown",
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"title": title, "content": content, "format": format}
@@ -206,6 +208,10 @@ class NCMSHttpClient:
             body["from_agent"] = from_agent
         if plan_id:
             body["plan_id"] = plan_id
+        if doc_type:
+            body["doc_type"] = doc_type
+        if parent_doc_id:
+            body["parent_doc_id"] = parent_doc_id
         resp = await self._client.post("/api/v1/documents", json=body)
         resp.raise_for_status()
         return resp.json()
@@ -213,6 +219,58 @@ class NCMSHttpClient:
     async def read_document(self, document_id: str) -> dict[str, Any]:
         """Fetch a document by ID.  Returns {document_id, title, content, ...}."""
         resp = await self._client.get(f"/api/v1/documents/{document_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def create_document_link(
+        self,
+        source_doc_id: str,
+        target_doc_id: str,
+        link_type: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Create a typed link between two documents."""
+        body: dict[str, Any] = {
+            "source_doc_id": source_doc_id,
+            "target_doc_id": target_doc_id,
+            "link_type": link_type,
+        }
+        if metadata:
+            body["metadata"] = metadata
+        resp = await self._client.post("/api/v1/documents/links", json=body)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def save_review_score(
+        self,
+        document_id: str,
+        project_id: str | None,
+        reviewer_agent: str,
+        review_round: int,
+        score: int | None = None,
+        severity: str | None = None,
+        covered: str | None = None,
+        missing: str | None = None,
+        changes: str | None = None,
+    ) -> dict[str, Any]:
+        """Save a structured review score."""
+        body: dict[str, Any] = {
+            "document_id": document_id,
+            "project_id": project_id,
+            "reviewer_agent": reviewer_agent,
+            "review_round": review_round,
+        }
+        if score is not None:
+            body["score"] = score
+        if severity:
+            body["severity"] = severity
+        if covered:
+            body["covered"] = covered
+        if missing:
+            body["missing"] = missing
+        if changes:
+            body["changes"] = changes
+        resp = await self._client.post("/api/v1/reviews", json=body)
         resp.raise_for_status()
         return resp.json()
 

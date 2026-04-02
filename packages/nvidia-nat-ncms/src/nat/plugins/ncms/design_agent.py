@@ -516,15 +516,33 @@ class DesignAgent:
         logger.info("[design_agent] Publishing design document: %d chars %s", len(design), version)
 
         try:
+            # Determine parent_doc_id for version chain
+            prev_doc_id = state.get("document_id") if state.get("iteration", 0) > 0 else None
+
             result = await self.client.publish_document(
                 content=versioned_design,
                 title=f"{clean_topic} — Implementation Design {version}",
                 from_agent=self.from_agent,
+                doc_type="design",
+                parent_doc_id=prev_doc_id,
                 format="markdown",
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id
-            logger.info("[design_agent] Document published: %s", doc_id)
+            logger.info("[design_agent] Design published: %s (type=design, parent=%s)", doc_id, prev_doc_id)
+
+            # Create traceability link: Design → PRD
+            source_doc_id = state.get("source_doc_id")
+            if source_doc_id and doc_id != "unknown" and not prev_doc_id:
+                try:
+                    await self.client.create_document_link(
+                        source_doc_id=doc_id,
+                        target_doc_id=source_doc_id,
+                        link_type="derived_from",
+                    )
+                    logger.info("[design_agent] Link: %s derived_from %s", doc_id, source_doc_id)
+                except Exception as e:
+                    logger.debug("[design_agent] Link creation failed: %s", e)
 
             try:
                 await self.client.bus_announce(
@@ -751,13 +769,43 @@ class DesignAgent:
         )
 
         try:
-            await self.client.publish_document(
+            review_result = await self.client.publish_document(
                 content=review_doc,
                 title=f"{clean_topic} — Design Review Report",
                 from_agent=self.from_agent,
+                doc_type="review",
                 format="markdown",
             )
-            logger.info("[design_agent] Review report published")
+            review_doc_id = review_result.get("document_id")
+            logger.info("[design_agent] Review report published: %s (type=review)", review_doc_id)
+
+            # Create link: review → design
+            if review_doc_id and doc_id:
+                try:
+                    await self.client.create_document_link(
+                        source_doc_id=review_doc_id,
+                        target_doc_id=doc_id,
+                        link_type="reviews",
+                        metadata={"avg_score": avg_score, "round": iteration + 1},
+                    )
+                except Exception:
+                    pass
+
+            # Persist review scores
+            for agent_name in ["architect", "security"]:
+                agent_score = scores.get(agent_name)
+                if agent_score is not None:
+                    try:
+                        await self.client.save_review_score(
+                            document_id=doc_id,
+                            project_id=project_id,
+                            reviewer_agent=agent_name,
+                            review_round=iteration + 1,
+                            score=agent_score,
+                        )
+                    except Exception:
+                        pass
+
         except Exception as e:
             logger.warning("[design_agent] Failed to publish review report: %s", e)
 
@@ -834,13 +882,27 @@ class DesignAgent:
 
             # Publish as a separate document
             try:
-                await self.client.publish_document(
+                contract_result = await self.client.publish_document(
                     content=contract,
                     title=f"{clean_topic} — OpenAPI Contract",
                     from_agent=self.from_agent,
+                    doc_type="contract",
                     format="yaml",
                 )
-                logger.info("[design_agent] OpenAPI contract published")
+                contract_doc_id = contract_result.get("document_id")
+                logger.info("[design_agent] Contract published: %s (type=contract)", contract_doc_id)
+
+                # Link: contract → design
+                design_doc_id = state.get("document_id")
+                if contract_doc_id and design_doc_id:
+                    try:
+                        await self.client.create_document_link(
+                            source_doc_id=contract_doc_id,
+                            target_doc_id=design_doc_id,
+                            link_type="derived_from",
+                        )
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("[design_agent] Contract publish failed: %s", e)
 

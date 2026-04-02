@@ -440,6 +440,7 @@ class ResearchAgent:
                 content=synthesis,
                 title=f"{clean_topic} — Market Research Report",
                 from_agent=self.from_agent,
+                doc_type="research",
                 format="markdown",
             )
             doc_id = result.get("document_id", "unknown")

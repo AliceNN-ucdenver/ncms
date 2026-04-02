@@ -1003,6 +1003,99 @@ def create_api_app(
             })
         return JSONResponse({"error": "Document not found"}, status_code=404)
 
+    # -- Document Links & Reviews (Phase 2.5) --------------------------------
+
+    async def create_document_link(request: Request) -> JSONResponse:
+        body = await request.json()
+        if not doc_svc:
+            return JSONResponse({"error": "DocumentService not available"}, status_code=503)
+        link = await doc_svc.create_link(
+            source_doc_id=body["source_doc_id"],
+            target_doc_id=body["target_doc_id"],
+            link_type=body["link_type"],
+            metadata=body.get("metadata"),
+        )
+        return JSONResponse({"link_id": link.id, "link_type": link.link_type}, status_code=201)
+
+    async def save_review_score_endpoint(request: Request) -> JSONResponse:
+        body = await request.json()
+        if not doc_svc:
+            return JSONResponse({"error": "DocumentService not available"}, status_code=503)
+        review = await doc_svc.save_review_score(
+            document_id=body["document_id"],
+            project_id=body.get("project_id"),
+            reviewer_agent=body["reviewer_agent"],
+            review_round=body.get("review_round", 1),
+            score=body.get("score"),
+            severity=body.get("severity"),
+            covered=body.get("covered"),
+            missing=body.get("missing"),
+            changes=body.get("changes"),
+        )
+        return JSONResponse({"review_id": review.id, "score": review.score}, status_code=201)
+
+    async def get_document_chain(request: Request) -> JSONResponse:
+        doc_id = request.path_params["doc_id"]
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        chain = await doc_svc.get_traceability_chain(doc_id)
+        return JSONResponse([
+            {
+                "source_doc_id": lnk.source_doc_id,
+                "target_doc_id": lnk.target_doc_id,
+                "link_type": lnk.link_type,
+                "metadata": lnk.metadata,
+            }
+            for lnk in chain
+        ])
+
+    async def get_document_versions(request: Request) -> JSONResponse:
+        doc_id = request.path_params["doc_id"]
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        versions = await doc_svc.get_document_versions(doc_id)
+        return JSONResponse([
+            {
+                "document_id": v.id,
+                "version": v.version,
+                "title": v.title,
+                "size_bytes": v.size_bytes,
+                "content_hash": v.content_hash,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in versions
+        ])
+
+    async def get_document_reviews(request: Request) -> JSONResponse:
+        doc_id = request.path_params["doc_id"]
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        scores = await doc_svc.get_review_scores(document_id=doc_id)
+        return JSONResponse([s.model_dump(mode="json") for s in scores])
+
+    async def search_documents_endpoint(request: Request) -> JSONResponse:
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        entity = request.query_params.get("entity")
+        doc_type = request.query_params.get("doc_type")
+        min_score = request.query_params.get("min_score")
+        results = await doc_svc.search_documents(
+            entity=entity, doc_type=doc_type,
+            min_score=int(min_score) if min_score else None,
+        )
+        return JSONResponse([
+            {
+                "document_id": d.id,
+                "title": d.title,
+                "doc_type": d.doc_type,
+                "from_agent": d.from_agent,
+                "project_id": d.project_id,
+                "entities": d.entities,
+                "size_bytes": d.size_bytes,
+            }
+            for d in results
+        ])
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1040,10 +1133,18 @@ def create_api_app(
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),
 
-        # Documents
+        # Documents (Phase 2.5)
         Route("/api/v1/documents", store_document, methods=["POST"]),
         Route("/api/v1/documents", list_documents, methods=["GET"]),
+        Route("/api/v1/documents/search", search_documents_endpoint, methods=["GET"]),
+        Route("/api/v1/documents/links", create_document_link, methods=["POST"]),
         Route("/api/v1/documents/{doc_id}", get_document, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}/chain", get_document_chain, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}/versions", get_document_versions, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}/reviews", get_document_reviews, methods=["GET"]),
+
+        # Reviews (Phase 2.5)
+        Route("/api/v1/reviews", save_review_score_endpoint, methods=["POST"]),
 
         # Projects
         Route("/api/v1/projects", create_project, methods=["POST"]),

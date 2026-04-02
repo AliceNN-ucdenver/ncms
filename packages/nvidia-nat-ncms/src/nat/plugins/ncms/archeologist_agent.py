@@ -581,6 +581,7 @@ class ArcheologistAgent:
                 content=content,
                 title=f"Archaeology: {repo_name}",
                 from_agent=self.from_agent,
+                doc_type="research",
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id

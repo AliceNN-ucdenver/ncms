@@ -394,11 +394,25 @@ class PRDAgent:
                 content=prd,
                 title=title,
                 from_agent=self.from_agent,
+                doc_type="prd",
                 format="markdown",
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id
-            logger.info("[prd_agent] Document published: %s", doc_id)
+            logger.info("[prd_agent] PRD published: %s (type=prd)", doc_id)
+
+            # Create traceability link: PRD → Research Report
+            source_doc_id = state.get("source_doc_id")
+            if source_doc_id and doc_id != "unknown":
+                try:
+                    await self.client.create_document_link(
+                        source_doc_id=doc_id,
+                        target_doc_id=source_doc_id,
+                        link_type="derived_from",
+                    )
+                    logger.info("[prd_agent] Link: %s derived_from %s", doc_id, source_doc_id)
+                except Exception as e:
+                    logger.debug("[prd_agent] Link creation failed: %s", e)
 
             # Announce to the bus
             try:
@@ -428,6 +442,7 @@ class PRDAgent:
                     content=manifest_content,
                     title=f"{clean_topic} — Requirements Manifest",
                     from_agent=self.from_agent,
+                    doc_type="manifest",
                     format="markdown",
                 )
                 logger.info("[prd_agent] Requirements manifest published")
