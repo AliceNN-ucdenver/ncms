@@ -21,7 +21,7 @@ const LINK_TYPE_CONFIG = {
 };
 
 // Card dimensions
-const CARD_W = 140;
+const CARD_W = 170;
 const CARD_H = 72;
 const CARD_GAP_X = 50;
 const CARD_GAP_Y = 16;
@@ -242,7 +242,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       // Remove leading topic that repeats across all docs
       const dashIdx = t.indexOf(' \u2014 ');
       if (dashIdx > 0 && dashIdx < t.length - 5) t = t.substring(dashIdx + 3);
-      return t.length > 20 ? t.substring(0, 18) + '..' : t;
+      return t.length > 24 ? t.substring(0, 22) + '..' : t;
     });
 
   // Agent + size (bottom line)
@@ -253,8 +253,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .text(d => {
       const parts = [d.from_agent];
       if (d.size_bytes > 0) parts.push((d.size_bytes / 1024).toFixed(1) + 'KB');
-      if (d.entity_count > 0) parts.push(d.entity_count + ' entities');
-      return parts.join(' \u00B7 ');
+      if (d.entity_count > 0) parts.push(d.entity_count + ' ent');
+      const full = parts.join(' \u00B7 ');
+      return full.length > 24 ? full.substring(0, 22) + '..' : full;
     });
 
   // Score badge (bottom-right corner)
