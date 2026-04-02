@@ -796,6 +796,39 @@ def create_api_app(
                 agent_id=agent_id,
             ))
 
+        # Mark the active project as interrupted and emit telemetry
+        # so pipeline progress nodes stop showing as "started"
+        if doc_svc:
+            try:
+                # Find the most recent active project for this agent
+                projects = await doc_svc.list_projects(status="active")
+                for proj in projects:
+                    events = await doc_svc.get_pipeline_events(proj.id)
+                    agent_events = [e for e in events if e.agent == agent_id]
+                    if agent_events:
+                        # Mark project as interrupted
+                        await doc_svc.update_project_status(proj.id, "interrupted")
+                        # Emit interrupted telemetry for any "started" nodes
+                        # so the dashboard stops showing them as active
+                        started_nodes = set()
+                        for e in agent_events:
+                            if e.status == "started":
+                                started_nodes.add(e.node)
+                            elif e.status in ("completed", "interrupted", "denied"):
+                                started_nodes.discard(e.node)
+                        for node in started_nodes:
+                            await doc_svc.record_pipeline_event(
+                                proj.id, agent_id, node, "interrupted",
+                                detail="Interrupted by human",
+                            )
+                        logger.info(
+                            "Project %s marked interrupted (%d nodes stopped)",
+                            proj.id, len(started_nodes),
+                        )
+                        break  # Only interrupt the first matching project
+            except Exception as e:
+                logger.warning("Failed to mark project interrupted: %s", e)
+
         return JSONResponse({"interrupted": True, "agent_id": agent_id})
 
     # -- Prompt Store ----------------------------------------------------------

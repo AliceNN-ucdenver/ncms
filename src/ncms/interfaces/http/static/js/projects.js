@@ -47,7 +47,7 @@ function renderProjects() {
   }
 
   // Sort: active first, then by created_at descending
-  const statusOrder = { active: 0, pending: 1, completed: 2, failed: 3, denied: 3, archived: 4 };
+  const statusOrder = { active: 0, pending: 1, completed: 2, interrupted: 3, failed: 3, denied: 3, archived: 4 };
   const sorted = [...state.projects].sort((a, b) => {
     const sa = statusOrder[a.status] ?? 3;
     const sb = statusOrder[b.status] ?? 3;
