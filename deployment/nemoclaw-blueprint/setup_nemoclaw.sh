@@ -413,6 +413,10 @@ setup_agent_sandbox() {
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && uv sync 2>&1 | tail -3" \
     || warn "NCMS install failed"
 
+  # Ensure arxiv package is installed (researcher needs it for academic search)
+  sandbox_run "$sandbox_name" "cd /sandbox/ncms && uv pip install arxiv 2>&1 | tail -2" \
+    || warn "arxiv install failed (non-fatal — researcher will skip ArXiv search)"
+
   # Install NAT (NeMo Agent Toolkit) + langchain integration
   info "Installing NeMo Agent Toolkit..."
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && \
