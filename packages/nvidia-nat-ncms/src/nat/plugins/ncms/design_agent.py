@@ -354,6 +354,11 @@ class DesignAgent:
 
     async def should_revise(self, state: DesignState) -> str:
         """Decide whether to approve or revise based on review scores."""
+        # Check interrupt — exit graph immediately
+        if state.get("interrupted"):
+            logger.info("[design_agent] Graph interrupted — exiting at should_revise")
+            return END
+
         scores = state.get("review_scores", {})
         avg_score = sum(scores.values()) / max(len(scores), 1)
         iteration = state.get("iteration", 0)
