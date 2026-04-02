@@ -670,14 +670,22 @@ def create_api_app(
         if doc_svc:
             proj = await doc_svc.get_project(project_id)
             if proj:
-                return JSONResponse(proj.model_dump(mode="json"), status_code=201)
+                d = proj.model_dump(mode="json")
+                d["project_id"] = d.pop("id", project_id)
+                return JSONResponse(d, status_code=201)
         return JSONResponse({"project_id": project_id, "topic": topic}, status_code=201)
 
     async def list_projects(request: Request) -> JSONResponse:
         status_filter = request.query_params.get("status")
         if doc_svc:
             projects = await doc_svc.list_projects(status=status_filter)
-            return JSONResponse([p.model_dump(mode="json") for p in projects])
+            # Map "id" → "project_id" for dashboard compatibility
+            result = []
+            for p in projects:
+                d = p.model_dump(mode="json")
+                d["project_id"] = d.pop("id", d.get("project_id"))
+                result.append(d)
+            return JSONResponse(result)
         return JSONResponse([])
 
     async def get_project(request: Request) -> JSONResponse:

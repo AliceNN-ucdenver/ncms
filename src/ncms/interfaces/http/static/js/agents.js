@@ -134,12 +134,7 @@ function handleEvent(event) {
     }
   }
 
-  // Check for approval-related announcements
-  if (event.type === 'bus.announce' && d.content && d.content.includes('AWAITING_APPROVAL')) {
-    if (typeof handleApprovalAnnouncement === 'function') {
-      handleApprovalAnnouncement(d);
-    }
-  }
+  // Legacy bus-based approval announcements (no longer used — guardrail gates use API polling)
 
   if (!_replaying) updateStats();
 }
@@ -329,10 +324,23 @@ function renderHumanBadge(human) {
   badge.innerHTML = `
     <span class="human-dot ${isOnline ? 'online' : 'offline'}"></span>
     <span class="human-label">Human</span>
-    <span class="human-approval-count ${pendingClass}" onclick="toggleApprovalPanel(event)" title="View approvals">
+    <span class="human-approval-count ${pendingClass}" onclick="handleHumanApprovalClick(event)" title="View approvals">
       ${pendingCount > 0 ? pendingCount + ' pending' : 'No approvals'}
     </span>
   `;
+}
+
+function handleHumanApprovalClick(event) {
+  if (event) event.stopPropagation();
+  const pending = (state.approvals || []).filter(a => a.status === 'pending');
+  if (pending.length > 0) {
+    // Navigate to projects view and open the approval panel
+    if (typeof showProjectsView === 'function') showProjectsView();
+    if (typeof toggleApprovalPanel === 'function') toggleApprovalPanel();
+  } else {
+    // No pending — just toggle the panel to show "no approvals"
+    if (typeof toggleApprovalPanel === 'function') toggleApprovalPanel();
+  }
 }
 
 function agentColumnHTML(agent) {
@@ -348,8 +356,8 @@ function agentColumnHTML(agent) {
     ? state.approvals.filter(a => a.status === 'pending').length
     : 0;
   const badgeHTML = pendingCount > 0
-    ? `<span class="approval-badge pulse" onclick="toggleApprovalPanel(event)" title="View approvals">${pendingCount}</span>`
-    : (isHuman ? `<span class="approval-badge" onclick="toggleApprovalPanel(event)" title="View approvals">0</span>` : '');
+    ? `<span class="approval-badge pulse" onclick="handleHumanApprovalClick(event)" title="View approvals">${pendingCount}</span>`
+    : (isHuman ? `<span class="approval-badge" onclick="handleHumanApprovalClick(event)" title="View approvals">0</span>` : '');
 
   // Chat icon for non-human agents
   const chatIcon = !isHuman
