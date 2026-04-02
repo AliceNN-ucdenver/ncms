@@ -30,7 +30,7 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: researcher
     domains: [research, market-analysis]
-    subscribe_to: [product, requirements, architecture]
+    subscribe_to: [product, requirements, architecture, trigger-researcher]
 
 functions:
   research_agent:

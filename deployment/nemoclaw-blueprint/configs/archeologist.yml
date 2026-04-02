@@ -30,7 +30,7 @@ memory:
     hub_url: "http://host.docker.internal:9080"
     agent_id: archeologist
     domains: [archaeology, codebase-analysis]
-    subscribe_to: [product, requirements, architecture, security]
+    subscribe_to: [product, requirements, architecture, security, trigger-archeologist]
 
 functions:
   archeologist_agent:
