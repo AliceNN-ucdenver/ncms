@@ -64,7 +64,8 @@ class NCMSHttpClient:
         domain: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"q": query, "limit": limit}
+        # Truncate query to avoid 431 Request Header Fields Too Large on GET
+        params: dict[str, Any] = {"q": query[:3000], "limit": limit}
         if domain:
             params["domain"] = domain
         resp = await self._client.get("/api/v1/memories/recall", params=params)
@@ -81,7 +82,8 @@ class NCMSHttpClient:
         domain: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"q": query, "limit": limit}
+        # Truncate query to avoid 431 Request Header Fields Too Large on GET
+        params: dict[str, Any] = {"q": query[:3000], "limit": limit}
         if domain:
             params["domain"] = domain
         resp = await self._client.get("/api/v1/memories/search", params=params)

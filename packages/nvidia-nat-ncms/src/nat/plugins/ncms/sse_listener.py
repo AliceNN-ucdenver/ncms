@@ -287,10 +287,10 @@ async def _handle_question(
                 agent_id, exc_info=True,
             )
 
-    # Strategy 3: raw memory search (domain-filtered)
+    # Strategy 3: raw memory search (domain-filtered, truncated to avoid 431)
     if not answer:
         results = await client.recall_memory(
-            query=question, domain=domain_filter, limit=5,
+            query=question[:2000], domain=domain_filter, limit=5,
         )
         if results:
             context_parts = []
