@@ -58,7 +58,8 @@ class ExpertState(TypedDict):
 
 _REVIEW_PATTERN = re.compile(
     r"DESIGN TO REVIEW|IMPLEMENTATION DESIGN TO REVIEW|"
-    r"You are a (?:security|architecture) reviewer",
+    r"You are a (?:security|architecture) reviewer|"
+    r"Review design document|Review.*criteria",
     re.IGNORECASE,
 )
 
