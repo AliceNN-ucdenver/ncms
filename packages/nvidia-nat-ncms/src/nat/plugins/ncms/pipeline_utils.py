@@ -49,10 +49,25 @@ def _ensure_langchain_instrumented():
     _langchain_instrumented = True
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor
-        LangChainInstrumentor().instrument()
+        instrumentor = LangChainInstrumentor()
+
+        # Get the active tracer provider (NAT may have set it globally or not)
+        kwargs = {}
+        if _otel_available:
+            tp = otel_trace.get_tracer_provider()
+            tp_name = type(tp).__name__
+            logger.info("[otel] Tracer provider: %s", tp_name)
+            # Only pass if it's a real provider (not ProxyTracerProvider/NoOp)
+            if "Proxy" not in tp_name and "NoOp" not in tp_name:
+                kwargs["tracer_provider"] = tp
+
+        logger.info("[otel] Calling LangChainInstrumentor.instrument(%s)...", list(kwargs.keys()))
+        instrumentor.instrument(**kwargs)
         logger.info("[otel] LangChain instrumented for Phoenix tracing")
+    except ImportError as e:
+        logger.warning("[otel] LangChain instrumentation package not installed: %s", e)
     except Exception as e:
-        logger.debug("[otel] LangChain instrumentation not available: %s", e)
+        logger.warning("[otel] LangChain instrumentation failed: %s", e, exc_info=True)
 
 
 def _get_tracer():
