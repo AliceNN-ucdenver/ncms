@@ -287,11 +287,30 @@ async def _handle_question(
                 agent_id, exc_info=True,
             )
 
-    # Strategy 3: raw memory search (domain-filtered, truncated to avoid 431)
+    # Strategy 3: entity-enriched or truncated memory search
     if not answer:
-        results = await client.recall_memory(
-            query=question[:2000], domain=domain_filter, limit=5,
-        )
+        from .pipeline_utils import extract_doc_id
+
+        doc_id = extract_doc_id(question)
+        if doc_id:
+            try:
+                doc = await client.read_document(doc_id)
+                entities = doc.get("entities", [])
+                entity_query = " ".join(e.get("name", "") for e in entities[:10])
+                logger.info("[sse_listener] Fallback search: doc_id=%s, entity_query=%s", doc_id, entity_query[:80])
+                results = await client.recall_memory(
+                    query=entity_query[:500], domain=domain_filter, limit=5,
+                )
+            except Exception:
+                logger.debug("[sse_listener] Entity fallback failed, using truncated text")
+                results = await client.recall_memory(
+                    query=question[:500], domain=domain_filter, limit=5,
+                )
+        else:
+            logger.info("[sse_listener] Fallback search: no doc_id, truncating to 500 chars")
+            results = await client.recall_memory(
+                query=question[:500], domain=domain_filter, limit=5,
+            )
         if results:
             context_parts = []
             for r in results[:5]:

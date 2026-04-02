@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, emit_telemetry
+from .pipeline_utils import extract_project_id, extract_doc_id, emit_telemetry, fetch_and_cache_document, build_entity_search_query
 from .expert_prompts import (
     ARCHITECT_KNOWLEDGE_PROMPT,
     ARCHITECT_REVIEW_PROMPT,
@@ -48,6 +48,7 @@ class ExpertState(TypedDict):
     input: str  # Original question or review request
     request_type: str  # "question" or "review"
     memory_context: str  # Retrieved from NCMS memory
+    review_document: str  # Design content fetched by doc_id (review mode only)
     response: str  # Final response
     messages: list[BaseMessage]  # LangGraph compat
     project_id: str | None  # PRJ-XXXXXXXX for pipeline tracking
@@ -138,118 +139,90 @@ class ExpertAgent:
     # ── Node 2: Search Memory (Pure Python) ──────────────────────────────
 
     async def search_memory(self, state: ExpertState) -> ExpertState:
-        """Retrieve relevant memories from NCMS. No LLM.
+        """Retrieve relevant memories from NCMS using document-by-reference.
 
-        For review requests, the search query uses extracted keywords from
-        the design content (not the review prompt itself), so BM25 can
-        match against ADRs, threat models, and other seeded knowledge.
-        For questions, the original input is used as-is.
+        Document-by-reference pattern (Feature 19):
+        - Extract doc_id from the input message
+        - Fetch document + entity metadata from hub
+        - Search NCMS memory with entity keywords (not raw document content)
+        - Cache document locally for LLM context in structured_review/answer
+
+        For reviews: fetches the design document, caches it in state, searches
+        with entity keywords to find ADRs, threat models, governance knowledge.
+        For questions: extracts doc_id if present, uses entity keywords for search.
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "search_memory", "started")
         input_text = state["input"]
         request_type = state.get("request_type", "question")
 
-        # Build an effective search query
-        if request_type == "review":
-            # Extract meaningful terms from the design content for memory search
-            # The review prompt starts with instructions; the design is after "DESIGN TO REVIEW:"
-            # or "IMPLEMENTATION DESIGN TO REVIEW:"
-            design_marker = None
-            for marker in ["DESIGN TO REVIEW:", "IMPLEMENTATION DESIGN TO REVIEW:"]:
-                idx = input_text.find(marker)
-                if idx >= 0:
-                    design_marker = idx + len(marker)
-                    break
+        all_results: list[dict] = []
+        doc_id = extract_doc_id(input_text)
 
-            if design_marker:
-                # Use first 400 chars of design content as search query
-                # (kept short to avoid URL-too-long errors on GET /memories/search)
-                design_excerpt = input_text[design_marker:design_marker + 400].strip()
-            else:
-                # Fallback: use last 400 chars (likely design content)
-                design_excerpt = input_text[-400:]
-
-            # Also search for domain-specific terms
-            domain_queries = {
-                "architecture": "ADR architecture decisions CALM model quality attributes fitness functions",
-                "security": "STRIDE threat model OWASP security controls authentication authorization",
-            }
-            domain_boost = domain_queries.get(self.primary_domain, "")
-            search_query = f"{domain_boost}\n{design_excerpt[:300]}"
-            logger.info(
-                "[expert_agent:%s] Review mode: searching with design excerpt + domain terms (%d chars)",
-                self.from_agent, len(search_query),
-            )
-        else:
-            search_query = input_text
-
-        # For reviews, try entity-enriched search first (uses doc metadata from GLiNER)
-        all_results = []
-        if request_type == "review":
+        if doc_id:
+            # ── Document-by-reference: fetch document + entities ──
             try:
-                from .pipeline_utils import extract_doc_id
-                doc_id = extract_doc_id(input_text)
-                if doc_id:
-                    doc_resp = await self.client.read_document(doc_id)
-                    doc_entities = doc_resp.get("entities", [])
-                    if doc_entities:
-                        entity_query = " ".join(e["name"] for e in doc_entities[:12])
-                        domain_boost = {
-                            "architecture": "ADR architecture decisions quality attributes",
-                            "security": "STRIDE threat model OWASP security controls",
-                        }.get(self.primary_domain, "")
-                        enriched_query = f"{domain_boost} {entity_query}"
-                        logger.info(
-                            "[expert_agent:%s] Entity-enriched search: %s",
-                            self.from_agent, enriched_query[:120],
-                        )
-                        entity_results = await self.client.recall_memory(
-                            query=enriched_query[:3000],
-                            domain=self.primary_domain,
-                            limit=10,
-                        )
-                        all_results.extend(entity_results or [])
+                content, entities = await fetch_and_cache_document(self.client, doc_id)
+
+                if request_type == "review":
+                    # Store document for structured_review to use
+                    state["review_document"] = content
+                    logger.info(
+                        "[expert_agent:%s] Review mode: fetched doc_id=%s (%d chars, %d entities)",
+                        self.from_agent, doc_id, len(content), len(entities),
+                    )
+
+                # Search memory with entity keywords (primary search)
+                if entities:
+                    entity_query = build_entity_search_query(
+                        entities, domain=self.primary_domain,
+                    )
+                    logger.info(
+                        "[expert_agent:%s] Entity-enriched search: %s",
+                        self.from_agent, entity_query[:120],
+                    )
+                    results = await self.client.recall_memory(
+                        query=entity_query[:2000],
+                        domain=self.primary_domain,
+                        limit=10,
+                    )
+                    all_results.extend(results or [])
+
             except Exception as e:
-                logger.debug("[expert_agent:%s] Entity-enriched search failed: %s", self.from_agent, e)
+                logger.warning(
+                    "[expert_agent:%s] Document fetch/entity search failed for %s: %s",
+                    self.from_agent, doc_id, e,
+                )
 
-        # Primary search with the constructed query (text excerpt fallback or question mode)
-        try:
-            results = await self.client.recall_memory(
-                query=search_query[:3000],
-                domain=self.primary_domain,
-                limit=10,
-            )
-            # Deduplicate against entity results
-            existing_ids = {r.get("id", r.get("memory_id", i)) for i, r in enumerate(all_results)}
-            for r in (results or []):
-                rid = r.get("id", r.get("memory_id", ""))
-                if rid not in existing_ids:
-                    all_results.append(r)
-                    existing_ids.add(rid)
-        except Exception as e:
-            logger.warning("[expert_agent:%s] Primary recall failed: %s", self.from_agent, e)
-
-        # For reviews, also search with domain-specific terms to ensure we get ADRs/threats
-        if request_type == "review" and len(all_results) < 5:
+        # ── Fallback: domain-specific keyword search ──
+        if len(all_results) < 3:
             try:
                 domain_query = {
-                    "architecture": "architecture decision record ADR CALM service boundary",
-                    "security": "threat model STRIDE spoofing tampering OWASP control",
+                    "architecture": "ADR architecture decisions CALM service boundary quality attributes",
+                    "security": "STRIDE threat model OWASP security controls authentication",
                 }.get(self.primary_domain, self.primary_domain)
-                boost_results = await self.client.recall_memory(
-                    query=domain_query,
+
+                if not doc_id:
+                    # No doc_id — append first 300 chars of input for context
+                    domain_query += f" {input_text[:300]}"
+
+                logger.info(
+                    "[expert_agent:%s] Domain fallback search: %s",
+                    self.from_agent, domain_query[:120],
+                )
+                fallback_results = await self.client.recall_memory(
+                    query=domain_query[:2000],
                     domain=self.primary_domain,
                     limit=10,
                 )
-                # Deduplicate by memory ID
+                # Deduplicate
                 existing_ids = {r.get("id", r.get("memory_id", i)) for i, r in enumerate(all_results)}
-                for r in (boost_results or []):
+                for r in (fallback_results or []):
                     rid = r.get("id", r.get("memory_id", ""))
                     if rid not in existing_ids:
                         all_results.append(r)
                         existing_ids.add(rid)
             except Exception as e:
-                logger.debug("[expert_agent:%s] Boost recall failed: %s", self.from_agent, e)
+                logger.warning("[expert_agent:%s] Fallback recall failed: %s", self.from_agent, e)
 
         # Format results into context string
         parts = []
@@ -261,7 +234,7 @@ class ExpertAgent:
         state["memory_context"] = context
 
         logger.info(
-            "[expert_agent:%s] Retrieved %d memory results (%d chars) [mode=%s]",
+            "[expert_agent:%s] Memory search: %d results (%d chars) [mode=%s, doc_id=%s]",
             self.from_agent,
             len(all_results),
             len(context),
@@ -320,17 +293,19 @@ class ExpertAgent:
     async def structured_review(self, state: ExpertState) -> ExpertState:
         """LLM produces a structured SCORE/SEVERITY/COVERED/MISSING/CHANGES review."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "structured_review", "started")
-        input_text = state["input"]
         memory_context = state["memory_context"]
 
+        # Use fetched document if available (doc-by-reference), otherwise input text
+        design_content = state.get("review_document", "") or state["input"]
+
         logger.info(
-            "[expert_agent:%s] Performing structured review",
-            self.from_agent,
+            "[expert_agent:%s] Review input: %d chars design + %d chars governance context",
+            self.from_agent, len(design_content), len(memory_context),
         )
 
         prompt = self.review_prompt.format(
             memory_context=memory_context,
-            input=input_text,
+            design_content=design_content,
         )
 
         try:
@@ -422,6 +397,7 @@ async def architect_expert_fn(
             "input": input_message,
             "request_type": "",
             "memory_context": "",
+            "review_document": "",
             "response": "",
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,
@@ -505,6 +481,7 @@ async def security_expert_fn(
             "input": input_message,
             "request_type": "",
             "memory_context": "",
+            "review_document": "",
             "response": "",
             "messages": [HumanMessage(content=input_message)],
             "project_id": project_id,

@@ -186,6 +186,64 @@ def build_archaeology_trigger(
     return msg
 
 
+# ── Document-by-Reference ───────────────────────────────────────────────────
+# Agents pass doc_id references in bus messages. The receiving agent fetches
+# the document from NCMS hub and caches it locally for LLM context.
+
+
+async def fetch_and_cache_document(
+    client: "NCMSHttpClient",  # noqa: F821 — avoid circular import
+    doc_id: str,
+) -> tuple[str, list[dict]]:
+    """Fetch a document from the NCMS hub and cache it locally.
+
+    Returns (content, entities) where entities are the GLiNER-extracted
+    metadata from the document sidecar. The document is cached to
+    /tmp/ncms-docs/{doc_id}.md for LLM context.
+    """
+    from pathlib import Path
+
+    logger.info("[doc-ref] Fetching document %s from hub", doc_id)
+    doc = await client.read_document(doc_id)
+    content = doc.get("content", "")
+    entities = doc.get("entities", [])
+
+    # Cache locally
+    cache_path = Path(f"/tmp/ncms-docs/{doc_id}.md")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(content, encoding="utf-8")
+
+    entity_names = [e.get("name", "") for e in entities[:5]]
+    logger.info(
+        "[doc-ref] Cached %s to %s (%d chars, %d entities: %s)",
+        doc_id, cache_path, len(content), len(entities),
+        ", ".join(entity_names),
+    )
+    return content, entities
+
+
+def build_entity_search_query(
+    entities: list[dict],
+    domain: str | None = None,
+    max_entities: int = 12,
+) -> str:
+    """Build a search query from document entity metadata.
+
+    Combines domain-specific boost terms with entity names from the
+    document sidecar. This produces targeted BM25/SPLADE queries that
+    match governance knowledge without sending raw document content.
+    """
+    domain_boost = {
+        "architecture": "ADR architecture decisions CALM quality attributes",
+        "security": "STRIDE threat model OWASP security controls",
+    }.get(domain or "", "")
+
+    entity_names = " ".join(e.get("name", "") for e in entities[:max_entities])
+    query = f"{domain_boost} {entity_names}".strip()
+    logger.info("[doc-ref] Entity search query: %s", query[:120])
+    return query
+
+
 # ── Pipeline Telemetry ───────────────────────────────────────────────────────
 
 

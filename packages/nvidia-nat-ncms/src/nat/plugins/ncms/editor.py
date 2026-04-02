@@ -56,16 +56,21 @@ class NCMSMemoryEditor(MemoryEditor):
         domain = kwargs.get("domain")
         limit = top_k or self._config.recall_limit
 
+        # Truncate to prevent 431 errors from auto_memory passing large texts
+        if len(query) > 2000:
+            logger.info("[editor] Search query truncated: %d → 2000 chars", len(query))
+        truncated = query[:2000]
+
         try:
             results = await self._client.recall_memory(
-                query=query, domain=domain, limit=limit,
+                query=truncated, domain=domain, limit=limit,
             )
             return [ncms_recall_to_memory_item(r, user_id) for r in results]
         except Exception:
             logger.debug("recall_memory failed, falling back to search", exc_info=True)
             try:
                 results = await self._client.search_memory(
-                    query=query, domain=domain, limit=limit,
+                    query=truncated, domain=domain, limit=limit,
                 )
                 return [ncms_search_to_memory_item(r, user_id) for r in results]
             except Exception:

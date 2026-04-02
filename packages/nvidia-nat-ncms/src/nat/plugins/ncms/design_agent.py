@@ -40,8 +40,6 @@ from .http_client import NCMSHttpClient
 from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry, check_interrupt
 from .design_prompts import (
     SYNTHESIZE_DESIGN_PROMPT,
-    ARCHITECTURE_REVIEW_PROMPT,
-    SECURITY_REVIEW_PROMPT,
     REVISE_DESIGN_PROMPT,
 )
 
@@ -346,23 +344,22 @@ class DesignAgent:
         if await self._check_and_interrupt(state, "ask_experts"):
             return state
         topic = state["topic"]
-        source = state.get("source_content", "")
         logger.info("[design_agent] Querying experts for: %s", topic[:100])
 
-        # Include PRD context so experts can give grounded answers
-        context_summary = source[:5000] if source else "(no PRD document available)"
-
-        # Fetch entity metadata from the PRD document for enriched expert search
-        entity_context = ""
+        # Document-by-reference: pass doc_id + entity keywords to experts
         source_doc_id = state.get("source_doc_id")
+        project_id = state.get("project_id", "")
+        entity_keywords = ""
         if source_doc_id:
             try:
                 doc_meta = await self.client.read_document(source_doc_id)
                 doc_entities = doc_meta.get("entities", [])
                 if doc_entities:
-                    entity_names = [e["name"] for e in doc_entities[:10]]
-                    entity_context = f"\n\nKey entities: {', '.join(entity_names)}"
-                    logger.info("[design_agent] Entity context for experts: %s", entity_context[:100])
+                    entity_keywords = ", ".join(e["name"] for e in doc_entities[:10])
+                    logger.info(
+                        "[design_agent] Expert query: doc_id=%s entities=%s (ref-only)",
+                        source_doc_id, entity_keywords[:80],
+                    )
             except Exception as e:
                 logger.debug("[design_agent] Failed to fetch entity metadata: %s", e)
 
@@ -378,9 +375,9 @@ class DesignAgent:
         async def _ask_architect() -> str:
             try:
                 question = (
-                    f"What architectural patterns and ADRs apply to this implementation?\n\n"
-                    f"PRD context:\n{context_summary}"
-                    f"{entity_context}"
+                    f"What architectural patterns and ADRs apply to this implementation?\n"
+                    f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
+                    f"Key entities: {entity_keywords}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -398,9 +395,9 @@ class DesignAgent:
         async def _ask_security() -> str:
             try:
                 question = (
-                    f"What security threats and controls apply to this implementation?\n\n"
-                    f"PRD context:\n{context_summary}"
-                    f"{entity_context}"
+                    f"What security threats and controls apply to this implementation?\n"
+                    f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
+                    f"Key entities: {entity_keywords}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -560,12 +557,13 @@ class DesignAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "request_review", "started")
         if await self._check_and_interrupt(state, "request_review"):
             return state
-        design = state["design"]
         iteration = state.get("iteration", 0)
-        logger.info("[design_agent] Requesting review (round %d)", iteration + 1)
-
-        # Truncate design for review prompt (generous with 512K context)
-        design_for_review = design[:60000] if len(design) > 60000 else design
+        doc_id = state.get("document_id", "")
+        project_id = state.get("project_id", "")
+        logger.info(
+            "[design_agent] Review request: doc_id=%s project_id=%s round=%d (ref-only, no content in bus message)",
+            doc_id, project_id, iteration + 1,
+        )
 
         async def _review_single(
             prompt: str, domains: list[str], label: str,
@@ -603,11 +601,15 @@ class DesignAgent:
                         return 50, f"Review failed after 2 attempts: {e}"
             return 50, "Review failed"  # Unreachable but satisfies type checker
 
-        # Include doc_id so experts can fetch entity metadata for enriched search
-        doc_id = state.get("document_id", "")
-        doc_tag = f"\n(doc_id: {doc_id})" if doc_id else ""
-        arch_prompt = ARCHITECTURE_REVIEW_PROMPT.format(design_content=design_for_review) + doc_tag
-        sec_prompt = SECURITY_REVIEW_PROMPT.format(design_content=design_for_review) + doc_tag
+        # Document-by-reference: pass doc_id only, expert fetches content
+        arch_prompt = (
+            f"Review design document (doc_id: {doc_id}) (project_id: {project_id})\n"
+            f"Use ARCHITECTURE review criteria."
+        )
+        sec_prompt = (
+            f"Review design document (doc_id: {doc_id}) (project_id: {project_id})\n"
+            f"Use SECURITY review criteria."
+        )
 
         # Run both reviews in parallel, each with internal retry
         (arch_score, arch_feedback), (sec_score, sec_feedback) = await asyncio.gather(

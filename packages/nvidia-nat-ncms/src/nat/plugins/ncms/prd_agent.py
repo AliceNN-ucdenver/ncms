@@ -196,23 +196,22 @@ class PRDAgent:
         if await self._check_and_interrupt(state, "ask_experts"):
             return state
         topic = state["topic"]
-        source = state.get("source_content", "")
         logger.info("[prd_agent] Asking experts about: %s", topic[:100])
 
-        # Include source document context so experts can give grounded answers
-        context_summary = source[:5000] if source else "(no source document available)"
-
-        # Fetch entity metadata from the source document for enriched search
-        entity_context = ""
+        # Document-by-reference: pass doc_id + entity keywords to experts
         source_doc_id = state.get("source_doc_id")
+        project_id = state.get("project_id", "")
+        entity_keywords = ""
         if source_doc_id:
             try:
                 doc_meta = await self.client.read_document(source_doc_id)
                 doc_entities = doc_meta.get("entities", [])
                 if doc_entities:
-                    entity_names = [e["name"] for e in doc_entities[:10]]
-                    entity_context = f"\n\nKey entities: {', '.join(entity_names)}"
-                    logger.info("[prd_agent] Entity context for experts: %s", entity_context[:100])
+                    entity_keywords = ", ".join(e["name"] for e in doc_entities[:10])
+                    logger.info(
+                        "[prd_agent] Expert query: doc_id=%s entities=%s (ref-only)",
+                        source_doc_id, entity_keywords[:80],
+                    )
             except Exception as e:
                 logger.debug("[prd_agent] Failed to fetch entity metadata: %s", e)
 
@@ -229,9 +228,9 @@ class PRDAgent:
         async def _ask_architect() -> str:
             try:
                 question = (
-                    f"What architectural decisions and patterns apply to this project?\n\n"
-                    f"Context from research:\n{context_summary}"
-                    f"{entity_context}"
+                    f"What architectural decisions and patterns apply to this project?\n"
+                    f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
+                    f"Key entities: {entity_keywords}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -249,9 +248,9 @@ class PRDAgent:
         async def _ask_security() -> str:
             try:
                 question = (
-                    f"What security threats and requirements apply to this project?\n\n"
-                    f"Context from research:\n{context_summary}"
-                    f"{entity_context}"
+                    f"What security threats and requirements apply to this project?\n"
+                    f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
+                    f"Key entities: {entity_keywords}"
                 )
                 result = await self.client.bus_ask(
                     question=question,

@@ -64,11 +64,14 @@ class NCMSHttpClient:
         domain: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        # Truncate query to avoid 431 Request Header Fields Too Large on GET
-        params: dict[str, Any] = {"q": query[:3000], "limit": limit}
+        body: dict[str, Any] = {"q": query, "limit": limit}
         if domain:
-            params["domain"] = domain
-        resp = await self._client.get("/api/v1/memories/recall", params=params)
+            body["domain"] = domain
+        # POST for large queries (avoids 431), GET for short ones
+        if len(query) > 2000:
+            resp = await self._client.post("/api/v1/memories/recall", json=body)
+        else:
+            resp = await self._client.get("/api/v1/memories/recall", params=body)
         if resp.status_code != 200:
             logger.debug("recall_memory returned %s, falling back to search", resp.status_code)
             return await self.search_memory(query, domain=domain, limit=limit)
@@ -82,11 +85,13 @@ class NCMSHttpClient:
         domain: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        # Truncate query to avoid 431 Request Header Fields Too Large on GET
-        params: dict[str, Any] = {"q": query[:3000], "limit": limit}
+        body: dict[str, Any] = {"q": query, "limit": limit}
         if domain:
-            params["domain"] = domain
-        resp = await self._client.get("/api/v1/memories/search", params=params)
+            body["domain"] = domain
+        if len(query) > 2000:
+            resp = await self._client.post("/api/v1/memories/search", json=body)
+        else:
+            resp = await self._client.get("/api/v1/memories/search", params=body)
         resp.raise_for_status()
         data = resp.json()
         return data.get("results", [])

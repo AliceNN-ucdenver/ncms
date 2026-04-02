@@ -59,7 +59,7 @@ RETRIEVED KNOWLEDGE:
 {memory_context}
 
 DESIGN TO REVIEW:
-{input}
+{design_content}
 
 Respond in EXACTLY this format:
 SCORE: [0-100]
@@ -128,7 +128,7 @@ RETRIEVED KNOWLEDGE:
 {memory_context}
 
 DESIGN TO REVIEW:
-{input}
+{design_content}
 
 Respond in EXACTLY this format:
 SCORE: [0-100]

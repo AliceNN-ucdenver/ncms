@@ -97,12 +97,21 @@ def create_api_app(
         }, status_code=201)
 
     async def search_memory(request: Request) -> JSONResponse:
-        query = request.query_params.get("q", "")
+        # Support both GET (query params) and POST (JSON body) for large queries
+        if request.method == "POST":
+            body = await request.json()
+            query = body.get("q", body.get("query", ""))
+            domain_param = body.get("domain")
+            limit = int(body.get("limit", 10))
+            intent = body.get("intent")
+        else:
+            query = request.query_params.get("q", "")
+            domain_param = request.query_params.get("domain")
+            limit = int(request.query_params.get("limit", "10"))
+            intent = request.query_params.get("intent")
+
         if not query:
             return JSONResponse({"error": "q parameter is required"}, status_code=400)
-
-        domain_param = request.query_params.get("domain")
-        limit = int(request.query_params.get("limit", "10"))
         intent = request.query_params.get("intent")
 
         # Support comma-separated domains: ?domain=architecture,security
@@ -143,12 +152,18 @@ def create_api_app(
         })
 
     async def recall_memory(request: Request) -> JSONResponse:
-        query = request.query_params.get("q", "")
+        if request.method == "POST":
+            body = await request.json()
+            query = body.get("q", body.get("query", ""))
+            domain = body.get("domain")
+            limit = int(body.get("limit", 10))
+        else:
+            query = request.query_params.get("q", "")
+            domain = request.query_params.get("domain")
+            limit = int(request.query_params.get("limit", "10"))
+
         if not query:
             return JSONResponse({"error": "q parameter is required"}, status_code=400)
-
-        domain = request.query_params.get("domain")
-        limit = int(request.query_params.get("limit", "10"))
 
         results = await memory_svc.recall(
             query=query, domain=domain, limit=limit,
@@ -1000,8 +1015,8 @@ def create_api_app(
 
         # Memory operations
         Route("/api/v1/memories", store_memory, methods=["POST"]),
-        Route("/api/v1/memories/search", search_memory, methods=["GET"]),
-        Route("/api/v1/memories/recall", recall_memory, methods=["GET"]),
+        Route("/api/v1/memories/search", search_memory, methods=["GET", "POST"]),
+        Route("/api/v1/memories/recall", recall_memory, methods=["GET", "POST"]),
         Route("/api/v1/memories/{memory_id}", get_provenance, methods=["GET"]),
         Route("/api/v1/memories/{memory_id}", delete_memory_endpoint, methods=["DELETE"]),
 
