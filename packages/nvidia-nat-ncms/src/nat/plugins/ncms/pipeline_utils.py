@@ -24,12 +24,23 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# OpenTelemetry — optional, no hard dependency
+# OpenTelemetry — optional, no hard dependency.
+# Tracer is resolved lazily (not at import time) because NAT initializes
+# OTel from YAML config AFTER our module is imported. Getting the tracer
+# at import time returns a no-op tracer with no exporter attached.
+_otel_available = False
 try:
     from opentelemetry import trace as otel_trace
-    _tracer = otel_trace.get_tracer("ncms.agents")
+    _otel_available = True
 except ImportError:
-    _tracer = None
+    otel_trace = None  # type: ignore[assignment]
+
+
+def _get_tracer():
+    """Get the OTel tracer lazily — NAT must have initialized OTel first."""
+    if not _otel_available:
+        return None
+    return otel_trace.get_tracer("ncms.agents")
 
 # ── ID Extraction ────────────────────────────────────────────────────────────
 
@@ -370,9 +381,10 @@ async def traced_llm_call(
     t0 = time.monotonic()
 
     try:
-        # Create OTel span if tracer is available
-        if _tracer:
-            span = _tracer.start_span(f"{agent}.{node}")
+        # Create OTel span if tracer is available (lazy — NAT initializes OTel first)
+        tracer = _get_tracer()
+        if tracer:
+            span = tracer.start_span(f"{agent}.{node}")
             span.set_attribute("ncms.agent", agent)
             span.set_attribute("ncms.node", node)
             span.set_attribute("ncms.prompt_size", prompt_size)
