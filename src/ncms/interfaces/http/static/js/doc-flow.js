@@ -191,9 +191,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .append('path')
     .attr('class', 'doc-flow-edge')
     .attr('d', d => {
-      const sx = d.source.x + CARD_W + 4;  // start past right edge
+      const sx = d.source.x + CARD_W + 8;  // start clear of right edge
       const sy = d.source.y + d.source.cardH / 2;
-      const tx = d.target.x - 4;           // end before left edge
+      const tx = d.target.x - 10;          // end clear of left edge + arrowhead
       const ty = d.target.y + d.target.cardH / 2;
       const mx = (sx + tx) / 2;
       return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
