@@ -620,7 +620,7 @@ def create_api_app(
                 knowledge=KnowledgePayload(content=trigger_msg),
                 domains=[trigger_domain],
                 from_agent="hub",
-                event="trigger",
+                event="created",
             )
             await bus_svc.announce(announcement)
             logger.info(
