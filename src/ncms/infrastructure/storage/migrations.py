@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -181,6 +181,205 @@ CREATE INDEX IF NOT EXISTS idx_devents_ts ON dashboard_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_devents_type ON dashboard_events(type);
 """
 
+V6_TABLES = """
+-- ═══════════════════════════════════════════════════════════════════════
+-- Phase 2.5: Document Intelligence Persistence
+-- Projects, documents, reviews, traceability, and audit tables.
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Projects: persistent, queryable, survives restarts
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    topic TEXT NOT NULL,
+    target TEXT DEFAULT '',
+    source_type TEXT DEFAULT 'research',
+    repository_url TEXT,
+    scope TEXT DEFAULT '[]',
+    status TEXT DEFAULT 'active',
+    phase TEXT DEFAULT 'pending',
+    quality_score REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at);
+
+-- Documents: persistent, versioned, entity-enriched
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    from_agent TEXT,
+    doc_type TEXT,
+    version INTEGER DEFAULT 1,
+    parent_doc_id TEXT,
+    format TEXT DEFAULT 'markdown',
+    size_bytes INTEGER,
+    content_hash TEXT,
+    entities TEXT DEFAULT '[]',
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type);
+CREATE INDEX IF NOT EXISTS idx_documents_agent ON documents(from_agent);
+CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_doc_id);
+
+-- Document relationships: cross-document traceability
+CREATE TABLE IF NOT EXISTS document_links (
+    id TEXT PRIMARY KEY,
+    source_doc_id TEXT NOT NULL,
+    target_doc_id TEXT NOT NULL,
+    link_type TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (source_doc_id) REFERENCES documents(id),
+    FOREIGN KEY (target_doc_id) REFERENCES documents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_doclinks_source ON document_links(source_doc_id);
+CREATE INDEX IF NOT EXISTS idx_doclinks_target ON document_links(target_doc_id);
+CREATE INDEX IF NOT EXISTS idx_doclinks_type ON document_links(link_type);
+
+-- Review scores: structured, queryable
+CREATE TABLE IF NOT EXISTS review_scores (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    project_id TEXT,
+    reviewer_agent TEXT NOT NULL,
+    review_round INTEGER DEFAULT 1,
+    score INTEGER,
+    severity TEXT,
+    covered TEXT,
+    missing TEXT,
+    changes TEXT,
+    review_doc_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_doc ON review_scores(document_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_project ON review_scores(project_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_score ON review_scores(score);
+
+-- Pipeline state: persistent workflow tracking
+CREATE TABLE IF NOT EXISTS pipeline_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    node TEXT NOT NULL,
+    status TEXT NOT NULL,
+    detail TEXT DEFAULT '',
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_project ON pipeline_events(project_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_ts ON pipeline_events(timestamp);
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Audit tables
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- Human approval decisions
+CREATE TABLE IF NOT EXISTS approval_decisions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    document_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    approver TEXT NOT NULL,
+    comment TEXT,
+    policies_active TEXT DEFAULT '{}',
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id),
+    FOREIGN KEY (document_id) REFERENCES documents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_approvals_project ON approval_decisions(project_id);
+
+-- Guardrail violations linked to documents
+CREATE TABLE IF NOT EXISTS guardrail_violations (
+    id TEXT PRIMARY KEY,
+    document_id TEXT,
+    project_id TEXT,
+    policy_type TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    message TEXT,
+    escalation TEXT NOT NULL,
+    overridden INTEGER DEFAULT 0,
+    override_reason TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_guardrails_project ON guardrail_violations(project_id);
+
+-- Knowledge grounding: links review citations to NCMS memories
+CREATE TABLE IF NOT EXISTS grounding_log (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    review_score_id TEXT,
+    memory_id TEXT NOT NULL,
+    retrieval_score REAL,
+    entity_query TEXT,
+    domain TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES documents(id),
+    FOREIGN KEY (review_score_id) REFERENCES review_scores(id)
+);
+CREATE INDEX IF NOT EXISTS idx_grounding_doc ON grounding_log(document_id);
+
+-- LLM call metadata + Phoenix trace link
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    agent TEXT NOT NULL,
+    node TEXT NOT NULL,
+    prompt_hash TEXT,
+    prompt_size INTEGER,
+    response_size INTEGER,
+    reasoning_size INTEGER DEFAULT 0,
+    model TEXT,
+    thinking_enabled INTEGER DEFAULT 0,
+    duration_ms INTEGER,
+    trace_id TEXT,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_llm_project ON llm_calls(project_id);
+CREATE INDEX IF NOT EXISTS idx_llm_agent ON llm_calls(agent);
+
+-- Agent config snapshot at pipeline start
+CREATE TABLE IF NOT EXISTS agent_config_snapshots (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    agent TEXT NOT NULL,
+    config_hash TEXT,
+    prompt_version TEXT,
+    model_name TEXT,
+    thinking_enabled INTEGER DEFAULT 0,
+    max_tokens INTEGER,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+
+-- Bus conversation log (ask/respond pairs)
+CREATE TABLE IF NOT EXISTS bus_conversations (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    ask_id TEXT NOT NULL,
+    from_agent TEXT NOT NULL,
+    to_agent TEXT,
+    question_preview TEXT,
+    answer_preview TEXT,
+    confidence REAL,
+    duration_ms INTEGER,
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_bus_project ON bus_conversations(project_id);
+CREATE INDEX IF NOT EXISTS idx_bus_askid ON bus_conversations(ask_id);
+"""
+
 # Backward compat alias used by older code paths
 CREATE_TABLES = V1_TABLES
 
@@ -249,5 +448,18 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (5,),
+        )
+        await db.commit()
+        current_version = 5
+
+    if current_version < 6:
+        # V6: Document Intelligence Persistence (Phase 2.5)
+        # 11 tables: projects, documents, document_links, review_scores,
+        # pipeline_events, approval_decisions, guardrail_violations,
+        # grounding_log, llm_calls, agent_config_snapshots, bus_conversations
+        await db.executescript(V6_TABLES)
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (6,),
         )
         await db.commit()
