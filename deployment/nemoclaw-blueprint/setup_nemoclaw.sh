@@ -459,19 +459,25 @@ setup_agent_sandbox() {
   # Start NAT agent via fastapi frontend (stays running as HTTP server)
   # Provider-injected env vars (e.g. TAVILY_API_KEY) are available automatically.
   # NAT_PORT tells the SSE listener which port to self-call /generate on.
-  sandbox_run "$sandbox_name" "cd /sandbox/ncms && \
-    nohup bash -c '
-      echo \"[NAT] Starting $agent_id on port $agent_port at \$(date)\" >> /tmp/ncms-nat-agent.log 2>&1
-      NAT_PORT=$agent_port /sandbox/.venv/bin/nat start fastapi \
-        --config_file /sandbox/configs/$config_file \
-        --host 0.0.0.0 --port $agent_port \
-        >> /tmp/ncms-nat-agent.log 2>&1
-      EXIT_CODE=\$?
-      echo \"[NAT] Process exited with code \$EXIT_CODE at \$(date)\" >> /tmp/ncms-nat-agent.log 2>&1
-      echo \"[NAT] Last 5 dmesg lines:\" >> /tmp/ncms-nat-agent.log 2>&1
-      dmesg 2>/dev/null | tail -5 >> /tmp/ncms-nat-agent.log 2>&1
-    ' > /dev/null 2>&1 & \
-    echo 'NAT agent started for $agent_id on port $agent_port'" \
+  # Write startup script to sandbox (avoids quoting issues with nested ssh)
+  sandbox_run "$sandbox_name" "cat > /tmp/start-nat.sh << 'SCRIPT'
+#!/bin/bash
+LOG=/tmp/ncms-nat-agent.log
+echo \"[NAT] Starting \$1 on port \$2 at \$(date)\" >> \$LOG
+cd /sandbox/ncms
+NAT_PORT=\$2 /sandbox/.venv/bin/nat start fastapi \
+  --config_file /sandbox/configs/\$3 \
+  --host 0.0.0.0 --port \$2 \
+  >> \$LOG 2>&1
+EXIT_CODE=\$?
+echo \"[NAT] Process exited with code \$EXIT_CODE at \$(date)\" >> \$LOG
+echo \"[NAT] Last 5 dmesg lines:\" >> \$LOG
+dmesg 2>/dev/null | tail -5 >> \$LOG
+SCRIPT
+chmod +x /tmp/start-nat.sh" 2>/dev/null
+
+  sandbox_run "$sandbox_name" \
+    "nohup /tmp/start-nat.sh $agent_id $agent_port $config_file > /dev/null 2>&1 & echo 'NAT agent started for $agent_id on port $agent_port'" \
     || warn "NAT agent failed"
 
   # ── Wait for NAT agent to be ready before port forward ──
@@ -575,7 +581,7 @@ main() {
   # Step 1: Hub + Phoenix
   if [ "$SKIP_HUB" = false ]; then
     echo ""
-    echo "${C_BOLD}━━━ Step 1/4: NCMS Hub + Phoenix (Docker) ━━━${C_RESET}"
+    echo "${C_BOLD}━━━ Step 1/7: NCMS Hub + Phoenix (Docker) ━━━${C_RESET}"
     setup_hub
   else
     info "Skipping hub (--skip-hub)"
@@ -589,7 +595,8 @@ main() {
     local config="${AGENT_CONFIGS[$i]}"
     IFS='|' read -r agent_id nat_config knowledge_dir <<< "$config"
 
-    echo "${C_BOLD}━━━ Step $step/4: $agent_id Agent (NemoClaw + NAT) ━━━${C_RESET}"
+    local total=$((${#AGENT_SANDBOXES[@]} + 1))
+    echo "${C_BOLD}━━━ Step $step/$total: $agent_id Agent (NemoClaw + NAT) ━━━${C_RESET}"
     setup_agent_sandbox "$sandbox" "$agent_id" "$nat_config" "$knowledge_dir"
     step=$((step + 1))
   done
