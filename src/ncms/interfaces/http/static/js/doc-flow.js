@@ -184,21 +184,16 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       .attr('fill', c);
   });
 
-  // Draw edges as curved paths
+  // Draw edges — straight lines between card edges
   svg.selectAll('.doc-flow-edge')
     .data(edges)
     .enter()
-    .append('path')
+    .append('line')
     .attr('class', 'doc-flow-edge')
-    .attr('d', d => {
-      const sx = d.source.x + CARD_W;       // right edge of source card
-      const sy = d.source.y + d.source.cardH / 2;
-      const tx = d.target.x;               // left edge of target card
-      const ty = d.target.y + d.target.cardH / 2;
-      const mx = (sx + tx) / 2;
-      return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`;
-    })
-    .attr('fill', 'none')
+    .attr('x1', d => d.source.x + CARD_W)
+    .attr('y1', d => d.source.y + d.source.cardH / 2)
+    .attr('x2', d => d.target.x)
+    .attr('y2', d => d.target.y + d.target.cardH / 2)
     .attr('stroke', d => d.color)
     .attr('stroke-width', d => d.link_type === '_flow' ? 1 : 1.5)
     .attr('stroke-dasharray', d => d.dash || null)
@@ -212,7 +207,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .append('text')
     .attr('class', 'doc-flow-edge-label')
     .attr('x', d => (d.source.x + CARD_W + d.target.x) / 2)
-    .attr('y', d => (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2 - 8)
+    .attr('y', d => (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2 - 6)
     .attr('text-anchor', 'middle')
     .attr('fill', d => d.color)
     .attr('font-size', '9px')
