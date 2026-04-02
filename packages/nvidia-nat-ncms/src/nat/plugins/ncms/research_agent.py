@@ -314,7 +314,7 @@ class ResearchAgent:
                         if len(all_papers) >= 5:
                             break
                 except Exception as e:
-                    logger.debug("[research_agent] ArXiv query failed: %s", e)
+                    logger.warning("[research_agent] ArXiv query failed: %s", e)
 
                 if len(all_papers) >= 5:
                     break
@@ -333,10 +333,10 @@ class ResearchAgent:
                 except Exception:
                     pass
 
-        except ImportError:
-            logger.warning("[research_agent] arxiv package not installed — skipping academic search")
+        except ImportError as e:
+            logger.warning("[research_agent] arxiv import failed: %s — skipping academic search", e)
         except Exception as e:
-            logger.warning("[research_agent] ArXiv search failed: %s", e)
+            logger.warning("[research_agent] ArXiv search failed: %s", e, exc_info=True)
 
         await emit_telemetry(
             self.hub_url, state.get("project_id"), self.from_agent,
