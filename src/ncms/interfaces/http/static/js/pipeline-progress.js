@@ -26,7 +26,7 @@ const NODE_LABELS = {
   publish_prd: 'Publish',
   publish_design: 'Publish',
   verify: 'Verify',
-  verify_and_trigger: 'Trigger',
+  verify_and_trigger: 'Verify',
   read_document: 'Read Doc',
   ask_experts: 'Ask Experts',
   validate_completeness: 'Validate',
