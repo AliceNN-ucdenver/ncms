@@ -32,7 +32,7 @@ _otel_available = False
 try:
     from opentelemetry import trace as otel_trace
     _otel_available = True
-except ImportError:
+except Exception:
     otel_trace = None  # type: ignore[assignment]
 
 
@@ -40,7 +40,10 @@ def _get_tracer():
     """Get the OTel tracer lazily — NAT must have initialized OTel first."""
     if not _otel_available:
         return None
-    return otel_trace.get_tracer("ncms.agents")
+    try:
+        return otel_trace.get_tracer("ncms.agents")
+    except Exception:
+        return None
 
 # ── ID Extraction ────────────────────────────────────────────────────────────
 
