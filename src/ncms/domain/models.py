@@ -532,3 +532,191 @@ class AgentInfo(BaseModel):
     status: Literal["online", "offline", "sleeping"] = "online"
     registered_at: datetime = Field(default_factory=_utcnow)
     last_seen: datetime = Field(default_factory=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.5: Document Intelligence Persistence
+# ---------------------------------------------------------------------------
+
+
+class DocType(StrEnum):
+    """Document types produced by the pipeline."""
+
+    RESEARCH = "research"
+    PRD = "prd"
+    MANIFEST = "manifest"
+    DESIGN = "design"
+    REVIEW = "review"
+    CONTRACT = "contract"
+
+
+class DocLinkType(StrEnum):
+    """Typed relationships between documents."""
+
+    DERIVED_FROM = "derived_from"  # PRD derived from Research, Design from PRD
+    REVIEWS = "reviews"            # Review report reviews a Design
+    SUPERSEDES = "supersedes"      # Design v2 supersedes v1
+    CITES = "cites"                # Document cites another as reference
+    APPROVED_BY = "approved_by"    # Human approval linked to document
+
+
+class Project(BaseModel):
+    """Persistent project record — survives hub restarts."""
+
+    id: str = Field(default_factory=lambda: f"PRJ-{uuid4().hex[:8]}")
+    topic: str
+    target: str = ""
+    source_type: str = "research"
+    repository_url: str | None = None
+    scope: list[str] = Field(default_factory=list)
+    status: str = "active"
+    phase: str = "pending"
+    quality_score: float | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+
+class Document(BaseModel):
+    """Persistent, versioned, entity-enriched document."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    title: str
+    content: str
+    from_agent: str | None = None
+    doc_type: str | None = None
+    version: int = 1
+    parent_doc_id: str | None = None
+    format: str = "markdown"
+    size_bytes: int = 0
+    content_hash: str | None = None
+    entities: list[dict[str, str]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class DocumentLink(BaseModel):
+    """Typed relationship between two documents."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    source_doc_id: str
+    target_doc_id: str
+    link_type: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class ReviewScore(BaseModel):
+    """Structured review score from an expert agent."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    document_id: str
+    project_id: str | None = None
+    reviewer_agent: str
+    review_round: int = 1
+    score: int | None = None
+    severity: str | None = None
+    covered: str | None = None
+    missing: str | None = None
+    changes: str | None = None
+    review_doc_id: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class ApprovalDecision(BaseModel):
+    """Human approval/rejection of a document."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    document_id: str
+    decision: str  # approve | reject | request-changes
+    approver: str
+    comment: str | None = None
+    policies_active: dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class GuardrailViolation(BaseModel):
+    """Guardrail policy violation linked to a document."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    document_id: str | None = None
+    project_id: str | None = None
+    policy_type: str
+    rule: str
+    message: str | None = None
+    escalation: str  # warn | block | reject
+    overridden: bool = False
+    override_reason: str | None = None
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class GroundingLogEntry(BaseModel):
+    """Links a review citation to the actual NCMS memory retrieved."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    document_id: str
+    review_score_id: str | None = None
+    memory_id: str
+    retrieval_score: float | None = None
+    entity_query: str | None = None
+    domain: str | None = None
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class LLMCallRecord(BaseModel):
+    """Metadata for an LLM call + Phoenix trace link."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    agent: str
+    node: str
+    prompt_hash: str | None = None
+    prompt_size: int | None = None
+    response_size: int | None = None
+    reasoning_size: int = 0
+    model: str | None = None
+    thinking_enabled: bool = False
+    duration_ms: int | None = None
+    trace_id: str | None = None
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class AgentConfigSnapshot(BaseModel):
+    """Agent configuration captured at pipeline start."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    agent: str
+    config_hash: str | None = None
+    prompt_version: str | None = None
+    model_name: str | None = None
+    thinking_enabled: bool = False
+    max_tokens: int | None = None
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class BusConversation(BaseModel):
+    """Persistent record of a bus_ask/bus_respond exchange."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    ask_id: str
+    from_agent: str
+    to_agent: str | None = None
+    question_preview: str | None = None
+    answer_preview: str | None = None
+    confidence: float | None = None
+    duration_ms: int | None = None
+    timestamp: datetime = Field(default_factory=_utcnow)
+
+
+class PipelineEvent(BaseModel):
+    """Persistent pipeline node execution event."""
+
+    project_id: str
+    agent: str
+    node: str
+    status: str  # started | completed | failed | interrupted
+    detail: str = ""
+    timestamp: datetime = Field(default_factory=_utcnow)
