@@ -19,11 +19,9 @@ general:
   telemetry:
     tracing:
       phoenix:
-        _type: otelcollector
+        _type: phoenix
         project: ncms-architect
         endpoint: "http://host.docker.internal:6006/v1/traces"
-        resource_attributes:
-          openinference.project.name: ncms-architect
 
 memory:
   ncms_store:
