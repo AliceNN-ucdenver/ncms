@@ -1,5 +1,7 @@
 # Security Agent — LangGraph expert with dual-mode (knowledge + review)
 # classify → search_memory → [synthesize_answer | structured_review]
+# No auto_memory wrapper — the LangGraph owns memory search via its
+# search_memory node and recall_memory API calls.
 
 llms:
   spark_llm:
@@ -34,21 +36,8 @@ memory:
       - path: /sandbox/knowledge/security/
         domains: [security, threats]
 
-functions:
-  security_expert:
-    _type: security_expert
-    llm_name: spark_llm
-    hub_url: "http://host.docker.internal:9080"
-    from_agent: security
-
 workflow:
-  _type: auto_memory_agent
-  inner_agent_name: security_expert
-  memory_name: ncms_store
+  _type: security_expert
   llm_name: spark_llm
-  description: "Security expert with LangGraph dual-mode (knowledge questions + design reviews)"
-  retrieve_memory_for_every_response: false
-  save_user_messages_to_memory: true
-  save_ai_messages_to_memory: true
-  search_params:
-    top_k: 10
+  hub_url: "http://host.docker.internal:9080"
+  from_agent: security
