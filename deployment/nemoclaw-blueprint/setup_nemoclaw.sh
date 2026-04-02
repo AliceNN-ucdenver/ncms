@@ -462,7 +462,7 @@ setup_agent_sandbox() {
   # Write startup script to sandbox (avoids quoting issues with nested ssh)
   sandbox_run "$sandbox_name" "cat > /tmp/start-nat.sh << 'SCRIPT'
 #!/bin/bash
-LOG=/tmp/ncms-nat-agent.log
+LOG=/sandbox/ncms-nat-agent.log
 echo \"[NAT] Starting \$1 on port \$2 at \$(date)\" >> \$LOG
 cd /sandbox/ncms
 NAT_PORT=\$2 /sandbox/.venv/bin/nat start fastapi \
