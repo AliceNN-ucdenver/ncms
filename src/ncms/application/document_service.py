@@ -547,7 +547,7 @@ class DocumentService:
     # ── Convenience: Project Summary ─────────────────────────────────────
 
     async def get_project_summary(self, project_id: str) -> dict[str, Any]:
-        """Get a full project summary with documents, scores, and events."""
+        """Get a full project summary with documents, scores, links, and events."""
         project = await self._store.get_project(project_id)
         if not project:
             return {"error": "Project not found"}
@@ -555,6 +555,17 @@ class DocumentService:
         docs = await self._store.list_documents(project_id=project_id)
         scores = await self._store.get_review_scores(project_id=project_id)
         events = await self._store.get_pipeline_events(project_id)
+
+        # Collect all document links for the project's documents
+        doc_ids = {d.id for d in docs}
+        all_links: list[DocumentLink] = []
+        seen_link_ids: set[str] = set()
+        for d in docs:
+            links = await self._store.get_document_links(d.id)
+            for link in links:
+                if link.id not in seen_link_ids:
+                    seen_link_ids.add(link.id)
+                    all_links.append(link)
 
         return {
             "project": project.model_dump(mode="json"),
@@ -568,9 +579,19 @@ class DocumentService:
                     "size_bytes": d.size_bytes,
                     "content_hash": d.content_hash,
                     "entity_count": len(d.entities),
+                    "parent_doc_id": d.parent_doc_id,
                     "created_at": d.created_at.isoformat() if d.created_at else None,
                 }
                 for d in docs
+            ],
+            "document_links": [
+                {
+                    "source_doc_id": link.source_doc_id,
+                    "target_doc_id": link.target_doc_id,
+                    "link_type": link.link_type,
+                    "metadata": link.metadata,
+                }
+                for link in all_links
             ],
             "review_scores": [s.model_dump(mode="json") for s in scores],
             "pipeline_events": len(events),

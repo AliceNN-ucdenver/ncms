@@ -3778,6 +3778,44 @@
   font-style: italic;
 }
 
+/* ── Quality Score Bar ────────────────────────────────────────── */
+.project-quality-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 0; padding: 6px 10px;
+  background: rgba(0,0,0,0.15); border-radius: 6px;
+}
+.quality-label { font-size: 11px; color: var(--text-muted); font-weight: 600; min-width: 48px; }
+.quality-gauge {
+  flex: 1; height: 6px; background: rgba(255,255,255,0.08);
+  border-radius: 3px; overflow: hidden;
+}
+.quality-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.quality-score { font-size: 13px; font-weight: 700; min-width: 40px; text-align: right; }
+
+/* ── D3 Document Flow Graph ───────────────────────────────────── */
+.doc-flow-container {
+  margin: 10px 0; padding: 8px;
+  background: rgba(0,0,0,0.12); border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.doc-flow-svg { display: block; }
+.doc-flow-node text { pointer-events: none; }
+.doc-flow-edge { pointer-events: none; }
+.doc-flow-edge-label { pointer-events: none; }
+.doc-flow-col-header { text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* ── Doc Type Chip + Score Badge in Timeline ──────────────────── */
+.doc-type-chip {
+  display: inline-block; padding: 1px 5px; border-radius: 3px;
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  border: 1px solid; letter-spacing: 0.3px;
+}
+.doc-score-badge {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  margin-left: 4px;
+}
+
 /* ── Pipeline Progress Bar ─────────────────────────────────────── */
 .project-pipeline-container {
   margin-top: 12px;

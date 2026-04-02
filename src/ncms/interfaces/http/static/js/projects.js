@@ -143,40 +143,74 @@ function renderProjectDetail(project) {
   const id = project.project_id || '';
   const docs = project.documents || [];
   const status = project.status || 'pending';
+  const reviewScores = project.review_scores || [];
+  const docLinks = project.document_links || [];
+  const qualityScore = project.quality_score;
 
   let html = '<div class="project-detail">';
 
   // Pipeline progress bar
   html += `<div class="project-pipeline-container" id="pipeline-${escapeHtml(id)}"></div>`;
 
+  // Quality score summary bar (if we have scores)
+  if (qualityScore != null) {
+    const scoreColor = qualityScore >= 80 ? '#10b981' : qualityScore >= 60 ? '#f59e0b' : '#ef4444';
+    html += `<div class="project-quality-bar">
+      <span class="quality-label">Quality</span>
+      <div class="quality-gauge">
+        <div class="quality-fill" style="width:${Math.min(qualityScore, 100)}%;background:${scoreColor}"></div>
+      </div>
+      <span class="quality-score" style="color:${scoreColor}">${Math.round(qualityScore)}%</span>
+    </div>`;
+  }
+
+  // D3 Document Flow Graph (when documents + links exist)
+  if (docs.length > 0 && typeof renderDocFlowGraph === 'function') {
+    html += `<div class="doc-flow-container" id="doc-flow-${escapeHtml(id)}"></div>`;
+  }
+
   // Phase timeline with documents
   if (docs.length > 0) {
     html += '<div class="phase-timeline">';
     for (const doc of docs) {
+      const docId = doc.id || doc.document_id || '';
       const docTitle = escapeHtml(doc.title || 'Untitled');
       const docTime = formatTime(doc.created_at || '');
-      const docSize = doc.size != null ? formatDocSize(doc.size) : '';
-      const versionMatch = (doc.title || '').match(/\b(v\d+)\b/);
-      const versionBadge = versionMatch
-        ? `<span class="doc-version-badge">${versionMatch[1]}</span>`
-        : '';
+      const docSize = doc.size_bytes != null ? formatDocSize(doc.size_bytes) : (doc.size != null ? formatDocSize(doc.size) : '');
+      const docType = doc.doc_type || '';
+      const typeConfig = { research: '#10b981', prd: '#22c55e', manifest: '#f97316', design: '#f59e0b', review: '#a78bfa', contract: '#8b5cf6' };
+      const typeColor = typeConfig[docType] || '#64748b';
+      const versionBadge = doc.version > 1 ? `<span class="doc-version-badge">v${doc.version}</span>` : '';
       const docAgent = escapeHtml(doc.from_agent || '');
 
+      // Find review scores for this doc
+      const docScores = reviewScores.filter(s => s.document_id === docId && s.score != null);
+      let scoreHtml = '';
+      if (docScores.length > 0) {
+        scoreHtml = docScores.map(s => {
+          const sc = s.score;
+          const c = sc >= 80 ? '#10b981' : sc >= 60 ? '#f59e0b' : '#ef4444';
+          return `<span class="doc-score-badge" style="color:${c}">${escapeHtml(s.reviewer_agent || '?')} ${sc}%</span>`;
+        }).join(' ');
+      }
+
       html += `<div class="phase-timeline-item">
-        <div class="phase-timeline-dot"></div>
+        <div class="phase-timeline-dot" style="background:${typeColor}"></div>
         <div class="phase-timeline-content">
           <div class="phase-timeline-header">
-            <span class="phase-timeline-title clickable" onclick="openDocumentViewer('${escapeHtml(doc.document_id || '')}')">${docTitle}</span>
+            <span class="phase-timeline-title clickable" onclick="openDocumentViewer('${escapeHtml(docId)}')">${docTitle}</span>
             <span class="phase-timeline-meta">
+              <span class="doc-type-chip" style="color:${typeColor};border-color:${typeColor}40">${escapeHtml(docType)}</span>
               ${versionBadge}
               <span class="phase-timeline-agent">${docAgent}</span>
               ${docSize ? `<span class="phase-timeline-size">${docSize}</span>` : ''}
               <span class="phase-timeline-time">${docTime}</span>
+              ${scoreHtml}
             </span>
           </div>
           <div class="phase-timeline-actions">
             ${doc.url ? `<a class="document-download-btn" href="${escapeHtml(doc.url)}" target="_blank" download>Download</a>` : ''}
-            ${doc.next_agent ? `<button class="doc-action-btn send-to-next" onclick="sendDocToAgent('${escapeHtml(doc.next_agent)}', '${escapeHtml(doc.document_id || '')}', '${escapeHtml((doc.title || '').replace(/'/g, "\\'"))}', 'Process this document')">Send to ${escapeHtml(doc.next_agent)}</button>` : ''}
+            ${doc.next_agent ? `<button class="doc-action-btn send-to-next" onclick="sendDocToAgent('${escapeHtml(doc.next_agent)}', '${escapeHtml(docId)}', '${escapeHtml((doc.title || '').replace(/'/g, "\\'"))}', 'Process this document')">Send to ${escapeHtml(doc.next_agent)}</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -198,10 +232,13 @@ function renderProjectDetail(project) {
 
   html += '</div>';
 
-  // Trigger pipeline progress render after DOM update
+  // Trigger pipeline progress + D3 doc flow render after DOM update
   setTimeout(() => {
     if (typeof renderPipelineProgress === 'function') {
       renderPipelineProgress(id, 'pipeline-' + id);
+    }
+    if (typeof renderDocFlowGraph === 'function' && docs.length > 0) {
+      renderDocFlowGraph('doc-flow-' + id, docs, docLinks, reviewScores);
     }
   }, 0);
 
@@ -223,6 +260,9 @@ async function toggleProjectExpand(projectId) {
       if (resp.ok) {
         const detail = await resp.json();
         project.documents = detail.documents || [];
+        project.document_links = detail.document_links || [];
+        project.review_scores = detail.review_scores || [];
+        project.quality_score = detail.quality_score;
         project.phases = detail.phases || project.phases || [];
       }
     } catch (e) {
@@ -516,6 +556,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (resp.ok) {
               const detail = await resp.json();
               p.documents = detail.documents || [];
+              p.document_links = detail.document_links || [];
+              p.review_scores = detail.review_scores || [];
+              p.quality_score = detail.quality_score;
             }
           } catch (e) { /* ignore */ }
         }
