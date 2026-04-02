@@ -389,9 +389,11 @@ class MemoryService:
             )
             return result, (time.perf_counter() - t) * 1000
 
+        logger.info("[store] Starting parallel indexing: BM25 + SPLADE + GLiNER")
         bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
             _do_bm25(), _do_splade(), _do_gliner(),
         )
+        logger.info("[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms", bm25_ms, splade_ms, extract_ms)
 
         _emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
         if self._splade is not None:
@@ -855,23 +857,30 @@ class MemoryService:
         t0 = time.perf_counter()
 
         async def _bm25_task() -> list[tuple[str, float]]:
-            return await asyncio.to_thread(
+            t = time.perf_counter()
+            result = await asyncio.to_thread(
                 self._index.search, query, self._config.tier1_candidates,
             )
+            logger.info("[search] BM25 done: %d results (%.0fms)", len(result), (time.perf_counter() - t) * 1000)
+            return result
 
         async def _splade_task() -> list[tuple[str, float]]:
             if self._splade is None:
                 return []
             try:
-                return await asyncio.to_thread(
+                t = time.perf_counter()
+                result = await asyncio.to_thread(
                     self._splade.search, query, self._config.splade_top_k,
                 )
+                logger.info("[search] SPLADE done: %d results (%.0fms)", len(result), (time.perf_counter() - t) * 1000)
+                return result
             except Exception:
                 logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
                 return []
 
         async def _entity_task() -> list[dict]:
-            return await asyncio.to_thread(
+            t = time.perf_counter()
+            result = await asyncio.to_thread(
                 extract_entities_gliner,
                 query,
                 model_name=self._config.gliner_model,
@@ -879,11 +888,15 @@ class MemoryService:
                 labels=labels,
                 cache_dir=self._config.model_cache_dir,
             )
+            logger.info("[search] GLiNER done: %d entities (%.0fms)", len(result), (time.perf_counter() - t) * 1000)
+            return result
 
+        logger.info("[search] Starting parallel retrieval: BM25 + SPLADE + GLiNER")
         bm25_results, splade_results, query_entity_names = await asyncio.gather(
             _bm25_task(), _splade_task(), _entity_task(),
         )
         parallel_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[search] Parallel retrieval complete (%.0fms total)", parallel_ms)
 
         # Emit stage events for observability
         bm25_data: dict[str, object] = {
@@ -932,6 +945,7 @@ class MemoryService:
         )
         ce_scores: dict[str, float] = {}
         if _use_ce:
+            logger.info("[search] Starting cross-encoder reranking (%d candidates)", len(fused_candidates))
             t0 = time.perf_counter()
             rerank_ids = [mid for mid, _ in fused_candidates[
                 :self._config.reranker_top_k
@@ -948,7 +962,9 @@ class MemoryService:
             ce_scores = {mid: score for mid, score in reranked}
             # Replace fused candidates with reranked order
             fused_candidates = reranked
-            _emit_stage("cross_encoder_rerank", (time.perf_counter() - t0) * 1000, {
+            ce_ms = (time.perf_counter() - t0) * 1000
+            logger.info("[search] Cross-encoder done: %d→%d results (%.0fms)", len(rerank_pairs), len(reranked), ce_ms)
+            _emit_stage("cross_encoder_rerank", ce_ms, {
                 "input_count": len(rerank_pairs),
                 "output_count": len(reranked),
                 "top_score": round(reranked[0][1], 4) if reranked else None,

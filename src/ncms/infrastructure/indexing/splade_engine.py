@@ -120,18 +120,22 @@ class SpladeEngine:
         """Lazy-load the SPLADE model on first use."""
         with self._lock:
             if self._model is not None:
+                logger.debug("[SPLADE] Model already loaded, skipping init")
                 return
+            import time as _time
             from sentence_transformers import SparseEncoder
 
             device = _resolve_device()
             logger.info(
-                "Loading SPLADE model: %s on %s (first call only)", self._model_name, device,
+                "[SPLADE] Loading model: %s on %s (first call only)", self._model_name, device,
             )
             kwargs: dict[str, object] = {}
             if self._cache_dir:
                 kwargs["cache_folder"] = self._cache_dir
+            t0 = _time.perf_counter()
             self._model = SparseEncoder(self._model_name, device=device, **kwargs)
-            logger.info("SPLADE model loaded on %s", device)
+            load_ms = (_time.perf_counter() - t0) * 1000
+            logger.info("[SPLADE] Model loaded on %s (%.0fms)", device, load_ms)
 
     def _embed_document_chunked(self, text: str) -> SparseVector:
         """Encode document text with chunking, merging via max-pool per vocab index."""

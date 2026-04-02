@@ -76,18 +76,22 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
 
     with _model_lock:
         if _model is not None and _model_name == model_name:
+            logger.debug("[GLiNER] Model already loaded, skipping init")
             return _model
+
+        import time as _time
 
         from gliner import GLiNER  # type: ignore[import-untyped]
 
         device = _resolve_device()
         logger.info(
-            "Loading GLiNER model: %s on %s (first call only)", model_name, device,
+            "[GLiNER] Loading model: %s on %s (first call only)", model_name, device,
         )
         kwargs: dict[str, object] = {}
         if cache_dir:
             kwargs["cache_dir"] = cache_dir
 
+        t0 = _time.perf_counter()
         if device == "mps":
             # GLiNER's from_pretrained with map_location="mps" fails on
             # meta tensors. Load on CPU first, then move to MPS.
@@ -101,6 +105,9 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
         else:
             kwargs["map_location"] = device
             _model = GLiNER.from_pretrained(model_name, **kwargs)
+
+        load_ms = (_time.perf_counter() - t0) * 1000
+        logger.info("[GLiNER] Model loaded on %s (%.0fms)", device, load_ms)
 
         _model_name = model_name
         return _model

@@ -36,21 +36,28 @@ class CrossEncoderReranker:
         if self._model is None and not self._load_failed:
             with _model_load_lock:
                 if self._model is not None:
+                    logger.debug("[CrossEncoder] Model already loaded, skipping init")
                     return  # Another thread loaded while we waited
                 try:
+                    import time as _time
+
                     from sentence_transformers import CrossEncoder
 
                     kwargs: dict = {}
                     if self._cache_dir:
                         kwargs["cache_folder"] = self._cache_dir
-                    logger.info("Loading cross-encoder model: %s", self._model_name)
+                    logger.info("[CrossEncoder] Loading model: %s", self._model_name)
+                    t0 = _time.perf_counter()
                     self._model = CrossEncoder(self._model_name, **kwargs)
-                    logger.info("Cross-encoder model loaded")
+                    load_ms = (_time.perf_counter() - t0) * 1000
+                    logger.info("[CrossEncoder] Model loaded (%.0fms)", load_ms)
                 except Exception as e:
                     logger.warning(
-                        "Cross-encoder load failed (reranking disabled): %s", e,
+                        "[CrossEncoder] Load failed (reranking disabled): %s", e,
                     )
                     self._load_failed = True
+        elif self._model is not None:
+            logger.debug("[CrossEncoder] Model already loaded, skipping init")
 
     def rerank(
         self,
