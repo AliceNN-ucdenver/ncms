@@ -738,6 +738,20 @@ class DesignAgent:
 
         avg_score = (arch_score + sec_score) / 2
 
+        # Persist review scores immediately (not just in verify) so they survive
+        # if the pipeline gets stuck mid-loop or the pod dies between rounds
+        for reviewer, score in [("architect", arch_score), ("security", sec_score)]:
+            try:
+                await self.client.save_review_score(
+                    document_id=doc_id,
+                    project_id=project_id,
+                    reviewer_agent=reviewer,
+                    review_round=iteration + 1,
+                    score=score,
+                )
+            except Exception:
+                pass  # Non-fatal
+
         # Announce review results
         try:
             status = "APPROVED ✅" if avg_score >= self.quality_threshold else f"below {self.quality_threshold}%"
