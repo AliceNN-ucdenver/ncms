@@ -872,6 +872,22 @@ Phase 2 makes documents intelligent (entity-enriched, searchable, persistent met
 
 **Infrastructure note:** NemoClaw sandbox pods run in `besteffort` QoS class with no resource requests/limits. Under memory pressure, k3s evicts them — wiping `/sandbox/` and all agent state. Three agents dying simultaneously during pipeline runs is caused by node-level memory pressure, not agent bugs. Future consideration: pre-created sandboxes with resource requests, or persistent volume claims for agent state that survives pod recycling.
 
+### Phase 2.5 (Document Intelligence Persistence)
+
+Every document, project, review score, and pipeline step becomes a first-class persistent object with full traceability, versioning, and auditability. The system survives restarts, pod recycling, and answers "show me the full provenance from research to final design" as a single query.
+
+| # | Feature | Rationale |
+|---|---------|-----------|
+| 27 | Document persistence (SQLite) | New `documents` table replaces markdown sidecars + in-memory dict. Full content + GLiNER entities stored in DB. Supports `doc_type` (research, prd, manifest, design, review, contract), versioning via `parent_doc_id` chain, and project linkage. Immutable for audit trail. |
+| 28 | Cross-document traceability | New `document_links` table with typed relationships: `derived_from`, `reviews`, `supersedes`, `cites`. Enables chain queries: "show me everything derived from this research report." Builder creates links when publishing (PRD → Design), reviewing (Review → Design), and revising (v2 supersedes v1). |
+| 29 | Review score persistence | New `review_scores` table: document_id, reviewer_agent, round, SCORE, SEVERITY, COVERED, MISSING, CHANGES. Queryable: "designs with security score below 80%." Builder parses structured review responses and writes scores. Project `quality_score` updated with latest average. |
+| 30 | Project persistence (SQLite) | New `projects` table replaces `_projects` in-memory dict. Survives hub restarts. Tracks current phase, quality score, status. Dashboard loads from DB, not memory. |
+| 31 | Pipeline event persistence | New `pipeline_events` table replaces in-memory ring buffer. Full audit trail of every node execution survives restarts. Dashboard loads pipeline state from DB on reconnect. Enables "how long did synthesize take on average?" queries. |
+| 32 | Document search API | Entity-based document search: `GET /documents/search?entity=JWT&type=protocol`. Version history: `GET /documents/{id}/versions`. Traceability chain: `GET /documents/{id}/chain`. Review history: `GET /documents/{id}/reviews`. |
+| 33 | Phoenix spans for agent operations | OpenTelemetry spans on key agent operations (search_memory, structured_review, synthesize, knowledge.load) with structured attributes (doc_id, entity_count, score, domain). Survives pod recycling because Phoenix stores externally. Dashboard links pipeline progress → Phoenix trace. |
+
+Phase 2.5 is the foundation that makes everything auditable and traceable. Without it, projects are lost on restart, reviews are buried in text, and document provenance requires manual traversal. With it, every artifact in the pipeline has a persistent identity, a version history, a quality score, and a traceability chain back to the original research.
+
 ### Phase 3 (Coding Agent + Governance)
 
 | # | Feature | Rationale |
