@@ -337,15 +337,14 @@ class DesignAgent:
         # Revise loops back to publish (then review again)
         graph.add_edge("revise_design", "publish_design")
 
-        # After approval: generate contracts, then exit
-        graph.add_node("generate_contracts", self.generate_contracts)
-        graph.add_edge("verify", "generate_contracts")
-        graph.add_edge("generate_contracts", END)
+        # After review approval: verify and exit
+        # Contract generation is deferred to the coding agent (Phase 3)
+        graph.add_edge("verify", END)
 
         compiled = graph.compile()
         logger.info(
             "[design_agent] Graph compiled: check_guardrails → read_document → ask_experts → "
-            "synthesize → validate → publish → review ⟲ (threshold: %d%%, max: %d iterations)",
+            "synthesize → validate → publish → review ⟲ → verify (threshold: %d%%, max: %d)",
             self.quality_threshold,
             self.max_iterations,
         )
