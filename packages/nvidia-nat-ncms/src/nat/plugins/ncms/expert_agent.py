@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_doc_id, emit_telemetry, fetch_and_cache_document, build_entity_search_query
+from .pipeline_utils import extract_project_id, extract_doc_id, emit_telemetry, fetch_and_cache_document, build_entity_search_query, traced_llm_call
 from .expert_prompts import (
     ARCHITECT_KNOWLEDGE_PROMPT,
     ARCHITECT_REVIEW_PROMPT,
@@ -158,6 +158,7 @@ class ExpertAgent:
 
         all_results: list[dict] = []
         doc_id = extract_doc_id(input_text)
+        entity_query_used: str | None = None  # Track for grounding log
 
         if doc_id:
             # ── Document-by-reference: fetch document + entities ──
@@ -174,9 +175,10 @@ class ExpertAgent:
 
                 # Search memory with entity keywords (primary search)
                 if entities:
-                    entity_query = build_entity_search_query(
+                    entity_query_used = build_entity_search_query(
                         entities, domain=self.primary_domain,
                     )
+                    entity_query = entity_query_used
                     logger.info(
                         "[expert_agent:%s] Entity-enriched search: %s",
                         self.from_agent, entity_query[:120],
@@ -234,12 +236,29 @@ class ExpertAgent:
         context = "\n\n".join(parts) if parts else "No relevant knowledge found in memory."
         state["memory_context"] = context
 
+        # Record grounding entries for audit trail (#37)
+        if doc_id and all_results:
+            for r in all_results:
+                memory_id = r.get("id", r.get("memory_id", ""))
+                score = r.get("score", r.get("total_activation"))
+                if memory_id:
+                    try:
+                        await self.client.record_grounding(
+                            document_id=doc_id, memory_id=str(memory_id),
+                            retrieval_score=float(score) if score is not None else None,
+                            entity_query=entity_query_used[:200] if entity_query_used else None,
+                            domain=self.primary_domain,
+                        )
+                    except Exception:
+                        pass  # Non-fatal
+
         logger.info(
             "[expert_agent:%s] Memory search: %d results (%d chars) [mode=%s, doc_id=%s]",
             self.from_agent,
             len(all_results),
             len(context),
             request_type,
+            doc_id,
         )
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "search_memory", "completed", f"{len(all_results)} results")
         return state
@@ -269,10 +288,15 @@ class ExpertAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are a domain expert. Answer grounded in the retrieved knowledge."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="You are a domain expert. Answer grounded in the retrieved knowledge."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="synthesize_answer",
+            )
             state["response"] = response.content
             logger.info(
                 "[expert_agent:%s] Answer synthesized: %d chars",
@@ -310,15 +334,20 @@ class ExpertAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(
-                    content=(
-                        "You are a domain expert performing a structured review. "
-                        "Follow the output format exactly."
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(
+                        content=(
+                            "You are a domain expert performing a structured review. "
+                            "Follow the output format exactly."
+                        ),
                     ),
-                ),
-                HumanMessage(content=prompt),
-            ])
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="structured_review",
+            )
             state["response"] = response.content
             logger.info(
                 "[expert_agent:%s] Review complete: %d chars",

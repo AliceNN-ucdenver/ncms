@@ -26,7 +26,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger, check_interrupt
+from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger, check_interrupt, traced_llm_call, snapshot_agent_config
 from .prd_prompts import SYNTHESIZE_PRD_PROMPT, MANIFEST_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -90,13 +90,44 @@ class PRDAgent:
         return False
 
     async def check_guardrails(self, state: PRDState) -> PRDState:
-        """Check input guardrails before pipeline starts."""
+        """Check input guardrails. Block/reject violations pause for human approval."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
-        from .guardrails import run_input_guardrails
+        await snapshot_agent_config(self.client, state.get("project_id"), self.from_agent, self.llm)
+        from .guardrails import request_approval, run_input_guardrails, wait_for_approval
         can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
         if not can_proceed:
             logger.warning("[prd_agent] Guardrails BLOCKED: %s", violations)
-            state["prd"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            blocking = [v for v in violations if v.escalation in ("block", "reject")]
+            if blocking:
+                await emit_telemetry(
+                    self.hub_url, state.get("project_id"), self.from_agent,
+                    "check_guardrails", "awaiting_approval",
+                    f"{len(blocking)} violation(s) require human approval",
+                )
+                approval_id = await request_approval(
+                    self.hub_url, self.from_agent, "check_guardrails",
+                    state.get("project_id"), blocking,
+                    context={"topic": state["topic"]},
+                )
+                if approval_id:
+                    decision, comment = await wait_for_approval(
+                        self.hub_url, approval_id, self.from_agent,
+                    )
+                    if decision == "approved":
+                        logger.info("[prd_agent] Human approved guardrail override")
+                        can_proceed = True
+                    else:
+                        state["prd"] = f"Pipeline denied by human: {decision}"
+                        state["interrupted"] = True
+                        await emit_telemetry(
+                            self.hub_url, state.get("project_id"), self.from_agent,
+                            "check_guardrails", "denied", f"Human denied: {comment or decision}",
+                        )
+                        return state
+                else:
+                    state["prd"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            else:
+                state["prd"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
         return state
 
@@ -108,10 +139,15 @@ class PRDAgent:
         prd = state["prd"]
         try:
             prompt = MANIFEST_PROMPT.format(prd_content=prd[:15000])
-            response = await self.llm.ainvoke([
-                SystemMessage(content="Output only valid JSON. No markdown, no explanation."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="Output only valid JSON. No markdown, no explanation."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="generate_manifest",
+            )
             text = response.content.strip()
             if text.startswith("```"): text = text.split("\n", 1)[1] if "\n" in text else text[3:]
             if text.endswith("```"): text = text[:-3].strip()
@@ -125,6 +161,12 @@ class PRDAgent:
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "generate_manifest", "completed")
         return state
 
+    def _after_guardrails(self, state: PRDState) -> str:
+        """Route: if guardrails denied, end the graph immediately."""
+        if state.get("interrupted"):
+            return END
+        return "continue"
+
     async def build_graph(self) -> StateGraph:
         """Build and compile the deterministic PRD pipeline."""
         graph = StateGraph(PRDState)
@@ -137,9 +179,13 @@ class PRDAgent:
         graph.add_node("publish_prd", self.publish_prd)
         graph.add_node("verify_and_trigger", self.verify_and_trigger)
 
-        # All edges unconditional — deterministic flow
+        # Guardrail gate → conditional: denied ends the graph
         graph.add_edge(START, "check_guardrails")
-        graph.add_edge("check_guardrails", "read_document")
+        graph.add_conditional_edges(
+            "check_guardrails",
+            self._after_guardrails,
+            {"continue": "read_document", END: END},
+        )
         graph.add_edge("read_document", "ask_experts")
         graph.add_edge("ask_experts", "synthesize_prd")
         graph.add_edge("synthesize_prd", "generate_manifest")
@@ -331,16 +377,21 @@ class PRDAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(
-                    content=(
-                        "You are a senior product owner using semi-formal certificate "
-                        "format. Follow the structure exactly. Every requirement must "
-                        "trace to a specific research finding or expert recommendation."
-                    )
-                ),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(
+                        content=(
+                            "You are a senior product owner using semi-formal certificate "
+                            "format. Follow the structure exactly. Every requirement must "
+                            "trace to a specific research finding or expert recommendation."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="synthesize_prd",
+            )
             state["prd"] = response.content
 
             # Validate CoT reasoning was used

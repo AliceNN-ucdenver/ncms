@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -247,7 +248,29 @@ def create_api_app(
             from_agent=agent_id,
             ttl_ms=timeout_ms,
         )
+        t0 = time.monotonic()
         response = await bus_svc.ask_sync(ask_obj, timeout_ms=timeout_ms)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        # Record bus conversation for audit trail (#41)
+        if doc_svc and response:
+            try:
+                # Extract project_id from question text if present
+                import re as _re
+                _pid_match = _re.search(r"\(project_id:\s*(PRJ-[a-f0-9]{8})\)", question)
+                _project_id = _pid_match.group(1) if _pid_match else None
+                await doc_svc.record_bus_conversation(
+                    project_id=_project_id,
+                    ask_id=ask_obj.ask_id,
+                    from_agent=agent_id,
+                    to_agent=response.from_agent,
+                    question_preview=question[:500],
+                    answer_preview=(response.knowledge.content or "")[:500],
+                    confidence=response.confidence,
+                    duration_ms=duration_ms,
+                )
+            except Exception:
+                pass  # Non-fatal
 
         if response is None:
             return JSONResponse({"answered": False})
@@ -1096,6 +1119,139 @@ def create_api_app(
             for d in results
         ])
 
+    # -- Guardrail Approval Gate endpoints ------------------------------------
+
+    async def create_approval_request(request: Request) -> JSONResponse:
+        """Agent creates a pending approval when guardrails flag issues."""
+        if not doc_svc:
+            return JSONResponse({"error": "doc service unavailable"}, status_code=503)
+        body = await request.json()
+        approval = await doc_svc.create_approval_request(
+            project_id=body.get("project_id"),
+            agent=body.get("agent", "unknown"),
+            node=body.get("node", "unknown"),
+            violations=body.get("violations", []),
+            context=body.get("context"),
+        )
+        # Emit SSE event so dashboard knows immediately
+        if event_log:
+            event_log.append({
+                "type": "approval_requested",
+                "approval_id": approval.id,
+                "project_id": approval.project_id,
+                "agent": approval.agent,
+                "node": approval.node,
+                "violation_count": len(approval.violations),
+            })
+        return JSONResponse(approval.model_dump(mode="json"), status_code=201)
+
+    async def list_approvals_endpoint(request: Request) -> JSONResponse:
+        """Dashboard polls for pending approvals."""
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        status = request.query_params.get("status")
+        project_id = request.query_params.get("project_id")
+        approvals = await doc_svc.list_pending_approvals(
+            status=status, project_id=project_id,
+        )
+        return JSONResponse([a.model_dump(mode="json") for a in approvals])
+
+    async def get_approval_endpoint(request: Request) -> JSONResponse:
+        """Agent polls for decision on a specific approval."""
+        if not doc_svc:
+            return JSONResponse({"error": "doc service unavailable"}, status_code=503)
+        approval_id = request.path_params["approval_id"]
+        approval = await doc_svc.get_approval_status(approval_id)
+        if not approval:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse(approval.model_dump(mode="json"))
+
+    async def decide_approval_endpoint(request: Request) -> JSONResponse:
+        """Human submits approve/deny decision from dashboard."""
+        if not doc_svc:
+            return JSONResponse({"error": "doc service unavailable"}, status_code=503)
+        approval_id = request.path_params["approval_id"]
+        body = await request.json()
+        decision = body.get("decision")  # "approved" or "denied"
+        decided_by = body.get("decided_by", "human")
+        comment = body.get("comment")
+        if decision not in ("approved", "denied"):
+            return JSONResponse(
+                {"error": "decision must be 'approved' or 'denied'"},
+                status_code=400,
+            )
+        result = await doc_svc.decide_approval(
+            approval_id, decision, decided_by, comment,
+        )
+        if not result:
+            return JSONResponse(
+                {"error": "approval not found or already decided"},
+                status_code=404,
+            )
+        # Emit SSE event so dashboard + agents know
+        if event_log:
+            event_log.append({
+                "type": "approval_decided",
+                "approval_id": result.id,
+                "project_id": result.project_id,
+                "decision": decision,
+                "decided_by": decided_by,
+            })
+        return JSONResponse(result.model_dump(mode="json"))
+
+    # -- Audit Record endpoints ------------------------------------------------
+
+    async def record_llm_call_endpoint(request: Request) -> JSONResponse:
+        """Agent reports an LLM call for audit trail."""
+        if not doc_svc:
+            return JSONResponse({"ok": True})
+        body = await request.json()
+        await doc_svc.record_llm_call(
+            project_id=body.get("project_id"),
+            agent=body.get("agent", "unknown"),
+            node=body.get("node", "unknown"),
+            prompt_size=body.get("prompt_size"),
+            response_size=body.get("response_size"),
+            reasoning_size=body.get("reasoning_size", 0),
+            model=body.get("model"),
+            thinking_enabled=body.get("thinking_enabled", False),
+            duration_ms=body.get("duration_ms"),
+            trace_id=body.get("trace_id"),
+            prompt_hash=body.get("prompt_hash"),
+        )
+        return JSONResponse({"ok": True}, status_code=201)
+
+    async def record_config_snapshot_endpoint(request: Request) -> JSONResponse:
+        """Agent reports its config at pipeline start."""
+        if not doc_svc:
+            return JSONResponse({"ok": True})
+        body = await request.json()
+        await doc_svc.record_config_snapshot(
+            project_id=body.get("project_id"),
+            agent=body.get("agent", "unknown"),
+            config_hash=body.get("config_hash"),
+            prompt_version=body.get("prompt_version"),
+            model_name=body.get("model_name"),
+            thinking_enabled=body.get("thinking_enabled", False),
+            max_tokens=body.get("max_tokens"),
+        )
+        return JSONResponse({"ok": True}, status_code=201)
+
+    async def record_grounding_endpoint(request: Request) -> JSONResponse:
+        """Agent reports memory grounding for a review citation."""
+        if not doc_svc:
+            return JSONResponse({"ok": True})
+        body = await request.json()
+        await doc_svc.record_grounding(
+            document_id=body.get("document_id", ""),
+            memory_id=body.get("memory_id", ""),
+            retrieval_score=body.get("retrieval_score"),
+            entity_query=body.get("entity_query"),
+            domain=body.get("domain"),
+            review_score_id=body.get("review_score_id"),
+        )
+        return JSONResponse({"ok": True}, status_code=201)
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1170,6 +1326,17 @@ def create_api_app(
         Route("/api/v1/policies", store_policy, methods=["POST"]),
         Route("/api/v1/policies", list_policies, methods=["GET"]),
         Route("/api/v1/policies/{policy_type}", get_policy, methods=["GET"]),
+
+        # Guardrail Approval Gates
+        Route("/api/v1/approvals", create_approval_request, methods=["POST"]),
+        Route("/api/v1/approvals", list_approvals_endpoint, methods=["GET"]),
+        Route("/api/v1/approvals/{approval_id}", get_approval_endpoint, methods=["GET"]),
+        Route("/api/v1/approvals/{approval_id}/decide", decide_approval_endpoint, methods=["POST"]),
+
+        # Audit Records (agents report LLM calls, config, grounding)
+        Route("/api/v1/audit/llm-call", record_llm_call_endpoint, methods=["POST"]),
+        Route("/api/v1/audit/config-snapshot", record_config_snapshot_endpoint, methods=["POST"]),
+        Route("/api/v1/audit/grounding", record_grounding_endpoint, methods=["POST"]),
     ]
 
     # Mount transport or other extra routes (e.g. HttpBusTransport SSE)

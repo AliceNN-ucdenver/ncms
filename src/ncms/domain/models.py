@@ -651,6 +651,22 @@ class GuardrailViolation(BaseModel):
     timestamp: datetime = Field(default_factory=_utcnow)
 
 
+class PendingApproval(BaseModel):
+    """Guardrail approval gate — agent pauses, human approves or denies."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    project_id: str | None = None
+    agent: str
+    node: str
+    violations: list[dict[str, str]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+    status: str = "pending"  # pending | approved | denied | timeout
+    decided_by: str | None = None
+    comment: str | None = None
+    created_at: datetime = Field(default_factory=_utcnow)
+    decided_at: datetime | None = None
+
+
 class GroundingLogEntry(BaseModel):
     """Links a review citation to the actual NCMS memory retrieved."""
 

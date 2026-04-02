@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -380,6 +380,31 @@ CREATE INDEX IF NOT EXISTS idx_bus_project ON bus_conversations(project_id);
 CREATE INDEX IF NOT EXISTS idx_bus_askid ON bus_conversations(ask_id);
 """
 
+# ═════════════════════════════════════════════════════════════════════════
+# V7: Guardrail Approval Gate (human-in-the-loop at guardrail checks)
+# ═════════════════════════════════════════════════════════════════════════
+
+V7_TABLES = """
+-- Pending approvals: agent creates when guardrails flag block/reject violations.
+-- Human approves or denies via dashboard. Agent polls for decision.
+CREATE TABLE IF NOT EXISTS pending_approvals (
+    id TEXT PRIMARY KEY,
+    project_id TEXT,
+    agent TEXT NOT NULL,
+    node TEXT NOT NULL,
+    violations TEXT NOT NULL DEFAULT '[]',
+    context TEXT DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    decided_by TEXT,
+    comment TEXT,
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_approvals(status);
+CREATE INDEX IF NOT EXISTS idx_pending_project ON pending_approvals(project_id);
+"""
+
 # Backward compat alias used by older code paths
 CREATE_TABLES = V1_TABLES
 
@@ -452,7 +477,7 @@ async def run_migrations(db: object) -> None:
         await db.commit()
         current_version = 5
 
-    if current_version < 6:
+    if current_version < 6:  # noqa: PLR1702
         # V6: Document Intelligence Persistence (Phase 2.5)
         # 11 tables: projects, documents, document_links, review_scores,
         # pipeline_events, approval_decisions, guardrail_violations,
@@ -461,5 +486,15 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (6,),
+        )
+        await db.commit()
+        current_version = 6
+
+    if current_version < 7:
+        # V7: Guardrail Approval Gate (human-in-the-loop)
+        await db.executescript(V7_TABLES)
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (7,),
         )
         await db.commit()

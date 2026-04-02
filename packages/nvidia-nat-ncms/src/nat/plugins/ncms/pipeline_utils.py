@@ -14,12 +14,22 @@ Document ID formats (each type has its own tag to avoid ambiguity):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import time
+from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# OpenTelemetry — optional, no hard dependency
+try:
+    from opentelemetry import trace as otel_trace
+    _tracer = otel_trace.get_tracer("ncms.agents")
+except ImportError:
+    _tracer = None
 
 # ── ID Extraction ────────────────────────────────────────────────────────────
 
@@ -282,6 +292,31 @@ async def emit_telemetry(
 # ── Interrupt Checking ───────────────────────────────────────────────────────
 
 
+async def snapshot_agent_config(
+    client: Any,
+    project_id: str | None,
+    agent: str,
+    llm: Any,
+) -> None:
+    """Record agent config snapshot at pipeline start (fire-and-forget)."""
+    if not client or not project_id:
+        return
+    model_name = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    # Detect thinking/max_tokens from model kwargs
+    kwargs = getattr(llm, "model_kwargs", {}) or {}
+    thinking = kwargs.get("thinking", {}).get("enabled", False) if isinstance(kwargs.get("thinking"), dict) else False
+    max_tokens = getattr(llm, "max_tokens", None) or kwargs.get("max_tokens")
+    try:
+        await client.record_config_snapshot(
+            project_id=project_id, agent=agent,
+            model_name=str(model_name) if model_name else None,
+            thinking_enabled=thinking,
+            max_tokens=max_tokens,
+        )
+    except Exception:
+        pass  # Non-fatal
+
+
 async def check_interrupt(hub_url: str, agent_id: str) -> bool:
     """Check if an interrupt signal has been sent for this agent."""
     try:
@@ -295,3 +330,103 @@ async def check_interrupt(hub_url: str, agent_id: str) -> bool:
     except Exception:
         pass
     return False
+
+
+# ── Traced LLM Call ─────────────────────────────────────────────────────────
+# Wraps ainvoke() with OpenTelemetry span + audit record.
+# Phoenix captures the full LLM context; the llm_calls table stores
+# queryable metadata (sizes, duration, model) with trace_id for linkage.
+
+
+async def traced_llm_call(
+    llm: Any,
+    messages: list,
+    *,
+    hub_url: str,
+    client: "NCMSHttpClient | None" = None,  # noqa: F821
+    project_id: str | None = None,
+    agent: str = "unknown",
+    node: str = "unknown",
+    model_name: str | None = None,
+) -> Any:
+    """Call llm.ainvoke() with an OTel span and audit record.
+
+    Returns the LLM response object. The span and audit record are
+    best-effort — failures never block the pipeline.
+    """
+    # Compute prompt size for audit
+    prompt_text = " ".join(
+        getattr(m, "content", str(m)) for m in messages
+    )
+    prompt_size = len(prompt_text)
+    prompt_hash = hashlib.sha256(prompt_text.encode()).hexdigest()[:16]
+
+    # Detect model name from llm object if not provided
+    if not model_name:
+        model_name = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+
+    span = None
+    trace_id = None
+    t0 = time.monotonic()
+
+    try:
+        # Create OTel span if tracer is available
+        if _tracer:
+            span = _tracer.start_span(f"{agent}.{node}")
+            span.set_attribute("ncms.agent", agent)
+            span.set_attribute("ncms.node", node)
+            span.set_attribute("ncms.prompt_size", prompt_size)
+            if project_id:
+                span.set_attribute("ncms.project_id", project_id)
+            if model_name:
+                span.set_attribute("ncms.model", str(model_name))
+            # Get trace ID for audit linkage
+            ctx = span.get_span_context()
+            if ctx and ctx.trace_id:
+                trace_id = format(ctx.trace_id, "032x")
+
+        # Actual LLM call
+        response = await llm.ainvoke(messages)
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        response_text = getattr(response, "content", str(response))
+        response_size = len(response_text)
+
+        # Check for reasoning content (CoT)
+        reasoning_size = 0
+        reasoning = getattr(response, "additional_kwargs", {}).get("reasoning_content")
+        if reasoning:
+            reasoning_size = len(reasoning)
+
+        if span:
+            span.set_attribute("ncms.response_size", response_size)
+            span.set_attribute("ncms.reasoning_size", reasoning_size)
+            span.set_attribute("ncms.duration_ms", duration_ms)
+
+        # Record audit entry (fire-and-forget)
+        if client:
+            try:
+                await client.record_llm_call(
+                    project_id=project_id, agent=agent, node=node,
+                    prompt_size=prompt_size, response_size=response_size,
+                    reasoning_size=reasoning_size, model=str(model_name) if model_name else None,
+                    thinking_enabled=reasoning_size > 0,
+                    duration_ms=duration_ms, prompt_hash=prompt_hash,
+                )
+            except Exception:
+                pass
+
+        logger.info(
+            "[%s.%s] LLM call: %d→%d chars (%dms)%s",
+            agent, node, prompt_size, response_size, duration_ms,
+            f" +{reasoning_size} reasoning" if reasoning_size else "",
+        )
+        return response
+
+    except Exception:
+        if span:
+            span.set_attribute("ncms.error", True)
+        raise
+    finally:
+        if span:
+            span.end()

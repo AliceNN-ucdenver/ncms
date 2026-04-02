@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_topic, emit_telemetry, build_prd_trigger, check_interrupt
+from .pipeline_utils import extract_project_id, extract_topic, emit_telemetry, build_prd_trigger, check_interrupt, traced_llm_call, snapshot_agent_config
 from .research_prompts import PLAN_QUERIES_PROMPT, SYNTHESIZE_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -95,15 +95,52 @@ class ResearchAgent:
         return False
 
     async def check_guardrails(self, state: ResearchState) -> ResearchState:
-        """Check input guardrails before pipeline starts."""
+        """Check input guardrails. Block/reject violations pause for human approval."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
-        from .guardrails import run_input_guardrails
+        await snapshot_agent_config(self.client, state.get("project_id"), self.from_agent, self.llm)
+        from .guardrails import request_approval, run_input_guardrails, wait_for_approval
         can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
         if not can_proceed:
             logger.warning("[research_agent] Guardrails BLOCKED: %s", violations)
-            state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            blocking = [v for v in violations if v.escalation in ("block", "reject")]
+            if blocking:
+                await emit_telemetry(
+                    self.hub_url, state.get("project_id"), self.from_agent,
+                    "check_guardrails", "awaiting_approval",
+                    f"{len(blocking)} violation(s) require human approval",
+                )
+                approval_id = await request_approval(
+                    self.hub_url, self.from_agent, "check_guardrails",
+                    state.get("project_id"), blocking,
+                    context={"topic": state["topic"]},
+                )
+                if approval_id:
+                    decision, comment = await wait_for_approval(
+                        self.hub_url, approval_id, self.from_agent,
+                    )
+                    if decision == "approved":
+                        logger.info("[research_agent] Human approved guardrail override")
+                        can_proceed = True
+                    else:
+                        state["synthesis"] = f"Pipeline denied by human: {decision}"
+                        state["interrupted"] = True
+                        await emit_telemetry(
+                            self.hub_url, state.get("project_id"), self.from_agent,
+                            "check_guardrails", "denied", f"Human denied: {comment or decision}",
+                        )
+                        return state
+                else:
+                    state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            else:
+                state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
         return state
+
+    def _after_guardrails(self, state: ResearchState) -> str:
+        """Route: if guardrails denied, end the graph immediately."""
+        if state.get("interrupted"):
+            return END
+        return "continue"
 
     async def build_graph(self) -> StateGraph:
         """Build and compile the deterministic research pipeline."""
@@ -117,9 +154,13 @@ class ResearchAgent:
         graph.add_node("publish", self.publish)
         graph.add_node("verify", self.verify)
 
-        # All edges unconditional — deterministic flow
+        # Guardrail gate → conditional: denied ends the graph
         graph.add_edge(START, "check_guardrails")
-        graph.add_edge("check_guardrails", "plan_queries")
+        graph.add_conditional_edges(
+            "check_guardrails",
+            self._after_guardrails,
+            {"continue": "plan_queries", END: END},
+        )
         graph.add_edge("plan_queries", "parallel_search")
         graph.add_edge("parallel_search", "arxiv_search")
         graph.add_edge("arxiv_search", "synthesize")
@@ -143,10 +184,15 @@ class ResearchAgent:
 
         try:
             prompt = PLAN_QUERIES_PROMPT.format(topic=topic)
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You output only valid JSON arrays. No markdown, no explanation."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="You output only valid JSON arrays. No markdown, no explanation."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="plan_queries",
+            )
             text = response.content.strip()
 
             # Strip markdown code fences if present
@@ -386,14 +432,19 @@ class ResearchAgent:
         prompt = SYNTHESIZE_PROMPT.format(topic=topic, search_results=search_text)
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content=(
-                    "You are a thorough market research analyst using semi-formal "
-                    "certificate format. Follow the structure exactly. Every claim "
-                    "must trace to a specific source."
-                )),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content=(
+                        "You are a thorough market research analyst using semi-formal "
+                        "certificate format. Follow the structure exactly. Every claim "
+                        "must trace to a specific source."
+                    )),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="synthesize",
+            )
             state["synthesis"] = response.content
 
             # Validate CoT reasoning was used (if configured)

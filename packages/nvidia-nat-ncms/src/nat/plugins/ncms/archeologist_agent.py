@@ -40,6 +40,8 @@ from .pipeline_utils import (
     extract_project_id,
     extract_repo_url,
     extract_topic,
+    snapshot_agent_config,
+    traced_llm_call,
 )
 from .archeologist_prompts import (
     ANALYZE_ARCHITECTURE_PROMPT,
@@ -153,20 +155,24 @@ class ArcheologistAgent:
         return compiled
 
     def _after_guardrails(self, state: ArcheologyState) -> str:
-        """Route: if guardrails blocked, skip to END."""
-        if state.get("synthesis", "").startswith("Pipeline blocked"):
+        """Route: if guardrails blocked or denied, skip to END."""
+        if state.get("interrupted"):
+            return "blocked"
+        synthesis = state.get("synthesis", "")
+        if synthesis.startswith("Pipeline blocked") or synthesis.startswith("Pipeline denied"):
             return "blocked"
         return "continue"
 
     # ── Node 1: Check Guardrails ─────────────────────────────────────────
 
     async def check_guardrails(self, state: ArcheologyState) -> ArcheologyState:
-        """Check input guardrails before pipeline starts."""
+        """Check input guardrails. Block/reject violations pause for human approval."""
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "check_guardrails", "started",
         )
-        from .guardrails import run_input_guardrails
+        await snapshot_agent_config(self.client, state.get("project_id"), self.from_agent, self.llm)
+        from .guardrails import request_approval, run_input_guardrails, wait_for_approval
 
         goal = state.get("project_goal", "")
         can_proceed, violations = await run_input_guardrails(
@@ -174,7 +180,37 @@ class ArcheologistAgent:
         )
         if not can_proceed:
             logger.warning("[archeologist] Guardrails BLOCKED: %s", violations)
-            state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            blocking = [v for v in violations if v.escalation in ("block", "reject")]
+            if blocking:
+                await emit_telemetry(
+                    self.hub_url, state.get("project_id"), self.from_agent,
+                    "check_guardrails", "awaiting_approval",
+                    f"{len(blocking)} violation(s) require human approval",
+                )
+                approval_id = await request_approval(
+                    self.hub_url, self.from_agent, "check_guardrails",
+                    state.get("project_id"), blocking,
+                    context={"topic": goal},
+                )
+                if approval_id:
+                    decision, comment = await wait_for_approval(
+                        self.hub_url, approval_id, self.from_agent,
+                    )
+                    if decision == "approved":
+                        logger.info("[archeologist] Human approved guardrail override")
+                        can_proceed = True
+                    else:
+                        state["synthesis"] = f"Pipeline denied by human: {decision}"
+                        state["interrupted"] = True
+                        await emit_telemetry(
+                            self.hub_url, state.get("project_id"), self.from_agent,
+                            "check_guardrails", "denied", f"Human denied: {comment or decision}",
+                        )
+                        return state
+                else:
+                    state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            else:
+                state["synthesis"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "check_guardrails", "completed",
@@ -319,10 +355,15 @@ class ArcheologistAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are a senior software architect analyzing a codebase."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="You are a senior software architect analyzing a codebase."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="analyze_architecture",
+            )
             state["architecture_analysis"] = response.content.strip()
             logger.info(
                 "[archeologist] Architecture analysis: %d chars",
@@ -393,10 +434,15 @@ class ArcheologistAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are an expert code reviewer with governance knowledge."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="You are an expert code reviewer with governance knowledge."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="identify_gaps",
+            )
             state["gap_analysis"] = response.content.strip()
             logger.info("[archeologist] Gap analysis: %d chars", len(state["gap_analysis"]))
         except Exception as e:
@@ -526,10 +572,15 @@ class ArcheologistAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are a technical lead producing a comprehensive report."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="You are a technical lead producing a comprehensive report."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="synthesize_report",
+            )
             state["synthesis"] = response.content.strip()
             logger.info("[archeologist] Report synthesized: %d chars", len(state["synthesis"]))
         except Exception as e:

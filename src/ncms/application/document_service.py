@@ -22,6 +22,7 @@ from ncms.domain.models import (
     GroundingLogEntry,
     GuardrailViolation,
     LLMCallRecord,
+    PendingApproval,
     PipelineEvent,
     Project,
     ReviewScore,
@@ -399,6 +400,84 @@ class DocumentService:
         )
         await self._store.save_guardrail_violation(violation)
         return violation
+
+    # ── Guardrail Approval Gates ─────────────────────────────────────────
+
+    async def create_approval_request(
+        self, project_id: str | None, agent: str, node: str,
+        violations: list[dict[str, str]],
+        context: dict[str, Any] | None = None,
+    ) -> PendingApproval:
+        """Create a pending approval for a guardrail gate.
+
+        Returns the PendingApproval with its ID for polling.
+        """
+        approval = PendingApproval(
+            project_id=project_id, agent=agent, node=node,
+            violations=violations, context=context or {},
+        )
+        await self._store.create_pending_approval(approval)
+        logger.info(
+            "[doc-svc] Approval request created: %s for %s/%s (%d violations)",
+            approval.id, agent, node, len(violations),
+        )
+        return approval
+
+    async def get_approval_status(self, approval_id: str) -> PendingApproval | None:
+        """Get the current state of an approval request (agent polls this)."""
+        return await self._store.get_pending_approval(approval_id)
+
+    async def list_pending_approvals(
+        self, status: str | None = None, project_id: str | None = None,
+    ) -> list[PendingApproval]:
+        """List approval requests, optionally filtered by status or project."""
+        return await self._store.list_pending_approvals(status=status, project_id=project_id)
+
+    async def decide_approval(
+        self, approval_id: str, decision: str, decided_by: str,
+        comment: str | None = None,
+    ) -> PendingApproval | None:
+        """Record a human approval/denial decision.
+
+        Also creates an ApprovalDecision audit record and updates project
+        status if denied.
+        """
+        ok = await self._store.decide_approval(approval_id, decision, decided_by, comment)
+        if not ok:
+            return None
+        approval = await self._store.get_pending_approval(approval_id)
+        if not approval:
+            return None
+
+        # Record formal audit trail
+        await self.record_approval(
+            project_id=approval.project_id,
+            document_id=approval.id,  # link to approval request
+            decision=decision,
+            approver=decided_by,
+            comment=comment,
+        )
+
+        # If denied, mark project as failed
+        if decision == "denied" and approval.project_id:
+            try:
+                project = await self._store.get_project(approval.project_id)
+                if project and project.status == "active":
+                    project.status = "denied"
+                    project.updated_at = datetime.now(UTC)
+                    await self._store.update_project(project)
+                    logger.info(
+                        "[doc-svc] Project %s denied by %s",
+                        approval.project_id, decided_by,
+                    )
+            except Exception:
+                logger.warning("[doc-svc] Failed to update project status on denial")
+
+        logger.info(
+            "[doc-svc] Approval %s decided: %s by %s",
+            approval_id, decision, decided_by,
+        )
+        return approval
 
     async def record_grounding(
         self, document_id: str, memory_id: str,

@@ -47,7 +47,7 @@ function renderProjects() {
   }
 
   // Sort: active first, then by created_at descending
-  const statusOrder = { active: 0, pending: 1, completed: 2, failed: 3, archived: 4 };
+  const statusOrder = { active: 0, pending: 1, completed: 2, failed: 3, denied: 3, archived: 4 };
   const sorted = [...state.projects].sort((a, b) => {
     const sa = statusOrder[a.status] ?? 3;
     const sb = statusOrder[b.status] ?? 3;
@@ -94,8 +94,16 @@ function projectCardHTML(project) {
   // Chevron
   const chevron = isExpanded ? '&#x25B2;' : '&#x25BC;';
 
+  // Check if this project has a pending approval
+  const hasPendingApproval = (state.approvals || []).some(
+    a => a.project_id === id && a.status === 'pending'
+  );
+
   // Compact summary chips
   const chips = [];
+  if (hasPendingApproval) {
+    chips.push(`<span class="project-chip approval-waiting" onclick="event.stopPropagation(); showApprovalForProject('${id}')" title="Awaiting human approval">&#x23F3; Approval</span>`);
+  }
   if (sourceType === 'archaeology') {
     chips.push(`<span class="project-chip repo">Repo</span>`);
   }

@@ -38,6 +38,11 @@ function handleEvent(event) {
     document.dispatchEvent(new CustomEvent('ncms:project-updated', { detail: event }));
   }
 
+  // Guardrail approval events — refresh approval list immediately
+  if (event.type === 'approval_requested' || event.type === 'approval_decided') {
+    if (typeof handleApprovalSSE === 'function') handleApprovalSSE(event.data || {});
+  }
+
   // Agent lifecycle events
   if (event.type.startsWith('agent.')) {
     handleAgentEvent(event);

@@ -8,6 +8,7 @@ configurable escalation levels (warn, block, reject).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -15,6 +16,10 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Poll interval and timeout for human approval gate
+_APPROVAL_POLL_SECONDS = 5
+_APPROVAL_TIMEOUT_SECONDS = 3600  # 1 hour
 
 
 class PolicyViolation:
@@ -277,6 +282,94 @@ async def run_output_guardrails(
 
     can_publish = not any(v.escalation in ("block", "reject") for v in violations)
     return can_publish, violations
+
+
+async def request_approval(
+    hub_url: str,
+    agent_id: str,
+    node: str,
+    project_id: str | None,
+    violations: list[PolicyViolation],
+    context: dict[str, Any] | None = None,
+) -> str | None:
+    """Create a pending approval request at the hub.
+
+    Returns the approval ID for polling, or None on failure.
+    """
+    violation_dicts = [
+        {
+            "policy_type": v.policy_type,
+            "rule": v.rule,
+            "message": v.message,
+            "escalation": v.escalation,
+        }
+        for v in violations
+    ]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{hub_url}/api/v1/approvals",
+                json={
+                    "project_id": project_id,
+                    "agent": agent_id,
+                    "node": node,
+                    "violations": violation_dicts,
+                    "context": context or {},
+                },
+            )
+            if resp.status_code == 201:
+                data = resp.json()
+                approval_id = data.get("id")
+                logger.info(
+                    "[guardrails:%s] Approval request created: %s (%d violations)",
+                    agent_id, approval_id, len(violations),
+                )
+                return approval_id
+            logger.warning(
+                "[guardrails:%s] Failed to create approval: HTTP %d",
+                agent_id, resp.status_code,
+            )
+    except Exception as e:
+        logger.warning("[guardrails:%s] Failed to create approval: %s", agent_id, e)
+    return None
+
+
+async def wait_for_approval(
+    hub_url: str,
+    approval_id: str,
+    agent_id: str,
+    timeout_seconds: int = _APPROVAL_TIMEOUT_SECONDS,
+    poll_seconds: int = _APPROVAL_POLL_SECONDS,
+) -> tuple[str, str | None]:
+    """Poll the hub for an approval decision.
+
+    Returns (decision, comment) where decision is "approved", "denied", or "timeout".
+    """
+    elapsed = 0
+    while elapsed < timeout_seconds:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{hub_url}/api/v1/approvals/{approval_id}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    status = data.get("status", "pending")
+                    if status != "pending":
+                        logger.info(
+                            "[guardrails:%s] Approval %s decided: %s",
+                            agent_id, approval_id, status,
+                        )
+                        return status, data.get("comment")
+        except Exception as e:
+            logger.debug("[guardrails:%s] Poll error: %s", agent_id, e)
+
+        await asyncio.sleep(poll_seconds)
+        elapsed += poll_seconds
+
+    logger.warning(
+        "[guardrails:%s] Approval %s timed out after %ds",
+        agent_id, approval_id, timeout_seconds,
+    )
+    return "timeout", None
 
 
 def _extract_list(yaml_text: str, key: str) -> list[str]:

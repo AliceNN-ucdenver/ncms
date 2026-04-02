@@ -292,6 +292,60 @@ class NCMSHttpClient:
         resp.raise_for_status()
         return resp.json()
 
+    # ── Audit Records ────────────────────────────────────────────────────
+
+    async def record_llm_call(
+        self, project_id: str | None, agent: str, node: str,
+        prompt_size: int | None = None, response_size: int | None = None,
+        reasoning_size: int = 0, model: str | None = None,
+        thinking_enabled: bool = False, duration_ms: int | None = None,
+        prompt_hash: str | None = None,
+    ) -> None:
+        """Report an LLM call for the audit trail (fire-and-forget)."""
+        try:
+            await self._client.post("/api/v1/audit/llm-call", json={
+                "project_id": project_id, "agent": agent, "node": node,
+                "prompt_size": prompt_size, "response_size": response_size,
+                "reasoning_size": reasoning_size, "model": model,
+                "thinking_enabled": thinking_enabled, "duration_ms": duration_ms,
+                "prompt_hash": prompt_hash,
+            })
+        except Exception:
+            pass  # Non-fatal — audit is best-effort
+
+    async def record_config_snapshot(
+        self, project_id: str | None, agent: str,
+        model_name: str | None = None, thinking_enabled: bool = False,
+        max_tokens: int | None = None, prompt_version: str | None = None,
+        config_hash: str | None = None,
+    ) -> None:
+        """Report agent config at pipeline start (fire-and-forget)."""
+        try:
+            await self._client.post("/api/v1/audit/config-snapshot", json={
+                "project_id": project_id, "agent": agent,
+                "model_name": model_name, "thinking_enabled": thinking_enabled,
+                "max_tokens": max_tokens, "prompt_version": prompt_version,
+                "config_hash": config_hash,
+            })
+        except Exception:
+            pass
+
+    async def record_grounding(
+        self, document_id: str, memory_id: str,
+        retrieval_score: float | None = None,
+        entity_query: str | None = None,
+        domain: str | None = None,
+    ) -> None:
+        """Report memory grounding for a review citation (fire-and-forget)."""
+        try:
+            await self._client.post("/api/v1/audit/grounding", json={
+                "document_id": document_id, "memory_id": memory_id,
+                "retrieval_score": retrieval_score,
+                "entity_query": entity_query, "domain": domain,
+            })
+        except Exception:
+            pass
+
     # ── Health ────────────────────────────────────────────────────────────
 
     async def health(self) -> dict[str, Any]:

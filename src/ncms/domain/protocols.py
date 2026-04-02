@@ -32,6 +32,7 @@ from ncms.domain.models import (
     LLMCallRecord,
     Memory,
     MemoryNode,
+    PendingApproval,
     PipelineEvent,
     Project,
     Relationship,
@@ -324,6 +325,17 @@ class DocumentStore(Protocol):
     # ── Pipeline Events ──
     async def save_pipeline_event(self, event: PipelineEvent) -> None: ...
     async def get_pipeline_events(self, project_id: str) -> list[PipelineEvent]: ...
+
+    # ── Pending Approvals (guardrail gates) ──
+    async def create_pending_approval(self, approval: PendingApproval) -> None: ...
+    async def get_pending_approval(self, approval_id: str) -> PendingApproval | None: ...
+    async def list_pending_approvals(
+        self, status: str | None = None, project_id: str | None = None,
+    ) -> list[PendingApproval]: ...
+    async def decide_approval(
+        self, approval_id: str, decision: str, decided_by: str,
+        comment: str | None = None,
+    ) -> bool: ...
 
     # ── Audit Records ──
     async def save_approval(self, decision: ApprovalDecision) -> None: ...

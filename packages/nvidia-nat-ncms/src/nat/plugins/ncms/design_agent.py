@@ -37,7 +37,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry, check_interrupt
+from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry, check_interrupt, traced_llm_call, snapshot_agent_config
 from .design_prompts import (
     SYNTHESIZE_DESIGN_PROMPT,
     REVISE_DESIGN_PROMPT,
@@ -114,13 +114,50 @@ class DesignAgent:
         return False
 
     async def check_guardrails(self, state: DesignState) -> DesignState:
-        """Check input guardrails before pipeline starts."""
+        """Check input guardrails before pipeline starts.
+
+        If violations have escalation=block or reject, pauses pipeline
+        and waits for human approval via the hub approval gate.
+        """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "started")
-        from .guardrails import run_input_guardrails
+        await snapshot_agent_config(self.client, state.get("project_id"), self.from_agent, self.llm)
+        from .guardrails import request_approval, run_input_guardrails, wait_for_approval
         can_proceed, violations = await run_input_guardrails(self.hub_url, state["topic"], self.from_agent)
         if not can_proceed:
             logger.warning("[design_agent] Guardrails BLOCKED: %s", violations)
-            state["design"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            # Request human approval
+            blocking = [v for v in violations if v.escalation in ("block", "reject")]
+            if blocking:
+                await emit_telemetry(
+                    self.hub_url, state.get("project_id"), self.from_agent,
+                    "check_guardrails", "awaiting_approval",
+                    f"{len(blocking)} violation(s) require human approval",
+                )
+                approval_id = await request_approval(
+                    self.hub_url, self.from_agent, "check_guardrails",
+                    state.get("project_id"), blocking,
+                    context={"topic": state["topic"]},
+                )
+                if approval_id:
+                    decision, comment = await wait_for_approval(
+                        self.hub_url, approval_id, self.from_agent,
+                    )
+                    if decision == "approved":
+                        logger.info("[design_agent] Human approved guardrail override")
+                        can_proceed = True
+                    else:
+                        logger.info("[design_agent] Human denied (%s): %s", decision, comment)
+                        state["design"] = f"Pipeline denied by human: {decision}"
+                        state["interrupted"] = True
+                        await emit_telemetry(
+                            self.hub_url, state.get("project_id"), self.from_agent,
+                            "check_guardrails", "denied", f"Human denied: {comment or decision}",
+                        )
+                        return state
+                else:
+                    state["design"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
+            else:
+                state["design"] = f"Pipeline blocked by guardrails: {[str(v) for v in violations]}"
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_guardrails", "completed")
         return state
 
@@ -147,17 +184,15 @@ class DesignAgent:
     # -- Node: Check Output Guardrails (Pure Python, annotation-only) --------
 
     async def check_output_guardrails(self, state: DesignState) -> DesignState:
-        """Check output guardrails and annotate violations for human review.
+        """Check output guardrails before publishing.
 
-        This does NOT modify or block the design. Violations are appended
-        as a visible warning section that the human reviewer can act on.
-        Design documents legitimately reference passwords, secrets, and
-        security patterns in their specifications.
+        For block/reject violations: pauses pipeline and waits for human
+        approval via the hub approval gate. Warn violations are annotated.
         """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_output_guardrails", "started")
         if await self._check_and_interrupt(state, "check_output_guardrails"):
             return state
-        from .guardrails import run_output_guardrails
+        from .guardrails import request_approval, run_output_guardrails, wait_for_approval
 
         _, violations = await run_output_guardrails(
             self.hub_url, state["design"], self.from_agent,
@@ -167,38 +202,83 @@ class DesignAgent:
         if not violations:
             logger.info("[design_agent] Output guardrails PASSED — no violations")
             await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "check_output_guardrails", "completed", "passed")
-        else:
-            logger.info(
-                "[design_agent] Output guardrails found %d item(s) for human review",
-                len(violations),
-            )
-            # Annotate the design with warnings (don't modify the actual content)
+            return state
+
+        blocking = [v for v in violations if v.escalation in ("block", "reject")]
+        warns = [v for v in violations if v.escalation == "warn"]
+
+        # Always annotate warn-level items
+        if warns:
             warning_section = (
                 "\n\n---\n"
                 "## Guardrail Review Notes\n\n"
                 "*The following items were flagged by automated guardrails for human review:*\n\n"
-                + "\n".join(f"- {v}" for v in violations)
-                + "\n\n*These may be false positives in a design document (e.g., password fields "
-                "in interface definitions are expected). Review and address as needed before "
-                "implementation.*\n"
+                + "\n".join(f"- {v}" for v in warns)
+                + "\n\n*These may be false positives in a design document.*\n"
             )
             state["design"] += warning_section
 
+        # Block/reject violations require human approval
+        if blocking:
+            logger.info(
+                "[design_agent] Output guardrails: %d blocking violation(s), requesting approval",
+                len(blocking),
+            )
             await emit_telemetry(
                 self.hub_url, state.get("project_id"), self.from_agent,
-                "check_output_guardrails", "completed",
-                f"{len(violations)} items flagged for review",
+                "check_output_guardrails", "awaiting_approval",
+                f"{len(blocking)} violation(s) require human approval",
             )
-            try:
-                await self.client.bus_announce(
-                    content=f"⚠️ Output guardrails: {len(violations)} item(s) flagged for human review",
-                    domains=["implementation"],
-                    from_agent=self.from_agent,
+            approval_id = await request_approval(
+                self.hub_url, self.from_agent, "check_output_guardrails",
+                state.get("project_id"), blocking,
+                context={"topic": state.get("topic", ""), "design_preview": state["design"][:500]},
+            )
+            if approval_id:
+                decision, comment = await wait_for_approval(
+                    self.hub_url, approval_id, self.from_agent,
                 )
-            except Exception:
-                pass
+                if decision == "approved":
+                    logger.info("[design_agent] Human approved output guardrail override")
+                else:
+                    logger.info("[design_agent] Human denied output: %s", decision)
+                    state["design"] = f"Pipeline denied by human at output guardrails: {decision}"
+                    state["interrupted"] = True
+                    await emit_telemetry(
+                        self.hub_url, state.get("project_id"), self.from_agent,
+                        "check_output_guardrails", "denied",
+                        f"Human denied: {comment or decision}",
+                    )
+                    return state
+            # If approval creation failed, continue with annotations (graceful degradation)
+
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"), self.from_agent,
+            "check_output_guardrails", "completed",
+            f"{len(violations)} items flagged ({len(blocking)} blocking, {len(warns)} warn)",
+        )
+        try:
+            await self.client.bus_announce(
+                content=f"⚠️ Output guardrails: {len(violations)} item(s) flagged for human review",
+                domains=["implementation"],
+                from_agent=self.from_agent,
+            )
+        except Exception:
+            pass
 
         return state
+
+    def _after_input_guardrails(self, state: DesignState) -> str:
+        """Route: if input guardrails denied/blocked, end the graph."""
+        if state.get("interrupted"):
+            return END
+        return "continue"
+
+    def _after_output_guardrails(self, state: DesignState) -> str:
+        """Route: if output guardrails denied, end the graph."""
+        if state.get("interrupted"):
+            return END
+        return "continue"
 
     async def build_graph(self) -> StateGraph:
         """Build and compile the design pipeline with review loop."""
@@ -215,14 +295,22 @@ class DesignAgent:
         graph.add_node("revise_design", self.revise_design)
         graph.add_node("verify", self.verify)
 
-        # Forward path
+        # Forward path — guardrail gates route to END on denial
         graph.add_edge(START, "check_guardrails")
-        graph.add_edge("check_guardrails", "read_document")
+        graph.add_conditional_edges(
+            "check_guardrails",
+            self._after_input_guardrails,
+            {"continue": "read_document", END: END},
+        )
         graph.add_edge("read_document", "ask_experts")
         graph.add_edge("ask_experts", "synthesize_design")
         graph.add_edge("synthesize_design", "validate_completeness")
         graph.add_edge("validate_completeness", "check_output_guardrails")
-        graph.add_edge("check_output_guardrails", "publish_design")
+        graph.add_conditional_edges(
+            "check_output_guardrails",
+            self._after_output_guardrails,
+            {"continue": "publish_design", END: END},
+        )
         graph.add_edge("publish_design", "request_review")
 
         # Review loop: conditional edge
@@ -462,16 +550,21 @@ class DesignAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(
-                    content=(
-                        "You are an expert implementation architect. "
-                        "Write detailed, actionable TypeScript implementation designs "
-                        "with concrete code snippets."
-                    )
-                ),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(
+                        content=(
+                            "You are an expert implementation architect. "
+                            "Write detailed, actionable TypeScript implementation designs "
+                            "with concrete code snippets."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="synthesize_design",
+            )
             state["design"] = response.content
             logger.info("[design_agent] Design synthesized: %d chars", len(state["design"]))
         except Exception as e:
@@ -696,15 +789,20 @@ class DesignAgent:
         )
 
         try:
-            response = await self.llm.ainvoke([
-                SystemMessage(
-                    content=(
-                        "You are revising an implementation design to address "
-                        "expert review feedback. Produce a complete, improved design."
-                    )
-                ),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(
+                        content=(
+                            "You are revising an implementation design to address "
+                            "expert review feedback. Produce a complete, improved design."
+                        )
+                    ),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="revise_design",
+            )
             state["design"] = response.content
             logger.info(
                 "[design_agent] Design revised: %d chars (round %d)",
@@ -867,10 +965,15 @@ class DesignAgent:
                 f"DESIGN:\n{design[:40000]}"
             )
 
-            response = await self.llm.ainvoke([
-                SystemMessage(content="Output only valid OpenAPI 3.1 YAML. No markdown fences."),
-                HumanMessage(content=prompt),
-            ])
+            response = await traced_llm_call(
+                self.llm, [
+                    SystemMessage(content="Output only valid OpenAPI 3.1 YAML. No markdown fences."),
+                    HumanMessage(content=prompt),
+                ],
+                hub_url=self.hub_url, client=self.client,
+                project_id=state.get("project_id"),
+                agent=self.from_agent, node="generate_contracts",
+            )
 
             contract = response.content
             logger.info("[design_agent] OpenAPI contract generated: %d chars", len(contract))

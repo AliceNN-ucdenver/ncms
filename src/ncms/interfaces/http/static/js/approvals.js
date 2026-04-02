@@ -1,89 +1,62 @@
-// ── NCMS Dashboard — Approval Queue ──────────────────────────────────
-// Human-in-the-loop approval panel for builder plan review.
-// Supports: Approve, Reject, Suggest Changes, Delegate to Agent.
+// ── NCMS Dashboard — Guardrail Approval Gate ────────────────────────
+// Human-in-the-loop approval for guardrail violations.
+// Agents pause at guardrail gates and poll for approve/deny.
+// The dashboard fetches pending approvals from /api/v1/approvals.
 
-function handleApprovalAnnouncement(data) {
-  const content = data.content || '';
-  if (!content.includes('AWAITING_APPROVAL')) return;
+// Approval state lives in state.approvals[] (shared with app.js)
 
-  const planIdMatch = content.match(/plan_id=(\w+)/);
-  const titleMatch = content.match(/Title:\s*(.+)/);
-  const fromMatch = content.match(/From:\s*(.+)/);
-  const submittedMatch = content.match(/Submitted:\s*(.+)/);
-  const planBodyMatch = content.match(/---\n([\s\S]*)/);
+const _APPROVAL_POLL_MS = 3000; // poll every 3s
+let _approvalPollTimer = null;
 
-  const approval = {
-    plan_id: planIdMatch ? planIdMatch[1] : 'unknown',
-    title: titleMatch ? titleMatch[1].trim() : 'Untitled Plan',
-    from_agent: fromMatch ? fromMatch[1].trim() : data.from_agent || 'unknown',
-    timestamp: submittedMatch ? submittedMatch[1].trim() : new Date().toISOString(),
-    plan_content: planBodyMatch ? planBodyMatch[1].trim() : content,
-    status: 'pending',
-    review_count: 0,
-    expanded: true,  // auto-expand new approvals
-  };
-
-  const existing = state.approvals.find(a => a.plan_id === approval.plan_id);
-  if (existing) {
-    // Re-submission after changes requested
-    existing.plan_content = approval.plan_content;
-    existing.status = 'pending';
-    existing.timestamp = approval.timestamp;
-    existing.expanded = true;
-    renderApprovalQueue();
-    return;
-  }
-
-  state.approvals.unshift(approval);
-  renderApprovalQueue();
-
-  // Open the floating approval panel and re-render
-  openApprovalPanel();
-  updateApprovalBadge();
-}
+// ── Load from API ───────────────────────────────────────────────────
 
 async function loadPendingApprovals() {
   try {
-    const resp = await fetch(HUB_API + '/api/v1/memories/search?q=AWAITING_APPROVAL&domain=human-approval&limit=20');
+    const resp = await fetch(HUB_API + '/api/v1/approvals?status=pending');
     if (!resp.ok) return;
-    const data = await resp.json();
-    const results = data.results || [];
+    const approvals = await resp.json();
 
-    for (const r of results) {
-      const memory = r.memory || r;
-      const content = memory.content || '';
-      if (!content.includes('AWAITING_APPROVAL')) continue;
-
-      const planIdMatch = content.match(/plan_id=(\w+)/);
-      const titleMatch = content.match(/Title:\s*(.+)/);
-      const fromMatch = content.match(/From:\s*(.+)/);
-      const submittedMatch = content.match(/Submitted:\s*(.+)/);
-      const planBodyMatch = content.match(/---\n([\s\S]*)/);
-
-      const planId = planIdMatch ? planIdMatch[1] : null;
-      if (!planId) continue;
-      if (state.approvals.some(a => a.plan_id === planId)) continue;
-
-      state.approvals.push({
-        plan_id: planId,
-        title: titleMatch ? titleMatch[1].trim() : 'Untitled Plan',
-        from_agent: fromMatch ? fromMatch[1].trim() : memory.source_agent || 'unknown',
-        timestamp: submittedMatch ? submittedMatch[1].trim() : memory.created_at || '',
-        plan_content: planBodyMatch ? planBodyMatch[1].trim() : content,
-        status: 'pending',
-        review_count: 0,
-        expanded: true,
-      });
+    // Merge with local state (preserve expanded flag)
+    const prevMap = {};
+    for (const a of (state.approvals || [])) {
+      prevMap[a.id] = a;
     }
 
+    state.approvals = approvals.map(a => ({
+      ...a,
+      expanded: prevMap[a.id]?.expanded ?? true,
+    }));
+
     renderApprovalQueue();
+    updateApprovalBadge();
   } catch (e) {
     console.debug('Failed to load pending approvals:', e);
   }
 }
 
-function toggleApprovalContent(planId) {
-  const approval = state.approvals.find(a => a.plan_id === planId);
+function startApprovalPolling() {
+  if (_approvalPollTimer) return;
+  _approvalPollTimer = setInterval(loadPendingApprovals, _APPROVAL_POLL_MS);
+}
+
+function stopApprovalPolling() {
+  if (_approvalPollTimer) {
+    clearInterval(_approvalPollTimer);
+    _approvalPollTimer = null;
+  }
+}
+
+// ── SSE integration ─────────────────────────────────────────────────
+
+function handleApprovalSSE(data) {
+  // Called from SSE handler when type=approval_requested or approval_decided
+  loadPendingApprovals();
+}
+
+// ── Render ──────────────────────────────────────────────────────────
+
+function toggleApprovalContent(approvalId) {
+  const approval = state.approvals.find(a => a.id === approvalId);
   if (approval) {
     approval.expanded = !approval.expanded;
     renderApprovalQueue();
@@ -94,68 +67,74 @@ function renderApprovalQueue() {
   const container = document.getElementById('approval-queue');
   if (!container) return;
 
-  if (state.approvals.length === 0) {
-    container.innerHTML = '<div class="approval-empty">No pending approvals. Builder plans will appear here when submitted.</div>';
+  const pending = (state.approvals || []).filter(a => a.status === 'pending');
+
+  if (pending.length === 0) {
+    container.innerHTML = '<div class="approval-empty">No pending approvals. Guardrail violations will appear here when agents are blocked.</div>';
     return;
   }
 
   let html = '';
-  for (const approval of state.approvals) {
-    const statusClass = approval.status.split(' ')[0]; // handle "delegated to X"
-    const isActionable = approval.status === 'pending';
+  for (const approval of pending) {
+    const violations = approval.violations || [];
+    const agent = escapeHtml(approval.agent || 'unknown');
+    const node = escapeHtml(approval.node || 'unknown');
+    const projectId = escapeHtml(approval.project_id || '');
     const isExpanded = approval.expanded !== false;
+    const created = formatTimeFull(approval.created_at || '');
 
-    // Build delegate options: online agents except the submitter and human
-    const agentOptions = Object.values(state.agents)
-      .filter(a => a.status === 'online' && a.agent_id !== 'human' && a.agent_id !== approval.from_agent)
-      .map(a => `<option value="${escapeHtml(a.agent_id)}">${escapeHtml(a.agent_id)}</option>`)
-      .join('');
+    // Violation severity summary
+    const blockCount = violations.filter(v => v.escalation === 'block' || v.escalation === 'reject').length;
+    const warnCount = violations.filter(v => v.escalation === 'warn').length;
 
-    const contentHtml = simpleMarkdown(approval.plan_content);
-    const contentLen = approval.plan_content.length;
-    const toggleLabel = isExpanded ? 'Collapse' : `Expand Plan (${contentLen} chars)`;
-
-    html += `<div class="approval-card ${statusClass}">
-      <div class="approval-header">
+    html += `<div class="approval-card pending">
+      <div class="approval-header" onclick="toggleApprovalContent('${escapeHtml(approval.id)}')">
         <div style="flex:1">
-          <div class="approval-title">${escapeHtml(approval.title)}</div>
+          <div class="approval-title">
+            <span class="guardrail-icon">&#x26A0;</span>
+            Guardrail Gate: ${agent} / ${node}
+          </div>
           <div class="approval-meta">
-            <span class="approval-plan-id">${escapeHtml(approval.plan_id)}</span>
-            <span>from ${escapeHtml(approval.from_agent)}</span>
-            <span>${formatTimeFull(approval.timestamp)}</span>
+            ${projectId ? `<span class="approval-plan-id">${projectId}</span>` : ''}
+            <span>${blockCount} blocking, ${warnCount} warning</span>
+            <span>${created}</span>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          <button class="approval-btn-toggle" onclick="toggleApprovalContent('${approval.plan_id}')">${toggleLabel}</button>
-          <span class="approval-status-badge ${statusClass}">${escapeHtml(approval.status)}</span>
-          ${approval.review_count > 0 ? `<span class="approval-review-count">Round ${approval.review_count + 1}</span>` : ''}
-          ${approval.review_count >= 3 ? `<span class="approval-escalation-warning">Escalation recommended</span>` : ''}
+          <span class="approval-status-badge pending">Awaiting Decision</span>
         </div>
       </div>`;
 
     if (isExpanded) {
-      html += `<div class="approval-content">${contentHtml}</div>`;
-    }
-
-    if (isActionable) {
-      html += `<div class="approval-actions-row">
-        <button class="approval-btn approve" onclick="submitApprovalAction('${approval.plan_id}', 'APPROVED')">Approve</button>
-        <button class="approval-btn reject" onclick="submitApprovalAction('${approval.plan_id}', 'REJECTED')">Reject</button>
-        <button class="approval-btn suggest" onclick="submitApprovalAction('${approval.plan_id}', 'CHANGES_REQUESTED')">Suggest Changes</button>`;
-
-      if (agentOptions) {
-        html += `
-        <div class="approval-actions-divider"></div>
-        <select class="approval-delegate-select" id="delegate-${approval.plan_id}">
-          ${agentOptions}
-        </select>
-        <button class="approval-btn delegate" onclick="delegateApproval('${approval.plan_id}')">Delegate Review</button>`;
+      // Show violation details
+      html += '<div class="approval-content"><h3>Violations</h3><ul>';
+      for (const v of violations) {
+        const escLevel = v.escalation === 'reject' ? 'reject' : v.escalation === 'block' ? 'block' : 'warn';
+        html += `<li class="violation-item violation-${escLevel}">
+          <span class="violation-badge ${escLevel}">${escapeHtml(v.escalation || 'warn').toUpperCase()}</span>
+          <strong>${escapeHtml(v.policy_type || '')}</strong>: ${escapeHtml(v.message || v.rule || '')}
+        </li>`;
       }
+      html += '</ul>';
 
-      html += `</div>
+      // Context preview
+      const ctx = approval.context || {};
+      if (ctx.topic) {
+        html += `<div class="approval-context"><strong>Topic:</strong> ${escapeHtml(ctx.topic)}</div>`;
+      }
+      if (ctx.design_preview) {
+        html += `<div class="approval-context"><strong>Design preview:</strong> ${escapeHtml(ctx.design_preview.substring(0, 300))}...</div>`;
+      }
+      html += '</div>';
+
+      // Action buttons
+      html += `<div class="approval-actions-row">
+        <button class="approval-btn approve" onclick="submitGuardrailDecision('${escapeHtml(approval.id)}', 'approved')">Approve &amp; Continue</button>
+        <button class="approval-btn reject" onclick="submitGuardrailDecision('${escapeHtml(approval.id)}', 'denied')">Deny &amp; Stop Pipeline</button>
+      </div>
       <div style="margin-top:8px">
-        <input type="text" class="approval-comment" id="comment-${approval.plan_id}"
-               placeholder="Optional comment..." style="width:100%">
+        <input type="text" class="approval-comment" id="comment-${escapeHtml(approval.id)}"
+               placeholder="Optional comment...">
       </div>`;
     }
 
@@ -163,98 +142,46 @@ function renderApprovalQueue() {
   }
 
   container.innerHTML = html;
-
-  // Update badge count on human agent card
-  if (typeof updateApprovalBadge === 'function') updateApprovalBadge();
+  updateApprovalBadge();
 }
 
-async function submitApprovalAction(planId, action) {
-  const commentInput = document.getElementById('comment-' + planId);
+// ── Submit Decision ─────────────────────────────────────────────────
+
+async function submitGuardrailDecision(approvalId, decision) {
+  const commentInput = document.getElementById('comment-' + approvalId);
   const comment = commentInput ? commentInput.value.trim() : '';
 
-  const content = `${action}: plan_id=${planId}${comment ? ' ' + comment : ''}`;
-
   try {
-    await fetch(HUB_API + '/api/v1/bus/announce', {
+    const resp = await fetch(HUB_API + '/api/v1/approvals/' + encodeURIComponent(approvalId) + '/decide', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        content: content,
-        domains: ['approval-response'],
-        from_agent: 'human',
+        decision: decision,
+        decided_by: 'human',
+        comment: comment || null,
       }),
     });
 
-    const approval = state.approvals.find(a => a.plan_id === planId);
-    if (approval) {
-      if (action === 'APPROVED') {
-        approval.status = 'approved';
-      } else if (action === 'CHANGES_REQUESTED') {
-        approval.status = 'changes_requested';
-        approval.review_count = (approval.review_count || 0) + 1;
-      } else {
-        approval.status = 'rejected';
-        approval.review_count = (approval.review_count || 0) + 1;
-      }
+    if (!resp.ok) {
+      console.error('Failed to submit decision:', resp.status);
+      return;
     }
+
+    // Remove from local pending list
+    state.approvals = state.approvals.filter(a => a.id !== approvalId);
     renderApprovalQueue();
+    updateApprovalBadge();
+
+    // Close panel if no more pending
+    if (state.approvals.filter(a => a.status === 'pending').length === 0) {
+      closeApprovalPanel();
+    }
   } catch (err) {
-    console.error('Failed to submit approval:', err);
-    addChatMessage('Error submitting approval: ' + err.message, 'thinking');
+    console.error('Failed to submit guardrail decision:', err);
   }
 }
 
-async function delegateApproval(planId) {
-  const selectEl = document.getElementById('delegate-' + planId);
-  if (!selectEl) return;
-  const agentId = selectEl.value;
-  if (!agentId) return;
-
-  const approval = state.approvals.find(a => a.plan_id === planId);
-  if (!approval) return;
-
-  const question = `Please review this plan and provide your feedback. State whether you recommend approval, rejection, or changes.\n\nTitle: ${approval.title}\nPlan ID: ${approval.plan_id}\n\n${approval.plan_content}`;
-
-  approval.status = 'delegated to ' + agentId;
-  renderApprovalQueue();
-
-  try {
-    const resp = await fetch(HUB_API + '/api/v1/agent/' + agentId + '/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input_message: question }),
-      signal: AbortSignal.timeout(300000),
-    });
-
-    const data = await resp.json();
-
-    if (data.answered) {
-      addChatMessage(
-        data.content || '(empty response)',
-        'agent',
-        data.from_agent || agentId,
-      );
-      approval.status = 'reviewed by ' + agentId;
-      renderApprovalQueue();
-
-      // Open chat with the reviewing agent to show their feedback
-      openAgentChat(agentId);
-    } else {
-      approval.status = 'pending';
-      renderApprovalQueue();
-      addChatMessage(
-        `Delegation to ${agentId} failed: ${data.error || 'Agent did not respond'}`,
-        'thinking',
-      );
-    }
-  } catch (err) {
-    approval.status = 'pending';
-    renderApprovalQueue();
-    addChatMessage('Delegation error: ' + err.message, 'thinking');
-  }
-}
-
-// ── Floating Panel Controls ──────────────────────────────────────────
+// ── Floating Panel Controls ─────────────────────────────────────────
 
 function toggleApprovalPanel(event) {
   if (event) event.stopPropagation();
@@ -267,11 +194,10 @@ function toggleApprovalPanel(event) {
 }
 
 function openApprovalPanel() {
-  // Close chat overlay if open (avoid overlap)
   if (typeof closeAgentChat === 'function') closeAgentChat();
   const panel = document.getElementById('approval-float');
   panel.style.display = 'flex';
-  renderApprovalQueue();
+  loadPendingApprovals();
   setTimeout(() => panel.classList.add('open'), 10);
 }
 
@@ -282,7 +208,8 @@ function closeApprovalPanel() {
 }
 
 function updateApprovalBadge() {
-  const pendingCount = state.approvals.filter(a => a.status === 'pending').length;
+  const pendingCount = (state.approvals || []).filter(a => a.status === 'pending').length;
+  // Update all badge elements
   const badges = document.querySelectorAll('.approval-badge');
   badges.forEach(badge => {
     badge.textContent = pendingCount;
@@ -292,14 +219,26 @@ function updateApprovalBadge() {
       badge.classList.remove('pulse');
     }
   });
-}
-
-function showApprovalForPlan(planId) {
-  openApprovalPanel();
-  // Expand the matching approval
-  const approval = state.approvals.find(a => a.plan_id === planId);
-  if (approval) {
-    approval.expanded = true;
-    renderApprovalQueue();
+  // Update the human card count
+  const countEl = document.querySelector('.human-approval-count');
+  if (countEl) {
+    countEl.textContent = pendingCount > 0 ? pendingCount + ' pending' : 'No approvals';
+    if (pendingCount > 0) {
+      countEl.classList.add('pulse');
+    } else {
+      countEl.classList.remove('pulse');
+    }
   }
 }
+
+function showApprovalForProject(projectId) {
+  // Open panel and filter/highlight the approval for this project
+  openApprovalPanel();
+}
+
+// ── Init ────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadPendingApprovals();
+  startApprovalPolling();
+});

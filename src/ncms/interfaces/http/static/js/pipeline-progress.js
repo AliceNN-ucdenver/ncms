@@ -108,17 +108,21 @@ async function renderPipelineProgress(projectId, containerId) {
 
       let statusIcon = '';
       if (nodeStatus === 'completed') statusIcon = ' &#x2713;';
-      else if (nodeStatus === 'failed') statusIcon = ' &#x2717;';
+      else if (nodeStatus === 'failed' || nodeStatus === 'denied') statusIcon = ' &#x2717;';
       else if (nodeStatus === 'interrupted') statusIcon = ' &#x23F9;';
+      else if (nodeStatus === 'awaiting_approval') statusIcon = ' &#x23F3;';
       else if (nodeStatus === 'started' || nodeStatus === 'active') statusIcon = '';
 
       // Guardrail status badge
       let extraBadge = '';
       const detailText = (nodeData.detail || '').toLowerCase();
-      if (nodeKey === 'check_guardrails' && nodeStatus === 'completed') {
-        if (detailText.includes('blocked')) {
+      const isGuardrailNode = nodeKey === 'check_guardrails' || nodeKey === 'check_output_guardrails';
+      if (isGuardrailNode && nodeStatus === 'awaiting_approval') {
+        extraBadge = ' <span class="guardrail-badge guardrail-waiting" onclick="event.stopPropagation(); toggleApprovalPanel(event)">&#x270B; Review</span>';
+      } else if (isGuardrailNode && nodeStatus === 'completed') {
+        if (detailText.includes('blocked') || detailText.includes('denied')) {
           extraBadge = ' <span class="guardrail-badge guardrail-block">&#x2717;</span>';
-        } else if (detailText.includes('warn')) {
+        } else if (detailText.includes('warn') || detailText.includes('flagged')) {
           extraBadge = ' <span class="guardrail-badge guardrail-warn">&#x26A0;</span>';
         } else {
           extraBadge = ' <span class="guardrail-badge guardrail-pass">&#x2713;</span>';

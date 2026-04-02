@@ -22,6 +22,7 @@ from ncms.domain.models import (
     GroundingLogEntry,
     GuardrailViolation,
     LLMCallRecord,
+    PendingApproval,
     PipelineEvent,
     Project,
     ReviewScore,
@@ -352,6 +353,85 @@ class SQLiteDocumentStore:
             )
             for r in rows
         ]
+
+    # ── Pending Approvals (guardrail gates) ─────────────────────────────
+
+    async def create_pending_approval(self, approval: PendingApproval) -> None:
+        await self.db.execute(
+            """INSERT INTO pending_approvals
+               (id, project_id, agent, node, violations, context,
+                status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                approval.id, approval.project_id, approval.agent, approval.node,
+                json.dumps(approval.violations), json.dumps(approval.context),
+                approval.status, approval.created_at.isoformat(),
+            ),
+        )
+        await self.db.commit()
+
+    async def get_pending_approval(self, approval_id: str) -> PendingApproval | None:
+        cursor = await self.db.execute(
+            """SELECT id, project_id, agent, node, violations, context,
+                      status, decided_by, comment, created_at, decided_at
+               FROM pending_approvals WHERE id = ?""",
+            (approval_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return PendingApproval(
+            id=row[0], project_id=row[1], agent=row[2], node=row[3],
+            violations=json.loads(row[4] or "[]"),
+            context=json.loads(row[5] or "{}"),
+            status=row[6], decided_by=row[7], comment=row[8],
+            created_at=row[9], decided_at=row[10],
+        )
+
+    async def list_pending_approvals(
+        self, status: str | None = None, project_id: str | None = None,
+    ) -> list[PendingApproval]:
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if project_id:
+            clauses.append("project_id = ?")
+            params.append(project_id)
+        where = "WHERE " + " AND ".join(clauses) if clauses else ""
+        cursor = await self.db.execute(
+            f"""SELECT id, project_id, agent, node, violations, context,
+                       status, decided_by, comment, created_at, decided_at
+                FROM pending_approvals {where}
+                ORDER BY created_at DESC""",
+            params,
+        )
+        rows = await cursor.fetchall()
+        return [
+            PendingApproval(
+                id=r[0], project_id=r[1], agent=r[2], node=r[3],
+                violations=json.loads(r[4] or "[]"),
+                context=json.loads(r[5] or "{}"),
+                status=r[6], decided_by=r[7], comment=r[8],
+                created_at=r[9], decided_at=r[10],
+            )
+            for r in rows
+        ]
+
+    async def decide_approval(
+        self, approval_id: str, decision: str, decided_by: str,
+        comment: str | None = None,
+    ) -> bool:
+        from datetime import UTC, datetime
+        now = datetime.now(UTC).isoformat()
+        cursor = await self.db.execute(
+            """UPDATE pending_approvals
+               SET status = ?, decided_by = ?, comment = ?, decided_at = ?
+               WHERE id = ? AND status = 'pending'""",
+            (decision, decided_by, comment, now, approval_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount > 0
 
     # ── Audit Records (simple insert-only) ───────────────────────────────
 
