@@ -117,22 +117,27 @@ class ExpertAgent:
     # ── Node 1: Classify (Pure Python) ───────────────────────────────────
 
     async def classify(self, state: ExpertState) -> ExpertState:
-        """Classify the input as a question or a review request. No LLM."""
+        """Classify the input as a question or a review request. No LLM.
+
+        Scans the FULL input text because NAT's auto_memory wrapper may
+        prepend memory context, pushing the actual request past any fixed
+        prefix window. With document-by-reference, review messages are
+        short ("Review design document (doc_id: xxx)") so false positives
+        from prepended context are unlikely.
+        """
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "started")
         input_text = state["input"]
 
-        # Only check the question prefix (first 500 chars), not the appended
-        # PRD/research context which may contain words like "SCORE" or "review design"
-        question_prefix = input_text[:500]
-        if _REVIEW_PATTERN.search(question_prefix):
+        if _REVIEW_PATTERN.search(input_text):
             state["request_type"] = "review"
         else:
             state["request_type"] = "question"
 
         logger.info(
-            "[expert_agent:%s] Classified as: %s",
+            "[expert_agent:%s] Classified as: %s (input: %d chars)",
             self.from_agent,
             state["request_type"],
+            len(input_text),
         )
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "classify", "completed", state["request_type"])
         return state
