@@ -152,6 +152,53 @@ async function renderPipelineProgress(projectId, containerId) {
   }
 
   html += '</div>';
+
+  // ── Guardrail violation strips ────────────────────────────────────
+  // Auto-show a warning/block strip below the pipeline bar when any
+  // guardrail node has findings. No click needed — always visible.
+  for (const phaseKey of scope) {
+    const phaseData = progressData[phaseKey] || {};
+    for (const nodeKey of ['check_guardrails', 'check_output_guardrails']) {
+      const nd = phaseData[nodeKey];
+      if (!nd || !nd.detail) continue;
+      const detail = nd.detail;
+      // Only show if there are flagged items
+      if (!detail.includes('items flagged') && !detail.includes('violation')) continue;
+
+      // Parse individual violations from the detail string
+      // Format: "2 items flagged (0 blocking, 2 warn): [warn] compliance: Possible...; [block] ..."
+      const colonIdx = detail.indexOf('): ');
+      const summary = colonIdx > 0 ? detail.substring(0, colonIdx + 1) : detail;
+      const violationsPart = colonIdx > 0 ? detail.substring(colonIdx + 3) : '';
+
+      const phaseDef = PIPELINE_PHASES[phaseKey];
+      const phaseLabel = phaseDef ? phaseDef.label : phaseKey;
+      const nodeLabel = nodeKey === 'check_output_guardrails' ? 'Output Guard' : 'Input Guard';
+
+      // Determine severity
+      const hasBlock = detail.includes('blocking') && !detail.startsWith('0 blocking') && !detail.includes('(0 blocking');
+      const stripClass = hasBlock ? 'guardrail-strip-block' : 'guardrail-strip-warn';
+
+      html += `<div class="guardrail-strip ${stripClass}">`;
+      html += `<span class="guardrail-strip-header">&#x26A0; ${escapeHtml(phaseLabel)} ${escapeHtml(nodeLabel)}: ${escapeHtml(summary)}</span>`;
+
+      if (violationsPart) {
+        const items = violationsPart.split('; ').filter(s => s.trim());
+        html += '<ul class="guardrail-strip-list">';
+        for (const item of items) {
+          // Color the [warn] or [block] tag
+          const tagged = item
+            .replace(/\[warn\]/gi, '<span class="gv-warn">[WARN]</span>')
+            .replace(/\[block\]/gi, '<span class="gv-block">[BLOCK]</span>')
+            .replace(/\[reject\]/gi, '<span class="gv-block">[REJECT]</span>');
+          html += `<li>${tagged}</li>`;
+        }
+        html += '</ul>';
+      }
+      html += '</div>';
+    }
+  }
+
   container.innerHTML = html;
 }
 
