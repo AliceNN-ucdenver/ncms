@@ -42,30 +42,39 @@ _langchain_instrumented = False
 
 
 def _ensure_langchain_instrumented():
-    """One-time setup: instrument LangChain for OpenInference tracing."""
+    """One-time setup: instrument LangChain for OpenInference tracing.
+
+    Uses phoenix.otel.register() to create a TracerProvider connected to
+    the Phoenix OTLP endpoint, then passes it to LangChainInstrumentor.
+    This bypasses the global ProxyTracerProvider which NAT doesn't wire
+    to the Phoenix exporter.
+
+    Reads PHOENIX_COLLECTOR_ENDPOINT env var (set in sandbox startup).
+    """
     global _langchain_instrumented  # noqa: PLW0603
     if _langchain_instrumented:
         return
     _langchain_instrumented = True
     try:
+        import os
+        endpoint = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT")
+        project = os.environ.get("PHOENIX_PROJECT_NAME", "default")
+
+        if not endpoint:
+            logger.info("[otel] PHOENIX_COLLECTOR_ENDPOINT not set, skipping LangChain instrumentation")
+            return
+
         from openinference.instrumentation.langchain import LangChainInstrumentor
-        instrumentor = LangChainInstrumentor()
+        from phoenix.otel import register
 
-        # Get the active tracer provider (NAT may have set it globally or not)
-        kwargs = {}
-        if _otel_available:
-            tp = otel_trace.get_tracer_provider()
-            tp_name = type(tp).__name__
-            logger.info("[otel] Tracer provider: %s", tp_name)
-            # Only pass if it's a real provider (not ProxyTracerProvider/NoOp)
-            if "Proxy" not in tp_name and "NoOp" not in tp_name:
-                kwargs["tracer_provider"] = tp
+        logger.info("[otel] Registering Phoenix tracer: endpoint=%s project=%s", endpoint, project)
+        tracer_provider = register(endpoint=endpoint, project=project)
+        logger.info("[otel] TracerProvider: %s", type(tracer_provider).__name__)
 
-        logger.info("[otel] Calling LangChainInstrumentor.instrument(%s)...", list(kwargs.keys()))
-        instrumentor.instrument(**kwargs)
+        LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
         logger.info("[otel] LangChain instrumented for Phoenix tracing")
     except ImportError as e:
-        logger.warning("[otel] LangChain instrumentation package not installed: %s", e)
+        logger.warning("[otel] Phoenix/LangChain instrumentation package not installed: %s", e)
     except Exception as e:
         logger.warning("[otel] LangChain instrumentation failed: %s", e, exc_info=True)
 

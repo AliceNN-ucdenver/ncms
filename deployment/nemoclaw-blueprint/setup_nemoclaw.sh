@@ -465,6 +465,8 @@ setup_agent_sandbox() {
 LOG=/sandbox/ncms-nat-agent.log
 echo \"[NAT] Starting \$1 on port \$2 at \$(date)\" >> \$LOG
 cd /sandbox/ncms
+export PHOENIX_COLLECTOR_ENDPOINT=http://host.docker.internal:6006
+export PHOENIX_PROJECT_NAME=ncms-\$1
 NAT_PORT=\$2 /sandbox/.venv/bin/nat start fastapi \
   --config_file /sandbox/configs/\$3 \
   --host 0.0.0.0 --port \$2 \
