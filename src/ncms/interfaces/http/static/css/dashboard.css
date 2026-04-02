@@ -3794,16 +3794,17 @@
 
 /* ── D3 Document Flow Graph ───────────────────────────────────── */
 .doc-flow-container {
-  margin: 10px 0; padding: 8px;
+  margin: 10px 0; padding: 6px;
   background: rgba(0,0,0,0.12); border-radius: 8px;
   border: 1px solid var(--border);
   overflow-x: auto;
 }
-.doc-flow-svg { display: block; }
+.doc-flow-svg { display: block; min-width: 100%; }
 .doc-flow-node text { pointer-events: none; }
+.doc-flow-node rect { transition: opacity 0.15s ease; }
+.doc-flow-node:hover rect:first-child { opacity: 0.9; }
 .doc-flow-edge { pointer-events: none; }
 .doc-flow-edge-label { pointer-events: none; }
-.doc-flow-col-header { text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* ── Doc Type Chip + Score Badge in Timeline ──────────────────── */
 .doc-type-chip {
