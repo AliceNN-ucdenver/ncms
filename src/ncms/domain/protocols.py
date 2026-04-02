@@ -14,17 +14,28 @@ if TYPE_CHECKING:
 
 from ncms.domain.models import (
     AccessRecord,
+    AgentConfigSnapshot,
     AgentInfo,
+    ApprovalDecision,
+    BusConversation,
+    Document,
+    DocumentLink,
     Entity,
     EphemeralEntry,
     GraphEdge,
+    GroundingLogEntry,
+    GuardrailViolation,
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgeResponse,
     KnowledgeSnapshot,
+    LLMCallRecord,
     Memory,
     MemoryNode,
+    PipelineEvent,
+    Project,
     Relationship,
+    ReviewScore,
     SearchLogEntry,
     SubscriptionFilter,
 )
@@ -268,3 +279,56 @@ class KnowledgeBusTransport(Protocol):
         agent_id: str,
         handler: Callable[[KnowledgeAsk], Awaitable[KnowledgeResponse | None]],
     ) -> None: ...
+
+
+# ── Document Intelligence Protocol (Phase 2.5) ──────────────────────────
+
+
+class DocumentStore(Protocol):
+    """Persistent storage for projects, documents, reviews, and audit records."""
+
+    # ── Projects ──
+    async def save_project(self, project: Project) -> None: ...
+    async def get_project(self, project_id: str) -> Project | None: ...
+    async def list_projects(
+        self, status: str | None = None, limit: int = 50,
+    ) -> list[Project]: ...
+    async def update_project(self, project: Project) -> None: ...
+
+    # ── Documents ──
+    async def save_document(self, doc: Document) -> None: ...
+    async def get_document(self, doc_id: str) -> Document | None: ...
+    async def list_documents(
+        self, project_id: str | None = None, doc_type: str | None = None,
+        limit: int = 50,
+    ) -> list[Document]: ...
+    async def search_documents(
+        self, entity: str | None = None, doc_type: str | None = None,
+        min_score: int | None = None, limit: int = 50,
+    ) -> list[Document]: ...
+    async def get_document_versions(self, doc_id: str) -> list[Document]: ...
+
+    # ── Document Links ──
+    async def save_document_link(self, link: DocumentLink) -> None: ...
+    async def get_document_links(
+        self, doc_id: str, direction: str = "both",
+    ) -> list[DocumentLink]: ...
+    async def get_traceability_chain(self, doc_id: str) -> list[DocumentLink]: ...
+
+    # ── Review Scores ──
+    async def save_review_score(self, score: ReviewScore) -> None: ...
+    async def get_review_scores(
+        self, document_id: str | None = None, project_id: str | None = None,
+    ) -> list[ReviewScore]: ...
+
+    # ── Pipeline Events ──
+    async def save_pipeline_event(self, event: PipelineEvent) -> None: ...
+    async def get_pipeline_events(self, project_id: str) -> list[PipelineEvent]: ...
+
+    # ── Audit Records ──
+    async def save_approval(self, decision: ApprovalDecision) -> None: ...
+    async def save_guardrail_violation(self, violation: GuardrailViolation) -> None: ...
+    async def save_grounding_entry(self, entry: GroundingLogEntry) -> None: ...
+    async def save_llm_call(self, record: LLMCallRecord) -> None: ...
+    async def save_config_snapshot(self, snapshot: AgentConfigSnapshot) -> None: ...
+    async def save_bus_conversation(self, convo: BusConversation) -> None: ...
