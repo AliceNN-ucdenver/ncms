@@ -5,7 +5,7 @@
 
 // Approval state lives in state.approvals[] (shared with app.js)
 
-const _APPROVAL_POLL_MS = 3000; // poll every 3s
+const _APPROVAL_POLL_MS = 30000; // poll every 30s (SSE handles instant updates)
 let _approvalPollTimer = null;
 
 // ── Load from API ───────────────────────────────────────────────────
