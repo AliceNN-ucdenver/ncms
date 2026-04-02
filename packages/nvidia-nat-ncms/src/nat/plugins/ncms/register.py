@@ -184,6 +184,7 @@ async def _load_knowledge_files(
                     type="fact",
                     domains=file_domains,
                     source_agent=agent_id,
+                    importance=9.0,  # Knowledge files bypass admission discard
                 )
                 loaded += 1
                 logger.info("[knowledge] Loaded: %s", filepath.name)
