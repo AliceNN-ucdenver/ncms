@@ -532,8 +532,8 @@ def create_api_app(
     # Avoids CORS issues (dashboard and hub share the same origin).
     # Agent port mapping: architect=8001, security=8002, builder=8003
     _AGENT_PORTS = {
-        "architect": 8001, "security": 8002, "builder": 8003,
-        "product_owner": 8004, "researcher": 8005, "archeologist": 8006,
+        "archeologist": 8001, "architect": 8002, "security": 8003,
+        "product_owner": 8004, "designer": 8005,
     }
 
     async def agent_chat(request: Request) -> JSONResponse:
@@ -642,7 +642,7 @@ def create_api_app(
                 + (f" for {target}" if target else "")
                 + f" (project_id: {project_id})"
             )
-            trigger_domain = "trigger-researcher"
+            trigger_domain = "trigger-archeologist"
             phase = "research"
         else:
             trigger_msg = ""

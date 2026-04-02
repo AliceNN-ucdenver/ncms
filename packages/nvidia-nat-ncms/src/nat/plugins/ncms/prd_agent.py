@@ -508,7 +508,7 @@ class PRDAgent:
     # ── Node 5: Verify and Trigger (Pure Python) ─────────────────────────
 
     async def verify_and_trigger(self, state: PRDState) -> PRDState:
-        """Verify pipeline completion and optionally trigger the builder agent."""
+        """Verify pipeline completion and optionally trigger the designer agent."""
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "verify_and_trigger", "started")
         if await self._check_and_interrupt(state, "verify_and_trigger"):
             return state
@@ -529,17 +529,17 @@ class PRDAgent:
                 topic[:60],
             )
 
-        # Trigger builder agent (fire-and-forget — don't block the return)
+        # Trigger designer agent (fire-and-forget — don't block the return)
         if self.trigger_next_agent and doc_id:
             import asyncio
 
             clean_topic = extract_topic(topic)
-            logger.info("[prd_agent] 🔗 Triggering builder (async) with doc_id: %s", doc_id)
+            logger.info("[prd_agent] 🔗 Triggering designer (async) with doc_id: %s", doc_id)
 
             # Announce handoff so it's visible in the dashboard
             try:
                 await self.client.bus_announce(
-                    content=f"🔗 Handing off to Builder → Create implementation design from PRD (doc_id: {doc_id})",
+                    content=f"🔗 Handing off to Designer → Create implementation design from PRD (doc_id: {doc_id})",
                     domains=["product", "implementation"],
                     from_agent=self.from_agent,
                 )
@@ -555,12 +555,12 @@ class PRDAgent:
                     )
                     await self.client.bus_announce(
                         content=msg,
-                        domains=["trigger-builder", "product", "implementation"],
+                        domains=["trigger-designer", "product", "implementation"],
                         from_agent=self.from_agent,
                     )
-                    logger.info("[prd_agent] ✅ Builder triggered via bus announce")
+                    logger.info("[prd_agent] ✅ Designer triggered via bus announce")
                 except Exception as e:
-                    logger.warning("[prd_agent] ⚠️ Failed to trigger builder: %s", e)
+                    logger.warning("[prd_agent] ⚠️ Failed to trigger designer: %s", e)
 
             asyncio.create_task(_trigger())
 

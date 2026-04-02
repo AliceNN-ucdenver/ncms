@@ -62,17 +62,17 @@ NCMS_DASHBOARD_PORT="${NCMS_DASHBOARD_PORT:-8420}"
 PHOENIX_PORT="${PHOENIX_PORT:-6006}"
 
 # Sandbox names (RFC 1123)
-AGENT_SANDBOXES=("ncms-architect" "ncms-security" "ncms-builder" "ncms-product-owner" "ncms-researcher" "ncms-archeologist")
+AGENT_SANDBOXES=("ncms-archeologist" "ncms-architect" "ncms-security" "ncms-product-owner" "ncms-designer")
 
 # Agent config: agent_id|nat_config|knowledge_dir
 # knowledge_dir is relative to SCRIPT_DIR/knowledge/
+# Archeologist is first — entry point for all projects (research + GitHub)
 AGENT_CONFIGS=(
+  "archeologist|configs/archeologist.yml|"
   "architect|configs/architect.yml|architecture"
   "security|configs/security.yml|security"
-  "builder|configs/builder.yml|"
   "product_owner|configs/product_owner.yml|product-owner"
-  "researcher|configs/researcher.yml|"
-  "archeologist|configs/archeologist.yml|"
+  "designer|configs/designer.yml|"
 )
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -354,7 +354,7 @@ setup_agent_sandbox() {
 
   # Attach providers based on agent needs
   local providers=()
-  if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "researcher" ] || [ "$agent_id" = "archeologist" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
+  if { [ "$agent_id" = "product_owner" ] || [ "$agent_id" = "archeologist" ]; } && [ -n "${TAVILY_API_KEY:-}" ]; then
     providers+=(tavily)
   fi
   if [ "$agent_id" = "archeologist" ] && [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
@@ -413,9 +413,9 @@ setup_agent_sandbox() {
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && uv sync 2>&1 | tail -3" \
     || warn "NCMS install failed"
 
-  # Ensure arxiv package is installed (researcher needs it for academic search)
+  # Ensure arxiv package is installed (archeologist research path needs it for academic search)
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && uv pip install arxiv 2>&1 | tail -2" \
-    || warn "arxiv install failed (non-fatal — researcher will skip ArXiv search)"
+    || warn "arxiv install failed (non-fatal — research path will skip ArXiv search)"
 
   # Install NAT (NeMo Agent Toolkit) + langchain integration
   info "Installing NeMo Agent Toolkit..."
@@ -443,12 +443,11 @@ setup_agent_sandbox() {
   # Architect: 8001, Security: 8002, Builder: 8003
   local agent_port
   case "$agent_id" in
-    architect)      agent_port=8001 ;;
-    security)       agent_port=8002 ;;
-    builder)        agent_port=8003 ;;
+    archeologist)   agent_port=8001 ;;
+    architect)      agent_port=8002 ;;
+    security)       agent_port=8003 ;;
     product_owner)  agent_port=8004 ;;
-    researcher)     agent_port=8005 ;;
-    archeologist)   agent_port=8006 ;;
+    designer)       agent_port=8005 ;;
     *)              agent_port=8000 ;;
   esac
 

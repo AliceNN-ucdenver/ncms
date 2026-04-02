@@ -1,6 +1,7 @@
-# Archeologist Agent — LangGraph deterministic pipeline
-# clone_and_index (Python) → analyze_architecture (LLM) → identify_gaps (LLM)
-# → web_research (Python) → synthesize_report (LLM) → publish_and_trigger (Python)
+# Archeologist Agent — Dual-path entry point for all projects
+# Research path: plan_queries → parallel_search → arxiv → synthesize → publish → verify
+# Archaeology path: clone_and_index → analyze → gaps → web_research → synthesize → publish → verify
+# Path selected by source_type: "research" (web search) or "archaeology" (GitHub repo)
 
 llms:
   spark_llm:
@@ -27,8 +28,8 @@ memory:
     _type: ncms_memory
     hub_url: "http://host.docker.internal:9080"
     agent_id: archeologist
-    domains: [archaeology, codebase-analysis]
-    subscribe_to: [product, requirements, architecture, security, trigger-archeologist]
+    domains: [research, market-analysis, archaeology, codebase-analysis]
+    subscribe_to: [product, requirements, architecture, security, trigger-archeologist, trigger-researcher]
 
 functions:
   archeologist_agent:
@@ -36,7 +37,7 @@ functions:
     llm_name: spark_llm
     hub_url: "http://host.docker.internal:9080"
     from_agent: archeologist
-    max_search_results: 3
+    max_search_results: 5
     trigger_next_agent: true
 
 workflow:
@@ -44,7 +45,7 @@ workflow:
   inner_agent_name: archeologist_agent
   memory_name: ncms_store
   llm_name: spark_llm
-  description: "Codebase archaeology agent — analyzes existing repos and produces grounded reports"
+  description: "Dual-path entry point: web research (Tavily+ArXiv) or codebase archaeology (GitHub)"
   retrieve_memory_for_every_response: false
   save_user_messages_to_memory: true
   save_ai_messages_to_memory: true

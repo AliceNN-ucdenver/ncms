@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-"""LangGraph-based deep market research agent for NAT/NCMS.
+"""DEPRECATED: Research functionality merged into archeologist_agent.py.
 
-Deterministic pipeline: plan_queries → parallel_search → synthesize → publish → verify.
-LLM called exactly twice (planning + synthesis). Search and publish are pure Python.
+This module is retained for reference only. The Archeologist agent now handles
+both research (web search) and archaeology (GitHub repo) paths in a single
+dual-path LangGraph. See archeologist_agent.py for the active implementation.
+
+Original pipeline: plan_queries → parallel_search → synthesize → publish → verify.
 """
 
 from __future__ import annotations

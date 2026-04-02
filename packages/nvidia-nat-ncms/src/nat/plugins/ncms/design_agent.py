@@ -1080,7 +1080,7 @@ class DesignAgentConfig(FunctionBaseConfig, name="design_agent"):
         description="NCMS Hub URL for document publishing and bus announcements",
     )
     from_agent: str = Field(
-        default="builder",
+        default="designer",
         description="Agent ID for bus announcements and document attribution",
     )
     quality_threshold: int = Field(
