@@ -420,7 +420,7 @@ setup_agent_sandbox() {
   # Install NAT (NeMo Agent Toolkit) + langchain integration
   info "Installing NeMo Agent Toolkit..."
   sandbox_run "$sandbox_name" "cd /sandbox/ncms && \
-    uv pip install nvidia-nat-core nvidia-nat-langchain nvidia-nat-opentelemetry nvidia-nat-phoenix arize-phoenix-client 2>&1 | tail -5" \
+    uv pip install nvidia-nat-core nvidia-nat-langchain nvidia-nat-opentelemetry nvidia-nat-phoenix arize-phoenix-client openinference-instrumentation-langchain 2>&1 | tail -5" \
     || warn "NAT install failed (may need PyPI approval in openshell term)"
 
   # Install local NAT-NCMS plugin (uses namespace packages — no __init__.py in nat/)

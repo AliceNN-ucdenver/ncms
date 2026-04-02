@@ -35,6 +35,25 @@ try:
 except Exception:
     otel_trace = None  # type: ignore[assignment]
 
+# LangChain/LangGraph instrumentor — captures LLM calls with full
+# prompt/response content in OpenInference format for Phoenix.
+# Initialized lazily on first LLM call (after NAT sets up OTel).
+_langchain_instrumented = False
+
+
+def _ensure_langchain_instrumented():
+    """One-time setup: instrument LangChain for OpenInference tracing."""
+    global _langchain_instrumented  # noqa: PLW0603
+    if _langchain_instrumented:
+        return
+    _langchain_instrumented = True
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+        LangChainInstrumentor().instrument()
+        logger.info("[otel] LangChain instrumented for Phoenix tracing")
+    except Exception as e:
+        logger.debug("[otel] LangChain instrumentation not available: %s", e)
+
 
 def _get_tracer():
     """Get the OTel tracer lazily — NAT must have initialized OTel first."""
@@ -365,9 +384,15 @@ async def traced_llm_call(
 ) -> Any:
     """Call llm.ainvoke() with an OTel span and audit record.
 
+    On first call, instruments LangChain for OpenInference tracing
+    so Phoenix captures full LLM prompt/response content.
+
     Returns the LLM response object. The span and audit record are
     best-effort — failures never block the pipeline.
     """
+    # Instrument LangChain on first call (after NAT has initialized OTel)
+    _ensure_langchain_instrumented()
+
     # Compute prompt size for audit
     prompt_text = " ".join(
         getattr(m, "content", str(m)) for m in messages
