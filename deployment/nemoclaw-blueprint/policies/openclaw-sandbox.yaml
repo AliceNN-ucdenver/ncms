@@ -187,6 +187,8 @@ network_policies:
         tls: terminate
         rules:
           - allow: { method: GET, path: "/**" }
+    binaries:
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
 
   # ── GitHub ──────────────────────────────────────────────────────────
   github:
