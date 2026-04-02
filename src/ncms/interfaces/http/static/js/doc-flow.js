@@ -248,57 +248,58 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('rx', 2)
     .attr('fill', d => d.color);
 
-  // Type label + icon (top line)
+  // Type label + icon (line 1, left)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 16)
     .attr('fill', d => d.color)
     .attr('font-size', '10px')
     .attr('font-weight', '700')
-    .attr('text-transform', 'uppercase')
-    .attr('letter-spacing', '0.5px')
     .text(d => d.icon + ' ' + d.label + (d.version > 1 ? ' v' + d.version : ''));
 
-  // Title (middle, wraps to ~20 chars)
+  // Size badge (line 1, right)
+  nodeGroup.append('text')
+    .attr('x', CARD_W - 10).attr('y', 16)
+    .attr('text-anchor', 'end')
+    .attr('fill', 'var(--text-muted)')
+    .attr('font-size', '9px')
+    .text(d => d.size_bytes > 0 ? (d.size_bytes / 1024).toFixed(1) + ' KB' : '');
+
+  // Title (line 2)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 33)
     .attr('fill', 'var(--text-primary)')
     .attr('font-size', '11px')
     .attr('font-weight', '500')
     .text(d => {
-      // Show the meaningful part of the title (strip common prefix)
       let t = d.title;
-      // Remove leading topic that repeats across all docs
       const dashIdx = t.indexOf(' \u2014 ');
       if (dashIdx > 0 && dashIdx < t.length - 5) t = t.substring(dashIdx + 3);
       return t.length > 24 ? t.substring(0, 22) + '..' : t;
     });
 
-  // Agent + size (line 3)
+  // Agent (line 3)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 48)
     .attr('fill', 'var(--text-muted)')
     .attr('font-size', '9px')
-    .text(d => {
-      const parts = [d.from_agent];
-      if (d.size_bytes > 0) parts.push((d.size_bytes / 1024).toFixed(1) + 'KB');
-      if (d.entity_count > 0) parts.push(d.entity_count + ' ent');
-      const full = parts.join(' \u00B7 ');
-      return full.length > 26 ? full.substring(0, 24) + '..' : full;
-    });
+    .text(d => d.from_agent);
 
-  // Timestamp (line 4)
+  // Entities + timestamp (line 4)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 60)
     .attr('fill', 'var(--text-muted)')
     .attr('font-size', '8px')
     .attr('opacity', 0.6)
     .text(d => {
-      if (!d.created_at) return '';
-      try {
-        const dt = new Date(d.created_at);
-        return dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
-          + ' ' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      } catch { return ''; }
+      const parts = [];
+      if (d.entity_count > 0) parts.push(d.entity_count + ' entities');
+      if (d.created_at) {
+        try {
+          const dt = new Date(d.created_at);
+          parts.push(dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }));
+        } catch { /* ignore */ }
+      }
+      return parts.join(' \u00B7 ');
     });
 
   // Per-reviewer score lines (below timestamp, inside the card)
