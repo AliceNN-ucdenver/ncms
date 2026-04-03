@@ -1469,6 +1469,19 @@ def create_api_app(
         result = await doc_svc.verify_document_integrity(doc_id)
         return JSONResponse(result)
 
+    async def export_audit_report_endpoint(request: Request):
+        """Export complete audit report as downloadable markdown."""
+        if not doc_svc:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        project_id = request.path_params["project_id"]
+        report = await doc_svc.export_audit_report(project_id)
+        from starlette.responses import Response
+        return Response(
+            content=report,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f"attachment; filename=audit-report-{project_id}.md"},
+        )
+
     async def compliance_score_endpoint(request: Request) -> JSONResponse:
         """Compute composite compliance score for a project."""
         if not doc_svc:
@@ -1573,6 +1586,7 @@ def create_api_app(
         Route("/api/v1/projects/{project_id}/audit-timeline", audit_timeline_endpoint, methods=["GET"]),
         Route("/api/v1/projects/{project_id}/verify-integrity", verify_integrity_endpoint, methods=["GET"]),
         Route("/api/v1/projects/{project_id}/compliance", compliance_score_endpoint, methods=["GET"]),
+        Route("/api/v1/projects/{project_id}/export", export_audit_report_endpoint, methods=["GET"]),
         Route("/api/v1/documents/{doc_id}/provenance", document_provenance_endpoint, methods=["GET"]),
         Route("/api/v1/documents/{doc_id}/verify", verify_document_endpoint, methods=["GET"]),
     ]

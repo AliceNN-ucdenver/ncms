@@ -502,7 +502,7 @@ Review scores were saved twice per reviewer per round (request_review + verify).
 | 9 | Document version diff | 1 day | **Done** — client-side diff in document viewer |
 | 10 | Quality trend analytics | 3-5 days | Future |
 | 11 | Project lifecycle completion | 0.5 days | **Done** — verify node marks completed |
-| 12 | Audit export (PDF/markdown report) | 2-3 days | Designed |
+| 12 | Audit export (markdown report) | 2-3 days | **Done** — GET /projects/{id}/export |
 
 ---
 

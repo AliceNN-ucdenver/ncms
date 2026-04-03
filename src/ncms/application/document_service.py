@@ -804,3 +804,141 @@ class DocumentService:
                 "completeness": {"score": round(completeness, 1), "weight": 0.10, "types": list(present_types)},
             },
         }
+
+    async def export_audit_report(self, project_id: str) -> str:
+        """Generate a complete audit report as markdown for a project."""
+        import hashlib as _hashlib
+        from datetime import UTC, datetime
+
+        project = await self._store.get_project(project_id)
+        if not project:
+            return "# Error\n\nProject not found."
+
+        docs = await self._store.list_documents(project_id=project_id)
+        scores = await self._store.get_review_scores(project_id=project_id)
+        timeline = await self.get_audit_timeline(project_id)
+        compliance = await self.compute_compliance_score(project_id)
+        integrity = await self.verify_project_integrity(project_id)
+
+        db = self._store.db
+
+        cursor = await db.execute(
+            "SELECT agent, model_name, thinking_enabled, max_tokens, timestamp "
+            "FROM agent_config_snapshots WHERE project_id = ? ORDER BY timestamp",
+            (project_id,),
+        )
+        configs = await cursor.fetchall()
+
+        cursor = await db.execute(
+            "SELECT policy_type, rule, message, escalation, timestamp "
+            "FROM guardrail_violations WHERE project_id = ? ORDER BY timestamp",
+            (project_id,),
+        )
+        violations = await cursor.fetchall()
+
+        cursor = await db.execute(
+            "SELECT agent, node, prompt_size, response_size, duration_ms, model, timestamp "
+            "FROM llm_calls WHERE project_id = ? ORDER BY timestamp",
+            (project_id,),
+        )
+        llm_calls = await cursor.fetchall()
+
+        all_links: list = []
+        seen: set = set()
+        for d in docs:
+            links = await self._store.get_document_links(d.id)
+            for link in links:
+                if link.id not in seen:
+                    seen.add(link.id)
+                    all_links.append(link)
+
+        now = datetime.now(UTC).isoformat()
+
+        md = []
+        md.append(f"# Audit Report: {project.topic}")
+        md.append(f"\n**Generated:** {now}")
+        md.append(f"**Project ID:** {project_id}")
+        md.append(f"**Status:** {project.status}")
+        md.append(f"**Quality Score:** {project.quality_score or 'N/A'}%")
+        md.append(f"**Created:** {project.created_at}")
+
+        md.append("\n---\n\n## Compliance Score")
+        md.append(f"\n**Composite:** {compliance['composite_score']}%\n")
+        md.append("| Signal | Score | Weight |")
+        md.append("|--------|-------|--------|")
+        for key, val in compliance["breakdown"].items():
+            md.append(f"| {key} | {val['score']}% | {val['weight']*100:.0f}% |")
+
+        md.append("\n---\n\n## Integrity Verification")
+        md.append(f"\n**Hash Chain Verified:** {'Yes' if integrity['verified'] else 'NO — CHAIN BROKEN'}")
+        md.append(f"**Records Checked:** {integrity['records_checked']}")
+        for table, result in integrity["tables"].items():
+            status = "OK" if result["verified"] else f"BROKEN at row {result['break_at']}"
+            md.append(f"- {table}: {status} ({result['records_checked']} records)")
+
+        md.append("\n---\n\n## Document Inventory")
+        md.append("\n| Doc Type | Title | Agent | Version | Size | Content Hash |")
+        md.append("|----------|-------|-------|---------|------|-------------|")
+        for d in docs:
+            h = d.content_hash[:12] if d.content_hash else "N/A"
+            md.append(f"| {d.doc_type} | {d.title[:50]} | {d.from_agent} | v{d.version} | {d.size_bytes:,} bytes | `{h}` |")
+
+        md.append("\n---\n\n## Traceability Chain")
+        if all_links:
+            md.append("\n| Source | Target | Link Type |")
+            md.append("|--------|--------|-----------|")
+            for link in all_links:
+                md.append(f"| {link.source_doc_id[:12]} | {link.target_doc_id[:12]} | {link.link_type} |")
+        else:
+            md.append("\nNo document links found.")
+
+        md.append("\n---\n\n## Review History")
+        if scores:
+            md.append("\n| Reviewer | Round | Score | Severity |")
+            md.append("|----------|-------|-------|----------|")
+            for s in scores:
+                md.append(f"| {s.reviewer_agent} | {s.review_round} | {s.score}% | {s.severity or 'N/A'} |")
+        else:
+            md.append("\nNo review scores recorded.")
+
+        md.append("\n---\n\n## Guardrail Findings")
+        if violations:
+            md.append("\n| Escalation | Policy | Rule | Message | Time |")
+            md.append("|-----------|--------|------|---------|------|")
+            for v in violations:
+                md.append(f"| {v[3]} | {v[0]} | {v[1]} | {(v[2] or '')[:60]} | {v[4]} |")
+        else:
+            md.append("\nNo guardrail violations.")
+
+        md.append("\n---\n\n## Agent Configurations at Pipeline Start")
+        if configs:
+            md.append("\n| Agent | Model | Thinking | Max Tokens | Time |")
+            md.append("|-------|-------|----------|-----------|------|")
+            for c in configs:
+                thinking = "ON" if c[2] else "OFF"
+                md.append(f"| {c[0]} | {(c[1] or '?')[:30]} | {thinking} | {c[3] or '?'} | {c[4]} |")
+        else:
+            md.append("\nNo config snapshots recorded.")
+
+        md.append("\n---\n\n## LLM Call Log")
+        if llm_calls:
+            md.append("\n| Agent | Node | Prompt | Response | Duration | Model |")
+            md.append("|-------|------|--------|----------|----------|-------|")
+            for c in llm_calls:
+                md.append(f"| {c[0]} | {c[1]} | {c[2]:,} chars | {c[3]:,} chars | {c[4]:,}ms | {(c[5] or '?')[:25]} |")
+        else:
+            md.append("\nNo LLM calls recorded.")
+
+        md.append("\n---\n\n## Audit Timeline (last 50 events)")
+        md.append("\n| Time | Type | Agent | Detail |")
+        md.append("|------|------|-------|--------|")
+        for evt in timeline[-50:]:
+            detail = (evt["detail"] or "")[:80]
+            md.append(f"| {evt['timestamp']} | {evt['type']} | {evt['agent']} | {detail} |")
+
+        report_content = "\n".join(md)
+        report_hash = _hashlib.sha256(report_content.encode()).hexdigest()
+        md.append(f"\n---\n\n*Report hash: `{report_hash}`*")
+        md.append(f"*Generated by NCMS Document Intelligence at {now}*")
+
+        return "\n".join(md)

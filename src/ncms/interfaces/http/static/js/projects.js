@@ -182,6 +182,7 @@ function renderProjectDetail(project) {
 
   // Action buttons
   html += '<div class="project-actions">';
+  html += `<a class="project-action-btn export" href="${HUB_API}/api/v1/projects/${encodeURIComponent(id)}/export" download="audit-report-${escapeHtml(id)}.md">Export Audit Report</a>`;
   if (status === 'active' || status === 'pending') {
     html += `<button class="project-action-btn archive" onclick="archiveProject('${escapeHtml(id)}')">Archive</button>`;
   }

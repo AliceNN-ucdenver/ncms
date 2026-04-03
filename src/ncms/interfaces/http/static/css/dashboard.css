@@ -5017,3 +5017,14 @@
 .diff-same { color: var(--text-muted); }
 .diff-added { background: rgba(16, 185, 129, 0.08); color: #10b981; }
 .diff-removed { background: rgba(239, 68, 68, 0.08); color: #ef4444; }
+
+/* ── Export Button ───────────────────────────────────────────────── */
+.project-action-btn.export {
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent-blue);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  text-decoration: none;
+}
+.project-action-btn.export:hover {
+  background: rgba(88, 166, 255, 0.2);
+}
