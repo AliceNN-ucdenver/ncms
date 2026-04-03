@@ -5036,3 +5036,8 @@
 .project-action-btn.export-pdf:hover {
   background: rgba(16, 185, 129, 0.2);
 }
+.project-elapsed {
+  color: #10b981;
+  font-weight: 600;
+  font-size: 10px;
+}

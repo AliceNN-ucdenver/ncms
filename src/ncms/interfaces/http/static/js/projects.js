@@ -128,6 +128,7 @@ function projectCardHTML(project) {
       <div class="project-card-meta">
         <span class="project-id">${id}</span>
         <span class="project-created">${createdAt}</span>
+        ${status === 'completed' && project.updated_at && project.created_at ? `<span class="project-elapsed">${formatElapsed(project.created_at, project.updated_at)}</span>` : ''}
       </div>
     </div>`;
 
@@ -247,6 +248,16 @@ async function archiveProject(projectId) {
 }
 
 // ── New Project Modal ────────────────────────────────────────────────
+
+function formatElapsed(startIso, endIso) {
+  try {
+    const ms = new Date(endIso) - new Date(startIso);
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.floor((ms % 60000) / 1000);
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  } catch { return ''; }
+}
 
 async function printAuditReport(projectId) {
   try {
