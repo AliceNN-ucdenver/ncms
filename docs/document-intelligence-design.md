@@ -597,20 +597,62 @@ llms:
     base_url: "http://spark-ee7d.local:8000/v1"
 ```
 
-### Experiment Design
+### Results: Three-Model Comparison
 
-Run the same "authentication patterns for identity services" project on both models and compare:
+All three models ran the same project: "Authentication patterns for identity services." Same prompts, same pipeline, same expert knowledge.
 
-| Metric | Nano (3B active) | Super (12B active) | Delta |
-|--------|------------------|-------------------|-------|
-| Research report quality (manual review) | Baseline | ? | |
-| PRD completeness (manifest coverage) | Baseline | ? | |
-| Design review scores (architect + security) | ~85% | ? | |
-| Number of revision rounds | 1-3 | ? | |
-| Semi-formal certificate traceability | Baseline | ? | |
-| Pipeline total duration | ~22 min | ? | |
-| LLM call cost (tokens) | Baseline | ? | |
+#### Pipeline Performance
 
-### Expected Outcome
+| Metric | Nano 30B (3B active) | Super 120B (12B active) | Qwen3.5 35B (3B active) |
+|--------|---------------------|------------------------|------------------------|
+| **Review score (round 1)** | **85% / 85%** | broken (0 chars) | 82% / 72% |
+| **Revision rounds** | **1** | N/A | 3 |
+| **Final quality** | **85%** | N/A | 83.5% |
+| **Total LLM time** | **14.5 min** | pods killed | 28.8 min |
+| **Total documents** | 5 (54KB) | 3 (74KB, broken) | 7 (122KB) |
+| **Pipeline outcome** | **Completed** | Failed | Completed (after 3 rounds) |
 
-With 4x active parameters, Super should produce more detailed designs, higher review scores on first pass (fewer revision rounds), and better structured reasoning in semi-formal certificates. The FP4 quantization + speculative decoding should keep latency comparable to Nano despite the larger model.
+#### Document Quality
+
+| Document | Nano | Super | Qwen3.5 |
+|----------|------|-------|---------|
+| **Research** | 9.4KB, 9 source premises with real URLs, clean semi-formal certificate | 9.0KB, similar structure | 15.4KB, includes template instruction text ("State what each source establishes") — didn't clean prompt |
+| **PRD** | 16.3KB, 20 sections, specific requirements with traceability | 65KB but **broken** — `</think>` tags leaked, content triplicated. Actual content: 0 usable chars | 12.4KB, same 20 sections but less detailed |
+| **Manifest** | 2.3KB, 9 endpoints (login, logout, MFA, OpenID, SAML, GDPR) | 397 bytes, 1 endpoint | 1.7KB, 5 endpoints (includes `/dashboard/roi` — wrong domain) |
+| **Design** | 22KB, concrete project structure with file tree | N/A (synthesis failed) | 23KB v1 → 31KB v2 → 31KB v3 (bloated without improving) |
+| **Review** | 4.4KB, 85%/85% round 1, clean SCORE format | N/A | 7.0KB, volatile scores (architect: 82→65→92%) |
+
+#### Root Cause Analysis
+
+**Nemotron Super 120B — Failed:**
+- `enable_thinking: true` via `extra_body.chat_template_kwargs` through ChatOpenAI: the vLLM `super_v3` reasoning parser leaks `</think>` tags into content. PRD was 65KB of triplicated thinking output with zero actual PRD content.
+- `enable_thinking: false`: model echoed template placeholders ("R[N], E[N]") in 56 characters. Without thinking, Super doesn't understand the semi-formal certificate format.
+- ChatNVIDIA (`_type: nim`) handles reasoning correctly but is blocked by NemoClaw's proxy (aiohttp vs httpx routing).
+
+**Qwen3.5 35B — Completed but volatile:**
+- Clean reasoning parser (`qwen3` native in vLLM, no custom plugin).
+- Same 3B active params as Nano, different architecture.
+- Scores volatile across revision rounds: architect dropped from 82% to 65% on round 2 (revision made it *worse*), then recovered to 92% on round 3.
+- PRD smaller and less detailed than Nano (12.4KB vs 16.3KB).
+- Manifest included out-of-domain endpoints (`/dashboard/roi` in an auth service).
+- Research report leaked prompt template text.
+
+**Nemotron Nano 30B — Production winner:**
+- Passed first round at 85% average — no revision needed.
+- Most comprehensive manifest (9 endpoints including GDPR, SAML, OpenID).
+- Cleanest semi-formal certificate format (no template leakage, no `</think>` tags).
+- Fastest pipeline (14.5 min vs 28.8 min for Qwen).
+- Specifically tuned for structured output and certificate-style prompts.
+
+#### Key Insight
+
+**Model size is not the differentiator.** Nano (3B active) outperformed both Super (12B active) and Qwen3.5 (3B active) because it was specifically trained for the structured output patterns our pipeline uses. The semi-formal certificate format, SCORE/SEVERITY/COVERED review structure, and JSON manifest generation all benefit from Nano's training data alignment, not raw parameter count.
+
+The Super experiment also revealed that the `ChatOpenAI` + `extra_body` path for reasoning is fundamentally broken for models that need custom reasoning parsers. The `ChatNVIDIA` (nim) path works correctly but requires NemoClaw proxy support for aiohttp traffic.
+
+#### Experiment Data
+
+All artifacts are preserved in `experiments/nano-vs-super/`:
+- `nano-baseline/` — 5 documents + summary.json
+- `super-run/` — 3 documents (broken) + summary.json
+- `qwen35-run/` — 7 documents (3 design revisions) + summary.json
