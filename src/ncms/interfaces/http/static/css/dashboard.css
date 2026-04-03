@@ -4872,3 +4872,116 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* ── Login Overlay ─────────────────────────────────────────────── */
+.login-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg-primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.login-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 40px; width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.login-header {
+  text-align: center; margin-bottom: 28px;
+}
+.login-logo {
+  display: block; font-size: 28px; font-weight: 800;
+  color: var(--accent-cyan); letter-spacing: 2px;
+}
+.login-subtitle {
+  display: block; font-size: 11px; color: var(--text-muted);
+  margin-top: 4px; letter-spacing: 0.5px;
+}
+.login-form { display: flex; flex-direction: column; gap: 12px; }
+.login-input {
+  background: var(--bg-primary); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 14px; color: var(--text-primary);
+  font-size: 14px; outline: none;
+}
+.login-input:focus { border-color: var(--accent-cyan); }
+.login-btn {
+  background: var(--accent-cyan); color: #000; border: none;
+  border-radius: 6px; padding: 10px; font-size: 14px; font-weight: 600;
+  cursor: pointer; margin-top: 4px;
+}
+.login-btn:hover { opacity: 0.9; }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-error {
+  color: #ef4444; font-size: 12px; text-align: center; min-height: 16px;
+}
+
+/* ── User Badge (bottom of left nav) ──────────────────────────── */
+.user-badge-container {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; margin-top: 4px;
+  font-size: 11px; color: var(--text-muted);
+}
+.user-name { font-weight: 600; color: var(--text-primary); }
+.user-logout-btn {
+  background: none; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-muted); font-size: 10px; padding: 2px 8px;
+  cursor: pointer;
+}
+.user-logout-btn:hover { color: var(--accent-red); border-color: var(--accent-red); }
+
+/* ── Project View Tabs ──────────────────────────────────────────── */
+.project-view-tabs {
+  display: flex; gap: 2px; margin: 8px 0 4px 0;
+  background: rgba(0,0,0,0.15); border-radius: 6px; padding: 2px;
+  width: fit-content;
+}
+.project-view-tab {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 11px; font-weight: 600; padding: 5px 14px;
+  border-radius: 4px; cursor: pointer;
+}
+.project-view-tab.active {
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.project-view-tab:hover:not(.active) { color: var(--text-primary); }
+
+/* ── Audit Timeline Table ───────────────────────────────────────── */
+.audit-timeline-container { margin: 6px 0; }
+.audit-controls {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.audit-filters { display: flex; gap: 4px; flex-wrap: wrap; }
+.audit-filter-chip {
+  background: none; border: 1px solid var(--chip-color, #64748b);
+  color: var(--chip-color, #64748b); border-radius: 4px;
+  font-size: 10px; padding: 2px 8px; cursor: pointer; opacity: 0.5;
+}
+.audit-filter-chip.active { opacity: 1; background: color-mix(in srgb, var(--chip-color) 15%, transparent); }
+.audit-count { font-size: 10px; color: var(--text-muted); }
+.audit-table-wrap {
+  max-height: 400px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px;
+}
+.audit-table {
+  width: 100%; border-collapse: collapse; font-size: 11px;
+}
+.audit-table thead { position: sticky; top: 0; z-index: 1; }
+.audit-table th {
+  background: var(--bg-secondary); color: var(--text-muted);
+  font-weight: 600; padding: 6px 10px; text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.audit-table td { padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.audit-time { color: var(--text-muted); font-family: monospace; font-size: 10px; white-space: nowrap; }
+.audit-agent { color: var(--text-secondary); }
+.audit-detail { color: var(--text-primary); max-width: 400px; }
+.audit-extra { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+.audit-type-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 700; border: 1px solid;
+  white-space: nowrap;
+}
+.audit-loading, .audit-empty, .audit-error {
+  padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;
+}
+.audit-error { color: #ef4444; }

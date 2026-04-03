@@ -1408,6 +1408,50 @@ def create_api_app(
         )
         return JSONResponse({"ok": True}, status_code=201)
 
+    # -- Audit & Provenance endpoints -----------------------------------------
+
+    async def audit_timeline_endpoint(request: Request) -> JSONResponse:
+        """Unified chronological audit timeline for a project."""
+        if not doc_svc:
+            return JSONResponse([], status_code=200)
+        project_id = request.path_params["project_id"]
+        timeline = await doc_svc.get_audit_timeline(project_id)
+        return JSONResponse(timeline)
+
+    async def verify_integrity_endpoint(request: Request) -> JSONResponse:
+        """Verify hash chain integrity for all audit tables in a project."""
+        if not doc_svc:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        project_id = request.path_params["project_id"]
+        result = await doc_svc.verify_project_integrity(project_id)
+        return JSONResponse(result)
+
+    async def document_provenance_endpoint(request: Request) -> JSONResponse:
+        """Complete provenance chain for a single document."""
+        if not doc_svc:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        doc_id = request.path_params["doc_id"]
+        result = await doc_svc.get_document_provenance(doc_id)
+        if "error" in result:
+            return JSONResponse(result, status_code=404)
+        return JSONResponse(result)
+
+    async def verify_document_endpoint(request: Request) -> JSONResponse:
+        """Verify content hash integrity for a single document."""
+        if not doc_svc:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        doc_id = request.path_params["doc_id"]
+        result = await doc_svc.verify_document_integrity(doc_id)
+        return JSONResponse(result)
+
+    async def compliance_score_endpoint(request: Request) -> JSONResponse:
+        """Compute composite compliance score for a project."""
+        if not doc_svc:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        project_id = request.path_params["project_id"]
+        result = await doc_svc.compute_compliance_score(project_id)
+        return JSONResponse(result)
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1498,6 +1542,13 @@ def create_api_app(
         Route("/api/v1/audit/config-snapshot", record_config_snapshot_endpoint, methods=["POST"]),
         Route("/api/v1/audit/grounding", record_grounding_endpoint, methods=["POST"]),
         Route("/api/v1/audit/guardrail-violation", record_guardrail_violation_endpoint, methods=["POST"]),
+
+        # Audit & Provenance
+        Route("/api/v1/projects/{project_id}/audit-timeline", audit_timeline_endpoint, methods=["GET"]),
+        Route("/api/v1/projects/{project_id}/verify-integrity", verify_integrity_endpoint, methods=["GET"]),
+        Route("/api/v1/projects/{project_id}/compliance", compliance_score_endpoint, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}/provenance", document_provenance_endpoint, methods=["GET"]),
+        Route("/api/v1/documents/{doc_id}/verify", verify_document_endpoint, methods=["GET"]),
     ]
 
     # Mount transport or other extra routes (e.g. HttpBusTransport SSE)

@@ -164,12 +164,21 @@ function renderProjectDetail(project) {
     </div>`;
   }
 
-  // D3 Document Flow Graph — single view for all documents
+  // Tab toggle: Document Flow | Audit Timeline
+  html += `<div class="project-view-tabs">
+    <button class="project-view-tab active" onclick="switchProjectTab('${escapeHtml(id)}', 'docflow', this)">Document Flow</button>
+    <button class="project-view-tab" onclick="switchProjectTab('${escapeHtml(id)}', 'audit', this)">Audit Timeline</button>
+  </div>`;
+
+  // D3 Document Flow Graph
   if (docs.length > 0 && typeof renderDocFlowGraph === 'function') {
     html += `<div class="doc-flow-container" id="doc-flow-${escapeHtml(id)}"></div>`;
   } else if (docs.length === 0) {
     html += '<div class="phase-timeline-empty">No documents in this project yet</div>';
   }
+
+  // Audit Timeline (hidden by default)
+  html += `<div class="audit-timeline-container" id="audit-${escapeHtml(id)}" style="display:none"></div>`;
 
   // Action buttons
   html += '<div class="project-actions">';
@@ -236,6 +245,28 @@ async function archiveProject(projectId) {
 }
 
 // ── New Project Modal ────────────────────────────────────────────────
+
+function switchProjectTab(projectId, tab, btn) {
+  const docFlow = document.getElementById('doc-flow-' + projectId);
+  const audit = document.getElementById('audit-' + projectId);
+
+  // Toggle visibility
+  if (docFlow) docFlow.style.display = tab === 'docflow' ? '' : 'none';
+  if (audit) audit.style.display = tab === 'audit' ? '' : 'none';
+
+  // Update tab button styles
+  const tabs = btn.parentElement.querySelectorAll('.project-view-tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+
+  // Lazy-load audit timeline on first click
+  if (tab === 'audit' && audit && !audit.dataset.loaded) {
+    audit.dataset.loaded = 'true';
+    if (typeof loadAuditTimeline === 'function') {
+      loadAuditTimeline(projectId, 'audit-' + projectId);
+    }
+  }
+}
 
 function openNewProject() {
   const existing = document.getElementById('new-project-panel');

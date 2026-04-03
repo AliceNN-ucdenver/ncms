@@ -79,15 +79,16 @@
     <div class="left-nav-human" id="human-badge">
       <span class="human-dot online"></span>
       <span class="left-nav-label">Human</span>
-      <span class="human-approval-count" onclick="toggleApprovalPanel(event)" title="View approvals">0</span>
+      <span class="human-approval-count" onclick="handleHumanApprovalClick(event)" title="View approvals">0</span>
     </div>
+    <div id="user-badge" class="user-badge-container" style="display:none"></div>
   </div>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
 <!-- MAIN CONTENT AREA                                                   -->
 <!-- ═══════════════════════════════════════════════════════════════════ -->
-<div class="main-content">
+<div class="main-content" id="main-layout">
 
   <!-- Agent View (default) -->
   <div class="main" id="agent-view">
@@ -243,7 +244,8 @@
          min="0" max="1000" value="1000" step="1">
 </div>
 
-<!-- Scripts -->
+<!-- Scripts — login.js MUST load first (patches fetch for auth header) -->
+<script src="/js/login.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/agents.js"></script>
 <script src="/js/events.js"></script>
@@ -258,5 +260,6 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="/js/graph.js"></script>
 <script src="/js/doc-flow.js"></script>
+<script src="/js/audit-timeline.js"></script>
 </body>
 </html>

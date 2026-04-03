@@ -597,3 +597,210 @@ class DocumentService:
             "pipeline_events": len(events),
             "quality_score": project.quality_score,
         }
+
+    async def get_audit_timeline(self, project_id: str) -> list[dict]:
+        """Get a unified chronological timeline of ALL audit events for a project.
+
+        UNION query across 8 tables, normalized to a common schema.
+        """
+        db = self._store.db
+        query = """
+            SELECT timestamp, 'pipeline' as type, agent, node || ': ' || status as detail, '' as extra
+            FROM pipeline_events WHERE project_id = ?
+            UNION ALL
+            SELECT timestamp, 'approval' as type, approver as agent, decision as detail, comment as extra
+            FROM approval_decisions WHERE project_id = ?
+            UNION ALL
+            SELECT timestamp, 'guardrail' as type, '' as agent,
+                   escalation || ' ' || policy_type || ': ' || COALESCE(message, rule) as detail, '' as extra
+            FROM guardrail_violations WHERE project_id = ?
+            UNION ALL
+            SELECT timestamp, 'llm_call' as type, agent,
+                   node || ' (' || COALESCE(prompt_size, 0) || '→' || COALESCE(response_size, 0) || ' chars, ' || COALESCE(duration_ms, 0) || 'ms)' as detail,
+                   model as extra
+            FROM llm_calls WHERE project_id = ?
+            UNION ALL
+            SELECT timestamp, 'bus' as type, from_agent as agent,
+                   from_agent || '→' || COALESCE(to_agent, '?') || ' conf=' || COALESCE(confidence, 0) as detail,
+                   SUBSTR(question_preview, 1, 80) as extra
+            FROM bus_conversations WHERE project_id = ?
+            UNION ALL
+            SELECT created_at as timestamp, 'review' as type, reviewer_agent as agent,
+                   'Round ' || review_round || ': ' || COALESCE(score, 0) || '%' as detail, severity as extra
+            FROM review_scores rs
+            JOIN documents d ON rs.document_id = d.id
+            WHERE d.project_id = ?
+            UNION ALL
+            SELECT timestamp, 'config' as type, agent,
+                   COALESCE(model_name, '?') || ' thinking=' || thinking_enabled || ' max_tokens=' || COALESCE(max_tokens, 0) as detail,
+                   '' as extra
+            FROM agent_config_snapshots WHERE project_id = ?
+            ORDER BY timestamp
+        """
+        cursor = await db.execute(query, (project_id,) * 7)
+        rows = await cursor.fetchall()
+        return [
+            {"timestamp": r[0], "type": r[1], "agent": r[2] or "", "detail": r[3] or "", "extra": r[4] or ""}
+            for r in rows
+        ]
+
+    async def verify_project_integrity(self, project_id: str) -> dict:
+        """Verify hash chain integrity for all audit tables in a project."""
+        results = {}
+        for table in ["pipeline_events", "approval_decisions", "guardrail_violations", "llm_calls", "bus_conversations"]:
+            results[table] = await self._store.verify_hash_chain(table)
+        all_verified = all(r["verified"] for r in results.values())
+        total_checked = sum(r["records_checked"] for r in results.values())
+        return {
+            "verified": all_verified,
+            "records_checked": total_checked,
+            "tables": results,
+        }
+
+    async def verify_document_integrity(self, doc_id: str) -> dict:
+        """Re-compute SHA-256 of document content and compare to stored hash."""
+        doc = await self._store.get_document(doc_id)
+        if not doc:
+            return {"verified": False, "error": "document not found"}
+        import hashlib
+        computed = hashlib.sha256(doc.content.encode()).hexdigest()
+        stored = doc.content_hash
+        return {
+            "verified": computed == stored,
+            "document_id": doc_id,
+            "computed_hash": computed,
+            "stored_hash": stored,
+        }
+
+    async def get_document_provenance(self, doc_id: str) -> dict:
+        """Get complete provenance chain for a single document."""
+        doc = await self._store.get_document(doc_id)
+        if not doc:
+            return {"error": "document not found"}
+
+        # Lineage via BFS
+        chain = await self._store.get_traceability_chain(doc_id)
+        lineage = [
+            {"source": l.source_doc_id, "target": l.target_doc_id, "link_type": l.link_type}
+            for l in chain
+        ]
+
+        # Reviews
+        scores = await self._store.get_review_scores(document_id=doc_id)
+
+        # Guardrail violations for this doc's project
+        violations = []
+        if doc.project_id:
+            db = self._store.db
+            cursor = await db.execute(
+                "SELECT policy_type, rule, message, escalation, timestamp "
+                "FROM guardrail_violations WHERE project_id = ? ORDER BY timestamp",
+                (doc.project_id,),
+            )
+            violations = [
+                {"policy_type": r[0], "rule": r[1], "message": r[2], "escalation": r[3], "timestamp": r[4]}
+                for r in await cursor.fetchall()
+            ]
+
+        # LLM calls that produced this doc (same agent, close timestamp)
+        llm_calls = []
+        if doc.project_id and doc.from_agent:
+            cursor = await db.execute(
+                "SELECT agent, node, prompt_size, response_size, duration_ms, model, timestamp "
+                "FROM llm_calls WHERE project_id = ? AND agent = ? ORDER BY timestamp",
+                (doc.project_id, doc.from_agent),
+            )
+            llm_calls = [
+                {"agent": r[0], "node": r[1], "prompt_size": r[2], "response_size": r[3],
+                 "duration_ms": r[4], "model": r[5], "timestamp": r[6]}
+                for r in await cursor.fetchall()
+            ]
+
+        # Content integrity
+        import hashlib
+        computed_hash = hashlib.sha256(doc.content.encode()).hexdigest()
+
+        return {
+            "document": {
+                "id": doc.id, "title": doc.title, "doc_type": doc.doc_type,
+                "from_agent": doc.from_agent, "version": doc.version,
+                "size_bytes": doc.size_bytes, "content_hash": doc.content_hash,
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            },
+            "lineage": lineage,
+            "reviews": [s.model_dump(mode="json") for s in scores],
+            "guardrail_findings": violations,
+            "llm_calls": llm_calls,
+            "integrity": {
+                "content_hash_verified": computed_hash == doc.content_hash,
+                "computed_hash": computed_hash,
+                "stored_hash": doc.content_hash,
+            },
+        }
+
+    async def compute_compliance_score(self, project_id: str) -> dict:
+        """Compute composite compliance score for a project."""
+        # Review score average (40%)
+        scores = await self._store.get_review_scores(project_id=project_id)
+        score_values = [s.score for s in scores if s.score is not None]
+        review_avg = sum(score_values) / len(score_values) if score_values else 0
+
+        # Guardrail violations penalty (20%)
+        db = self._store.db
+        cursor = await db.execute(
+            "SELECT escalation FROM guardrail_violations WHERE project_id = ?",
+            (project_id,),
+        )
+        violations = await cursor.fetchall()
+        penalty = 0
+        for v in violations:
+            esc = v[0]
+            if esc == "warn":
+                penalty += 10
+            elif esc == "block":
+                penalty += 25
+            elif esc == "reject":
+                penalty += 50
+        violation_score = max(0, 100 - penalty)
+
+        # Document completeness (10%)
+        docs = await self._store.list_documents(project_id=project_id)
+        expected_types = {"research", "prd", "design"}
+        present_types = {d.doc_type for d in docs if d.doc_type}
+        completeness = len(present_types & expected_types) / len(expected_types) * 100
+
+        # Grounding coverage (15%)
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM grounding_log gl JOIN documents d ON gl.document_id = d.id WHERE d.project_id = ?",
+            (project_id,),
+        )
+        grounding_count = (await cursor.fetchone())[0]
+        grounding_score = min(100, grounding_count * 10)  # 10 citations = 100%
+
+        # Approval gate (15%)
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM pending_approvals WHERE project_id = ? AND status = 'denied'",
+            (project_id,),
+        )
+        denied = (await cursor.fetchone())[0]
+        approval_score = 0 if denied > 0 else 100
+
+        # Weighted composite
+        composite = (
+            review_avg * 0.40
+            + violation_score * 0.20
+            + grounding_score * 0.15
+            + approval_score * 0.15
+            + completeness * 0.10
+        )
+
+        return {
+            "composite_score": round(composite, 1),
+            "breakdown": {
+                "review_average": {"score": round(review_avg, 1), "weight": 0.40, "count": len(score_values)},
+                "violations": {"score": round(violation_score, 1), "weight": 0.20, "count": len(violations)},
+                "grounding": {"score": round(grounding_score, 1), "weight": 0.15, "citations": grounding_count},
+                "approval_gate": {"score": round(approval_score, 1), "weight": 0.15, "denied": denied},
+                "completeness": {"score": round(completeness, 1), "weight": 0.10, "types": list(present_types)},
+            },
+        }
