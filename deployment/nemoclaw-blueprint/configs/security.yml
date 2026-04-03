@@ -5,7 +5,7 @@
 
 llms:
   spark_llm:
-    _type: openai
+    _type: nim
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
     base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
