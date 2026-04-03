@@ -287,10 +287,10 @@ class ArcheologistAgent:
 
         synthesis = state.get("synthesis", "")
         if not synthesis or synthesis.startswith("Pipeline blocked") or synthesis.startswith("Pipeline denied"):
-            logger.warning("[archeologist] No synthesis to publish")
+            logger.warning("[archeologist] No synthesis to publish — marking as failed")
             await emit_telemetry(
                 self.hub_url, state.get("project_id"),
-                self.from_agent, "publish", "completed", "skipped",
+                self.from_agent, "publish", "failed", "No content to publish (synthesis returned empty)",
             )
             return state
 
@@ -373,10 +373,28 @@ class ArcheologistAgent:
                 topic[:60], doc_id, len(state.get("synthesis", "")),
             )
         else:
-            logger.warning(
-                "[archeologist] Pipeline complete but no document published for: %s",
+            logger.error(
+                "[archeologist] Pipeline FAILED — no document published for: %s",
                 topic[:60],
             )
+            # Mark project as failed
+            project_id = state.get("project_id")
+            if project_id:
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10.0) as hc:
+                        await hc.post(
+                            f"{self.hub_url}/api/v1/projects/{project_id}/fail",
+                            json={"reason": "No document published — synthesis returned empty"},
+                        )
+                except Exception:
+                    pass
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, "verify_and_trigger", "failed",
+                "No document published — synthesis returned empty",
+            )
+            return state
 
         # Auto-trigger Product Owner (fire-and-forget)
         if self.trigger_next_agent and doc_id:
