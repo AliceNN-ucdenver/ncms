@@ -774,22 +774,41 @@ class ArcheologistAgent:
         state["community_results"] = []
 
         try:
+            import asyncio as _asyncio
+
             import httpx as _httpx
 
-            # HackerNews Algolia API
-            query = clean_topic.replace(" ", "+")
-            url = f"https://hn.algolia.com/api/v1/search?query={query}&tags=story&hitsPerPage=10"
+            # HackerNews Algolia API — search multiple shorter queries for better coverage
+            words = clean_topic.split()
+            queries = [clean_topic]  # full topic
+            if len(words) > 3:
+                queries.append(" ".join(words[:3]))  # first 3 words
+                queries.append(" ".join(words[-3:]))  # last 3 words
+
+            stories: list[dict] = []
+            seen_ids: set[str] = set()
 
             async with _httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(url)
+              for qi, q in enumerate(queries):
+                if len(stories) >= 5:
+                    break
+                if qi > 0:
+                    await _asyncio.sleep(1)  # rate limit between queries
+
+                url = f"https://hn.algolia.com/api/v1/search?query={q.replace(' ', '+')}&tags=story&hitsPerPage=10"
+                try:
+                    resp = await client.get(url)
+                except Exception:
+                    continue
                 if resp.status_code == 200:
                     data = resp.json()
                     hits = data.get("hits", [])
-                    stories = []
                     for h in hits:
                         points = h.get("points", 0) or 0
-                        if points < 10:
+                        oid = h.get("objectID", "")
+                        if points < 5 or oid in seen_ids:
                             continue
+                        seen_ids.add(oid)
                         stories.append({
                             "title": h.get("title", ""),
                             "url": f"https://news.ycombinator.com/item?id={h.get('objectID', '')}",
@@ -799,13 +818,12 @@ class ArcheologistAgent:
                         })
                         if len(stories) >= 5:
                             break
-                    state["community_results"] = stories
-                    logger.info(
-                        "[archeologist/research] HackerNews: %d stories found (>10 points)",
-                        len(stories),
-                    )
-                else:
-                    logger.warning("[archeologist/research] HN API returned %d", resp.status_code)
+
+            state["community_results"] = stories
+            logger.info(
+                "[archeologist/research] HackerNews: %d stories found (>5 points) from %d queries",
+                len(stories), len(queries),
+            )
 
         except Exception as e:
             logger.warning("[archeologist/research] Community search failed: %s", e)
