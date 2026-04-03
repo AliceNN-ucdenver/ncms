@@ -1,7 +1,6 @@
 # Archeologist Agent — Dual-path entry point for all projects
-# Research path: plan_queries → parallel_search → arxiv → synthesize → publish → verify
+# Research path: plan_queries → parallel_search → arxiv → synthesize (CoT) → publish → verify
 # Archaeology path: clone_and_index → analyze → gaps → web_research → synthesize → publish → verify
-# Path selected by source_type: "research" (web search) or "archaeology" (GitHub repo)
 
 llms:
   spark_llm:
@@ -12,6 +11,14 @@ llms:
     max_tokens: 131072
     chat_template_kwargs:
       enable_thinking: false
+  spark_llm_thinking:
+    _type: openai
+    model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    base_url: "http://spark-ee7d.local:8000/v1"
+    api_key: "dummy"
+    max_tokens: 131072
+    chat_template_kwargs:
+      enable_thinking: true
 
 general:
   telemetry:
@@ -33,6 +40,7 @@ functions:
   archeologist_agent:
     _type: archeologist_agent
     llm_name: spark_llm
+    llm_thinking_name: spark_llm_thinking
     hub_url: "http://host.docker.internal:9080"
     from_agent: archeologist
     max_search_results: 5

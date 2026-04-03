@@ -67,9 +67,11 @@ class PRDAgent:
         hub_url: str,
         from_agent: str,
         client: NCMSHttpClient,
+        llm_thinking: BaseChatModel | None = None,
         trigger_next_agent: bool = True,
     ) -> None:
         self.llm = llm
+        self.llm_thinking = llm_thinking or llm
         self.hub_url = hub_url
         self.from_agent = from_agent
         self.client = client
@@ -380,7 +382,7 @@ class PRDAgent:
 
         try:
             response = await traced_llm_call(
-                self.llm, [
+                self.llm_thinking, [
                     SystemMessage(
                         content=(
                             "You are a senior product owner using semi-formal certificate "
@@ -396,20 +398,8 @@ class PRDAgent:
             )
             state["prd"] = response.content
 
-            # Validate CoT reasoning was used
-            reasoning = getattr(response, "reasoning_content", None)
-            if not reasoning:
-                reasoning = (response.response_metadata or {}).get("reasoning_content", "")
-            if reasoning:
-                logger.info(
-                    "[prd_agent] CoT reasoning: %d chars, PRD: %d chars",
-                    len(reasoning), len(state["prd"]),
-                )
-            else:
-                logger.warning(
-                    "[prd_agent] No reasoning_content detected — "
-                    "CoT may not be enabled or reasoning parser not active"
-                )
+            # Note: LangChain strips reasoning_content from the response.
+            # CoT still happens server-side — verify via token count in audit record.
             logger.info("[prd_agent] PRD synthesized: %d chars", len(state["prd"]))
         except Exception as e:
             logger.error("[prd_agent] PRD synthesis failed: %s", e)
@@ -589,9 +579,13 @@ class PRDAgentConfig(FunctionBaseConfig, name="prd_agent"):
         default="product_owner",
         description="Agent ID for bus announcements and document attribution",
     )
+    llm_thinking_name: str = Field(
+        default="",
+        description="LLM name for thinking-enabled calls (synthesis). Falls back to llm_name if empty.",
+    )
     trigger_next_agent: bool = Field(
         default=True,
-        description="Whether to trigger the builder agent after PRD is published",
+        description="Whether to trigger the designer agent after PRD is published",
     )
 
 
@@ -604,6 +598,10 @@ async def prd_agent_fn(
 
     # Get LangChain-compatible LLM from NAT builder
     llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    llm_thinking = None
+    if config.llm_thinking_name:
+        llm_thinking = await builder.get_llm(config.llm_thinking_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+        logger.info("[prd_agent] Thinking LLM loaded: %s", config.llm_thinking_name)
     client = NCMSHttpClient(hub_url=config.hub_url)
 
     # Build the LangGraph pipeline
@@ -612,6 +610,7 @@ async def prd_agent_fn(
         hub_url=config.hub_url,
         from_agent=config.from_agent,
         client=client,
+        llm_thinking=llm_thinking,
         trigger_next_agent=config.trigger_next_agent,
     )
     graph = await agent.build_graph()

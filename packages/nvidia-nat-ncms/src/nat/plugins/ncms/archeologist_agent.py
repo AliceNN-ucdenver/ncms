@@ -114,10 +114,12 @@ class ArcheologistAgent:
         tavily_api_key: str,
         client: NCMSHttpClient,
         github: GitHubProvider | None = None,
+        llm_thinking: BaseChatModel | None = None,
         max_search_results: int = 5,
         trigger_next_agent: bool = True,
     ) -> None:
         self.llm = llm
+        self.llm_thinking = llm_thinking or llm  # Fallback to default if not provided
         self.hub_url = hub_url
         self.from_agent = from_agent
         self.trigger_next_agent = trigger_next_agent
@@ -716,14 +718,10 @@ class ArcheologistAgent:
 
         prompt = SYNTHESIZE_PROMPT.format(topic=topic, search_results=search_text)
 
-        # Enable thinking for deeper synthesis
-        llm = self.llm
-        if hasattr(llm, 'bind'):
-            llm = llm.bind(extra_body={"chat_template_kwargs": {"enable_thinking": True}})
-
+        # Use thinking-enabled LLM for semi-formal certificate synthesis
         try:
             response = await traced_llm_call(
-                llm, [
+                self.llm_thinking, [
                     SystemMessage(content=(
                         "You are a thorough market research analyst using semi-formal "
                         "certificate format. Follow the structure exactly. Every claim "
@@ -737,20 +735,9 @@ class ArcheologistAgent:
             )
             state["synthesis"] = response.content
 
-            # Validate CoT reasoning was used (if configured)
-            reasoning = getattr(response, "reasoning_content", None)
-            if not reasoning:
-                reasoning = (response.response_metadata or {}).get("reasoning_content", "")
-            if reasoning:
-                logger.info(
-                    "[archeologist/research] CoT reasoning: %d chars, synthesis: %d chars",
-                    len(reasoning), len(state["synthesis"]),
-                )
-            else:
-                logger.warning(
-                    "[archeologist/research] No reasoning_content detected — "
-                    "CoT may not be enabled or reasoning parser not active"
-                )
+            # Note: LangChain strips reasoning_content from the response object.
+            # CoT still happens server-side (vLLM produces it) — we just can't see it here.
+            # Verify via token count in traced_llm_call audit record or Phoenix traces.
             logger.info("[archeologist/research] Synthesis complete: %d chars", len(state["synthesis"]))
         except Exception as e:
             logger.error("[archeologist/research] Synthesis failed: %s", e)
@@ -1175,6 +1162,10 @@ class ArcheologistAgentConfig(FunctionBaseConfig, name="archeologist_agent"):
         default="archeologist",
         description="Agent ID for bus announcements and document attribution",
     )
+    llm_thinking_name: str = Field(
+        default="",
+        description="LLM name for thinking-enabled calls (synthesis). Falls back to llm_name if empty.",
+    )
     max_search_results: int = Field(
         default=5,
         description="Max results per Tavily search query",
@@ -1193,6 +1184,10 @@ async def archeologist_agent_fn(
     logger.info("[archeologist] Initializing LangGraph archeologist agent")
 
     llm = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+    llm_thinking = None
+    if config.llm_thinking_name:
+        llm_thinking = await builder.get_llm(config.llm_thinking_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
+        logger.info("[archeologist] Thinking LLM loaded: %s", config.llm_thinking_name)
     tavily_api_key = os.environ.get("TAVILY_API_KEY", "")
     github_token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
     client = NCMSHttpClient(hub_url=config.hub_url)
@@ -1210,6 +1205,7 @@ async def archeologist_agent_fn(
         tavily_api_key=tavily_api_key,
         client=client,
         github=github,
+        llm_thinking=llm_thinking,
         max_search_results=config.max_search_results,
         trigger_next_agent=config.trigger_next_agent,
     )
