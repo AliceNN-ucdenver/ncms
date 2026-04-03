@@ -1062,11 +1062,13 @@ class DesignAgent:
     def _parse_score(review_text: str) -> int:
         """Extract SCORE: N from review response. Default 50 if unparseable.
 
-        Handles markdown bold formatting: **SCORE:** 85, *SCORE:* 85, SCORE: 85
+        LLMs produce every possible formatting variant:
+          SCORE: 85, **SCORE:** 85, SCORE: [[85]], **SCORE:** [[85]],
+          *SCORE:* 85, SCORE:85, Score: 85
         """
-        # Strip markdown bold/italic markers before matching
-        clean = review_text.replace("**", "").replace("*", "")
-        match = re.search(r"SCORE:\s*(\d+)", clean)
+        # Strip all markdown and bracket noise
+        clean = review_text.replace("**", "").replace("*", "").replace("[[", "").replace("]]", "")
+        match = re.search(r"SCORE:\s*(\d+)", clean, re.IGNORECASE)
         if match:
             score = int(match.group(1))
             return min(100, max(0, score))
