@@ -905,9 +905,24 @@ Phase 2.5 is the foundation that makes everything auditable and traceable. Witho
 | 6 | Contextual Approval Queue | Full-context human gate before code generation. Design + review scores + cost estimate in one approval view. |
 | 7 | Compliance Dashboard | Aggregate governance visibility across all projects (green-field and archaeology). ADR matrix, STRIDE heat map, quality trends, drift scores. |
 | 16 | Audit Trail | Reproducibility and compliance for all pipeline runs. Frozen snapshots of every input, retrieval, LLM response, and review score. |
-| 18 | Feedback Loop (Code → Design) | Bidirectional improvement. When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder for targeted revision. |
+| 18 | Feedback Loop (Code → Design) | Bidirectional improvement. When the coding agent discovers the design is unimplementable, structured feedback flows back to the Designer for targeted revision. |
 
-Phase 3 closes the loop from design to code. The coding agent consumes approved designs (from either the Researcher or Archeologist path) and produces working implementations. Human approval gates every code generation. The feedback loop ensures design quality improves from implementation experience. Governance visibility and audit trails make the full pipeline enterprise-ready.
+Phase 3 closes the loop from design to code. The coding agent consumes approved designs (from the Archeologist's research or archaeology path) and produces working implementations. Human approval gates every code generation. The feedback loop ensures design quality improves from implementation experience. Governance visibility and audit trails make the full pipeline enterprise-ready.
+
+### Agent Consolidation (6 → 5 agents)
+
+The Researcher was merged into the Archeologist as a dual-path entry point. The Builder was renamed to Designer. This reduces NemoClaw pod count from 6 to 5, lowering memory pressure under besteffort QoS.
+
+| Before (6 agents) | After (5 agents) | Change |
+|---|---|---|
+| Researcher | — | Merged into Archeologist |
+| Archeologist | **Archeologist** (dual-path) | Now handles both research (web) and archaeology (GitHub) |
+| Builder | **Designer** | Renamed to reflect actual role |
+| Product Owner | Product Owner | Unchanged |
+| Architect | Architect | Unchanged |
+| Security | Security | Unchanged |
+
+The Archeologist's LangGraph has a conditional edge after guardrails that routes based on `source_type`: research projects → Tavily + ArXiv path; archaeology projects → GitHub API path. Both paths share publish and verify nodes. The hub triggers `trigger-archeologist` for ALL project types. The merged config subscribes to both `trigger-archeologist` and `trigger-researcher` for backward compatibility.
 
 ### Phase 4 (Learning System)
 

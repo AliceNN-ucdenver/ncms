@@ -150,9 +150,9 @@
   <text x="600" y="145" text-anchor="middle" fill="#b0b0cc" font-size="13" font-weight="400" letter-spacing="0.5">Six AI agents research, analyze codebases, consult experts, and produce implementation designs autonomously.</text>
   <text x="600" y="166" text-anchor="middle" fill="#c0c0dd" font-size="12" font-weight="500" letter-spacing="1.5">Semi-formal certificates + CoT (+29% traceability)  |  Tavily + ArXiv  |  Memory that actually works.</text>
 
-  <!-- Agent pipeline orbs - 6 agents with auto-chain -->
+  <!-- Agent pipeline orbs - 5 agents with auto-chain -->
   <g transform="translate(150, 260)">
-    <!-- Researcher -->
+    <!-- Archeologist -->
     <circle cx="0" cy="-24" r="20" fill="#0a1a10" stroke="#10b981" stroke-width="2" filter="url(#glow)"/>
     <text x="0" y="-22" text-anchor="middle" fill="#10b981" font-size="8" font-weight="700">RSH</text>
     <text x="0" y="-48" text-anchor="middle" fill="#5aaa7a" font-size="7">Tavily+ArXiv</text>
@@ -179,7 +179,7 @@
     <text x="120" y="2" text-anchor="middle" fill="#00ff88" font-size="9" font-weight="700">PO</text>
     <text x="120" y="36" text-anchor="middle" fill="#7aaa8a" font-size="8">PRD</text>
 
-    <!-- PO to Builder -->
+    <!-- PO to Designer -->
     <line x1="145" y1="0" x2="215" y2="0" stroke="#00ff88" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
     <polygon points="210,-4 220,0 210,4" fill="#00ff88" opacity="0.5"/>
 
@@ -187,7 +187,7 @@
     <rect x="163" y="-10" width="35" height="20" rx="3" fill="#0a1a10" stroke="#00ff88" stroke-width="0.8" opacity="0.6"/>
     <text x="180" y="4" text-anchor="middle" fill="#00ff88" font-size="6" font-weight="600">16KB</text>
 
-    <!-- Builder -->
+    <!-- Designer -->
     <circle cx="240" cy="0" r="22" fill="#1a1408" stroke="#ff9800" stroke-width="2" filter="url(#glow)"/>
     <text x="240" y="2" text-anchor="middle" fill="#ff9800" font-size="9" font-weight="700">BLD</text>
     <text x="240" y="36" text-anchor="middle" fill="#aa8a4a" font-size="8">Design</text>
@@ -195,11 +195,11 @@
     <!-- PARALLEL label -->
     <text x="340" y="-2" text-anchor="middle" fill="#ffffff" font-size="7" font-weight="600" letter-spacing="2" opacity="0.4">PARALLEL</text>
 
-    <!-- Builder to Architect -->
+    <!-- Designer to Architect -->
     <line x1="265" y1="-10" x2="380" y2="-36" stroke="#ff9800" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
     <polygon points="375,-40 385,-34 377,-31" fill="#ff9800" opacity="0.5"/>
 
-    <!-- Builder to Security -->
+    <!-- Designer to Security -->
     <line x1="265" y1="10" x2="380" y2="36" stroke="#ff9800" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
     <polygon points="375,31 385,34 377,40" fill="#ff9800" opacity="0.5"/>
 

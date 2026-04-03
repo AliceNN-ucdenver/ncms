@@ -18,7 +18,7 @@ Before you start:
    ```
 3. **DGX Spark or other vLLM endpoint** -- serving a model accessible from your network. This guide uses a DGX Spark at `spark-ee7d.local:8000` running Nemotron-3-Nano-30B via the NGC vLLM container.
 4. **HF_TOKEN** -- a HuggingFace token with access to gated models (SPLADE v3 requires it).
-5. **TAVILY_API_KEY** -- a Tavily API key for the Researcher's web search. Get one at tavily.com.
+5. **TAVILY_API_KEY** -- a Tavily API key for the Archeologist's web search. Get one at tavily.com.
 6. **GITHUB_PERSONAL_ACCESS_TOKEN** (optional) -- a GitHub PAT for the Archeologist agent's repository analysis. Without it, the Archeologist uses unauthenticated API calls (60 requests/hour). With it, 5000 requests/hour. Generate at github.com → Settings → Developer settings → Personal access tokens.
 7. **A `.env` file** in the project root (`~/ncms/.env`) with your keys:
    ```bash
@@ -91,7 +91,7 @@ That is the happy path. Here is what happens under the hood:
 **Step 0 -- Environment and Providers**
 
 - Loads `~/ncms/.env` (API keys, endpoint overrides).
-- Creates the `tavily` OpenShell provider from `TAVILY_API_KEY` (idempotent -- skips if already exists). This injects the key into the Researcher's sandbox as an environment variable.
+- Creates the `tavily` OpenShell provider from `TAVILY_API_KEY` (idempotent -- skips if already exists). This injects the key into the Archeologist's sandbox as an environment variable.
 
 **Step 1/5 -- NCMS Hub and Phoenix (Docker)**
 
@@ -106,9 +106,9 @@ That is the happy path. Here is what happens under the hood:
 Each agent gets the same treatment:
 
 - Creates a NemoClaw sandbox from the `openclaw` template with the network policy.
-- Attaches providers as needed (the Researcher gets the `tavily` provider).
+- Attaches providers as needed (the Archeologist gets the `tavily` provider).
 - Uploads NCMS source code (`src/`, `pyproject.toml`, `uv.lock`) into `/sandbox/ncms/`.
-- Uploads agent code, LangGraph pipelines (for Researcher/PO/Builder), and domain knowledge files.
+- Uploads agent code, LangGraph pipelines (for Archeologist/PO/Designer), and domain knowledge files.
 - Installs NCMS via `uv sync`, then installs agent dependencies.
 - Starts the agent process and sets up `openshell forward` for port access.
 
@@ -116,8 +116,8 @@ Each agent gets the same treatment:
 |------|---------|-------|------|------|
 | 2/5 | ncms-architect | Architect | LangGraph (dual-mode) | 8001 |
 | 3/5 | ncms-security | Security | LangGraph (dual-mode) | 8002 |
-| 4/5 | ncms-builder | Builder | LangGraph | 8003 |
-| 5/5 | ncms-researcher | Researcher | LangGraph | 8004 |
+| 4/5 | ncms-designer | Designer | LangGraph | 8005 |
+| 5/5 | ncms-archeologist | Archeologist | LangGraph | 8001 |
 
 **Final step:** Polls the hub health endpoint waiting for all agents to register, with a 60-second timeout.
 
@@ -165,11 +165,11 @@ This is the end-to-end workflow from research to implementation design. One mess
 
 ### 1. Trigger the Research Pipeline
 
-Open http://localhost:8420 and click the **Researcher** card to open the chat overlay. Type:
+Open http://localhost:8420 and click the **Archeologist** card to open the chat overlay. Type:
 
 > Research modern identity service patterns including OAuth 2.0, passkeys, and zero-trust authentication.
 
-The Researcher's LangGraph pipeline activates:
+The Archeologist's LangGraph pipeline activates:
 1. **Plan** -- generates 5 parallel search queries
 2. **Search** -- executes all 5 Tavily searches in parallel (25 results total)
 3. **Synthesize** -- compiles an 11KB market research report
@@ -180,14 +180,14 @@ The Researcher's LangGraph pipeline activates:
 
 No further human interaction is required. The pipeline chains automatically:
 
-**Product Owner activates** (triggered by Researcher's bus announcement):
+**Product Owner activates** (triggered by Archeologist's bus announcement):
 - Reads the 11KB research report
 - Issues parallel `bus_ask` calls to Architect and Security
 - Receives architecture + security expert input
 - Synthesizes and publishes a 16KB PRD
-- Fires bus announcement, Builder activates automatically
+- Fires bus announcement, Designer activates automatically
 
-**Builder activates** (triggered by Product Owner's bus announcement):
+**Designer activates** (triggered by Product Owner's bus announcement):
 - Reads the 16KB PRD
 - Consults Architect and Security experts
 - Synthesizes and publishes a 21KB implementation design
@@ -257,15 +257,15 @@ The hub Docker container seeds topics automatically at startup via `entrypoint-h
 
 Each agent is configured via YAML files in `deployment/nemoclaw-blueprint/configs/`. Key configuration patterns:
 
-- **LangGraph agents** (Researcher, Product Owner, Builder) define deterministic node graphs. Each node executes one step. The LLM generates content within each node; the graph enforces sequence and parallelism.
+- **LangGraph agents** (Archeologist, Product Owner, Designer) define deterministic node graphs. Each node executes one step. The LLM generates content within each node; the graph enforces sequence and parallelism.
 - **Expert agents** (Architect, Security) use LangGraph dual-mode pipelines. They classify incoming requests as knowledge questions or design reviews, search NCMS memory with domain filtering, and produce either grounded knowledge answers or structured reviews (SCORE/SEVERITY/COVERED/MISSING/CHANGES).
 - `max_tokens: 32768` -- enables rich, detailed output for document synthesis
 - Direct Spark URL (`spark-ee7d.local:8000`) for LangGraph agents bypasses the NemoClaw proxy 60-second timeout
 - Single-word tool names (`writeprd`, `writedesign`, not `write_prd`) -- NAT's text parser sometimes bolds multi-word names, breaking tool dispatch
 
-### Builder Config (`configs/builder.yml`)
+### Designer Config (`configs/designer.yml`)
 
-The Builder's LangGraph pipeline uses the RCTRO prompt format (Role, Context, Task, Requirements, Output) at each node:
+The Designer's LangGraph pipeline uses the RCTRO prompt format (Role, Context, Task, Requirements, Output) at each node:
 
 ```yaml
 llms:
@@ -280,7 +280,7 @@ memory:
   ncms_store:
     _type: ncms_memory
     hub_url: "http://host.docker.internal:9080"
-    agent_id: builder
+    agent_id: designer
     domains: [identity-service, implementation]
     subscribe_to: [architecture, security, threats, controls, product, requirements]
 
@@ -292,20 +292,20 @@ functions:
   bus_ask:
     _type: ask_knowledge
     hub_url: "http://host.docker.internal:9080"
-    from_agent: builder
+    from_agent: designer
     timeout_ms: 120000
 
   publish_document:
     _type: writedesign
     hub_url: "http://host.docker.internal:9080"
-    from_agent: builder
+    from_agent: designer
 ```
 
 ### Agent Differences
 
-- **Researcher** -- LangGraph pipeline with Tavily web search. No seeded knowledge. Produces research reports.
-- **Product Owner** -- LangGraph pipeline that reads research documents and consults experts. Produces PRDs. Triggers Builder.
-- **Builder** -- LangGraph pipeline that reads PRDs, consults experts, produces implementation designs, and runs a review loop (revise until 80%+ average from reviewers, max 5 iterations).
+- **Archeologist** -- LangGraph pipeline with Tavily web search. No seeded knowledge. Produces research reports.
+- **Product Owner** -- LangGraph pipeline that reads research documents and consults experts. Produces PRDs. Triggers Designer.
+- **Designer** -- LangGraph pipeline that reads PRDs, consults experts, produces implementation designs, and runs a review loop (revise until 80%+ average from reviewers, max 5 iterations).
 - **Architect** -- LangGraph dual-mode pipeline with seeded ADRs, CALM model, quality attribute scenarios. Classifies requests as knowledge questions or design reviews. Knowledge answers cite ADRs and CALM specs. Structured reviews return SCORE/SEVERITY/COVERED/MISSING/CHANGES.
 - **Security** -- LangGraph dual-mode pipeline with seeded STRIDE threat models, OWASP controls. Classifies requests as knowledge questions or design reviews. Knowledge answers cite threat IDs and OWASP sections. Structured reviews evaluate OWASP Top 10, STRIDE compliance, secrets management, transport security.
 - Each agent traces to a separate Phoenix project.
@@ -322,7 +322,7 @@ The policy file at `deployment/nemoclaw-blueprint/policies/openclaw-sandbox.yaml
 | `python_packages` | pypi.org, files.pythonhosted.org | 443 | pip/uv installs |
 | `nvidia_packages` | pypi.nvidia.com | 443 | NAT packages |
 | `huggingface` | huggingface.co, cdn-lfs.huggingface.co | 443 | Model downloads |
-| `tavily` | api.tavily.com | 443 | Web search (Researcher) |
+| `tavily` | api.tavily.com | 443 | Web search (Archeologist) |
 | `claude_code` | api.anthropic.com | 443 | Claude Code (if using) |
 | `github` | github.com, api.github.com | 443 | Git operations |
 
@@ -335,9 +335,9 @@ deployment/nemoclaw-blueprint/
   configs/
     architect.yml          # Architect agent NAT config
     security.yml           # Security agent NAT config
-    builder.yml            # Builder LangGraph config
+    designer.yml            # Designer LangGraph config
     product_owner.yml      # Product Owner LangGraph config
-    researcher.yml         # Researcher LangGraph config
+    archeologist.yml         # Archeologist LangGraph config
   knowledge/
     architecture/          # ADRs, CALM model
     security/              # Threat model, OWASP
@@ -388,7 +388,7 @@ curl http://localhost:9080/api/v1/health
 
 ### Tavily web search fails
 
-**Cause:** `TAVILY_API_KEY` not injected into the Researcher's sandbox.
+**Cause:** `TAVILY_API_KEY` not injected into the Archeologist's sandbox.
 
 **Fix:** Verify the provider exists and the key is set:
 ```bash
@@ -399,7 +399,7 @@ If the tavily provider is missing, create it:
 openshell provider create --name tavily --type generic \
   --credential "TAVILY_API_KEY=your_key_here"
 ```
-Then rebuild the researcher sandbox so it picks up the provider.
+Then rebuild the archeologist sandbox so it picks up the provider.
 
 ### "Failed to fetch" in dashboard chat
 
@@ -458,7 +458,7 @@ These pull from `pypi.org` and `files.pythonhosted.org`.
 
 **Fix:** Shell into the sandbox and kill stale processes:
 ```bash
-openshell sandbox connect ncms-builder
+openshell sandbox connect ncms-designer
 killall -9 python3.13
 exit
 ```
@@ -493,7 +493,7 @@ Then restart the agent or run `./setup_nemoclaw.sh --rebuild`.
 
 # NemoClaw management
 openshell term                          # Interactive approval terminal (KEEP THIS OPEN)
-openshell sandbox connect ncms-builder  # Shell into a sandbox
+openshell sandbox connect ncms-designer  # Shell into a sandbox
 openshell sandbox list                  # List all sandboxes
 openshell forward list                  # Check port forwards
 openshell gateway restart               # Clear stale proxy state
@@ -501,8 +501,8 @@ openshell provider list                 # Check providers (tavily, dgx-spark)
 
 # Agent debugging
 ssh openshell-ncms-architect 'tail -f /tmp/ncms-nat-agent.log'       # Stream agent logs
-ssh openshell-ncms-researcher 'tail -f /tmp/ncms-nat-agent.log'      # Researcher logs
-ssh openshell-ncms-builder 'pgrep -fa python'                         # Check running processes
+ssh openshell-ncms-archeologist 'tail -f /tmp/ncms-nat-agent.log'      # Archeologist logs
+ssh openshell-ncms-designer 'pgrep -fa python'                         # Check running processes
 ssh openshell-ncms-security 'curl -s localhost:8002/health'           # Agent health check
 
 # Hub debugging

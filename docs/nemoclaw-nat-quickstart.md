@@ -6,9 +6,9 @@ We asked a 3-billion-parameter model to do the job of a software delivery team. 
 
 **One message. Four documents. Fourteen minutes.**
 
-A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across five specialized agents. The Researcher runs five parallel web searches and synthesizes an 11KB market research report. The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a 16KB PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Builder reads the PRD, consults the same experts, and produces a 21KB TypeScript implementation design. It submits the design for structured review. On round one, the Architect scored 88% and Security scored 78%. Approved at 83% average with no revision needed.
+A single research prompt enters the pipeline and triggers a deterministic LangGraph chain across five specialized agents. The Archeologist runs five parallel web searches and synthesizes a market research report (or, for archaeology projects, analyzes a GitHub repository). The Product Owner reads that report, consults the Architect and Security experts in parallel, and produces a PRD grounded in ADR decisions, STRIDE threat models, CALM governance, OWASP ASVS, NIST 800-63B, PKCE flows, and RS256 signing. The Designer reads the PRD, consults the same experts, and produces a TypeScript implementation design. It submits the design for structured review with a quality gate that iterates until the average score meets the threshold.
 
-During reviews, the Architect retrieved four memories (4,792 chars of actual ADR content) and Security retrieved three memories (2,133 chars of STRIDE threat models) from the shared knowledge store. A 6KB Design Review Report cites ADR-001 (SOA with CALM), ADR-002 (MongoDB), and ADR-003 (JWT with inline RBAC), all verified as correctly implemented. This is not a demo. These are grounded, auditable engineering artifacts produced by a model that fits on a desk.
+During reviews, the Architect and Security experts retrieve governance knowledge from the shared NCMS memory store — ADRs, STRIDE threat models, CALM quality attributes — and produce structured reviews with SCORE/SEVERITY/COVERED/MISSING/CHANGES. Every review score, LLM call, grounding citation, and bus conversation is persisted in the audit database. This is not a demo. These are grounded, auditable engineering artifacts produced by a model that fits on a desk.
 
 The memory layer underneath is NCMS: vector-free hybrid retrieval combining BM25 (Tantivy/Rust), SPLADE v3 sparse neural expansion, and graph spreading activation. It achieves nDCG@10 = 0.7206 on SciFact, exceeding published ColBERTv2 and SPLADE++ baselines. On 850 real GitHub issues from SWE-bench Django, NCMS delivers 6.3x better temporal reasoning than Mem0 and 2.8x better cross-document association than Letta. Zero dense embeddings. Zero external API calls. Everything runs locally.
 
@@ -35,11 +35,11 @@ When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, 
 
 > ***"Don't let the LLM skip steps. Make it fill in a certificate."***
 
-Adapted from Meta's "Agentic Code Reasoning" (arXiv:2603.01896), we replaced free-form RCTRO prompts with **semi-formal certificate templates** that force the LLM to state explicit source premises, trace evidence through cross-source analysis with confidence ratings, identify evidence gaps, and derive formal conclusions before making recommendations. In an 8-way experiment (standard/semi-formal x CoT-on/off x 1-stage/2-stage) with real Tavily web search and ArXiv academic papers, the semi-formal+CoT configuration scored **53/60** vs the standard baseline at **41/60** — a 29% improvement in traceability, coverage, and grounding. The model produced 25,884 characters of chain-of-thought reasoning before writing the certificate, cross-referencing sources that the standard prompt never bothered to verify. The Researcher and Product Owner now use semi-formal certificates with CoT reasoning enabled. The Builder keeps standard prompts where implementation actionability matters more than audit traceability.
+Adapted from Meta's "Agentic Code Reasoning" (arXiv:2603.01896), we replaced free-form RCTRO prompts with **semi-formal certificate templates** that force the LLM to state explicit source premises, trace evidence through cross-source analysis with confidence ratings, identify evidence gaps, and derive formal conclusions before making recommendations. In an 8-way experiment (standard/semi-formal x CoT-on/off x 1-stage/2-stage) with real Tavily web search and ArXiv academic papers, the semi-formal+CoT configuration scored **53/60** vs the standard baseline at **41/60** — a 29% improvement in traceability, coverage, and grounding. The Archeologist (research path) and Product Owner now use semi-formal certificates with CoT reasoning enabled. The Designer keeps standard prompts where implementation actionability matters more than audit traceability.
 
 ## What You Are Building
 
-Six specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. Two entry paths feed the same downstream pipeline: the **Researcher** starts from a topic and searches the web; the **Archeologist** starts from an existing GitHub repository and analyzes the codebase. Both produce a grounded research report that the Product Owner consumes to generate a PRD.
+Five specialized AI agents coordinate through a shared knowledge bus to execute an auto-chaining research-to-design pipeline with a built-in quality review loop. The **Archeologist** is the dual-path entry point: for research projects it searches the web (Tavily + ArXiv); for archaeology projects it analyzes an existing GitHub repository. Both paths produce a grounded research report that the Product Owner consumes to generate a PRD.
 
 LangGraph enforces the deterministic workflow for all agents. Bus announcements to `trigger-{agent_id}` domains trigger downstream agents automatically. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its sandbox, with no port forward dependency and no orchestrator.
 
@@ -47,10 +47,9 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 
 | Agent | Type | Pipeline |
 |-------|------|----------|
-| **Researcher** | LangGraph | check_guardrails → plan → search (5x parallel) → synthesize → publish → trigger PO |
-| **Archeologist** | LangGraph | check_guardrails → clone_and_index → analyze_architecture → identify_gaps → web_research → synthesize_report → publish → trigger PO |
-| **Product Owner** | LangGraph | check_guardrails → read_doc → ask_experts (parallel) → synthesize_prd → generate_manifest → publish → trigger Builder |
-| **Builder** | LangGraph | check_guardrails → read_doc → ask_experts → synthesize → validate_completeness → check_output_guardrails → publish → review ⟲ → verify → generate_contracts |
+| **Archeologist** | LangGraph (dual-path) | check_guardrails → [research: plan → search → arxiv → synthesize \| archaeology: clone → analyze → gaps → web_research → synthesize] → publish → trigger PO |
+| **Product Owner** | LangGraph | check_guardrails → read_doc → ask_experts (parallel) → synthesize_prd → generate_manifest → publish → trigger Designer |
+| **Designer** | LangGraph | check_guardrails → read_doc → ask_experts → synthesize → validate → output_guard → publish → review ⟲ → verify |
 | **Architect** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
 | **Security** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
 
@@ -61,14 +60,14 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 | Layer | Technology | Detail |
 |-------|-----------|--------|
 | **Memory** | NCMS | BM25 (Tantivy/Rust) + SPLADE v3 + NetworkX graph, nDCG@10 = 0.7206 |
-| **Orchestration** | LangGraph | Deterministic pipelines for Researcher, Archeologist, PO, Builder |
+| **Orchestration** | LangGraph | Deterministic pipelines for Archeologist, PO, Designer, Experts |
 | **Experts** | LangGraph (dual-mode) | Architect + Security: classify → search_memory → answer or structured_review |
 | **Codebase Analysis** | GitHub REST API | Archeologist agent: repo tree, file content, dependencies, commits, issues via PAT |
 | **Document Intelligence** | GLiNER NER | Entity extraction at publish time, JSON sidecar persistence, entity-enriched expert search |
 | **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB) |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
-| **Research** | Tavily | Live web search for Researcher (5 parallel queries) |
+| **Research** | Tavily | Live web search for Archeologist research path (5 parallel queries) |
 | **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
 | **Guardrails** | NemoGuardrails | Policy enforcement on pipeline inputs (domain/technology scope) and outputs (secrets, prohibited patterns) |
 | **Spec Quality** | Python + LLM | Completeness validator (10 structural checks), requirements manifest, OpenAPI/Zod contract generation |
@@ -78,10 +77,10 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 
 | Document | Agent | Size | Key References |
 |----------|-------|------|---------------|
-| Market Research Report | Researcher | 11KB | NIST (3), OAuth, live web sources |
+| Market Research Report | Archeologist | 11KB | NIST (3), OAuth, live web sources |
 | PRD | Product Owner | 16KB | CALM (7), ADR (4), OWASP (3), NIST (3), JWT (10), RBAC (4), RS256 (2) |
-| Implementation Design | Builder | 21KB | JWT (24), TypeScript (3), interface (7), bcrypt |
-| Design Review Report | Builder | 6KB | ADR (10), CALM (3), STRIDE, SCORE 88%/78% |
+| Implementation Design | Designer | 21KB | JWT (24), TypeScript (3), interface (7), bcrypt |
+| Design Review Report | Designer | 6KB | ADR (10), CALM (3), STRIDE, SCORE 88%/78% |
 
 ---
 
@@ -102,7 +101,7 @@ This knowledge becomes searchable by any agent through the knowledge bus. When d
 
 ### Phase 2: Research
 
-The Researcher runs a five-node LangGraph pipeline: **plan → search (5 parallel) → synthesize → publish → trigger PO**.
+The Archeologist's research path runs a five-node LangGraph pipeline: **plan → search (5 parallel) → arxiv → synthesize → publish → trigger PO**.
 
 1. **Plan** generates five parallel search queries covering different angles of the topic
 2. **Search** executes all five Tavily web searches concurrently, collecting results
@@ -110,25 +109,25 @@ The Researcher runs a five-node LangGraph pipeline: **plan → search (5 paralle
 4. **Publish** posts the report to the hub's document store
 5. **Trigger** fires a bus announcement that automatically starts the Product Owner
 
-> **Observed:** 25 results from 5 parallel Tavily searches. The Researcher produced an 11KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes, with citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications.
+> **Observed:** 25 results from 5 parallel Tavily searches. The Archeologist produced an 11KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes, with citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications.
 
 ### Phase 3: PRD Creation
 
-The Product Owner runs a five-node LangGraph pipeline: **read_document → ask_experts (parallel) → synthesize_prd → publish → trigger Builder**.
+The Product Owner runs a five-node LangGraph pipeline: **read_document → ask_experts (parallel) → synthesize_prd → publish → trigger Designer**.
 
-Triggered automatically by the Researcher's bus announcement:
+Triggered automatically by the Archeologist's bus announcement:
 
 1. **Read Document** fetches the 11KB research report from the document store
 2. **Ask Experts** issues parallel `bus_ask` calls to the Architect and Security agents simultaneously
 3. **Synthesize PRD** compiles research findings and expert input into a structured PRD
 4. **Publish** posts the PRD to the hub's document store
-5. **Trigger** fires a bus announcement that automatically starts the Builder
+5. **Trigger** fires a bus announcement that automatically starts the Designer
 
 > **Observed:** The Architect provided a 5.6KB answer grounded in 4 retrieved memories. Security provided a 7.7KB answer grounded in 3 retrieved memories. The resulting 16KB PRD included CALM (7 references), ADR (4), OWASP (3), NIST (3), JWT (10), RBAC (4), and RS256 (2). Every reference traces back to seeded knowledge or live web research.
 
 ### Phase 4: Implementation Design with Review Loop
 
-The Builder runs a seven-node LangGraph pipeline with a conditional review loop: **read_document → ask_experts → synthesize → publish → review → [revise → publish → review ...] → verify**.
+The Designer runs a LangGraph pipeline with a conditional review loop: **read_document → ask_experts → synthesize → validate → output_guard → publish → review → [revise → publish → review ...] → verify**.
 
 Triggered automatically by the Product Owner's bus announcement:
 
@@ -140,7 +139,7 @@ Triggered automatically by the Product Owner's bus announcement:
 6. **Conditional:** if average score ≥ 80%, proceed to verify. If below, revise with explicit feedback and resubmit (max 5 iterations)
 7. **Verify** publishes a Design Review Report and announces completion
 
-> **Observed:** The Builder produced a 21KB implementation design with JWT (24 references), TypeScript (3), interface (7), and bcrypt. Round 1 review: Architect 88%, Security 78%, approved at 83% average with no revision needed. During review, the Architect retrieved 4 memories (4,792 chars) and Security retrieved 3 memories (2,133 chars), grounding their scores in actual ADRs and threat models. The 6KB Design Review Report cites ADR-001 (SOA with CALM), ADR-002 (MongoDB), and ADR-003 (JWT with inline RBAC) as correctly implemented.
+> **Observed:** The Designer produced a 21KB implementation design with JWT (24 references), TypeScript (3), interface (7), and bcrypt. Round 1 review: Architect 88%, Security 78%, approved at 83% average with no revision needed. During review, the Architect retrieved 4 memories (4,792 chars) and Security retrieved 3 memories (2,133 chars), grounding their scores in actual ADRs and threat models. The 6KB Design Review Report cites ADR-001 (SOA with CALM), ADR-002 (MongoDB), and ADR-003 (JWT with inline RBAC) as correctly implemented.
 
 ### Expert Agents: Dual-Mode LangGraph
 
@@ -189,7 +188,7 @@ All agents generated complete traces during the test run. Full visibility into e
 - **Isolation:** Each agent runs in its own NemoClaw kernel-isolated k3s pod, fully network-isolated
 - **Proxy:** All outbound traffic routes through the OpenShell proxy at `10.200.0.1:3128`
 - **LLM routing:** LangGraph agents bypass the NemoClaw inference proxy to avoid the 60-second timeout, connecting directly to `spark-ee7d.local:8000`
-- **Secrets:** External API keys (e.g., `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded. Only the Researcher sandbox receives the Tavily provider.
+- **Secrets:** External API keys (e.g., `TAVILY_API_KEY`) are injected via OpenShell providers, not hardcoded. Only the Archeologist sandbox receives the Tavily provider (for both research and archaeology paths).
 - **Network policies:** Hub connections, PyPI, and HuggingFace access require explicit rules in `policies/openclaw-sandbox.yaml`
 
 ### Shared Memory Layer
@@ -197,14 +196,14 @@ All agents generated complete traces during the test run. Full visibility into e
 - **NCMS** provides persistent shared memory across all agents via an HTTP API on `:9080`
 - **Hybrid retrieval:** BM25 (Tantivy/Rust) for lexical precision + SPLADE v3 for semantic expansion + NetworkX graph spreading activation. No dense vectors, no embedding API calls.
 - **Integration:** Expert agents use NCMS recall with domain filtering. When a pipeline agent issues a `bus_ask`, the domain expert searches the shared store with hybrid retrieval and grounds its LLM response in retrieved facts.
-- **Knowledge seeding:** Expert agents load curated domain knowledge at startup from `knowledge/architecture/` (ADRs, CALM specs) and `knowledge/security/` (STRIDE threat models, OWASP controls). The Researcher, Product Owner, and Builder have no knowledge files. They learn by querying experts and consuming documents.
+- **Knowledge seeding:** Expert agents load curated domain knowledge at startup from `knowledge/architecture/` (ADRs, CALM specs) and `knowledge/security/` (STRIDE threat models, OWASP controls). The Archeologist, Product Owner, and Designer have no knowledge files. They learn by querying experts and consuming documents.
 
 ### Pipeline Infrastructure
 
 - **Lightweight telemetry channel.** A dedicated `POST /api/v1/pipeline/events` endpoint relays per-node status events via SSE without storing them as memories. Each LangGraph node calls this endpoint at entry and exit. The dashboard subscribes to `pipeline.node` events for real-time progress visualization. This is deliberately separate from the knowledge bus, which is reserved for meaningful events like document publications and review scores.
 - **Pipeline interrupt.** Every pipeline node checks for interrupt signals between steps. The dashboard progress bar has clickable interrupt buttons. When interrupted, remaining nodes skip and the progress bar shows amber stop icons. The interrupt flag is consumed on read (single-fire).
 - **Document intelligence.** Every published document is enriched with GLiNER entity extraction (20 entities per document). The hub seeds a `software` domain with 10 labels tuned for software delivery: `framework`, `database`, `protocol`, `standard`, `threat`, `pattern`, `security_control`, `api_endpoint`, `data_model`, `architecture_decision`. These layer on top of 10 universal labels for 20 total extraction targets. Metadata persists as JSON sidecar files alongside the markdown, surviving hub restarts. Expert agents use entity keywords from document sidecars for targeted NCMS memory retrieval instead of raw text excerpts.
-- **Guardrails as pipeline bookends.** Every pipeline agent starts with a `check_guardrails` node that validates topics against domain and technology policies stored in the hub. The Builder additionally runs `check_output_guardrails` before publishing, scanning for hardcoded secrets and prohibited patterns. Policies are versioned documents editable from the dashboard's policy editor.
+- **Guardrails as pipeline bookends.** Every pipeline agent starts with a `check_guardrails` node that validates topics against domain and technology policies stored in the hub. The Designer additionally runs `check_output_guardrails` before publishing, scanning for hardcoded secrets and prohibited patterns. Policies are versioned documents editable from the dashboard's policy editor.
 - **Prompt extraction.** Agent prompts are extracted into separate `*_prompts.py` modules (`research_prompts.py`, `prd_prompts.py`, `design_prompts.py`, `expert_prompts.py`, `archeologist_prompts.py`). The hub provides a prompt store API and the dashboard includes a prompt editor for versioning and editing prompts without rebuilding sandboxes.
 - **Policy storage.** Guardrails policies (domain scope, technology scope, compliance requirements) are stored via the hub's policy API and managed from the dashboard policy editor. Agents load policies at pipeline start.
 
@@ -225,17 +224,17 @@ The pipeline runs end-to-end with two entry paths (green-field research and exis
 ### Phase 2 Remaining: Validation and Reliability
 
 - **Entity recall validation.** A/B comparison of entity-enriched search vs the prior raw text excerpt approach. Measure retrieval quality, expert answer grounding, and review scores across both modes.
-- **Bus-based agent triggering.** Replace direct HTTP `/generate` calls from `create_project()` with bus announcements to `trigger-researcher`/`trigger-archeologist`. Eliminates port forward dependency for initial project trigger (the known failure mode where long-lived HTTP requests crash SSH tunnels).
+- **Bus-based agent triggering.** Replace direct HTTP `/generate` calls from `create_project()` with bus announcements to `trigger-archeologist`. Eliminates port forward dependency for initial project trigger (the known failure mode where long-lived HTTP requests crash SSH tunnels).
 - **Document diff view.** Side-by-side comparison of design revisions with review comment annotations.
 - **Template library.** Reusable design fragments from high-scoring pipeline runs.
 
 ### Phase 3: Coding Agent and Governance
 
-- **Coding agent (Claude Code in a sandbox).** A seventh LangGraph agent receives the Builder's approved implementation design, passes it to Claude Code as a specification, and orchestrates code generation with test-fix-retry loops.
+- **Coding agent (Claude Code in a sandbox).** A sixth LangGraph agent receives the Designer's approved implementation design, passes it to Claude Code as a specification, and orchestrates code generation with test-fix-retry loops.
 - **Contextual approval queue.** Full-context human gate before code generation. Design + review scores + cost estimate in one approval view.
 - **Compliance dashboard.** Aggregate governance visibility across all projects. ADR matrix, STRIDE heat map, quality trends, drift scores.
 - **Audit trail.** Complete execution records for reproducibility and compliance.
-- **Code-to-design feedback loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder.
+- **Code-to-design feedback loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Designer.
 
 ### Resilience and Observability
 
@@ -260,14 +259,14 @@ The current expert reviews use a simplified version of the Looking Glass governa
 
 ### Libraries and Lifecycle
 
-- **Template Library.** Reusable design fragments (middleware patterns, API contracts, infrastructure configs) stored as versioned documents. The Builder adapts templates to each project instead of generating from scratch. High-scoring designs automatically contribute new templates.
+- **Template Library.** Reusable design fragments (middleware patterns, API contracts, infrastructure configs) stored as versioned documents. The Designer adapts templates to each project instead of generating from scratch. High-scoring designs automatically contribute new templates.
 - **Design Pattern Library.** Organizational patterns mined from historical runs using NCMS knowledge consolidation. Recurring implementations (JWT signing, rate limiting, error handling) surface as discoverable patterns that promote consistency across projects.
 - **Prompt Performance Metrics.** The prompt library stores versions and the dashboard editor supports editing. The next step is tracking which prompt version produces the highest review scores, enabling A/B comparison across pipeline runs.
 - **Knowledge Lifecycle Management.** Hot-reload knowledge files without rebuilding sandboxes. Versioned knowledge with reconciliation (NCMS Phase 2 supersedes/conflicts). Deprecation for outdated ADRs or threat models. Cross-agent synchronization when knowledge changes.
 
 ### Feedback and Audit
 
-- **Code-to-Design Feedback Loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Builder for targeted revision. The project tracks how many design-code round trips were needed as a spec quality metric.
+- **Code-to-Design Feedback Loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Designer for targeted revision. The project tracks how many design-code round trips were needed as a spec quality metric.
 - **Audit Trail and Reproducibility.** Complete execution records for every pipeline run: inputs, retrieved memories, LLM prompts and responses, review scores, and document IDs. Frozen snapshots enable reproducibility for compliance and governance.
 
 ### Platform Capabilities

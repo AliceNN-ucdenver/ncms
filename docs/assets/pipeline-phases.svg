@@ -8,7 +8,7 @@
       <stop offset="0%" stop-color="#22c55e" stop-opacity="0.15"/>
       <stop offset="100%" stop-color="#22c55e" stop-opacity="0.05"/>
     </linearGradient>
-    <linearGradient id="builderGrad" x1="0" y1="0" x2="1" y2="0">
+    <linearGradient id="designerGrad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.15"/>
       <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.05"/>
     </linearGradient>
@@ -82,9 +82,9 @@
     <text x="72" y="23" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Research</text>
     <text x="200" y="23" fill="#8b7bae" font-family="system-ui, sans-serif" font-size="9">(Semi-Formal + CoT  |  Tavily + ArXiv)</text>
 
-    <!-- Researcher box -->
+    <!-- Archeologist box -->
     <rect x="30" y="36" width="900" height="68" rx="8" fill="url(#researchGrad)" stroke="#10b981" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="46" y="52" fill="#10b981" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Researcher</text>
+    <text x="46" y="52" fill="#10b981" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Archeologist</text>
 
     <!-- Node: check_guardrails (cyan/shield) -->
     <rect x="50" y="60" width="76" height="28" rx="5" fill="#0a1628" stroke="#06b6d4" stroke-width="1.2" stroke-opacity="0.8"/>
@@ -235,9 +235,9 @@
     <text x="50" y="23" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">4</text>
     <text x="72" y="23" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Implementation Design</text>
 
-    <!-- Builder box (taller to accommodate review loop + new nodes) -->
-    <rect x="30" y="36" width="870" height="218" rx="8" fill="url(#builderGrad)" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.5"/>
-    <text x="46" y="52" fill="#f59e0b" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Builder</text>
+    <!-- Designer box (taller to accommodate review loop + new nodes) -->
+    <rect x="30" y="36" width="870" height="218" rx="8" fill="url(#designerGrad)" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="46" y="52" fill="#f59e0b" font-family="system-ui, sans-serif" font-size="11" font-weight="700">Designer</text>
 
     <!-- === Row 1: Main pipeline === -->
     <!-- Node: check_guardrails (cyan/shield) -->
