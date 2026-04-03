@@ -722,33 +722,53 @@ class ArcheologistAgent:
         state["patent_results"] = []
 
         try:
+            import os
+
             import httpx as _httpx
 
-            # USPTO PatFT full-text search API
-            query = clean_topic.replace(" ", "+")
-            url = f"https://developer.uspto.gov/ibd-api/v1/patent/application?searchText={query}&rows=10&start=0"
+            api_key = os.environ.get("USPTO_API_KEY", "")
 
-            async with _httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get("results", [])
-                    patents = []
-                    for r in results[:5]:
-                        patents.append({
-                            "title": r.get("inventionTitle", ""),
-                            "abstract": (r.get("abstractText", "") or "")[:500],
-                            "filing_date": r.get("filingDate", ""),
-                            "assignee": r.get("applicantFileReference", ""),
-                            "patent_number": r.get("patentApplicationNumber", ""),
-                        })
-                    state["patent_results"] = patents
-                    logger.info(
-                        "[archeologist/research] USPTO: %d patents found for '%s'",
-                        len(patents), clean_topic[:60],
-                    )
-                else:
-                    logger.warning("[archeologist/research] USPTO API returned %d", resp.status_code)
+            # USPTO Open Data Portal — Patent File Wrapper search
+            query = clean_topic.replace(" ", "+")
+            headers = {"Accept": "application/json"}
+            if api_key:
+                headers["X-API-Key"] = api_key
+
+            # Try new ODP endpoint first, fall back to legacy
+            endpoints = [
+                f"https://data.uspto.gov/api/v1/patent-file-wrapper/search?searchText={query}&rows=10",
+                f"https://developer.uspto.gov/ibd-api/v1/patent/application?searchText={query}&rows=10&start=0",
+            ]
+
+            patents = []
+            for endpoint in endpoints:
+                try:
+                    async with _httpx.AsyncClient(timeout=30.0) as client:
+                        resp = await client.get(endpoint, headers=headers)
+                        if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
+                            data = resp.json()
+                            # Handle both ODP and legacy response formats
+                            results = data.get("patentFileWrapperDataBag", data.get("results", []))
+                            for r in results[:5]:
+                                meta = r.get("applicationMetaData", r)
+                                patents.append({
+                                    "title": meta.get("inventionTitle", ""),
+                                    "abstract": "",  # abstract not in file wrapper API
+                                    "filing_date": meta.get("filingDate", meta.get("effectiveFilingDate", "")),
+                                    "assignee": meta.get("firstApplicantName", ""),
+                                    "inventor": meta.get("firstInventorName", ""),
+                                    "patent_number": meta.get("patentNumber", r.get("applicationNumberText", "")),
+                                    "status": meta.get("applicationStatusDescriptionText", ""),
+                                })
+                            if patents:
+                                logger.info("[archeologist/research] USPTO (%s): %d patents found", endpoint[:40], len(patents))
+                                break
+                except Exception as e:
+                    logger.debug("[archeologist/research] USPTO endpoint failed: %s — %s", endpoint[:40], e)
+
+            state["patent_results"] = patents
+            if not patents:
+                logger.info("[archeologist/research] USPTO: no patents found for '%s'", clean_topic[:60])
 
         except Exception as e:
             logger.warning("[archeologist/research] Patent search failed: %s", e)
