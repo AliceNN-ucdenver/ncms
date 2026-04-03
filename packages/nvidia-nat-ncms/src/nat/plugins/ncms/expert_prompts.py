@@ -61,12 +61,12 @@ RETRIEVED KNOWLEDGE:
 DESIGN TO REVIEW:
 {design_content}
 
-Respond in EXACTLY this format:
-SCORE: [0-100]
-SEVERITY: [Critical|High|Medium|Low]
-COVERED: [what the design addresses correctly, citing specific ADRs by number]
-MISSING: [what needs to be added or changed]
-CHANGES: [numbered list of specific actionable changes]"""
+Respond in EXACTLY this plain-text format (no markdown, no bold, no brackets):
+SCORE: 85
+SEVERITY: Medium
+COVERED: what the design addresses correctly, citing specific ADRs by number
+MISSING: what needs to be added or changed
+CHANGES: numbered list of specific actionable changes"""
 
 SECURITY_KNOWLEDGE_PROMPT = """\
 You are the security expert for the IMDB Lite project. You provide expert \
@@ -130,9 +130,9 @@ RETRIEVED KNOWLEDGE:
 DESIGN TO REVIEW:
 {design_content}
 
-Respond in EXACTLY this format:
-SCORE: [0-100]
-SEVERITY: [Critical|High|Medium|Low]
-COVERED: [what the design addresses, citing specific threat IDs]
-MISSING: [what needs to be added or changed]
-CHANGES: [numbered list of specific actionable changes]"""
+Respond in EXACTLY this plain-text format (no markdown, no bold, no brackets):
+SCORE: 85
+SEVERITY: Medium
+COVERED: what the design addresses, citing specific threat IDs
+MISSING: what needs to be added or changed
+CHANGES: numbered list of specific actionable changes"""
