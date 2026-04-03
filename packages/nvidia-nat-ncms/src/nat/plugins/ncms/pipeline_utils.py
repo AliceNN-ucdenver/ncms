@@ -64,11 +64,15 @@ def _ensure_langchain_instrumented():
             logger.info("[otel] PHOENIX_COLLECTOR_ENDPOINT not set, skipping LangChain instrumentation")
             return
 
+        import os
         from openinference.instrumentation.langchain import LangChainInstrumentor
         from phoenix.otel import register
 
+        # Set project name via env var (register() reads PHOENIX_PROJECT_NAME)
+        os.environ["PHOENIX_PROJECT_NAME"] = project
+
         logger.info("[otel] Registering Phoenix tracer: endpoint=%s project=%s", endpoint, project)
-        tracer_provider = register(endpoint=endpoint, project=project)
+        tracer_provider = register(endpoint=endpoint)
         logger.info("[otel] TracerProvider: %s", type(tracer_provider).__name__)
 
         LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
