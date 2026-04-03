@@ -28,9 +28,9 @@ services:
       NCMS_HUB_PORT: "9080"
       NCMS_DASHBOARD_PORT: "8420"
       # Inference (DGX Spark)
-      NCMS_LLM_MODEL: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      NCMS_LLM_MODEL: "openai/qwen35"
       NCMS_LLM_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
-      NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "openai/qwen35"
       NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
       # Features
       NCMS_SPLADE_ENABLED: "true"
