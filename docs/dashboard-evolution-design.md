@@ -6,10 +6,14 @@ The NCMS dashboard today is an observability tool. It shows agent activity via S
 
 This is effective for watching agents work. It is not effective for managing a portfolio of AI-driven design projects, tracking governance compliance across those projects, or giving a human approver enough context to make informed decisions about code generation.
 
-This document describes twenty capabilities that transform the dashboard from a monitoring tool into a project delivery and governance compliance platform. Each section states the problem, describes the design, and outlines the implementation path. The phased delivery plan at the end groups them by dependency and impact.
+This document describes twenty capabilities that transform the dashboard from a monitoring tool into a project delivery and governance compliance platform. Each section states the problem, describes the design, and outlines the implementation path.
+
+> **Status key:** Features marked **IMPLEMENTED** are complete and operational.
+> Implementation details and phase tracking are in [document-intelligence-design.md](document-intelligence-design.md).
+> Remaining features are future work, grouped by phase at the end of this document.
 
 
-## 1. Project/Epic View
+## 1. Project/Epic View — IMPLEMENTED
 
 ### Problem
 
@@ -51,7 +55,7 @@ Frontend:
 - Project cards update in real time as SSE events arrive for documents tagged with matching project IDs.
 
 
-## 2. Compliance Dashboard
+## 2. Compliance Dashboard — FUTURE
 
 ### Problem
 
@@ -88,7 +92,7 @@ Frontend:
 - Data refreshes on tab activation and can be manually triggered. No SSE subscription needed since compliance data changes only when reviews complete.
 
 
-## 3. Live Pipeline Progress
+## 3. Live Pipeline Progress — IMPLEMENTED
 
 ### Problem
 
@@ -153,7 +157,7 @@ Frontend:
 - Click handlers on active nodes show interrupt/retry options. Interrupt sends a bus announcement. Retry re-POSTs to the agent's `/generate` endpoint.
 
 
-## 4. Document Diff View
+## 4. Document Diff View — IMPLEMENTED
 
 ### Problem
 
@@ -181,7 +185,7 @@ This is a frontend-only feature. The existing document detail API already return
 - The diff view replaces the standard document content panel when the user selects a comparison version.
 
 
-## 5. Knowledge Grounding Inspector
+## 5. Knowledge Grounding Inspector — IMPLEMENTED
 
 ### Problem
 
@@ -211,7 +215,7 @@ Frontend:
 - The grounding score computation runs once when a document is opened and caches the result for the session.
 
 
-## 6. Contextual Approval Queue
+## 6. Contextual Approval Queue — FUTURE
 
 ### Problem
 
@@ -249,7 +253,7 @@ Frontend:
 - Cost estimation data is fetched from a new `GET /api/v1/projects/{id}/implementation-estimate` endpoint that computes estimates based on the design document size and historical data.
 
 
-## 7. Telegram Integration
+## 7. Telegram Integration — FUTURE
 
 ### Problem
 
@@ -275,7 +279,7 @@ Starting a pipeline run or approving an implementation currently requires the us
 - Configuration: `NCMS_TELEGRAM_BOT_TOKEN` and `NCMS_TELEGRAM_CHAT_ID` environment variables. The chat ID restricts the bot to authorized users.
 
 
-## 8. Coding Agent (Claude Code)
+## 8. Coding Agent (Claude Code) — FUTURE
 
 ### Problem
 
@@ -306,7 +310,7 @@ The current pipeline ends at design and review. Approved designs must be impleme
 - The agent registers on the bus with domain `implementation` and subscribes to `approval-response` announcements.
 
 
-## 9. Resilience Improvements
+## 9. Resilience Improvements — FUTURE
 
 ### Problem
 
@@ -333,7 +337,7 @@ The current system has several reliability gaps. Port forwards to sandboxed agen
 - Review degradation: Modify the review orchestration logic to catch reviewer failures and proceed with partial results when possible.
 
 
-## 10. Looking Glass Governance Mesh
+## 10. Looking Glass Governance Mesh — FUTURE
 
 ### Problem
 
@@ -360,7 +364,7 @@ Expert agents currently load knowledge from static files. The governance standar
 - Cross-pillar drift analysis: A new scoring function that computes dependency-weighted drift across pillar pairs, surfaced in the compliance dashboard.
 
 
-## 11. Spec Quality: Completeness Validation and Interface Contracts
+## 11. Spec Quality: Completeness Validation and Interface Contracts — IMPLEMENTED
 
 ### Problem
 
@@ -430,7 +434,7 @@ These contracts are published as separate documents alongside the design. The co
 The hypothesis is that the spec is the single most important artifact. A coding agent with a perfect spec produces good code. A coding agent with a vague spec produces garbage. The completeness checker ensures structural rigor (every section present, every endpoint typed, every requirement traced). The contract generator produces machine-parseable output (OpenAPI, Zod) that eliminates ambiguity. Together, they transform the design from "a document a human can read" to "a specification a machine can execute."
 
 
-## 12. NemoGuardrails: Pipeline Policy Enforcement
+## 12. NemoGuardrails: Pipeline Policy Enforcement — IMPLEMENTED
 
 ### Problem
 
@@ -546,7 +550,7 @@ Escalation levels are configurable per policy rule, not globally. A domain polic
 The guardrails layer sits between the hub's `/generate` proxy and the agent's LangGraph pipeline. It does not modify the graph itself. This means guardrails can be enabled or disabled per agent via configuration, and the pipeline continues to work identically when guardrails are off. The goal is policy as an overlay, not policy embedded in agent logic. Policies stored in NCMS are versioned and auditable, and the audit trail (feature 16) records which policy version was active for each pipeline run.
 
 
-## 13. Template Library
+## 13. Template Library — FUTURE
 
 ### Problem
 
@@ -574,7 +578,7 @@ New templates are created automatically: when a design passes review at 90%+ and
 - Dashboard: template browser in the project view showing available templates by domain
 
 
-## 14. Design Pattern Library (Mined from Historical Runs)
+## 14. Design Pattern Library (Mined from Historical Runs) — FUTURE
 
 ### Problem
 
@@ -600,7 +604,7 @@ This transforms NCMS from "memory for one pipeline run" to "organizational knowl
 - Builder prompt injection: top patterns for the relevant domain included as context
 
 
-## 15. Prompt Library (Agent Prompt Management)
+## 15. Prompt Library (Agent Prompt Management) — IMPLEMENTED
 
 ### Problem
 
@@ -627,7 +631,7 @@ A managed prompt library where each agent's prompts are versioned, testable, and
 - Dashboard: prompt editor tab with version history and performance metrics
 
 
-## 16. Audit Trail and Reproducibility
+## 16. Audit Trail and Reproducibility — FUTURE
 
 ### Problem
 
@@ -655,7 +659,7 @@ NCMS's bitemporal fields (`observed_at`, `ingested_at`) provide the foundation. 
 - Retention policy: audit records are immutable and retained per organizational compliance requirements
 
 
-## 17. Knowledge Lifecycle Management
+## 17. Knowledge Lifecycle Management — FUTURE
 
 ### Problem
 
@@ -680,7 +684,7 @@ A knowledge management layer that treats seeded knowledge as a living, versioned
 - NCMS reconciliation (Phase 2) activated for knowledge memories: new versions automatically supersede old ones with `valid_to` closure
 
 
-## 18. Feedback Loop: Code Back to Design
+## 18. Feedback Loop: Code Back to Design — FUTURE
 
 ### Problem
 
@@ -704,7 +708,7 @@ A bidirectional feedback channel from the coding agent back to the Builder:
 - Dashboard shows the feedback loop as a visible phase in the pipeline progress bar
 
 
-## 19. Document-Memory Integration (Entity-Enriched Recall)
+## 19. Document-Memory Integration (Entity-Enriched Recall) — IMPLEMENTED
 
 ### Problem
 
@@ -760,7 +764,7 @@ Frontend:
 - Document search panel with entity-based filtering.
 
 
-## 20. Archeologist Agent (Existing Repository Analysis)
+## 20. Archeologist Agent (Existing Repository Analysis) — IMPLEMENTED
 
 ### Problem
 

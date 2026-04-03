@@ -2,7 +2,7 @@
 
 This document covers the complete Document Intelligence feature set: the implemented foundation (Phases 1, 2, 2.5), the agent consolidation (6 → 5), and the audit/provenance features designed from a Chief Architect + CIRO review.
 
-For future phases (Coding Agent, Learning System), see [dashboard-evolution-design.md](dashboard-evolution-design.md).
+For future phases (Coding Agent, Learning System) and detailed feature designs for all 20 capabilities, see [dashboard-evolution-design.md](dashboard-evolution-design.md).
 
 ---
 
