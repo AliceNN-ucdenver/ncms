@@ -4985,3 +4985,30 @@
   padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px;
 }
 .audit-error { color: #ef4444; }
+
+/* ── Document Diff View ─────────────────────────────────────────── */
+.doc-viewer-compare-btn {
+  background: var(--bg-tertiary); border: 1px solid var(--border);
+  color: var(--text-secondary); font-size: 11px; padding: 4px 10px;
+  border-radius: 4px; cursor: pointer; margin-right: 8px;
+}
+.doc-viewer-compare-btn:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+.doc-diff { font-family: 'SF Mono', monospace; font-size: 11px; line-height: 1.6; }
+.doc-diff-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; margin-bottom: 8px;
+  background: rgba(0,0,0,0.2); border-radius: 6px;
+  font-size: 12px; font-weight: 600;
+}
+.diff-old { color: #ef4444; }
+.diff-new { color: #10b981; }
+.diff-arrow { color: var(--text-muted); }
+.diff-line { padding: 1px 8px 1px 0; white-space: pre-wrap; word-break: break-all; }
+.diff-num {
+  display: inline-block; width: 40px; text-align: right;
+  color: var(--text-muted); margin-right: 8px; font-size: 10px;
+  user-select: none;
+}
+.diff-same { color: var(--text-muted); }
+.diff-added { background: rgba(16, 185, 129, 0.08); color: #10b981; }
+.diff-removed { background: rgba(239, 68, 68, 0.08); color: #ef4444; }

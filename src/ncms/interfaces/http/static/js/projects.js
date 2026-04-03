@@ -504,6 +504,16 @@ async function openDocumentViewer(docId) {
       };
     }
 
+    // Compare button (if doc has a previous version)
+    if (doc.parent_doc_id) {
+      const compareBtn = document.createElement('button');
+      compareBtn.className = 'doc-viewer-compare-btn';
+      compareBtn.textContent = 'Compare with previous version';
+      compareBtn.onclick = () => showDocDiff(doc.id, doc.parent_doc_id, bodyEl);
+      const headerRight = overlay.querySelector('.doc-viewer-header-right');
+      if (headerRight) headerRight.insertBefore(compareBtn, headerRight.firstChild);
+    }
+
     // Render content as markdown
     const content = doc.content || doc.body || '';
     if (content) {
@@ -516,6 +526,50 @@ async function openDocumentViewer(docId) {
     if (bodyEl) {
       bodyEl.innerHTML = '<div class="doc-viewer-error">Failed to load document: ' + escapeHtml(String(e.message || e)) + '</div>';
     }
+  }
+}
+
+async function showDocDiff(newDocId, oldDocId, bodyEl) {
+  bodyEl.innerHTML = '<div class="doc-viewer-loading">Loading diff...</div>';
+  try {
+    const [newResp, oldResp] = await Promise.all([
+      fetch(HUB_API + '/api/v1/documents/' + encodeURIComponent(newDocId)),
+      fetch(HUB_API + '/api/v1/documents/' + encodeURIComponent(oldDocId)),
+    ]);
+    if (!newResp.ok || !oldResp.ok) throw new Error('Failed to fetch documents');
+    const newDoc = await newResp.json();
+    const oldDoc = await oldResp.json();
+
+    const newLines = (newDoc.content || '').split('\n');
+    const oldLines = (oldDoc.content || '').split('\n');
+
+    // Simple line-by-line diff
+    let html = '<div class="doc-diff">';
+    html += `<div class="doc-diff-header">
+      <span class="diff-old">v${oldDoc.version || '?'} (${(oldDoc.size_bytes / 1024).toFixed(1)} KB)</span>
+      <span class="diff-arrow">&rarr;</span>
+      <span class="diff-new">v${newDoc.version || '?'} (${(newDoc.size_bytes / 1024).toFixed(1)} KB)</span>
+    </div>`;
+
+    const maxLines = Math.max(newLines.length, oldLines.length);
+    for (let i = 0; i < maxLines; i++) {
+      const oldLine = oldLines[i];
+      const newLine = newLines[i];
+      if (oldLine === newLine) {
+        html += `<div class="diff-line diff-same"><span class="diff-num">${i + 1}</span>${escapeHtml(newLine || '')}</div>`;
+      } else if (oldLine === undefined) {
+        html += `<div class="diff-line diff-added"><span class="diff-num">+${i + 1}</span>${escapeHtml(newLine)}</div>`;
+      } else if (newLine === undefined) {
+        html += `<div class="diff-line diff-removed"><span class="diff-num">-${i + 1}</span>${escapeHtml(oldLine)}</div>`;
+      } else {
+        html += `<div class="diff-line diff-removed"><span class="diff-num">-${i + 1}</span>${escapeHtml(oldLine)}</div>`;
+        html += `<div class="diff-line diff-added"><span class="diff-num">+${i + 1}</span>${escapeHtml(newLine)}</div>`;
+      }
+    }
+    html += '</div>';
+    bodyEl.innerHTML = html;
+  } catch (e) {
+    bodyEl.innerHTML = '<div class="doc-viewer-error">Diff failed: ' + escapeHtml(e.message) + '</div>';
   }
 }
 
