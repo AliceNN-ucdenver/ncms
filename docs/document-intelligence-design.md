@@ -30,14 +30,17 @@ For future phases (Coding Agent, Learning System), see [dashboard-evolution-desi
 | 22 | Expert Classify Fix (deterministic [NCMS:review] tags) | Done |
 | 23 | Bug Fixes (Phase 2) | Done |
 | 24 | Bus-Based Agent Triggering | Done |
+| 25 | Entity Recall Validation (A/B comparison) | Deferred |
 | 26 | Semi-Formal Reasoning Prompts (Meta arXiv:2603.01896, +29%) | Done |
+| 4 | Document Diff View (version comparison in viewer) | Done |
+| 13 | Template Library (reusable design fragments) | Future |
 
 ### Phase 2.5 (Document Intelligence Persistence) — Complete
 
 | # | Feature | Status |
 |---|---------|--------|
 | 27-32 | Core persistence (docs, traceability, reviews, projects, pipeline, search API) | Done |
-| 33 | Phoenix spans for agent operations | Done |
+| 33 | Phoenix spans for agent operations | Partial — NAT workflow spans work; LangGraph node-level spans need instrumentor fix (see audit design #5) |
 | 34 | Auditor-grade project view (D3 doc flow graph) | Done |
 | 35-36 | Approval decision log + guardrail violation persistence | Done |
 | 37 | Knowledge grounding log | Done |
