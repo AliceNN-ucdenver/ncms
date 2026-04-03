@@ -625,8 +625,8 @@ class DocumentService:
                    SUBSTR(question_preview, 1, 80) as extra
             FROM bus_conversations WHERE project_id = ?
             UNION ALL
-            SELECT created_at as timestamp, 'review' as type, reviewer_agent as agent,
-                   'Round ' || review_round || ': ' || COALESCE(score, 0) || '%' as detail, severity as extra
+            SELECT rs.created_at as timestamp, 'review' as type, rs.reviewer_agent as agent,
+                   'Round ' || rs.review_round || ': ' || COALESCE(rs.score, 0) || '%' as detail, rs.severity as extra
             FROM review_scores rs
             JOIN documents d ON rs.document_id = d.id
             WHERE d.project_id = ?
