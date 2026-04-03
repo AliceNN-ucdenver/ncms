@@ -495,10 +495,10 @@ plan_queries → parallel_search (Tavily) → arxiv_search → patent_search (US
 ```
 
 **patent_search node** — Pure Python, no LLM, no API key:
-- USPTO Patent Search API: `https://developer.uspto.gov/api-catalog/patft`
+- USPTO Open Data Portal: `https://developer.uspto.gov/ibd-api/v1/patent/application`
+- Note: USPTO is transitioning from `developer.uspto.gov` to `data.uspto.gov` (old API shutting down April 20, 2026). The node tries both endpoints with graceful degradation.
 - Search by topic keywords extracted from the research topic
 - Extract: patent title, abstract, filing date, assignee
-- Filter to last 5 years for relevance
 - Collect up to 5 patents, store in `state["patent_results"]`
 
 **community_search node** — Pure Python, no LLM, no API key:
