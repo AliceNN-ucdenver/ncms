@@ -1,0 +1,120 @@
+{
+  "model": "nemotron-3-super (120B, 12B active, NVFP4)",
+  "active_params": "12B",
+  "project": {
+    "id": "PRJ-2c7b4695",
+    "topic": "Research authentication patterns for identity services",
+    "status": "active",
+    "quality_score": null,
+    "created_at": "2026-04-03T18:29:26.464062+00:00"
+  },
+  "documents": [
+    {
+      "id": "9a4e61af9028",
+      "title": "Authentication patterns for identity services \u2014 Market Research Report",
+      "doc_type": "research",
+      "from_agent": "archeologist",
+      "version": 1,
+      "size_bytes": 9006,
+      "content_hash": "c8d15df908a9820b7c5fbd739d0fde2095e3cd3268dc69d233815dd74fd442ac",
+      "created_at": "2026-04-03T18:31:28.088080+00:00"
+    },
+    {
+      "id": "3920422b0269",
+      "title": "Authentication patterns for identity services \u2014 PRD",
+      "doc_type": "prd",
+      "from_agent": "product_owner",
+      "version": 1,
+      "size_bytes": 65301,
+      "content_hash": "5af3d46c3d642a9f9252c17f415f9fba0ea7229dda56ec5a2c7ee3175c255e6f",
+      "created_at": "2026-04-03T18:47:05.051121+00:00"
+    },
+    {
+      "id": "82576660ab8f",
+      "title": "Authentication patterns for identity services \u2014 Requirements Manifest",
+      "doc_type": "manifest",
+      "from_agent": "product_owner",
+      "version": 1,
+      "size_bytes": 397,
+      "content_hash": "567df00d2c079151832d3c5e7ecc845dbf32e6f69c487d47eb650d05bed6e5c7",
+      "created_at": "2026-04-03T18:47:11.370791+00:00"
+    }
+  ],
+  "review_scores": [],
+  "llm_calls": [
+    {
+      "agent": "archeologist",
+      "node": "plan_queries",
+      "prompt_size": 1007,
+      "response_size": 406,
+      "reasoning_size": 0,
+      "duration_ms": 4654,
+      "model": "nemotron-3-super"
+    },
+    {
+      "agent": "archeologist",
+      "node": "synthesize_research",
+      "prompt_size": 23155,
+      "response_size": 8942,
+      "reasoning_size": 0,
+      "duration_ms": 81679,
+      "model": "nemotron-3-super"
+    },
+    {
+      "agent": "architect",
+      "node": "synthesize_answer",
+      "prompt_size": 10261,
+      "response_size": 531,
+      "reasoning_size": 0,
+      "duration_ms": 12830,
+      "model": "nemotron-3-super"
+    },
+    {
+      "agent": "security",
+      "node": "synthesize_answer",
+      "prompt_size": 4631,
+      "response_size": 1487,
+      "reasoning_size": 0,
+      "duration_ms": 22022,
+      "model": "nemotron-3-super"
+    },
+    {
+      "agent": "product_owner",
+      "node": "synthesize_prd",
+      "prompt_size": 14520,
+      "response_size": 65267,
+      "reasoning_size": 0,
+      "duration_ms": 862792,
+      "model": "nemotron-3-super"
+    },
+    {
+      "agent": "product_owner",
+      "node": "generate_manifest",
+      "prompt_size": 15380,
+      "response_size": 276,
+      "reasoning_size": 0,
+      "duration_ms": 5925,
+      "model": "nemotron-3-super"
+    }
+  ],
+  "config_snapshots": [
+    {
+      "agent": "archeologist",
+      "model": "nemotron-3-super",
+      "thinking": false,
+      "max_tokens": 131072
+    },
+    {
+      "agent": "product_owner",
+      "model": "nemotron-3-super",
+      "thinking": false,
+      "max_tokens": 131072
+    }
+  ],
+  "totals": {
+    "documents": 3,
+    "total_doc_bytes": 74704,
+    "llm_calls": 6,
+    "total_llm_duration_ms": 989902
+  }
+}
