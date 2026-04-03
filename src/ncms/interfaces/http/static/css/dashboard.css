@@ -268,7 +268,7 @@
   /* ── Agent Area (responsive grid) ──────────────────────────── */
   .agents-area {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 12px;
     width: 100%;
     max-width: 100%;
@@ -395,8 +395,8 @@
   }
 
   .domain-tag {
-    font-size: 10px;
-    padding: 1px 5px;
+    font-size: 9px;
+    padding: 1px 4px;
     background: rgba(88, 166, 255, 0.1);
     color: var(--accent-blue);
     border-radius: 4px;
