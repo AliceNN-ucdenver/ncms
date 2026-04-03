@@ -865,6 +865,20 @@ class DesignAgent:
             return state
         topic = state["topic"]
         doc_id = state.get("document_id")
+        project_id = state.get("project_id", "")
+
+        if not doc_id:
+            logger.error("[design_agent] Pipeline FAILED — no document published")
+            if project_id:
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10.0) as hc:
+                        await hc.post(f"{self.hub_url}/api/v1/projects/{project_id}/fail")
+                except Exception:
+                    pass
+            await emit_telemetry(self.hub_url, project_id, self.from_agent, "verify", "failed", "No document published")
+            return state
+
         scores = state.get("review_scores", {})
         iteration = state.get("iteration", 0)
         avg_score = sum(scores.values()) / max(len(scores), 1) if scores else 0

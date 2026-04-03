@@ -514,10 +514,24 @@ class PRDAgent:
                 len(prd),
             )
         else:
-            logger.warning(
-                "[prd_agent] Pipeline complete but no document published for: %s",
+            logger.error(
+                "[prd_agent] Pipeline FAILED — no document published for: %s",
                 topic[:60],
             )
+            project_id = state.get("project_id")
+            if project_id:
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10.0) as hc:
+                        await hc.post(f"{self.hub_url}/api/v1/projects/{project_id}/fail")
+                except Exception:
+                    pass
+            await emit_telemetry(
+                self.hub_url, state.get("project_id"),
+                self.from_agent, "verify_and_trigger", "failed",
+                "No document published — PRD synthesis returned empty",
+            )
+            return state
 
         # Trigger designer agent (fire-and-forget — don't block the return)
         if self.trigger_next_agent and doc_id:
