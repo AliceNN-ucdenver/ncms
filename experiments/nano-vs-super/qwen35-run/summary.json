@@ -1,0 +1,283 @@
+{
+  "model": "Qwen/Qwen3.5-35B-A3B (3B active)",
+  "active_params": "3B",
+  "project": {
+    "id": "PRJ-963bc59e",
+    "topic": "Research authentication patterns for identity services",
+    "status": "completed",
+    "quality_score": 83.5,
+    "created_at": "2026-04-03T20:18:44.481976+00:00"
+  },
+  "documents": [
+    {
+      "id": "23784d56a2b2",
+      "title": "Authentication patterns for identity services \u2014 Market Research Report",
+      "doc_type": "research",
+      "from_agent": "archeologist",
+      "version": 1,
+      "size_bytes": 15448,
+      "content_hash": "9cb3de4c9cfdcbe7b690a118e6dcf8c8ffb806ec424404db11540c0e7aefa7d3",
+      "created_at": "2026-04-03T20:24:04.208292+00:00"
+    },
+    {
+      "id": "c69771de002c",
+      "title": "Authentication patterns for identity services \u2014 PRD",
+      "doc_type": "prd",
+      "from_agent": "product_owner",
+      "version": 1,
+      "size_bytes": 12386,
+      "content_hash": "88694270184bb9deba739b7514cd4197c92b6381e87c68b192fc6927f48213b5",
+      "created_at": "2026-04-03T20:31:31.839273+00:00"
+    },
+    {
+      "id": "c96010a9afd2",
+      "title": "Authentication patterns for identity services \u2014 Requirements Manifest",
+      "doc_type": "manifest",
+      "from_agent": "product_owner",
+      "version": 1,
+      "size_bytes": 1675,
+      "content_hash": "3e8b22d43f37089d36df055242a0a2f8f7a379b696b8ba84b8a546a6f7499cee",
+      "created_at": "2026-04-03T20:31:45.015140+00:00"
+    },
+    {
+      "id": "03198e43370d",
+      "title": "Authentication patterns for identity services \u2014 Implementation Design v1",
+      "doc_type": "design",
+      "from_agent": "designer",
+      "version": 1,
+      "size_bytes": 23058,
+      "content_hash": "4b270cd6156957eaeaf276af599a0b35a0f837898b1c9dda58cdf7ca5e537fbb",
+      "created_at": "2026-04-03T20:39:45.320978+00:00"
+    },
+    {
+      "id": "05efbc63c903",
+      "title": "Authentication patterns for identity services \u2014 Implementation Design v2",
+      "doc_type": "design",
+      "from_agent": "designer",
+      "version": 2,
+      "size_bytes": 31723,
+      "content_hash": "7dbd141073fea66650bbec14cb54f5430f2617eb645a1a2252648da350afb5b1",
+      "created_at": "2026-04-03T20:47:40.209587+00:00"
+    },
+    {
+      "id": "5802286f6aa0",
+      "title": "Authentication patterns for identity services \u2014 Implementation Design v3",
+      "doc_type": "design",
+      "from_agent": "designer",
+      "version": 3,
+      "size_bytes": 30992,
+      "content_hash": "bfd7a9b03c7d5acda74831db5276548c5d9e9aee2af20db81d5695734eca7767",
+      "created_at": "2026-04-03T20:55:44.686784+00:00"
+    },
+    {
+      "id": "87a2bd23d89c",
+      "title": "Authentication patterns for identity services \u2014 Design Review Report",
+      "doc_type": "review",
+      "from_agent": "designer",
+      "version": 1,
+      "size_bytes": 6989,
+      "content_hash": "20cc507893e08d8634015a45c93a80e72da6a11b2b038f8f5ce15365054c7007",
+      "created_at": "2026-04-03T20:57:51.137503+00:00"
+    }
+  ],
+  "review_scores": [
+    {
+      "reviewer": "architect",
+      "round": 1,
+      "score": 82,
+      "severity": null
+    },
+    {
+      "reviewer": "security",
+      "round": 1,
+      "score": 72,
+      "severity": null
+    },
+    {
+      "reviewer": "architect",
+      "round": 2,
+      "score": 65,
+      "severity": null
+    },
+    {
+      "reviewer": "security",
+      "round": 2,
+      "score": 78,
+      "severity": null
+    },
+    {
+      "reviewer": "architect",
+      "round": 3,
+      "score": 92,
+      "severity": null
+    },
+    {
+      "reviewer": "security",
+      "round": 3,
+      "score": 75,
+      "severity": null
+    }
+  ],
+  "llm_calls": [
+    {
+      "agent": "archeologist",
+      "node": "plan_queries",
+      "prompt_size": 1007,
+      "response_size": 498,
+      "reasoning_size": 0,
+      "duration_ms": 4112,
+      "model": "qwen35"
+    },
+    {
+      "agent": "archeologist",
+      "node": "synthesize_research",
+      "prompt_size": 24311,
+      "response_size": 15386,
+      "reasoning_size": 0,
+      "duration_ms": 250411,
+      "model": "qwen35"
+    },
+    {
+      "agent": "architect",
+      "node": "synthesize_answer",
+      "prompt_size": 10261,
+      "response_size": 4561,
+      "reasoning_size": 0,
+      "duration_ms": 42080,
+      "model": "qwen35"
+    },
+    {
+      "agent": "security",
+      "node": "synthesize_answer",
+      "prompt_size": 4143,
+      "response_size": 5425,
+      "reasoning_size": 0,
+      "duration_ms": 52135,
+      "model": "qwen35"
+    },
+    {
+      "agent": "product_owner",
+      "node": "synthesize_prd",
+      "prompt_size": 28932,
+      "response_size": 12294,
+      "reasoning_size": 0,
+      "duration_ms": 230698,
+      "model": "qwen35"
+    },
+    {
+      "agent": "product_owner",
+      "node": "generate_manifest",
+      "prompt_size": 12674,
+      "response_size": 1554,
+      "reasoning_size": 0,
+      "duration_ms": 18582,
+      "model": "qwen35"
+    },
+    {
+      "agent": "architect",
+      "node": "synthesize_answer",
+      "prompt_size": 8174,
+      "response_size": 4515,
+      "reasoning_size": 0,
+      "duration_ms": 41236,
+      "model": "qwen35"
+    },
+    {
+      "agent": "security",
+      "node": "synthesize_answer",
+      "prompt_size": 3915,
+      "response_size": 6933,
+      "reasoning_size": 0,
+      "duration_ms": 67433,
+      "model": "qwen35"
+    },
+    {
+      "agent": "designer",
+      "node": "synthesize_design",
+      "prompt_size": 25668,
+      "response_size": 21882,
+      "reasoning_size": 0,
+      "duration_ms": 215490,
+      "model": "qwen35"
+    },
+    {
+      "agent": "architect",
+      "node": "structured_review",
+      "prompt_size": 32760,
+      "response_size": 2366,
+      "reasoning_size": 0,
+      "duration_ms": 26787,
+      "model": "qwen35"
+    },
+    {
+      "agent": "security",
+      "node": "structured_review",
+      "prompt_size": 26883,
+      "response_size": 2804,
+      "reasoning_size": 0,
+      "duration_ms": 28558,
+      "model": "qwen35"
+    },
+    {
+      "agent": "designer",
+      "node": "revise_design",
+      "prompt_size": 29791,
+      "response_size": 31237,
+      "reasoning_size": 0,
+      "duration_ms": 305987,
+      "model": "qwen35"
+    },
+    {
+      "agent": "architect",
+      "node": "structured_review",
+      "prompt_size": 41940,
+      "response_size": 3050,
+      "reasoning_size": 0,
+      "duration_ms": 35885,
+      "model": "qwen35"
+    },
+    {
+      "agent": "security",
+      "node": "structured_review",
+      "prompt_size": 35516,
+      "response_size": 3185,
+      "reasoning_size": 0,
+      "duration_ms": 31536,
+      "model": "qwen35"
+    },
+    {
+      "agent": "designer",
+      "node": "revise_design",
+      "prompt_size": 39428,
+      "response_size": 30488,
+      "reasoning_size": 0,
+      "duration_ms": 308474,
+      "model": "qwen35"
+    },
+    {
+      "agent": "architect",
+      "node": "structured_review",
+      "prompt_size": 37112,
+      "response_size": 2163,
+      "reasoning_size": 0,
+      "duration_ms": 26157,
+      "model": "qwen35"
+    },
+    {
+      "agent": "security",
+      "node": "structured_review",
+      "prompt_size": 34767,
+      "response_size": 4449,
+      "reasoning_size": 0,
+      "duration_ms": 44682,
+      "model": "qwen35"
+    }
+  ],
+  "totals": {
+    "documents": 7,
+    "total_doc_bytes": 122271,
+    "review_rounds": 3,
+    "llm_calls": 17,
+    "total_llm_duration_ms": 1730243
+  }
+}
