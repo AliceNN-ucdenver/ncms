@@ -36,6 +36,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "pyjwt>=2.11.0",
     "langchain-openai>=1.1.11",
+    "langchain-nvidia-ai-endpoints>=1.2.1",
 ]
 
 [project.optional-dependencies]

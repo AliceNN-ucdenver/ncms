@@ -320,6 +320,19 @@ def _ensure_langchain_instrumented():
 
 Each LLM span includes: `input.value` (full prompt), `output.value` (full response), `llm.token_count.prompt`, `llm.token_count.completion`, `llm.model_name`. This is richer than anything `traced_llm_call()` could provide because it comes from LangChain's native callback system.
 
+### NemoClaw Proxy Discovery
+
+`_type: nim` (ChatNVIDIA) uses `aiohttp` for async HTTP, while `_type: openai` (ChatOpenAI) uses `httpx`. NemoClaw's network proxy intercepts `httpx` traffic but NOT `aiohttp` traffic. This means:
+
+- **ChatOpenAI (`_type: openai`)** — works through NemoClaw proxy, reaches Spark
+- **ChatNVIDIA (`_type: nim`)** — blocked by NemoClaw proxy, DNS/connection fails
+
+ChatNVIDIA natively handles `chat_template_kwargs` and preserves `reasoning_content` in the response. ChatOpenAI doesn't — it strips reasoning_content, though thinking still happens server-side (verified by completion token count: 200 with thinking vs 79 without).
+
+**Current approach:** `_type: openai` with `model_kwargs.extra_body.chat_template_kwargs.enable_thinking`. Thinking happens server-side but reasoning_content is not visible in the LangChain response. Output quality improvement is real — just not observable in logs.
+
+**Future fix:** When NemoClaw supports aiohttp proxy routing (or when we can configure ChatNVIDIA to use httpx), switch to `_type: nim` to get full `reasoning_content` visibility.
+
 ### Effort: 1 day (mostly reverting traced_llm_call)
 
 ---
@@ -488,7 +501,7 @@ Review scores were saved twice per reviewer per round (request_review + verify).
 | 8 | Automated compliance score | 1 day | **Done** — GET /projects/{id}/compliance |
 | 9 | Document version diff | 1 day | **Done** — client-side diff in document viewer |
 | 10 | Quality trend analytics | 3-5 days | Future |
-| 11 | Project lifecycle completion | 0.5 days | Designed |
+| 11 | Project lifecycle completion | 0.5 days | **Done** — verify node marks completed |
 | 12 | Audit export (PDF/markdown report) | 2-3 days | Designed |
 
 ---

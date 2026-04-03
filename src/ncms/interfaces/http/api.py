@@ -813,6 +813,31 @@ def create_api_app(
             return JSONResponse(project.model_dump(mode="json"))
         return JSONResponse({"error": "Not found"}, status_code=404)
 
+    async def complete_project(request: Request) -> JSONResponse:
+        """Mark project as completed when designer verify passes."""
+        project_id = request.path_params["project_id"]
+        if doc_svc:
+            body = await request.json()
+            quality_score = body.get("quality_score")
+            await doc_svc.update_project_status(project_id, "completed")
+            if quality_score is not None:
+                project = await doc_svc.get_project(project_id)
+                if project:
+                    project.quality_score = quality_score
+                    from datetime import UTC, datetime
+                    project.updated_at = datetime.now(UTC)
+                    await doc_svc._store.update_project(project)
+
+            if event_log:
+                from ncms.infrastructure.observability.event_log import DashboardEvent
+                event_log.emit(DashboardEvent(
+                    type="project.completed",
+                    data={"project_id": project_id, "quality_score": quality_score},
+                ))
+
+            return JSONResponse({"status": "completed", "project_id": project_id})
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
     # -- Pipeline Telemetry ----------------------------------------------------
 
     async def post_pipeline_event(request: Request) -> JSONResponse:
@@ -1511,6 +1536,7 @@ def create_api_app(
         Route("/api/v1/projects", list_projects, methods=["GET"]),
         Route("/api/v1/projects/{project_id}", get_project, methods=["GET"]),
         Route("/api/v1/projects/{project_id}/archive", archive_project, methods=["POST"]),
+        Route("/api/v1/projects/{project_id}/complete", complete_project, methods=["POST"]),
 
         # Pipeline telemetry + control
         Route("/api/v1/pipeline/events", post_pipeline_event, methods=["POST"]),

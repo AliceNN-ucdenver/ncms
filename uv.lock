@@ -2686,6 +2686,21 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-nvidia-ai-endpoints"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "filetype" },
+    { name = "langchain-core" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f0/d5/5d70c7b7a66dfabc4c355e408a066e8bef7d2715f3b7854ce44704886119/langchain_nvidia_ai_endpoints-1.2.1.tar.gz", hash = "sha256:055d2511fa7374da65e5d3dd1705fb09125620a124c6247212d661286f64fa8d", size = 57520, upload-time = "2026-03-16T16:42:34.682Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/b7/99f72331842b0f62da891411c5590ff7fab70a1a753a9a1be9348921995e/langchain_nvidia_ai_endpoints-1.2.1-py3-none-any.whl", hash = "sha256:eafb2186dea25d163089552c062274664540f2cbe251861c515700645fbf256d", size = 61820, upload-time = "2026-03-16T16:42:33.657Z" },
+]
+
+[[package]]
 name = "langchain-openai"
 version = "1.1.11"
 source = { registry = "https://pypi.org/simple" }
@@ -3805,6 +3820,7 @@ dependencies = [
     { name = "click" },
     { name = "gliner" },
     { name = "json-repair" },
+    { name = "langchain-nvidia-ai-endpoints" },
     { name = "langchain-openai" },
     { name = "litellm" },
     { name = "mcp", extra = ["cli"] },
@@ -3871,6 +3887,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1,<9.0" },
     { name = "gliner", specifier = ">=0.2.10,<1.0" },
     { name = "json-repair", specifier = ">=0.39,<1.0" },
+    { name = "langchain-nvidia-ai-endpoints", specifier = ">=1.2.1" },
     { name = "langchain-openai", specifier = ">=1.1.11" },
     { name = "litellm", specifier = ">=1.40,<2.0" },
     { name = "markitdown", extras = ["docx", "pptx", "xlsx", "pdf"], marker = "extra == 'docs'", specifier = ">=0.1.5,<1.0" },

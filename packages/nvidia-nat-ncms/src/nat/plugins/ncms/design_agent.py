@@ -948,6 +948,19 @@ class DesignAgent:
         except Exception:
             pass
 
+        # Mark project as completed
+        if project_id:
+            try:
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=10.0) as hc:
+                    await hc.post(
+                        f"{self.hub_url}/api/v1/projects/{project_id}/complete",
+                        json={"quality_score": avg_score, "status": status},
+                    )
+                logger.info("[design_agent] Project %s marked completed (%.0f%%)", project_id, avg_score)
+            except Exception as e:
+                logger.debug("[design_agent] Failed to mark project completed: %s", e)
+
         logger.info(
             "[design_agent] Returning design (%d chars) to auto_memory_agent for persistence",
             len(state.get("design", "")),
