@@ -1,10 +1,68 @@
-# Document Intelligence: Audit & Provenance Design
+# Document Intelligence Design
 
-## Context
+This document covers the complete Document Intelligence feature set: the implemented foundation (Phases 1, 2, 2.5), the agent consolidation (6 → 5), and the audit/provenance features designed from a Chief Architect + CIRO review.
 
-Phase 2.5 delivered the data foundation: 12 database tables covering documents, traceability links, review scores, pipeline events, approval decisions, guardrail violations, grounding logs, LLM call metadata, agent config snapshots, and bus conversations. The chain of custody from Research through PRD through Design through Review through Approval is structurally present.
+For future phases (Coding Agent, Learning System), see [dashboard-evolution-design.md](dashboard-evolution-design.md).
 
-This document designs the features that transform that data foundation into an enterprise-grade audit and provenance system. Reviewed from the perspective of a Chief Architect and Chief Information Risk Officer.
+---
+
+## Implemented Foundation
+
+> The following phases are complete and operational. See the feature tables for implementation details.
+
+### Phase 1 (Foundation) — Complete
+
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | Project/Epic View | Done |
+| 2 | Live Pipeline Progress | Done |
+| 5 | Spec Quality (Completeness + Contracts) | Done |
+| 6 | NemoGuardrails | Done |
+| 15 | Prompt Library | Done |
+
+### Phase 2 (Document Intelligence + Archeologist) — Complete
+
+| # | Feature | Status |
+|---|---------|--------|
+| 19 | Document-Memory Integration (GLiNER entities, doc-by-reference) | Done |
+| 20 | Archeologist Agent (GitHub repo analysis) | Done |
+| 21 | Pipeline Interrupt | Done |
+| 22 | Expert Classify Fix (deterministic [NCMS:review] tags) | Done |
+| 23 | Bug Fixes (Phase 2) | Done |
+| 24 | Bus-Based Agent Triggering | Done |
+| 26 | Semi-Formal Reasoning Prompts (Meta arXiv:2603.01896, +29%) | Done |
+
+### Phase 2.5 (Document Intelligence Persistence) — Complete
+
+| # | Feature | Status |
+|---|---------|--------|
+| 27-32 | Core persistence (docs, traceability, reviews, projects, pipeline, search API) | Done |
+| 33 | Phoenix spans for agent operations | Done |
+| 34 | Auditor-grade project view (D3 doc flow graph) | Done |
+| 35-36 | Approval decision log + guardrail violation persistence | Done |
+| 37 | Knowledge grounding log | Done |
+| 38 | LLM call metadata + Phoenix trace link | Done |
+| 39 | Document content hashing (SHA-256) | Done |
+| 40 | Agent config snapshots | Done |
+| 41 | Bus conversation log | Done |
+| 42 | Guardrail approval gate (human-in-the-loop) | Done |
+
+### Agent Consolidation (6 → 5 agents) — Complete
+
+| Before | After | Change |
+|--------|-------|--------|
+| Researcher | — | Merged into Archeologist |
+| Archeologist | **Archeologist** (dual-path) | Research (web) + Archaeology (GitHub) |
+| Builder | **Designer** | Renamed |
+| Product Owner | Product Owner | Unchanged |
+| Architect | Architect | Unchanged |
+| Security | Security | Unchanged |
+
+---
+
+## Audit & Provenance Features
+
+Phase 2.5 delivered the data foundation. The features below transform that foundation into an enterprise-grade audit and provenance system, reviewed from the perspective of a Chief Architect and Chief Information Risk Officer.
 
 ---
 
