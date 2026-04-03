@@ -440,3 +440,114 @@ Review scores are saved twice per reviewer per round — once in `request_review
 | 8 | Automated compliance score | 1 day | Portfolio metric |
 | 9 | Document version diff | 1 day | Revision visibility |
 | 10 | Quality trend analytics | 3-5 days | Portfolio intelligence |
+
+---
+
+## Experiment: Nemotron 3 Super 120B (12B Active)
+
+### Hypothesis
+
+The current pipeline uses Nemotron 3 Nano 30B (3B active parameters). Upgrading to Nemotron 3 Super 120B (12B active, 120B total via MoE) on the DGX Spark 128GB should produce significantly higher quality design documents, more accurate reviews, and better structured certificate reasoning — while fitting in the same GPU memory via NVFP4 quantization.
+
+### Model Details
+
+- **Model:** `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4`
+- **Architecture:** MoE — 120B total, 12B active (4x the active parameters of Nano)
+- **Quantization:** FP4 (NVFP4) — fits in 128GB with room for KV cache
+- **Context:** 1M tokens (via `--max-model-len 1000000`)
+- **Reasoning:** `super_v3_reasoning_parser.py` (extends DeepSeek R1 parser for Super's `<think>` tags)
+- **Tool calling:** `qwen3_coder` parser (same as Nano)
+- **Speculative decoding:** MTP with 3 speculative tokens (faster inference)
+
+### Deployment on DGX Spark
+
+```bash
+# Download the reasoning parser plugin
+wget https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4/raw/main/super_v3_reasoning_parser.py
+
+# Deploy via vLLM (nightly build with FP4 + Marlin support)
+docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-super \
+  -e VLLM_NVFP4_GEMM_BACKEND=marlin \
+  -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
+  -e VLLM_FLASHINFER_ALLREDUCE_BACKEND=trtllm \
+  -e VLLM_USE_FLASHINFER_MOE_FP4=0 \
+  -e HF_TOKEN=$HF_TOKEN \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -v $(pwd)/super_v3_reasoning_parser.py:/app/super_v3_reasoning_parser.py \
+  -p 8000:8000 \
+  vllm/vllm-openai:cu130-nightly \
+    --model nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 \
+    --served-model-name nemotron-3-super \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --async-scheduling \
+    --dtype auto \
+    --kv-cache-dtype fp8 \
+    --tensor-parallel-size 1 \
+    --pipeline-parallel-size 1 \
+    --data-parallel-size 1 \
+    --trust-remote-code \
+    --gpu-memory-utilization 0.90 \
+    --enable-chunked-prefill \
+    --max-num-seqs 4 \
+    --max-model-len 1000000 \
+    --moe-backend marlin \
+    --mamba_ssm_cache_dtype float32 \
+    --quantization fp4 \
+    --speculative_config '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"triton"}' \
+    --reasoning-parser-plugin /app/super_v3_reasoning_parser.py \
+    --reasoning-parser super_v3 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder
+```
+
+### Key vLLM Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--quantization fp4` | NVFP4 quantization — ~30GB model weight footprint |
+| `--kv-cache-dtype fp8` | FP8 KV cache — maximizes context length in 128GB |
+| `--moe-backend marlin` | Marlin kernels for MoE layers (faster than default) |
+| `--speculative_config ...` | MTP speculative decoding with 3 tokens (lower latency) |
+| `--reasoning-parser super_v3` | Separates `<think>` reasoning from output (like Nano's `nano_v3`) |
+| `--max-model-len 1000000` | 1M context window |
+| `--enable-chunked-prefill` | Handles long prompts without OOM |
+| `VLLM_NVFP4_GEMM_BACKEND=marlin` | Use Marlin for FP4 GEMM operations |
+
+### NCMS Config Change
+
+To switch the pipeline to Super, update agent configs and hub env:
+
+```bash
+# Agent configs (archeologist.yml, designer.yml, product_owner.yml, etc.)
+NCMS_LLM_MODEL=openai/nemotron-3-super
+NCMS_LLM_API_BASE=http://spark-ee7d.local:8000/v1
+```
+
+Or per-agent in YAML:
+```yaml
+llms:
+  spark_llm:
+    _type: openai
+    model_name: nemotron-3-super
+    base_url: "http://spark-ee7d.local:8000/v1"
+```
+
+### Experiment Design
+
+Run the same "authentication patterns for identity services" project on both models and compare:
+
+| Metric | Nano (3B active) | Super (12B active) | Delta |
+|--------|------------------|-------------------|-------|
+| Research report quality (manual review) | Baseline | ? | |
+| PRD completeness (manifest coverage) | Baseline | ? | |
+| Design review scores (architect + security) | ~85% | ? | |
+| Number of revision rounds | 1-3 | ? | |
+| Semi-formal certificate traceability | Baseline | ? | |
+| Pipeline total duration | ~22 min | ? | |
+| LLM call cost (tokens) | Baseline | ? | |
+
+### Expected Outcome
+
+With 4x active parameters, Super should produce more detailed designs, higher review scores on first pass (fewer revision rounds), and better structured reasoning in semi-formal certificates. The FP4 quantization + speculative decoding should keep latency comparable to Nano despite the larger model.
