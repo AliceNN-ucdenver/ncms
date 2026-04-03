@@ -418,28 +418,78 @@ All data already exists in the audit tables. This is purely a frontend aggregati
 
 ---
 
+## 11. Project Lifecycle Completion
+
+### Problem
+
+Projects stay "active" forever. When the Designer's verify node finishes successfully, the project status should transition to "completed". Currently only interrupt → "interrupted" and denial → "denied" update the status. An auditor looking at the project list sees every project as "active" with no way to distinguish finished runs from in-progress ones.
+
+### Design
+
+When the Designer's `verify` node completes with an approved design (avg score >= threshold), emit a `project.completed` event and update `projects.status = "completed"`. The verify node already has the project_id and the approval status — just needs one API call to update.
+
+Additionally, set `projects.phase` to the current pipeline phase as agents progress. The PO's verify sets phase to "prd", the Designer's verify sets phase to "design" (or "completed" on final approval).
+
+Dashboard: "Completed" badge (green) on project cards. Completed projects sort below active but above archived.
+
+### Effort: 0.5 days
+
+---
+
+## 12. Audit Export (PDF/Markdown Report)
+
+### Problem
+
+An auditor cannot download a project's full provenance chain as a portable document. The data exists across the audit timeline, provenance certificates, document content, review scores, and compliance scores — but it's only viewable in the browser. For compliance handoffs, audit committees, or offline review, a downloadable report is essential.
+
+### Design
+
+**New endpoint:** `GET /api/v1/projects/{id}/export?format=markdown`
+
+Generates a complete audit report containing:
+1. **Project summary** — topic, status, created_at, quality score, compliance score
+2. **Document inventory** — all documents with doc_type, version, content_hash, from_agent, size
+3. **Traceability chain** — derived_from/reviews/supersedes links as a table
+4. **Review history** — per-reviewer scores per round with COVERED/MISSING/CHANGES
+5. **Guardrail findings** — all violations with policy, rule, escalation, overridden status
+6. **Approval decisions** — who approved/denied, when, with what comment
+7. **LLM call log** — agent, node, prompt/response sizes, model, duration
+8. **Agent configurations** — model name, thinking enabled, max tokens at pipeline start
+9. **Integrity verification** — content hash check results, hash chain verification
+10. **Compliance score breakdown** — composite score with per-signal details
+
+**Format:** Markdown (can be converted to PDF via pandoc or rendered in the browser). The markdown includes tables, headers, and a watermark with generation timestamp and hash of the report content itself.
+
+**Dashboard button:** "Export Audit Report" in the project detail view, next to the Archive button.
+
+### Effort: 2-3 days
+
+---
+
 ## Known Issues
 
-### Duplicate review scores
+### Duplicate review scores — FIXED
 
-Review scores are saved twice per reviewer per round — once in `request_review` (immediately when parsed) and once in `verify` (at pipeline completion). This results in 4 rows for 2 reviewers instead of 2. Harmless for correctness (scores are identical) but produces duplicates in the audit timeline. Fix: remove the `save_review_score` call from the `verify` node since `request_review` already persists them.
+Review scores were saved twice per reviewer per round (request_review + verify). Fixed: removed the save from verify. Scores now saved once in request_review.
 
 ---
 
 ## Implementation Priority
 
-| Priority | Feature | Effort | Impact |
+| Priority | Feature | Effort | Status |
 |----------|---------|--------|--------|
-| 1 | Phoenix LangGraph tracing (remove traced_llm_call, just instrument) | 1 day | Full graph visibility in Phoenix |
-| 2 | Unified audit timeline API + table view | 2-3 days | Primary auditor interface |
-| 3 | SQLite PRAGMA foreign_keys | 15 min | Data integrity |
-| 4 | Tamper-evident hash chain | 1-2 days | Compliance proof |
-| 5 | Auth on approval endpoints | 1-2 days | Control credibility |
-| 6 | Provenance certificate drill-down | 2-3 days | Single-document audit proof |
-| 7 | Content hash verification | 0.5 days | Tamper detection |
-| 8 | Automated compliance score | 1 day | Portfolio metric |
-| 9 | Document version diff | 1 day | Revision visibility |
-| 10 | Quality trend analytics | 3-5 days | Portfolio intelligence |
+| 1 | Phoenix LangGraph tracing (remove traced_llm_call, use nim + ChatNVIDIA) | 1 day | **Done** — _type: nim, dual LLM config |
+| 2 | Unified audit timeline API + table view | 2-3 days | **Done** — UNION query, table UI with tabs |
+| 3 | SQLite PRAGMA foreign_keys | 15 min | **Done** — already set in sqlite_store.py |
+| 4 | Tamper-evident hash chain | 1-2 days | **Done** — prev_hash on 5 audit tables |
+| 5 | Auth on approval endpoints (JWT + login) | 2-3 days | **Done** — V8 users table, bcrypt, JWT, login page |
+| 6 | Provenance certificate drill-down | 2-3 days | **Done** — GET /documents/{id}/provenance |
+| 7 | Content hash verification | 0.5 days | **Done** — GET /documents/{id}/verify |
+| 8 | Automated compliance score | 1 day | **Done** — GET /projects/{id}/compliance |
+| 9 | Document version diff | 1 day | **Done** — client-side diff in document viewer |
+| 10 | Quality trend analytics | 3-5 days | Future |
+| 11 | Project lifecycle completion | 0.5 days | Designed |
+| 12 | Audit export (PDF/markdown report) | 2-3 days | Designed |
 
 ---
 

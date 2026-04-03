@@ -64,14 +64,15 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 | **Experts** | LangGraph (dual-mode) | Architect + Security: classify → search_memory → answer or structured_review |
 | **Codebase Analysis** | GitHub REST API | Archeologist agent: repo tree, file content, dependencies, commits, issues via PAT |
 | **Document Intelligence** | GLiNER NER | Entity extraction at publish time, JSON sidecar persistence, entity-enriched expert search |
-| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB) |
+| **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB). Dual LLM: standard + thinking-enabled. |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
-| **Observability** | Phoenix OpenTelemetry | Per-agent tracing of every LLM call and tool invocation |
-| **Research** | Tavily | Live web search for Archeologist research path (5 parallel queries) |
-| **Dashboard** | NCMS SPA | SSE event feeds, document publishing, agent chat, trace links |
-| **Guardrails** | NemoGuardrails | Policy enforcement on pipeline inputs (domain/technology scope) and outputs (secrets, prohibited patterns) |
-| **Spec Quality** | Python + LLM | Completeness validator (10 structural checks), requirements manifest, OpenAPI/Zod contract generation |
-| **Project Management** | NCMS Hub | Project view with pipeline progress, per-node telemetry, prompt editor, policy editor |
+| **Observability** | Phoenix OpenTelemetry | Per-agent tracing with `_type: nim` (ChatNVIDIA) for full LLM span capture |
+| **Research** | Tavily + ArXiv | Live web search (5 parallel) + academic paper search (12-month window) |
+| **Dashboard** | NCMS SPA | D3 doc flow graph, audit timeline, login page, guardrail strips, compliance scores |
+| **Guardrails** | NemoGuardrails | Policy enforcement with human-in-the-loop approval gates (block/reject → pause for approve/deny) |
+| **Audit** | SQLite (V8) | 13 tables, tamper-evident hash chains, JWT auth, provenance certificates, compliance scoring |
+| **Spec Quality** | Python + LLM | Completeness validator (10 checks), requirements manifest, deterministic [NCMS:review]/[NCMS:question] routing |
+| **Project Management** | NCMS Hub | Project lifecycle, pipeline progress, interrupt, prompt editor, policy editor |
 
 ### Four Documents, One Prompt
 
@@ -177,9 +178,9 @@ All agents generated complete traces during the test run. Full visibility into e
 - **Serving:** NGC vLLM container on a DGX Spark (128GB memory), configured with 512K context via `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1`. KV cache usage under 0.5%, with massive headroom.
 - **Tool call parser:** `qwen3_coder` is the correct parser for Nemotron Nano's `<tool_call><function=name>` format. Other parsers (including `hermes`) silently fail, causing agents to loop without acting. This was the single most important configuration discovery.
 - **Reasoning parser:** `nano_v3_reasoning_parser.py` plugin (from the model's HuggingFace repo) mounted into the container and activated via `--reasoning-parser-plugin`. Handles `<think>` tags properly so thinking tokens don't leak into output content. Enables the 4-way experiment matrix: standard/semi-formal prompts x thinking-on/thinking-off.
-- **Output tokens:** `max_tokens: 32768` in agent configs enables rich, detailed output.
+- **Output tokens:** `max_tokens: 131072` in agent configs provides ample room for CoT reasoning + content.
 - **Direct Spark URL:** LangGraph agents connect directly to the DGX Spark at `spark-ee7d.local:8000`, bypassing the NemoClaw `inference.local` proxy which imposes a 60-second timeout insufficient for large document synthesis.
-- **Thinking mode off:** `enable_thinking: false` prevents thinking-mode tokens from consuming the output budget. Valuable for open-ended reasoning, but wasteful in structured pipelines.
+- **Dual LLM config:** Each agent defines `spark_llm` (thinking off) and `spark_llm_thinking` (thinking on). The Archeologist's synthesis and PO's PRD synthesis use the thinking LLM for chain-of-thought reasoning. All other nodes use the standard LLM. `_type: nim` uses ChatNVIDIA which natively handles `chat_template_kwargs` and preserves `reasoning_content`.
 - **Pipeline orchestration:** LangGraph enforces deterministic workflows for all five agents. The Architect and Security experts use dual-mode pipelines (classify → search_memory → answer or structured_review).
 - **Handoff mechanism:** Triggers use `bus_announce` to domain `trigger-{agent_id}`. Each agent's SSE listener detects the trigger and self-calls `/generate` inside its own sandbox. No port forward dependency. No polling. No shared state. No orchestrator.
 
@@ -217,60 +218,76 @@ Quick summary: configure your DGX Spark inference provider, deploy vLLM with 512
 
 ---
 
+## Document Intelligence (Phase 2.5)
+
+The pipeline is backed by a full audit and provenance system. Every artifact has a persistent identity, a version history, a quality score, and a traceability chain back to the original research.
+
+### What's Auditable
+
+| Audit Surface | How It's Captured |
+|---------------|------------------|
+| **Document provenance** | SHA-256 content hashes, typed links (derived_from, reviews, supersedes), version chains via parent_doc_id |
+| **Review scores** | Per-reviewer, per-round scores persisted in review_scores table. Quality score on project card. |
+| **LLM calls** | Every LLM invocation: prompt/response sizes, model, duration, prompt hash. Queryable per project. |
+| **Agent configurations** | Model name, thinking mode, max_tokens captured at pipeline start per agent. |
+| **Bus conversations** | Every ask/respond pair: from/to agent, question/answer previews, confidence, duration. |
+| **Knowledge grounding** | Every memory citation used in expert reviews: document → memory_id with retrieval score and entity query. |
+| **Guardrail violations** | Every policy finding: type, rule, message, escalation level, overridden status. |
+| **Approval decisions** | Human approve/deny with authenticated identity (JWT), comment, timestamp. |
+| **Tamper evidence** | SHA-256 hash chain on all audit tables — each record references the prior record's hash. |
+
+### Dashboard Features
+
+- **D3 document flow graph** — left-to-right DAG showing Research → PRD → Design → Review with typed arrows, per-reviewer score bars, and version stacking
+- **Audit timeline tab** — chronological table of all events (pipeline, LLM calls, reviews, guardrails, approvals, bus conversations) filterable by type and agent
+- **Guardrail violation strip** — auto-visible below pipeline progress when violations are flagged
+- **Quality score bar** — aggregate review score at top of project detail
+- **Human-in-the-loop approval gates** — agents pause at guardrail blocks, dashboard shows approve/deny
+- **Pipeline interrupt** — clickable stop on any running node, marks project as interrupted
+- **Document version diff** — compare previous version in the document viewer
+- **Provenance certificate** — GET /documents/{id}/provenance returns complete lineage, reviews, grounding, LLM calls, integrity check
+- **Compliance score** — composite from review averages, violation penalties, grounding coverage, approval gates, document completeness
+- **Login page** — JWT authentication with bcrypt passwords, approver identity from token
+
+### Thinking Mode (Chain-of-Thought)
+
+The Archeologist's research synthesis and the Product Owner's PRD synthesis use **Chain-of-Thought reasoning** via a dedicated thinking-enabled LLM (`spark_llm_thinking` with `enable_thinking: true`). The `_type: nim` config uses ChatNVIDIA which natively handles `chat_template_kwargs` and preserves `reasoning_content`. The Designer and expert agents use the standard LLM without thinking for structured output.
+
+Pipeline progress nodes with thinking enabled show a 🧠 icon.
+
+---
+
 ## What's Next
 
-The pipeline runs end-to-end with two entry paths (green-field research and existing codebase archaeology), guardrails, spec validation, contract generation, project tracking, per-node telemetry with interrupt support, and document intelligence with entity-enriched expert search. The full [dashboard evolution design](dashboard-evolution-design.md) describes four phases of features.
+For the complete feature roadmap, see [dashboard-evolution-design.md](dashboard-evolution-design.md) and [document-intelligence-design.md](document-intelligence-design.md).
 
-### Phase 2 Remaining: Validation and Reliability
+### Immediate (Designed, Ready to Implement)
 
-- **Entity recall validation.** A/B comparison of entity-enriched search vs the prior raw text excerpt approach. Measure retrieval quality, expert answer grounding, and review scores across both modes.
-- **Bus-based agent triggering.** Replace direct HTTP `/generate` calls from `create_project()` with bus announcements to `trigger-archeologist`. Eliminates port forward dependency for initial project trigger (the known failure mode where long-lived HTTP requests crash SSH tunnels).
-- **Document diff view.** Side-by-side comparison of design revisions with review comment annotations.
-- **Template library.** Reusable design fragments from high-scoring pipeline runs.
+- **Project lifecycle completion.** Auto-transition projects from "active" to "completed" when the Designer's verify passes. Currently only interrupt/denial update status.
+- **Audit export.** Download a project's full provenance chain as a portable markdown report for compliance handoffs and offline review.
+- **Quality trend analytics.** Portfolio-level dashboard: review scores over time, common violations, LLM cost trends across projects.
 
 ### Phase 3: Coding Agent and Governance
 
-- **Coding agent (Claude Code in a sandbox).** A sixth LangGraph agent receives the Designer's approved implementation design, passes it to Claude Code as a specification, and orchestrates code generation with test-fix-retry loops.
-- **Contextual approval queue.** Full-context human gate before code generation. Design + review scores + cost estimate in one approval view.
-- **Compliance dashboard.** Aggregate governance visibility across all projects. ADR matrix, STRIDE heat map, quality trends, drift scores.
-- **Audit trail.** Complete execution records for reproducibility and compliance.
+- **Coding agent (Claude Code).** A sixth agent receives the approved design and produces working implementations in a NemoClaw sandbox with test-fix-retry loops.
 - **Code-to-design feedback loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Designer.
+- **Compliance dashboard.** Aggregate governance visibility. ADR matrix, STRIDE heat map, drift scores.
 
-### Resilience and Observability
+### LLM Upgrade Experiment
 
-- **Port forward auto-recovery.** SSH-based port forwards drop when the Mac sleeps or during long operations. A background health check that detects dead forwards and re-establishes them would eliminate the most common failure mode for dashboard chat.
-- **Phoenix event enrichment.** Currently only LLM calls generate Phoenix traces. Adding custom spans for bus_ask/bus_announce, memory retrieval, document publish, and review scoring would give complete pipeline visibility in Phoenix without reading agent logs.
-- **Agent health monitoring.** The dashboard shows online/offline status but does not detect agents stuck in retry loops or hung on LLM calls. A heartbeat mechanism with configurable timeout and auto-restart would improve reliability.
-- **Graceful degradation on review failure.** If a reviewer fails after retries, the current behavior defaults to a 50% score. A smarter fallback would skip that reviewer's score entirely and evaluate based on the available review, or proceed with a human review request.
+| Model | Active Params | Quantization | Fit on 128GB Spark? |
+|-------|--------------|-------------|-------------------|
+| Nemotron Nano 30B (current) | 3B | FP16 | Easy |
+| **Nemotron Super 120B-A12B** | **12B** | **NVFP4** | **Yes — next experiment** |
 
-### LLM Upgrades
-
-| Model | Active Params | Memory | KV Cache | Fit on 128GB Spark? |
-|-------|--------------|--------|----------|-------------------|
-| Nemotron Nano 30B (current) | 3B | ~15GB | ~113GB | Easy |
-| **Nemotron Super 120B-A12B** | **12B** | **~60GB** | **~68GB** | **Yes, next experiment** |
-| Qwen 3.5 Coder 32B | 32B (dense) | ~32GB (FP8) | ~96GB | Yes |
-
-**Nemotron Super 120B** (12B active, 4x Nano) is the immediate upgrade target once the DGX Spark driver is updated to 590+ for NVFP4 support. The 512K context window can also be pushed to 1M via RoPE scaling (KV cache under 0.5% at current usage).
+The Super model (4x active parameters) with NVFP4 quantization, MTP speculative decoding, and 1M context is designed and ready to deploy. See the [experiment design](document-intelligence-design.md#experiment-nemotron-3-super-120b-12b-active) for full vLLM deployment commands.
 
 ### Looking Glass Governance Mesh
 
-The current expert reviews use a simplified version of the Looking Glass governance framework. The full [Oraculum](https://github.com/AliceNN-ucdenver/MaintainabilityAI) integration would connect to the governance mesh via MCP servers, pulling BAR (Business Application Record) artifacts for each application: CALM architecture models, STRIDE threat models, ADRs, fitness functions, compliance checklists, and operational runbooks. This transforms the review from "does the design look reasonable" to "does the design comply with the documented governance baseline," with drift scores across four pillars (architecture, security, information risk, operations).
+The full [Oraculum](https://github.com/AliceNN-ucdenver/MaintainabilityAI) integration would connect to the governance mesh via MCP servers, pulling BAR artifacts for each application: CALM architecture models, STRIDE threat models, ADRs, fitness functions, compliance checklists. This transforms reviews from "does the design look reasonable" to "does the design comply with the documented governance baseline."
 
-### Libraries and Lifecycle
+### Platform
 
-- **Template Library.** Reusable design fragments (middleware patterns, API contracts, infrastructure configs) stored as versioned documents. The Designer adapts templates to each project instead of generating from scratch. High-scoring designs automatically contribute new templates.
-- **Design Pattern Library.** Organizational patterns mined from historical runs using NCMS knowledge consolidation. Recurring implementations (JWT signing, rate limiting, error handling) surface as discoverable patterns that promote consistency across projects.
-- **Prompt Performance Metrics.** The prompt library stores versions and the dashboard editor supports editing. The next step is tracking which prompt version produces the highest review scores, enabling A/B comparison across pipeline runs.
-- **Knowledge Lifecycle Management.** Hot-reload knowledge files without rebuilding sandboxes. Versioned knowledge with reconciliation (NCMS Phase 2 supersedes/conflicts). Deprecation for outdated ADRs or threat models. Cross-agent synchronization when knowledge changes.
-
-### Feedback and Audit
-
-- **Code-to-Design Feedback Loop.** When the coding agent discovers the design is unimplementable, structured feedback flows back to the Designer for targeted revision. The project tracks how many design-code round trips were needed as a spec quality metric.
-- **Audit Trail and Reproducibility.** Complete execution records for every pipeline run: inputs, retrieved memories, LLM prompts and responses, review scores, and document IDs. Frozen snapshots enable reproducibility for compliance and governance.
-
-### Platform Capabilities
-
-- **CrewAI StorageBackend.** CrewAI defines 14 storage methods vs NAT's 3. An NCMS StorageBackend would let CrewAI agents use the same shared memory, opening the platform to a second agent framework.
-- **Multi-pipeline orchestration.** Running multiple pipelines concurrently (e.g., identity service + payment service) with cross-pipeline knowledge sharing through the bus.
-- **Production hardening.** mTLS between agents and hub, secret rotation for API keys, pod-level resource limits, and horizontal scaling of the hub.
+- **Template library.** Reusable design fragments from high-scoring runs.
+- **Knowledge lifecycle management.** Hot-reload knowledge without rebuilding sandboxes. Versioned knowledge with reconciliation.
+- **Production hardening.** mTLS, secret rotation, pod resource limits, horizontal hub scaling.
