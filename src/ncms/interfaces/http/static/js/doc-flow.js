@@ -277,29 +277,28 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       return t.length > 24 ? t.substring(0, 22) + '..' : t;
     });
 
-  // Agent (line 3)
+  // Agent + entities (line 3)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 48)
     .attr('fill', 'var(--text-muted)')
     .attr('font-size', '9px')
-    .text(d => d.from_agent);
-
-  // Entities + timestamp (line 4)
-  nodeGroup.append('text')
-    .attr('x', 12).attr('y', 60)
-    .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '8px')
-    .attr('opacity', 0.6)
     .text(d => {
-      const parts = [];
-      if (d.entity_count > 0) parts.push(d.entity_count + ' entities');
-      if (d.created_at) {
-        try {
-          const dt = new Date(d.created_at);
-          parts.push(dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }));
-        } catch { /* ignore */ }
-      }
-      return parts.join(' \u00B7 ');
+      let line = d.from_agent;
+      if (d.entity_count > 0) line += ' \u00B7 ' + d.entity_count + ' ent';
+      return line;
+    });
+
+  // Timestamp (line 4)
+  nodeGroup.append('text')
+    .attr('x', 12).attr('y', 62)
+    .attr('fill', '#8b95a5')
+    .attr('font-size', '9px')
+    .text(d => {
+      if (!d.created_at) return '';
+      try {
+        const dt = new Date(d.created_at);
+        return dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } catch { return ''; }
     });
 
   // Per-reviewer score lines (below timestamp, inside the card)
