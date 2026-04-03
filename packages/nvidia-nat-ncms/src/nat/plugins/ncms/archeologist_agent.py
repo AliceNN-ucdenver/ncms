@@ -606,31 +606,40 @@ class ArcheologistAgent:
         if await self._check_and_interrupt(state, "arxiv_search"):
             return state
 
-        topic = state["topic"]
+        # Clean topic — strip "Research Research..." prefix and project_id
+        clean_topic = extract_topic(state["topic"])
         state["arxiv_results"] = []
 
         try:
+            import asyncio as _asyncio
+
             import arxiv as _arxiv
             from datetime import datetime, timedelta, timezone
 
-            # Generate 3 academic-focused queries from the topic
+            # Generate 3 academic-focused queries from the cleaned topic
             arxiv_queries = [
-                f"{topic} formal verification security",
-                f"{topic} architecture benchmark evaluation",
-                f"{topic} zero trust access control protocol",
+                f"{clean_topic} formal verification security",
+                f"{clean_topic} architecture benchmark evaluation",
+                f"{clean_topic} zero trust access control protocol",
             ]
 
             cutoff = datetime.now(timezone.utc) - timedelta(days=365)
             all_papers: list[dict] = []
 
-            for q in arxiv_queries:
+            # Reuse one client across all queries (connection pooling + rate limit)
+            client = _arxiv.Client()
+
+            for i, q in enumerate(arxiv_queries):
+                # Sleep between queries to avoid 429 rate limits
+                if i > 0:
+                    await _asyncio.sleep(3)
+
                 try:
                     search = _arxiv.Search(
                         query=q,
                         max_results=20,
                         sort_by=_arxiv.SortCriterion.Relevance,
                     )
-                    client = _arxiv.Client()
                     for paper in client.results(search):
                         if paper.published and paper.published < cutoff:
                             continue
@@ -644,7 +653,7 @@ class ArcheologistAgent:
                         if len(all_papers) >= 5:
                             break
                 except Exception as e:
-                    logger.warning("[archeologist/research] ArXiv query failed: %s", e)
+                    logger.warning("[archeologist/research] ArXiv query %d failed: %s", i + 1, e)
 
                 if len(all_papers) >= 5:
                     break
