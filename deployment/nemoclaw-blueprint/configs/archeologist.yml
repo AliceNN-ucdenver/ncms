@@ -10,10 +10,8 @@ llms:
     base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 131072
-    model_kwargs:
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
+    chat_template_kwargs:
+      enable_thinking: false
 
 general:
   telemetry:
