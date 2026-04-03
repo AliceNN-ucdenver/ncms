@@ -357,6 +357,14 @@ All data already exists in the audit tables. This is purely a frontend aggregati
 
 ---
 
+## Known Issues
+
+### Duplicate review scores
+
+Review scores are saved twice per reviewer per round — once in `request_review` (immediately when parsed) and once in `verify` (at pipeline completion). This results in 4 rows for 2 reviewers instead of 2. Harmless for correctness (scores are identical) but produces duplicates in the audit timeline. Fix: remove the `save_review_score` call from the `verify` node since `request_review` already persists them.
+
+---
+
 ## Implementation Priority
 
 | Priority | Feature | Effort | Impact |
