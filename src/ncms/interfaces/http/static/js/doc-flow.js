@@ -127,10 +127,15 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   const edges = [];
   const edgeSet = new Set(); // deduplicate
   for (const link of (links || [])) {
-    const src = docMap[link.source_doc_id];
-    const tgt = docMap[link.target_doc_id];
+    let src = docMap[link.source_doc_id];
+    let tgt = docMap[link.target_doc_id];
     if (src && tgt) {
       const cfg = LINK_TYPE_CONFIG[link.link_type] || { color: '#6e7681', dash: '', label: link.link_type };
+      // Reverse derived_from so arrows flow left-to-right (producer → product)
+      // "PRD derived_from Research" → arrow: Research → PRD
+      if (link.link_type === 'derived_from') {
+        [src, tgt] = [tgt, src];
+      }
       const key = src.id + '->' + tgt.id;
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
@@ -231,8 +236,8 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('width', CARD_W)
     .attr('height', d => d.cardH)
     .attr('rx', 8).attr('ry', 8)
-    .attr('fill', d => d.color + '12')
-    .attr('stroke', d => d.color + '50')
+    .attr('fill', '#1a1f2e')
+    .attr('stroke', d => d.color + '60')
     .attr('stroke-width', 1.5);
 
   // Left color bar
