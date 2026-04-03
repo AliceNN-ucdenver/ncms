@@ -1060,8 +1060,13 @@ class DesignAgent:
 
     @staticmethod
     def _parse_score(review_text: str) -> int:
-        """Extract SCORE: N from review response. Default 50 if unparseable."""
-        match = re.search(r"SCORE:\s*(\d+)", review_text)
+        """Extract SCORE: N from review response. Default 50 if unparseable.
+
+        Handles markdown bold formatting: **SCORE:** 85, *SCORE:* 85, SCORE: 85
+        """
+        # Strip markdown bold/italic markers before matching
+        clean = review_text.replace("**", "").replace("*", "")
+        match = re.search(r"SCORE:\s*(\d+)", clean)
         if match:
             score = int(match.group(1))
             return min(100, max(0, score))
