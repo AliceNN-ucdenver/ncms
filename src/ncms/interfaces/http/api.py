@@ -52,14 +52,112 @@ def create_api_app(
 
     _event_log = event_log or NullEventLog()
 
-    # -- Auth middleware -----------------------------------------------------
+    # -- Auth (JWT) -----------------------------------------------------------
+
+    import os as _os
+    import secrets as _secrets
+    _jwt_secret = _os.environ.get("NCMS_JWT_SECRET") or _secrets.token_hex(32)
+
+    # Unprotected paths (no JWT required)
+    _PUBLIC_PATHS = {
+        "/api/v1/health", "/api/v1/auth/login",
+        "/api/v1/bus/events", "/api/v1/bus/register",
+    }
+    _PUBLIC_PREFIXES = ("/js/", "/css/", "/api/stats", "/api/v1/agents")
 
     async def auth_middleware(request: Request, call_next):
-        if auth_token and request.url.path != "/api/v1/health":
-            token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-            if token != auth_token:
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        return await call_next(request)
+        path = request.url.path
+
+        # Public paths: no auth needed
+        if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        # GET requests: allow without auth (dashboard viewing)
+        if request.method == "GET":
+            # Still extract user if token provided (for identity display)
+            _try_extract_user(request)
+            return await call_next(request)
+
+        # Legacy static auth_token support (for agent→hub API calls)
+        if auth_token:
+            bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            if bearer == auth_token:
+                return await call_next(request)
+
+        # JWT auth for mutations (POST/PUT/DELETE)
+        bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if bearer:
+            try:
+                import jwt
+                payload = jwt.decode(bearer, _jwt_secret, algorithms=["HS256"])
+                request.state.user = payload
+                return await call_next(request)
+            except Exception:
+                pass
+
+        # Agent-to-hub calls (from sandboxes) use X-Agent-ID header, no JWT
+        if request.headers.get("X-Agent-ID"):
+            return await call_next(request)
+
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    def _try_extract_user(request: Request):
+        """Extract user from JWT if present (non-blocking)."""
+        bearer = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if bearer:
+            try:
+                import jwt
+                request.state.user = jwt.decode(bearer, _jwt_secret, algorithms=["HS256"])
+            except Exception:
+                pass
+
+    async def login(request: Request) -> JSONResponse:
+        """Authenticate with username/password, return JWT token."""
+        body = await request.json()
+        username = body.get("username", "")
+        password = body.get("password", "")
+        if not username or not password:
+            return JSONResponse({"error": "username and password required"}, status_code=400)
+
+        if not doc_svc:
+            return JSONResponse({"error": "auth not available"}, status_code=503)
+
+        user = await doc_svc._store.get_user_by_username(username)
+        if not user:
+            return JSONResponse({"error": "invalid credentials"}, status_code=401)
+
+        import bcrypt as _bcrypt
+        if not _bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
+            return JSONResponse({"error": "invalid credentials"}, status_code=401)
+
+        import jwt
+        payload = {
+            "sub": user["username"],
+            "role": user["role"],
+            "display_name": user["display_name"],
+            "exp": int(time.time()) + 86400,  # 24 hours
+        }
+        token = jwt.encode(payload, _jwt_secret, algorithm="HS256")
+
+        return JSONResponse({
+            "token": token,
+            "expires_in": 86400,
+            "user": {
+                "username": user["username"],
+                "display_name": user["display_name"],
+                "role": user["role"],
+            },
+        })
+
+    async def auth_me(request: Request) -> JSONResponse:
+        """Return current user from JWT."""
+        user = getattr(request.state, "user", None)
+        if not user:
+            _try_extract_user(request)
+            user = getattr(request.state, "user", None)
+        if not user:
+            return JSONResponse({"error": "not authenticated"}, status_code=401)
+        return JSONResponse(user)
 
     # -- Health --------------------------------------------------------------
 
@@ -1214,7 +1312,9 @@ def create_api_app(
         approval_id = request.path_params["approval_id"]
         body = await request.json()
         decision = body.get("decision")  # "approved" or "denied"
-        decided_by = body.get("decided_by", "human")
+        # Identity from JWT token (server-side, not client-forged)
+        user = getattr(request.state, "user", None)
+        decided_by = user.get("sub", "human") if user else body.get("decided_by", "human")
         comment = body.get("comment")
         if decision not in ("approved", "denied"):
             return JSONResponse(
@@ -1313,6 +1413,10 @@ def create_api_app(
     routes = [
         # Health
         Route("/api/v1/health", health, methods=["GET"]),
+
+        # Auth
+        Route("/api/v1/auth/login", login, methods=["POST"]),
+        Route("/api/v1/auth/me", auth_me, methods=["GET"]),
 
         # Memory operations
         Route("/api/v1/memories", store_memory, methods=["POST"]),

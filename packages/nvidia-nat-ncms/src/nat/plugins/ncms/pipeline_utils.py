@@ -24,74 +24,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# OpenTelemetry — optional, no hard dependency.
-# Tracer is resolved lazily (not at import time) because NAT initializes
-# OTel from YAML config AFTER our module is imported. Getting the tracer
-# at import time returns a no-op tracer with no exporter attached.
-_otel_available = False
-try:
-    from opentelemetry import trace as otel_trace
-    _otel_available = True
-except Exception:
-    otel_trace = None  # type: ignore[assignment]
-
-# LangChain/LangGraph instrumentor — captures LLM calls with full
-# prompt/response content in OpenInference format for Phoenix.
-# Initialized lazily on first LLM call (after NAT sets up OTel).
-_langchain_instrumented = False
-
-
-def _ensure_langchain_instrumented():
-    """One-time setup: instrument LangChain for OpenInference tracing.
-
-    Uses phoenix.otel.register() to create a TracerProvider connected to
-    the Phoenix OTLP endpoint, then passes it to LangChainInstrumentor.
-    This bypasses the global ProxyTracerProvider which NAT doesn't wire
-    to the Phoenix exporter.
-
-    Reads PHOENIX_COLLECTOR_ENDPOINT env var (set in sandbox startup).
-    """
-    global _langchain_instrumented  # noqa: PLW0603
-    if _langchain_instrumented:
-        return
-    _langchain_instrumented = True
-    try:
-        import os
-        endpoint = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT")
-        project = os.environ.get("PHOENIX_PROJECT_NAME", "default")
-
-        if not endpoint:
-            logger.info("[otel] PHOENIX_COLLECTOR_ENDPOINT not set, skipping LangChain instrumentation")
-            return
-
-        import os
-        from openinference.instrumentation.langchain import LangChainInstrumentor
-        from phoenix.otel import register
-
-        # Set project name via env var (register() reads PHOENIX_PROJECT_NAME)
-        os.environ["PHOENIX_PROJECT_NAME"] = project
-
-        logger.info("[otel] Registering Phoenix tracer: endpoint=%s project=%s", endpoint, project)
-        tracer_provider = register(endpoint=endpoint)
-        logger.info("[otel] TracerProvider: %s", type(tracer_provider).__name__)
-
-        LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
-        logger.info("[otel] LangChain instrumented for Phoenix tracing")
-    except ImportError as e:
-        logger.warning("[otel] Phoenix/LangChain instrumentation package not installed: %s", e)
-    except Exception as e:
-        logger.warning("[otel] LangChain instrumentation failed: %s", e, exc_info=True)
-
-
-def _get_tracer():
-    """Get the OTel tracer lazily — NAT must have initialized OTel first."""
-    if not _otel_available:
-        return None
-    try:
-        return otel_trace.get_tracer("ncms.agents")
-    except Exception:
-        return None
-
 # ── ID Extraction ────────────────────────────────────────────────────────────
 
 _PROJECT_ID_PATTERN = re.compile(r"\(project_id:\s*(PRJ-[a-f0-9]{8})\)")
@@ -394,9 +326,7 @@ async def check_interrupt(hub_url: str, agent_id: str) -> bool:
 
 
 # ── Traced LLM Call ─────────────────────────────────────────────────────────
-# Wraps ainvoke() with OpenTelemetry span + audit record.
-# Phoenix captures the full LLM context; the llm_calls table stores
-# queryable metadata (sizes, duration, model) with trace_id for linkage.
+# Wraps ainvoke() with timing + audit record.
 
 
 async def traced_llm_call(
@@ -410,91 +340,43 @@ async def traced_llm_call(
     node: str = "unknown",
     model_name: str | None = None,
 ) -> Any:
-    """Call llm.ainvoke() with an OTel span and audit record.
-
-    On first call, instruments LangChain for OpenInference tracing
-    so Phoenix captures full LLM prompt/response content.
-
-    Returns the LLM response object. The span and audit record are
-    best-effort — failures never block the pipeline.
-    """
-    # Instrument LangChain on first call (after NAT has initialized OTel)
-    _ensure_langchain_instrumented()
-
-    # Compute prompt size for audit
+    """Call llm.ainvoke() with timing + audit record. No OTel spans."""
     prompt_text = " ".join(
         getattr(m, "content", str(m)) for m in messages
     )
     prompt_size = len(prompt_text)
     prompt_hash = hashlib.sha256(prompt_text.encode()).hexdigest()[:16]
 
-    # Detect model name from llm object if not provided
     if not model_name:
         model_name = getattr(llm, "model_name", None) or getattr(llm, "model", None)
 
-    span = None
-    trace_id = None
     t0 = time.monotonic()
+    response = await llm.ainvoke(messages)
+    duration_ms = int((time.monotonic() - t0) * 1000)
 
-    try:
-        # Create OTel span if tracer is available (lazy — NAT initializes OTel first)
-        tracer = _get_tracer()
-        if tracer:
-            span = tracer.start_span(f"{agent}.{node}")
-            span.set_attribute("ncms.agent", agent)
-            span.set_attribute("ncms.node", node)
-            span.set_attribute("ncms.prompt_size", prompt_size)
-            if project_id:
-                span.set_attribute("ncms.project_id", project_id)
-            if model_name:
-                span.set_attribute("ncms.model", str(model_name))
-            # Get trace ID for audit linkage
-            ctx = span.get_span_context()
-            if ctx and ctx.trace_id:
-                trace_id = format(ctx.trace_id, "032x")
+    response_text = getattr(response, "content", str(response))
+    response_size = len(response_text)
 
-        # Actual LLM call
-        response = await llm.ainvoke(messages)
+    reasoning_size = 0
+    reasoning = getattr(response, "additional_kwargs", {}).get("reasoning_content")
+    if reasoning:
+        reasoning_size = len(reasoning)
 
-        duration_ms = int((time.monotonic() - t0) * 1000)
-        response_text = getattr(response, "content", str(response))
-        response_size = len(response_text)
+    if client:
+        try:
+            await client.record_llm_call(
+                project_id=project_id, agent=agent, node=node,
+                prompt_size=prompt_size, response_size=response_size,
+                reasoning_size=reasoning_size, model=str(model_name) if model_name else None,
+                thinking_enabled=reasoning_size > 0,
+                duration_ms=duration_ms, prompt_hash=prompt_hash,
+            )
+        except Exception:
+            pass
 
-        # Check for reasoning content (CoT)
-        reasoning_size = 0
-        reasoning = getattr(response, "additional_kwargs", {}).get("reasoning_content")
-        if reasoning:
-            reasoning_size = len(reasoning)
-
-        if span:
-            span.set_attribute("ncms.response_size", response_size)
-            span.set_attribute("ncms.reasoning_size", reasoning_size)
-            span.set_attribute("ncms.duration_ms", duration_ms)
-
-        # Record audit entry (fire-and-forget)
-        if client:
-            try:
-                await client.record_llm_call(
-                    project_id=project_id, agent=agent, node=node,
-                    prompt_size=prompt_size, response_size=response_size,
-                    reasoning_size=reasoning_size, model=str(model_name) if model_name else None,
-                    thinking_enabled=reasoning_size > 0,
-                    duration_ms=duration_ms, prompt_hash=prompt_hash,
-                )
-            except Exception:
-                pass
-
-        logger.info(
-            "[%s.%s] LLM call: %d→%d chars (%dms)%s",
-            agent, node, prompt_size, response_size, duration_ms,
-            f" +{reasoning_size} reasoning" if reasoning_size else "",
-        )
-        return response
-
-    except Exception:
-        if span:
-            span.set_attribute("ncms.error", True)
-        raise
-    finally:
-        if span:
-            span.end()
+    logger.info(
+        "[%s.%s] LLM call: %d→%d chars (%dms)%s",
+        agent, node, prompt_size, response_size, duration_ms,
+        f" +{reasoning_size} reasoning" if reasoning_size else "",
+    )
+    return response

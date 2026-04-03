@@ -560,6 +560,17 @@ class DocLinkType(StrEnum):
     APPROVED_BY = "approved_by"    # Human approval linked to document
 
 
+class User(BaseModel):
+    """Local user for authentication and audit attribution."""
+
+    id: str = Field(default_factory=lambda: f"usr-{uuid4().hex[:8]}")
+    username: str
+    password_hash: str
+    display_name: str | None = None
+    role: str = "reviewer"  # reviewer | admin
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class Project(BaseModel):
     """Persistent project record — survives hub restarts."""
 

@@ -930,21 +930,6 @@ class DesignAgent:
                 except Exception:
                     pass
 
-            # Persist review scores
-            for agent_name in ["architect", "security"]:
-                agent_score = scores.get(agent_name)
-                if agent_score is not None:
-                    try:
-                        await self.client.save_review_score(
-                            document_id=doc_id,
-                            project_id=project_id,
-                            reviewer_agent=agent_name,
-                            review_round=iteration + 1,
-                            score=agent_score,
-                        )
-                    except Exception:
-                        pass
-
         except Exception as e:
             logger.warning("[design_agent] Failed to publish review report: %s", e)
 

@@ -1,6 +1,6 @@
 """SQLite schema DDL and migrations for NCMS."""
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # ── V1: Original schema ──────────────────────────────────────────────────
 
@@ -405,6 +405,31 @@ CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_approvals(status);
 CREATE INDEX IF NOT EXISTS idx_pending_project ON pending_approvals(project_id);
 """
 
+# ═════════════════════════════════════════════════════════════════════════
+# V8: Authentication + Tamper-evident hash chains
+# ═════════════════════════════════════════════════════════════════════════
+
+V8_TABLES = """
+-- Users: local auth with bcrypt-hashed passwords
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name TEXT,
+    role TEXT DEFAULT 'reviewer',
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+"""
+
+V8_HASH_CHAIN_COLUMNS = [
+    "ALTER TABLE pipeline_events ADD COLUMN prev_hash TEXT",
+    "ALTER TABLE approval_decisions ADD COLUMN prev_hash TEXT",
+    "ALTER TABLE guardrail_violations ADD COLUMN prev_hash TEXT",
+    "ALTER TABLE llm_calls ADD COLUMN prev_hash TEXT",
+    "ALTER TABLE bus_conversations ADD COLUMN prev_hash TEXT",
+]
+
 # Backward compat alias used by older code paths
 CREATE_TABLES = V1_TABLES
 
@@ -496,5 +521,31 @@ async def run_migrations(db: object) -> None:
         await db.execute(
             "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
             (7,),
+        )
+        await db.commit()
+        current_version = 7
+
+    if current_version < 8:
+        # V8: Authentication + tamper-evident hash chains
+        await db.executescript(V8_TABLES)
+        # Add prev_hash columns to existing audit tables (nullable — safe for existing rows)
+        for alter_sql in V8_HASH_CHAIN_COLUMNS:
+            try:
+                await db.execute(alter_sql)
+            except Exception:
+                pass  # Column may already exist from a partial migration
+        # Seed default admin user: shawn / ncms (bcrypt hashed)
+        import bcrypt as _bcrypt
+        from datetime import UTC, datetime
+        _hash = _bcrypt.hashpw(b"ncms", _bcrypt.gensalt()).decode()
+        _now = datetime.now(UTC).isoformat()
+        await db.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ("usr-admin-001", "shawn", _hash, "Shawn", "admin", _now),
+        )
+        await db.execute(
+            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+            (8,),
         )
         await db.commit()
