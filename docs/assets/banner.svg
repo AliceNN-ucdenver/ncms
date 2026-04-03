@@ -147,27 +147,19 @@
   <rect x="340" y="120" width="520" height="1" fill="url(#glowLine)" opacity="0.5"/>
 
   <!-- Three key phrases -->
-  <text x="600" y="145" text-anchor="middle" fill="#b0b0cc" font-size="13" font-weight="400" letter-spacing="0.5">Six AI agents research, analyze codebases, consult experts, and produce implementation designs autonomously.</text>
+  <text x="600" y="145" text-anchor="middle" fill="#b0b0cc" font-size="13" font-weight="400" letter-spacing="0.5">Five AI agents research, analyze codebases, consult experts, and produce implementation designs autonomously.</text>
   <text x="600" y="166" text-anchor="middle" fill="#c0c0dd" font-size="12" font-weight="500" letter-spacing="1.5">Semi-formal certificates + CoT (+29% traceability)  |  Tavily + ArXiv  |  Memory that actually works.</text>
 
   <!-- Agent pipeline orbs - 5 agents with auto-chain -->
   <g transform="translate(150, 260)">
-    <!-- Archeologist -->
-    <circle cx="0" cy="-24" r="20" fill="#0a1a10" stroke="#10b981" stroke-width="2" filter="url(#glow)"/>
-    <text x="0" y="-22" text-anchor="middle" fill="#10b981" font-size="8" font-weight="700">RSH</text>
-    <text x="0" y="-48" text-anchor="middle" fill="#5aaa7a" font-size="7">Tavily+ArXiv</text>
+    <!-- Archeologist (dual-path: research + archaeology) -->
+    <circle cx="0" cy="0" r="22" fill="#0a1a10" stroke="#10b981" stroke-width="2" filter="url(#glow)"/>
+    <text x="0" y="2" text-anchor="middle" fill="#10b981" font-size="8" font-weight="700">ARC</text>
+    <text x="0" y="-26" text-anchor="middle" fill="#5aaa7a" font-size="7">Dual-path</text>
+    <text x="0" y="36" text-anchor="middle" fill="#5aaa7a" font-size="7">Research+Arch</text>
 
-    <!-- Archeologist (alternate entry) -->
-    <circle cx="0" cy="24" r="20" fill="#0a0e1a" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2"/>
-    <text x="0" y="26" text-anchor="middle" fill="#94a3b8" font-size="8" font-weight="700">ARL</text>
-    <text x="0" y="48" text-anchor="middle" fill="#6a7a8a" font-size="7">GitHub</text>
-
-    <!-- OR label -->
-    <text x="0" y="3" text-anchor="middle" fill="#6b5b8e" font-size="7" font-weight="600">OR</text>
-
-    <!-- Both paths merge to PO -->
-    <line x1="22" y1="-18" x2="95" y2="0" stroke="#10b981" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
-    <line x1="22" y1="18" x2="95" y2="0" stroke="#94a3b8" stroke-width="1" opacity="0.25" stroke-dasharray="5,4"/>
+    <!-- Archeologist to PO -->
+    <line x1="24" y1="0" x2="95" y2="0" stroke="#10b981" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
     <polygon points="90,-4 100,0 90,4" fill="#10b981" opacity="0.5"/>
 
     <!-- Report artifact -->
@@ -189,7 +181,7 @@
 
     <!-- Designer -->
     <circle cx="240" cy="0" r="22" fill="#1a1408" stroke="#ff9800" stroke-width="2" filter="url(#glow)"/>
-    <text x="240" y="2" text-anchor="middle" fill="#ff9800" font-size="9" font-weight="700">BLD</text>
+    <text x="240" y="2" text-anchor="middle" fill="#ff9800" font-size="9" font-weight="700">DSN</text>
     <text x="240" y="36" text-anchor="middle" fill="#aa8a4a" font-size="8">Design</text>
 
     <!-- PARALLEL label -->

@@ -76,7 +76,7 @@
 
   <!-- ════════════════════ TITLE ════════════════════ -->
   <text x="600" y="32" text-anchor="middle" fill="#e2d5ff" font-size="20" font-weight="700" filter="url(#softGlow)">Multi-Agent Software Delivery Pipeline</text>
-  <text x="600" y="50" text-anchor="middle" fill="#8b7bae" font-size="10">Research to Implementation Design  |  6 Agents  |  Semi-Formal CoT  |  Shared Memory  |  Full Observability</text>
+  <text x="600" y="50" text-anchor="middle" fill="#8b7bae" font-size="10">Research to Implementation Design  |  5 Agents  |  Semi-Formal CoT  |  Shared Memory  |  Full Observability</text>
 
   <!-- ════════════════════ EXTERNAL SOURCES (above hub) ════════════════════ -->
   <rect x="70" y="60" width="60" height="28" rx="8" fill="#0a1a14" stroke="#06d6a0" stroke-width="1" stroke-dasharray="4,2" opacity="0.8"/>
@@ -103,37 +103,19 @@
   <text x="1060" y="139" text-anchor="middle" fill="#7b8b9e" font-size="9">Review + Approve</text>
   <text x="1060" y="151" text-anchor="middle" fill="#7b8b9e" font-size="9">Dashboard Chat</text>
 
-  <!-- ════════════════════ RESEARCHER (x=80, w=180) ════════════════════ -->
+  <!-- ════════════════════ ARCHEOLOGIST (x=80, w=180) — dual-path entry point ════════════════════ -->
   <rect x="80" y="165" width="180" height="150" rx="14" fill="url(#researchGrad)" stroke="#10b981" stroke-width="2" filter="url(#softGlow)"/>
   <circle cx="105" cy="188" r="12" fill="#0a3a22" stroke="#10b981" stroke-width="1.5"/>
-  <text x="105" y="192" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">R</text>
+  <text x="105" y="192" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">A</text>
   <text x="124" y="193" fill="#10b981" font-size="12" font-weight="700">Archeologist</text>
   <line x1="92" y1="205" x2="248" y2="205" stroke="#1a4a32" stroke-width="0.5"/>
-  <text x="92" y="220" fill="#6ee7b7" font-size="9">Semi-formal + CoT</text>
-  <text x="92" y="233" fill="#6ee7b7" font-size="9">Tavily + ArXiv search</text>
+  <text x="92" y="220" fill="#6ee7b7" font-size="9">Dual-path: research + archaeology</text>
+  <text x="92" y="233" fill="#6ee7b7" font-size="9">Tavily + ArXiv + GitHub</text>
   <text x="92" y="250" fill="#34d399" font-size="8" font-style="italic">Certificate: premises → analysis → conclusions</text>
   <rect x="92" y="268" width="156" height="18" rx="4" fill="#061a10" stroke="#1a4a32" stroke-width="0.5"/>
   <text x="170" y="280" text-anchor="middle" fill="#2a7a4a" font-size="7">Port 8005</text>
   <!-- 11KB label -->
   <text x="170" y="306" text-anchor="middle" fill="#10b981" font-size="8" opacity="0.7">11KB</text>
-
-  <!-- ════════════════════ ARCHEOLOGIST (below Archeologist, alternate entry) ════════════════════ -->
-  <rect x="80" y="335" width="180" height="120" rx="14" fill="#0a1420" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2"/>
-  <circle cx="105" cy="358" r="12" fill="#1a1a2e" stroke="#94a3b8" stroke-width="1.5"/>
-  <text x="105" y="362" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="700">A</text>
-  <text x="124" y="363" fill="#94a3b8" font-size="12" font-weight="700">Archeologist</text>
-  <line x1="92" y1="375" x2="248" y2="375" stroke="#3a3a5a" stroke-width="0.5"/>
-  <text x="92" y="390" fill="#cbd5e1" font-size="9">GitHub repo analysis</text>
-  <text x="92" y="403" fill="#cbd5e1" font-size="9">Codebase → gaps → research</text>
-  <text x="92" y="420" fill="#94a3b8" font-size="8" font-style="italic">7 nodes: clone → analyze → gaps → web → synth</text>
-  <rect x="92" y="430" width="156" height="16" rx="4" fill="#12121e" stroke="#3a3a5a" stroke-width="0.5"/>
-  <text x="170" y="441" text-anchor="middle" fill="#5a5a7a" font-size="7">Port 8006</text>
-
-  <!-- "OR" label between Archeologist and Archeologist -->
-  <text x="170" y="328" text-anchor="middle" fill="#6b5b8e" font-size="9" font-weight="600">— OR —</text>
-
-  <!-- Arrow: Archeologist -> Research Artifact (merges with Archeologist output) -->
-  <path d="M 260 385 L 290 385 L 312 260" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrowGrey)" opacity="0.7"/>
 
   <!-- Research Artifact (between Archeologist and PO) -->
   <rect x="282" y="220" width="60" height="42" rx="6" fill="#061a10" stroke="#10b981" stroke-width="1.5"/>
@@ -169,7 +151,7 @@
   <!-- "Send to Designer" label BELOW the arrow -->
   <text x="634" y="258" text-anchor="middle" fill="#22c55e" font-size="7" font-weight="600">Send to Designer</text>
 
-  <!-- ════════════════════ BUILDER (x=650, w=180) ════════════════════ -->
+  <!-- ════════════════════ DESIGNER (x=650, w=180) ════════════════════ -->
   <rect x="650" y="165" width="180" height="150" rx="14" fill="url(#buildGrad)" stroke="#f59e0b" stroke-width="2" filter="url(#softGlow)"/>
   <circle cx="675" cy="188" r="12" fill="#4a3010" stroke="#f59e0b" stroke-width="1.5"/>
   <text x="675" y="192" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="700">B</text>
@@ -289,7 +271,7 @@
   <text x="1047" y="547" text-anchor="middle" fill="#6b5b8e" font-size="9">OpenTelemetry  |  :6006</text>
 
   <!-- Dotted lines from agents down to sandboxes -->
-  <path d="M 170 315 L 382 513" fill="none" stroke="#10b981" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
+  <path d="M 170 290 L 382 513" fill="none" stroke="#10b981" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
   <path d="M 455 315 L 477 513" fill="none" stroke="#22c55e" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
   <path d="M 740 315 L 572 513" fill="none" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>
   <path d="M 1030 275 L 667 513" fill="none" stroke="#3b82f6" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.3"/>

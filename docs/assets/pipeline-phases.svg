@@ -332,14 +332,6 @@
     <rect x="733" y="164" width="62" height="28" rx="5" fill="#0f1528" stroke="#4ade80" stroke-width="1.2" stroke-opacity="0.8"/>
     <text x="764" y="182" text-anchor="middle" fill="#86efac" font-family="system-ui, sans-serif" font-size="9" font-weight="600">verify</text>
 
-    <!-- Arrow from verify to generate_contracts -->
-    <line x1="795" y1="178" x2="819" y2="178" stroke="#a78bfa" stroke-width="1.2" stroke-opacity="0.6"/>
-    <polygon points="817,174 825,178 817,182" fill="#a78bfa" fill-opacity="0.6"/>
-
-    <!-- Node: generate_contracts (purple) -->
-    <rect x="825" y="164" width="68" height="28" rx="5" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1.2" stroke-opacity="0.8"/>
-    <text x="859" y="182" text-anchor="middle" fill="#c4b5fd" font-family="system-ui, sans-serif" font-size="8" font-weight="600">Contracts</text>
-
     <!-- NO path: right from diamond then down to revise -->
     <line x1="788" y1="128" x2="820" y2="128" stroke="#f87171" stroke-width="1.2" stroke-opacity="0.6"/>
     <text x="804" y="122" fill="#f87171" font-family="system-ui, sans-serif" font-size="7" font-weight="600">NO</text>
@@ -348,10 +340,10 @@
     <rect x="820" y="114" width="72" height="28" rx="5" fill="#0f1528" stroke="#f87171" stroke-width="1" stroke-opacity="0.6"/>
     <text x="856" y="132" text-anchor="middle" fill="#fca5a5" font-family="system-ui, sans-serif" font-size="9" font-weight="600">revise</text>
 
-    <!-- Loop arrow: revise back left to publish (curved via path) -->
-    <path d="M 856,142 L 856,152 L 668,152 L 668,142" fill="none" stroke="#f87171" stroke-width="1.2" stroke-opacity="0.5" stroke-dasharray="3,2"/>
-    <polygon points="663,144 668,136 673,144" fill="#f87171" fill-opacity="0.6"/>
-    <text x="762" y="148" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="6">re-publish</text>
+    <!-- Loop arrow: revise back left to OutGuard (curved via path) -->
+    <path d="M 856,142 L 856,152 L 576,152 L 576,142" fill="none" stroke="#f87171" stroke-width="1.2" stroke-opacity="0.5" stroke-dasharray="3,2"/>
+    <polygon points="571,144 576,136 581,144" fill="#f87171" fill-opacity="0.6"/>
+    <text x="716" y="148" text-anchor="middle" fill="#64748b" font-family="system-ui, sans-serif" font-size="6">re-check guardrails</text>
 
     <!-- Review scores annotation -->
     <rect x="50" y="116" width="555" height="40" rx="5" fill="#0f1528" stroke="#475569" stroke-width="0.8" stroke-opacity="0.4"/>
@@ -360,7 +352,7 @@
     <text x="310" y="144" fill="#4ade80" font-family="system-ui, sans-serif" font-size="8">Approved round 1 &#x2713;</text>
 
     <!-- Loop iteration indicator -->
-    <text x="66" y="210" fill="#64748b" font-family="system-ui, sans-serif" font-size="7">Guard &#x2192; read &#x2192; experts &#x2192; synth &#x2192; validate &#x2192; OutGuard &#x2192; publish &#x2192; review &#x2192; [&#x2265;80%? verify &#x2192; contracts : revise &#x2192; publish &#x2192; ...]</text>
+    <text x="66" y="210" fill="#64748b" font-family="system-ui, sans-serif" font-size="7">Guard &#x2192; read &#x2192; experts &#x2192; synth &#x2192; validate &#x2192; OutGuard &#x2192; publish &#x2192; review &#x2192; [&#x2265;80%? verify : revise &#x2192; OutGuard &#x2192; publish &#x2192; ...]</text>
   </g>
 
   <!-- Connector arrow 4->5 -->
@@ -395,7 +387,7 @@
 
     <!-- Summary label -->
     <rect x="80" y="90" width="760" height="24" rx="6" fill="#0f1528" stroke="#475569" stroke-width="1"/>
-    <text x="460" y="106" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10" font-weight="600">4 LLM calls + review  |  Guardrails + Manifest + Validation + Contracts  |  Approved at 83% (round 1)</text>
+    <text x="460" y="106" text-anchor="middle" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="10" font-weight="600">4 LLM calls + review  |  Guardrails + Manifest + Validation  |  Approved at 83% (round 1)</text>
   </g>
 
   <!-- ===== Expert Dual-Mode Inset ===== -->
@@ -445,11 +437,6 @@
     <rect x="486" y="18" width="50" height="16" rx="3" fill="#1a1400" stroke="#eab308" stroke-width="1"/>
     <text x="511" y="30" text-anchor="middle" fill="#facc15" font-family="system-ui, sans-serif" font-size="7" font-weight="600">Validate</text>
     <text x="544" y="30" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">Completeness check</text>
-    <!-- Contracts -->
-    <rect x="666" y="18" width="58" height="16" rx="3" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
-    <text x="695" y="30" text-anchor="middle" fill="#c4b5fd" font-family="system-ui, sans-serif" font-size="7" font-weight="600">Contracts</text>
-    <text x="732" y="30" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="8">Interface contract gen</text>
-
-    <text x="56" y="48" fill="#475569" font-family="system-ui, sans-serif" font-size="8">Phase 1 additions: input guardrails (all phases), manifest generation (PRD), completeness validation + output guardrails + contract generation (Design)</text>
+    <text x="56" y="48" fill="#475569" font-family="system-ui, sans-serif" font-size="8">Phase 1 additions: input guardrails (all phases), manifest generation (PRD), completeness validation + output guardrails (Design), revise routes through OutGuard</text>
   </g>
 </svg>
