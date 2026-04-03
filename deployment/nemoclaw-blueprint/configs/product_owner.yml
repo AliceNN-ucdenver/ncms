@@ -3,21 +3,25 @@
 
 llms:
   spark_llm:
-    _type: nim
+    _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "http://192.168.1.122:8000/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 131072
-    chat_template_kwargs:
-      enable_thinking: false
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
   spark_llm_thinking:
-    _type: nim
+    _type: openai
     model_name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
-    base_url: "http://192.168.1.122:8000/v1"
+    base_url: "http://spark-ee7d.local:8000/v1"
     api_key: "dummy"
     max_tokens: 131072
-    chat_template_kwargs:
-      enable_thinking: true
+    model_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: true
 
 general:
   telemetry:
