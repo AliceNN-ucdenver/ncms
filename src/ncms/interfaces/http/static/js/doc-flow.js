@@ -205,18 +205,37 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('opacity', d => d.link_type === '_flow' ? 0.4 : 0.8)
     .attr('marker-end', d => 'url(#arr-' + d.color.replace('#', '') + ')');
 
-  // Edge labels (skip inferred flow)
-  svg.selectAll('.doc-flow-edge-label')
+  // Edge labels with background pill (skip inferred flow)
+  const labelGroups = svg.selectAll('.doc-flow-edge-label-g')
     .data(edges.filter(e => e.label))
     .enter()
-    .append('text')
-    .attr('class', 'doc-flow-edge-label')
-    .attr('x', d => (d.source.x + CARD_W + d.target.x) / 2)
-    .attr('y', d => (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2 - 6)
+    .append('g')
+    .attr('class', 'doc-flow-edge-label-g')
+    .attr('transform', d => {
+      const mx = (d.source.x + CARD_W + d.target.x) / 2;
+      const my = (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2;
+      return `translate(${mx},${my})`;
+    });
+
+  // Background pill
+  labelGroups.append('rect')
+    .attr('rx', 3).attr('ry', 3)
+    .attr('fill', '#1a1f2e')
+    .attr('stroke', d => d.color + '40')
+    .attr('stroke-width', 0.5)
+    .each(function(d) {
+      // Size based on text length
+      const w = d.label.length * 5.5 + 10;
+      d3.select(this).attr('x', -w/2).attr('y', -8).attr('width', w).attr('height', 14);
+    });
+
+  // Label text
+  labelGroups.append('text')
     .attr('text-anchor', 'middle')
+    .attr('dominant-baseline', 'central')
     .attr('fill', d => d.color)
-    .attr('font-size', '9px')
-    .attr('opacity', 0.6)
+    .attr('font-size', '8px')
+    .attr('font-weight', '600')
     .text(d => d.label);
 
   // Draw node cards
@@ -277,21 +296,25 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       return t.length > 24 ? t.substring(0, 22) + '..' : t;
     });
 
-  // Agent + entities (line 3)
+  // Agent (line 3, left)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 48)
     .attr('fill', 'var(--text-muted)')
     .attr('font-size', '9px')
-    .text(d => {
-      let line = d.from_agent;
-      if (d.entity_count > 0) line += ' \u00B7 ' + d.entity_count + ' ent';
-      return line;
-    });
+    .text(d => d.from_agent);
+
+  // Entities (line 3, right)
+  nodeGroup.append('text')
+    .attr('x', CARD_W - 10).attr('y', 48)
+    .attr('text-anchor', 'end')
+    .attr('fill', 'var(--text-muted)')
+    .attr('font-size', '9px')
+    .text(d => d.entity_count > 0 ? d.entity_count + ' ent' : '');
 
   // Timestamp (line 4)
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 62)
-    .attr('fill', '#8b95a5')
+    .attr('fill', '#a0aec0')
     .attr('font-size', '9px')
     .text(d => {
       if (!d.created_at) return '';
