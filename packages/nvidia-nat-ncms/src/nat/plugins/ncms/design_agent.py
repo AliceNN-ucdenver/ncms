@@ -334,8 +334,8 @@ class DesignAgent:
         # Review loop: conditional edge
         graph.add_conditional_edges("request_review", self.should_revise)
 
-        # Revise loops back to publish (then review again)
-        graph.add_edge("revise_design", "publish_design")
+        # Revise loops back through output guard before publish
+        graph.add_edge("revise_design", "check_output_guardrails")
 
         # After review approval: verify and exit
         # Contract generation is deferred to the coding agent (Phase 3)
