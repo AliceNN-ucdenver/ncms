@@ -125,6 +125,30 @@ network_policies:
       - { path: /usr/local/bin/claude }
       - { path: /usr/local/bin/openclaw }
 
+  # ── USPTO Patent API ────────────────────────────────────────────────
+  uspto:
+    name: uspto
+    endpoints:
+      - host: api.uspto.gov
+        port: 443
+        protocol: rest
+        enforcement: enforce
+    binaries:
+      - { path: "-" }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+
+  # ── HackerNews Algolia API ────────────────────────────────────────
+  hackernews:
+    name: hackernews
+    endpoints:
+      - host: hn.algolia.com
+        port: 443
+        protocol: rest
+        enforcement: enforce
+    binaries:
+      - { path: "-" }
+      - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
+
   # ── Phoenix tracing ─────────────────────────────────────────────────
   phoenix:
     name: phoenix

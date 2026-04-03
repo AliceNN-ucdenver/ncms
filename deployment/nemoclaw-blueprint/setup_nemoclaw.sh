@@ -271,6 +271,23 @@ setup_providers() {
   else
     warn "GITHUB_PERSONAL_ACCESS_TOKEN not set — Archeologist will use unauthenticated API (60 req/hr)"
   fi
+
+  # USPTO Patent API for Archeologist agent
+  if [ -n "${USPTO_API_KEY:-}" ]; then
+    if openshell provider list 2>/dev/null | grep -q "uspto"; then
+      ok "Provider 'uspto' already exists"
+    else
+      info "Creating USPTO provider..."
+      openshell provider create \
+        --name uspto \
+        --type generic \
+        --credential "USPTO_API_KEY=${USPTO_API_KEY}" \
+        && ok "Provider 'uspto' created" \
+        || warn "Failed to create uspto provider — patent search will return 0 results"
+    fi
+  else
+    warn "USPTO_API_KEY not set — patent search will be disabled"
+  fi
 }
 
 # ── Create sandbox ──────────────────────────────────────────────────────────
@@ -359,6 +376,9 @@ setup_agent_sandbox() {
   fi
   if [ "$agent_id" = "archeologist" ] && [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
     providers+=(github)
+  fi
+  if [ "$agent_id" = "archeologist" ] && [ -n "${USPTO_API_KEY:-}" ]; then
+    providers+=(uspto)
   fi
   create_sandbox "$sandbox_name" ${providers[@]+"${providers[@]}"}
 

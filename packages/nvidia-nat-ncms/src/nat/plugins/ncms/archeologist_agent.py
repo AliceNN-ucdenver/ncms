@@ -734,10 +734,20 @@ class ArcheologistAgent:
             if api_key:
                 headers["X-API-Key"] = api_key
 
-            # Try new ODP endpoint first, fall back to legacy
+            # USPTO Open Data Portal API (api.uspto.gov)
+            # q= uses AND operators between keywords for precision
+            # rangeFilters= for filing date range (last 5 years)
+            from datetime import datetime, timedelta, timezone
+            from urllib.parse import quote
+
+            words = clean_topic.split()[:5]  # top 5 keywords
+            and_query = " AND ".join(words)
+            five_years_ago = (datetime.now(timezone.utc) - timedelta(days=5 * 365)).strftime("%Y-%m-%d")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            date_filter = f"applicationMetaData.filingDate {five_years_ago}:{today}"
+
             endpoints = [
-                f"https://data.uspto.gov/api/v1/patent-file-wrapper/search?searchText={query}&rows=10",
-                f"https://developer.uspto.gov/ibd-api/v1/patent/application?searchText={query}&rows=10&start=0",
+                f"https://api.uspto.gov/api/v1/patent/applications/search?q={quote(and_query)}&limit=10&offset=0&rangeFilters={quote(date_filter)}",
             ]
 
             patents = []
