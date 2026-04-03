@@ -81,6 +81,8 @@ class ArcheologistState(TypedDict):
     search_queries: list[str]
     search_results: list[dict]
     arxiv_results: list[dict]
+    patent_results: list[dict]
+    community_results: list[dict]
 
     # Archaeology path
     repository_url: str
@@ -157,6 +159,8 @@ class ArcheologistAgent:
         graph.add_node("plan_queries", self.plan_queries)
         graph.add_node("parallel_search", self.parallel_search)
         graph.add_node("arxiv_search", self.arxiv_search)
+        graph.add_node("patent_search", self.patent_search)
+        graph.add_node("community_search", self.community_search)
         graph.add_node("synthesize_research", self.synthesize_research)
 
         # Archaeology path nodes
@@ -181,7 +185,9 @@ class ArcheologistAgent:
         # Research path edges
         graph.add_edge("plan_queries", "parallel_search")
         graph.add_edge("parallel_search", "arxiv_search")
-        graph.add_edge("arxiv_search", "synthesize_research")
+        graph.add_edge("arxiv_search", "patent_search")
+        graph.add_edge("patent_search", "community_search")
+        graph.add_edge("community_search", "synthesize_research")
         graph.add_edge("synthesize_research", "publish")
 
         # Archaeology path edges
@@ -701,6 +707,115 @@ class ArcheologistAgent:
         )
         return state
 
+    # -- Node: Patent Search (USPTO API, Pure Python) -------------------------
+
+    async def patent_search(self, state: ArcheologistState) -> ArcheologistState:
+        """Search USPTO for related patents. No LLM, no API key."""
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"),
+            self.from_agent, "patent_search", "started",
+        )
+        if await self._check_and_interrupt(state, "patent_search"):
+            return state
+
+        clean_topic = extract_topic(state["topic"])
+        state["patent_results"] = []
+
+        try:
+            import httpx as _httpx
+
+            # USPTO PatFT full-text search API
+            query = clean_topic.replace(" ", "+")
+            url = f"https://developer.uspto.gov/ibd-api/v1/patent/application?searchText={query}&rows=10&start=0"
+
+            async with _httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data.get("results", [])
+                    patents = []
+                    for r in results[:5]:
+                        patents.append({
+                            "title": r.get("inventionTitle", ""),
+                            "abstract": (r.get("abstractText", "") or "")[:500],
+                            "filing_date": r.get("filingDate", ""),
+                            "assignee": r.get("applicantFileReference", ""),
+                            "patent_number": r.get("patentApplicationNumber", ""),
+                        })
+                    state["patent_results"] = patents
+                    logger.info(
+                        "[archeologist/research] USPTO: %d patents found for '%s'",
+                        len(patents), clean_topic[:60],
+                    )
+                else:
+                    logger.warning("[archeologist/research] USPTO API returned %d", resp.status_code)
+
+        except Exception as e:
+            logger.warning("[archeologist/research] Patent search failed: %s", e)
+
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"), self.from_agent,
+            "patent_search", "completed", f"{len(state['patent_results'])} patents",
+        )
+        return state
+
+    # -- Node: Community Search (HackerNews API, Pure Python) -----------------
+
+    async def community_search(self, state: ArcheologistState) -> ArcheologistState:
+        """Search HackerNews for community discussion and sentiment. No LLM, no API key."""
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"),
+            self.from_agent, "community_search", "started",
+        )
+        if await self._check_and_interrupt(state, "community_search"):
+            return state
+
+        clean_topic = extract_topic(state["topic"])
+        state["community_results"] = []
+
+        try:
+            import httpx as _httpx
+
+            # HackerNews Algolia API
+            query = clean_topic.replace(" ", "+")
+            url = f"https://hn.algolia.com/api/v1/search?query={query}&tags=story&hitsPerPage=10"
+
+            async with _httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    hits = data.get("hits", [])
+                    stories = []
+                    for h in hits:
+                        points = h.get("points", 0) or 0
+                        if points < 10:
+                            continue
+                        stories.append({
+                            "title": h.get("title", ""),
+                            "url": f"https://news.ycombinator.com/item?id={h.get('objectID', '')}",
+                            "points": points,
+                            "num_comments": h.get("num_comments", 0),
+                            "created_at": h.get("created_at", ""),
+                        })
+                        if len(stories) >= 5:
+                            break
+                    state["community_results"] = stories
+                    logger.info(
+                        "[archeologist/research] HackerNews: %d stories found (>10 points)",
+                        len(stories),
+                    )
+                else:
+                    logger.warning("[archeologist/research] HN API returned %d", resp.status_code)
+
+        except Exception as e:
+            logger.warning("[archeologist/research] Community search failed: %s", e)
+
+        await emit_telemetry(
+            self.hub_url, state.get("project_id"), self.from_agent,
+            "community_search", "completed", f"{len(state['community_results'])} stories",
+        )
+        return state
+
     # -- Node: Synthesize Research (LLM) -------------------------------------
 
     async def synthesize_research(self, state: ArcheologistState) -> ArcheologistState:
@@ -737,6 +852,32 @@ class ArcheologistAgent:
                     f"{p['summary'][:1000]}\n"
                 )
             logger.info("[archeologist/research] Added %d ArXiv papers to synthesis input", len(arxiv_papers))
+
+        # Append patent results if found
+        patents = state.get("patent_results", [])
+        if patents:
+            parts.append("\n---\n\n## Patent Landscape (USPTO)\n")
+            for i, p in enumerate(patents, 1):
+                parts.append(
+                    f"### Patent {i}: {p['title']}\n"
+                    f"**Patent #:** {p.get('patent_number', 'N/A')}\n"
+                    f"**Filed:** {p.get('filing_date', 'N/A')}\n"
+                    f"**Assignee:** {p.get('assignee', 'N/A')}\n"
+                    f"{p.get('abstract', '')[:500]}\n"
+                )
+            logger.info("[archeologist/research] Added %d patents to synthesis input", len(patents))
+
+        # Append community discussion if found
+        community = state.get("community_results", [])
+        if community:
+            parts.append("\n---\n\n## Community Discussion (HackerNews)\n")
+            for i, s in enumerate(community, 1):
+                parts.append(
+                    f"### Discussion {i}: {s['title']}\n"
+                    f"**Points:** {s.get('points', 0)} | **Comments:** {s.get('num_comments', 0)}\n"
+                    f"**URL:** {s.get('url', '')}\n"
+                )
+            logger.info("[archeologist/research] Added %d community discussions to synthesis input", len(community))
 
         search_text = "\n".join(parts)
         # Truncate to fit context window
@@ -1278,6 +1419,8 @@ async def archeologist_agent_fn(
             "search_queries": [],
             "search_results": [],
             "arxiv_results": [],
+            "patent_results": [],
+            "community_results": [],
             # Archaeology path
             "repository_url": repo_url or "",
             "project_goal": goal,

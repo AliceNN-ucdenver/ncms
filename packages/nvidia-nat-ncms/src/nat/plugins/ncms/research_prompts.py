@@ -108,6 +108,25 @@ Topics where fewer than 2 independent sources confirm a finding:
 - [gap 1]: Only supported by S[N]. Additional research needed on [specific question].
 - [gap 2]: ...
 
+## Jobs-to-be-Done Analysis
+Based on community discussions and market evidence:
+- **Primary job:** [what users are hiring current solutions to do]
+- **Underserved outcomes:** [where current solutions fail — cite community evidence]
+- **Overserved outcomes:** [where current solutions over-deliver — opportunity to simplify]
+
+## Patent Landscape
+If patent data is available in the search results:
+- **Related patents:** [P1-PN with titles, assignees, filing dates]
+- **Coverage gaps:** [areas with user demand but no patent coverage]
+- **Freedom to operate:** [assessment of patent density in the target space]
+(If no patent data is available, state "No patent data available for this analysis.")
+
+## Whitespace Analysis
+Synthesize all sources to identify market opportunities:
+- **Unmet jobs:** [intersection of community pain + limited patent coverage + no dominant product]
+- **Market opportunity:** [quantified from web research data + patent gaps]
+- **Recommended focus:** [specific product opportunity with supporting evidence]
+
 ## Formal Conclusions
 Each conclusion must cite at least 2 supporting premises:
 1. **C1**: [conclusion] — supported by S[N], S[N] because [specific reasoning]

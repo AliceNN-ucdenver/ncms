@@ -47,7 +47,7 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 
 | Agent | Type | Pipeline |
 |-------|------|----------|
-| **Archeologist** | LangGraph (dual-path) | check_guardrails → [research: plan → search → arxiv → synthesize \| archaeology: clone → analyze → gaps → web_research → synthesize] → publish → trigger PO |
+| **Archeologist** | LangGraph (dual-path) | check_guardrails → [research: plan → search → arxiv → patents → community → synthesize \| archaeology: clone → analyze → gaps → web_research → synthesize] → publish → trigger PO |
 | **Product Owner** | LangGraph | check_guardrails → read_doc → ask_experts (parallel) → synthesize_prd → generate_manifest → publish → trigger Designer |
 | **Designer** | LangGraph | check_guardrails → read_doc → ask_experts → synthesize → validate → output_guard → publish → review ⟲ → verify |
 | **Architect** | LangGraph | classify → search_memory → [synthesize_answer \| structured_review] |
@@ -67,7 +67,7 @@ A "New Project" button in the dashboard creates a `PRJ-XXXXXXXX` identifier that
 | **LLM** | Nemotron Nano 30B | 256 experts, 3B active params, 512K context on DGX Spark (128GB). Dual LLM: standard + thinking-enabled. |
 | **Isolation** | NemoClaw | Kernel-level sandboxes, explicit network policies per agent |
 | **Observability** | Phoenix OpenTelemetry | Per-agent tracing with `_type: nim` (ChatNVIDIA) for full LLM span capture |
-| **Research** | Tavily + ArXiv | Live web search (5 parallel) + academic paper search (12-month window) |
+| **Research** | Tavily + ArXiv + USPTO + HN | Web search (5 parallel) + academic papers + patent landscape + community sentiment |
 | **Dashboard** | NCMS SPA | D3 doc flow graph, audit timeline, login page, guardrail strips, compliance scores |
 | **Guardrails** | NemoGuardrails | Policy enforcement with human-in-the-loop approval gates (block/reject → pause for approve/deny) |
 | **Audit** | SQLite (V8) | 13 tables, tamper-evident hash chains, JWT auth, provenance certificates, compliance scoring |
@@ -102,13 +102,15 @@ This knowledge becomes searchable by any agent through the knowledge bus. When d
 
 ### Phase 2: Research
 
-The Archeologist's research path runs a five-node LangGraph pipeline: **plan → search (5 parallel) → arxiv → synthesize → publish → trigger PO**.
+The Archeologist's research path runs a seven-node LangGraph pipeline: **plan → search (5 parallel) → arxiv → patents (USPTO) → community (HackerNews) → synthesize → publish → trigger PO**.
 
 1. **Plan** generates five parallel search queries covering different angles of the topic
 2. **Search** executes all five Tavily web searches concurrently, collecting results
-3. **Synthesize** compiles all search results into a structured market research report
-4. **Publish** posts the report to the hub's document store
-5. **Trigger** fires a bus announcement that automatically starts the Product Owner
+3. **ArXiv** searches academic papers from the last 12 months
+4. **Patents** searches USPTO for related patents in the space (free API, no key)
+5. **Community** searches HackerNews for developer discussion and sentiment (free API)
+6. **Synthesize** compiles all sources into a structured report with Jobs-to-be-Done analysis, patent landscape, whitespace analysis, and semi-formal certificate format
+7. **Publish** posts the report to the hub's document store, **Trigger** starts the Product Owner
 
 > **Observed:** 25 results from 5 parallel Tavily searches. The Archeologist produced an 11KB market research report covering NIST standards, OAuth 2.0 PKCE flows, passkey adoption trends, and zero-trust authentication patterns. Completed in approximately 2 minutes, with citations to NIST SP 800-63B, OAuth 2.0 for Browser-Based Apps, and FIDO2/WebAuthn specifications.
 

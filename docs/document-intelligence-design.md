@@ -479,6 +479,57 @@ Generates a complete audit report containing:
 
 ---
 
+## 13. Market Intelligence: Patent + Community + JTBD Analysis
+
+### Problem
+
+The Archeologist's research path does web search (Tavily) and academic search (ArXiv) — both produce general information. For product ideation, the missing layers are: what's already been invented (patents), what users complain about (community sentiment), and what job isn't being done (whitespace analysis). These sources are free and add genuinely differentiated intelligence to the research report.
+
+### Design
+
+Add two new nodes to the research path and enhance the synthesis prompt with a Jobs-to-be-Done framework.
+
+**New pipeline (research path):**
+```
+plan_queries → parallel_search (Tavily) → arxiv_search → patent_search (USPTO) → community_search (HN) → synthesize_research
+```
+
+**patent_search node** — Pure Python, no LLM, no API key:
+- USPTO Patent Search API: `https://developer.uspto.gov/api-catalog/patft`
+- Search by topic keywords extracted from the research topic
+- Extract: patent title, abstract, filing date, assignee
+- Filter to last 5 years for relevance
+- Collect up to 5 patents, store in `state["patent_results"]`
+
+**community_search node** — Pure Python, no LLM, no API key:
+- HackerNews Algolia API: `https://hn.algolia.com/api/v1/search?query=...&tags=story`
+- Search by topic keywords
+- Extract: title, points, num_comments, URL
+- Filter to stories with significant engagement (>10 points)
+- Collect up to 5 stories, store in `state["community_results"]`
+
+**Updated synthesis prompt** — adds three sections to the semi-formal certificate:
+
+```
+## Jobs-to-be-Done Analysis
+- **Primary job:** [what users are hiring current solutions to do]
+- **Underserved outcomes:** [where current solutions fail, from community evidence]
+- **Overserved outcomes:** [where current solutions over-deliver, opportunity to simplify]
+
+## Patent Landscape
+- **Related patents:** [P1-PN with titles, assignees, filing dates]
+- **Coverage gaps:** [areas where no patents exist despite user demand]
+- **Freedom to operate:** [assessment of patent density in the target space]
+
+## Whitespace Analysis
+- **Unmet jobs:** [intersection of community pain + no patent + no product]
+- **Market opportunity:** [quantified from web research + patent gaps]
+```
+
+### Effort: 1-2 days
+
+---
+
 ## Known Issues
 
 ### Duplicate review scores — FIXED

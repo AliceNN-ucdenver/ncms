@@ -9,7 +9,7 @@ if (!state.pipelineProgress) state.pipelineProgress = {};
 // Each phase defines its agent and the ordered processing nodes.
 
 const PIPELINE_PHASES = {
-  research:    { agent: 'archeologist',   label: 'Research',     nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'arxiv_search', 'synthesize_research', 'publish', 'verify_and_trigger'] },
+  research:    { agent: 'archeologist',   label: 'Research',     nodes: ['check_guardrails', 'plan_queries', 'parallel_search', 'arxiv_search', 'patent_search', 'community_search', 'synthesize_research', 'publish', 'verify_and_trigger'] },
   archaeology: { agent: 'archeologist',   label: 'Archaeology',  nodes: ['check_guardrails', 'clone_and_index', 'analyze_architecture', 'identify_gaps', 'web_research', 'synthesize_report', 'publish', 'verify_and_trigger'] },
   prd:         { agent: 'product_owner',  label: 'PRD',          nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_prd', 'generate_manifest', 'publish_prd', 'verify_and_trigger'] },
   design:      { agent: 'designer',       label: 'Design',       nodes: ['check_guardrails', 'read_document', 'ask_experts', 'synthesize_design', 'validate_completeness', 'check_output_guardrails', 'publish_design', 'request_review', 'revise_design', 'verify'] },
@@ -39,6 +39,8 @@ const NODE_LABELS = {
   test: 'Test',
   // Research nodes
   arxiv_search: 'ArXiv',
+  patent_search: 'Patents',
+  community_search: 'Community',
   // Archeologist nodes
   clone_and_index: 'Clone',
   analyze_architecture: 'Analyze',
