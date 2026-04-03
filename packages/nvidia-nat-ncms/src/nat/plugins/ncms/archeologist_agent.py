@@ -763,12 +763,14 @@ class ArcheologistAgent:
                                 meta = r.get("applicationMetaData", r)
                                 patents.append({
                                     "title": meta.get("inventionTitle", ""),
-                                    "abstract": "",  # abstract not in file wrapper API
                                     "filing_date": meta.get("filingDate", meta.get("effectiveFilingDate", "")),
+                                    "grant_date": meta.get("grantDate", ""),
                                     "assignee": meta.get("firstApplicantName", ""),
                                     "inventor": meta.get("firstInventorName", ""),
-                                    "patent_number": meta.get("patentNumber", r.get("applicationNumberText", "")),
+                                    "patent_number": meta.get("patentNumber", ""),
                                     "status": meta.get("applicationStatusDescriptionText", ""),
+                                    "classification": ", ".join((meta.get("cpcClassificationBag", []) or [])[:3]),
+                                    "category": ", ".join((meta.get("publicationCategoryBag", []) or [])[:1]),
                                 })
                             if patents:
                                 logger.info("[archeologist/research] USPTO (%s): %d patents found", endpoint[:40], len(patents))
@@ -904,14 +906,18 @@ class ArcheologistAgent:
         # Append patent results if found
         patents = state.get("patent_results", [])
         if patents:
-            parts.append("\n---\n\n## Patent Landscape (USPTO)\n")
+            parts.append("\n---\n\n## Patent Landscape (USPTO — last 5 years)\n")
             for i, p in enumerate(patents, 1):
                 parts.append(
                     f"### Patent {i}: {p['title']}\n"
-                    f"**Patent #:** {p.get('patent_number', 'N/A')}\n"
-                    f"**Filed:** {p.get('filing_date', 'N/A')}\n"
-                    f"**Assignee:** {p.get('assignee', 'N/A')}\n"
-                    f"{p.get('abstract', '')[:500]}\n"
+                    f"**Patent #:** {p.get('patent_number', 'Pending')} | "
+                    f"**Status:** {p.get('status', 'N/A')} | "
+                    f"**Category:** {p.get('category', 'N/A')}\n"
+                    f"**Filed:** {p.get('filing_date', 'N/A')} | "
+                    f"**Granted:** {p.get('grant_date', 'Pending')}\n"
+                    f"**Assignee:** {p.get('assignee', 'N/A')} | "
+                    f"**Inventor:** {p.get('inventor', 'N/A')}\n"
+                    f"**CPC Classification:** {p.get('classification', 'N/A')}\n"
                 )
             logger.info("[archeologist/research] Added %d patents to synthesis input", len(patents))
 
