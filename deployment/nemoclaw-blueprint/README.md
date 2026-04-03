@@ -97,12 +97,80 @@ uv run ncms demo --nemoclaw-nd # Run ND agent demo
 
 ## Inference Profiles
 
-| Profile | Provider | Model | Endpoint |
-|---------|----------|-------|----------|
-| `default` | DGX Spark | Nemotron 3 Nano 30B | `spark-ee7d.local:8000` |
-| `ollama` | Ollama | Qwen 3.5 35B MoE | `host.docker.internal:11434` |
-| `nim` | NVIDIA NIM | Nemotron 70B | `integrate.api.nvidia.com` |
-| `vllm` | vLLM | Nemotron 3 Nano | `localhost:8000` |
+| Profile | Provider | Model | Active Params | Endpoint |
+|---------|----------|-------|--------------|----------|
+| `nano` | DGX Spark | Nemotron 3 Nano 30B | 3B | `spark-ee7d.local:8000` |
+| `super` | DGX Spark | Nemotron 3 Super 120B | 12B | `spark-ee7d.local:8000` |
+| `ollama` | Ollama | Qwen 3.5 35B MoE | 3B | `host.docker.internal:11434` |
+
+### DGX Spark Deployment Commands
+
+**Nemotron 3 Nano 30B (3B active, FP16):**
+
+```bash
+# Download reasoning parser
+sudo wget -O /root/nano_v3_reasoning_parser.py \
+  https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16/resolve/main/nano_v3_reasoning_parser.py
+
+# Deploy
+sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-nano \
+  -p 8000:8000 \
+  -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
+  -v /root/.cache/huggingface:/root/.cache/huggingface \
+  -v /root/nano_v3_reasoning_parser.py:/app/nano_v3_reasoning_parser.py \
+  nvcr.io/nvidia/vllm:26.01-py3 \
+  vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --host 0.0.0.0 --port 8000 \
+    --trust-remote-code \
+    --max-model-len 524288 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder \
+    --reasoning-parser-plugin /app/nano_v3_reasoning_parser.py \
+    --reasoning-parser nano_v3
+```
+
+**Nemotron 3 Super 120B (12B active, NVFP4):**
+
+```bash
+# Download reasoning parser
+wget https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4/raw/main/super_v3_reasoning_parser.py
+
+# Deploy
+sudo docker run -d --gpus all --ipc=host --restart unless-stopped \
+  --name vllm-nemotron-super \
+  -e VLLM_NVFP4_GEMM_BACKEND=marlin \
+  -e VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 \
+  -e HF_TOKEN=$HF_TOKEN \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -v $(pwd)/super_v3_reasoning_parser.py:/app/super_v3_reasoning_parser.py \
+  -p 8000:8000 \
+  vllm/vllm-openai:cu130-nightly \
+    --model nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 \
+    --served-model-name nemotron-3-super \
+    --host 0.0.0.0 --port 8000 \
+    --dtype auto \
+    --kv-cache-dtype fp8 \
+    --trust-remote-code \
+    --gpu-memory-utilization 0.90 \
+    --max-model-len 524288 \
+    --max-num-seqs 4 \
+    --quantization fp4 \
+    --moe-backend marlin \
+    --mamba_ssm_cache_dtype float32 \
+    --enable-chunked-prefill \
+    --speculative_config '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"triton"}' \
+    --reasoning-parser-plugin /app/super_v3_reasoning_parser.py \
+    --reasoning-parser super_v3 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder
+```
+
+**Switch between models:** Only one can run on port 8000 at a time.
+```bash
+sudo docker stop vllm-nemotron-nano   # or vllm-nemotron-super
+sudo docker start vllm-nemotron-super  # or vllm-nemotron-nano
+```
 
 ## Skills
 
