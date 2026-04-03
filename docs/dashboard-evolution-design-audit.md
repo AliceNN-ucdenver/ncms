@@ -44,11 +44,54 @@ The `decide_approval` endpoint accepts any caller with no authentication. The `d
 
 ### Design
 
-**Phase 1 (immediate):** API key authentication. The hub generates a random API key at startup and displays it in the console. The dashboard stores it in sessionStorage after the user enters it once. All mutation endpoints (`/approvals/{id}/decide`, `POST /projects`, `POST /documents`, etc.) require the `X-API-Key` header.
+**Phase 1: Local auth with JWT (immediate)**
 
-**Phase 2 (future):** OAuth/OIDC integration. The dashboard redirects to an identity provider. The approver identity comes from the JWT token, not from the request body. The `decided_by` field is set server-side from the authenticated identity.
+V8 migration adds a `users` table with bcrypt-hashed passwords:
 
-### Effort: 1-2 days (Phase 1)
+```sql
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    display_name TEXT,
+    role TEXT DEFAULT 'reviewer',  -- reviewer | admin
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+```
+
+Seeded at hub startup with a default user:
+- username: `shawn`, password: `ncms` (bcrypt hashed), role: `admin`
+
+**API endpoints:**
+
+- `POST /api/v1/auth/login` — accepts `{username, password}`, validates against bcrypt hash, returns `{token: "<JWT>", expires_in: 86400}`. JWT payload: `{sub: "shawn", role: "admin", exp: ...}`. Signed with a hub-generated secret (or `NCMS_JWT_SECRET` env var).
+- `GET /api/v1/auth/me` — returns current user from JWT token.
+
+**Dashboard login page:**
+
+- On first load (no token in localStorage), show a login form instead of the dashboard.
+- On successful login, store the JWT in localStorage and redirect to the dashboard.
+- All API calls include `Authorization: Bearer <token>` header.
+- On 401 response, redirect to login.
+
+**Server-side middleware:**
+
+- Starlette middleware validates JWT on all mutation endpoints.
+- `decided_by` on approval decisions is set **server-side** from `request.state.user.username`, not from the request body. The client cannot forge the approver identity.
+- Read-only endpoints (GET) can remain unauthenticated for now (dashboard viewing).
+
+**Protected endpoints (require JWT):**
+- `POST /api/v1/approvals/{id}/decide` — approver identity from token
+- `POST /api/v1/projects` — creator identity from token
+- `POST /api/v1/documents` — publisher identity from token
+- `POST /api/v1/pipeline/interrupt/{agent_id}` — interrupter identity from token
+
+**Phase 2 (future): OIDC provider swap.**
+
+Replace the local `users` table with an OIDC redirect flow. The JWT validation stays the same — only the token issuer changes. The `users` table becomes a cache/profile store. No dashboard or middleware changes needed beyond the login page redirect.
+
+### Effort: 2-3 days (Phase 1)
 
 ---
 
