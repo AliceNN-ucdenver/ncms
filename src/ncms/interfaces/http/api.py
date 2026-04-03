@@ -813,6 +813,20 @@ def create_api_app(
             return JSONResponse(project.model_dump(mode="json"))
         return JSONResponse({"error": "Not found"}, status_code=404)
 
+    async def fail_project(request: Request) -> JSONResponse:
+        """Mark project as failed (manually or by timeout)."""
+        project_id = request.path_params["project_id"]
+        if doc_svc:
+            await doc_svc.update_project_status(project_id, "failed")
+            if event_log:
+                from ncms.infrastructure.observability.event_log import DashboardEvent
+                event_log.emit(DashboardEvent(
+                    type="project.failed",
+                    data={"project_id": project_id},
+                ))
+            return JSONResponse({"status": "failed", "project_id": project_id})
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
     async def complete_project(request: Request) -> JSONResponse:
         """Mark project as completed when designer verify passes."""
         project_id = request.path_params["project_id"]
@@ -1549,6 +1563,7 @@ def create_api_app(
         Route("/api/v1/projects", list_projects, methods=["GET"]),
         Route("/api/v1/projects/{project_id}", get_project, methods=["GET"]),
         Route("/api/v1/projects/{project_id}/archive", archive_project, methods=["POST"]),
+        Route("/api/v1/projects/{project_id}/fail", fail_project, methods=["POST"]),
         Route("/api/v1/projects/{project_id}/complete", complete_project, methods=["POST"]),
 
         # Pipeline telemetry + control

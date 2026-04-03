@@ -286,6 +286,7 @@
   /* ── Agent Node ─────────────────────────────────────────────── */
   .agent-node {
     width: 100%;
+    flex: 1;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -404,7 +405,8 @@
   }
 
   .activity-list {
-    height: 148px;
+    flex: 1;
+    min-height: 148px;
     overflow-y: auto;
     border-top: 1px solid var(--border);
     padding: 4px 0;
@@ -5040,4 +5042,12 @@
   color: #10b981;
   font-weight: 600;
   font-size: 10px;
+}
+.project-action-btn.failed-btn {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.project-action-btn.failed-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
 }

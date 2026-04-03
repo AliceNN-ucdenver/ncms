@@ -186,6 +186,7 @@ function renderProjectDetail(project) {
   html += `<a class="project-action-btn export" href="${HUB_API}/api/v1/projects/${encodeURIComponent(id)}/export" download="audit-report-${escapeHtml(id)}.md">Export MD</a>`;
   html += `<button class="project-action-btn export-pdf" onclick="printAuditReport('${escapeHtml(id)}')">Export PDF</button>`;
   if (status === 'active' || status === 'pending') {
+    html += `<button class="project-action-btn failed-btn" onclick="markProjectFailed('${escapeHtml(id)}')">Mark Failed</button>`;
     html += `<button class="project-action-btn archive" onclick="archiveProject('${escapeHtml(id)}')">Archive</button>`;
   }
   if (status === 'archived') {
@@ -234,6 +235,17 @@ async function toggleProjectExpand(projectId) {
   }
 
   renderProjects();
+}
+
+async function markProjectFailed(projectId) {
+  try {
+    await fetch(HUB_API + '/api/v1/projects/' + encodeURIComponent(projectId) + '/fail', {
+      method: 'POST',
+    });
+    loadProjects();
+  } catch (e) {
+    console.debug('Failed to mark project failed:', e);
+  }
 }
 
 async function archiveProject(projectId) {
