@@ -50,7 +50,8 @@ async def create_ncms_services(
             model_name=config.splade_model,
             cache_dir=config.model_cache_dir,
         )
-        logger.info("SPLADE engine enabled with model: %s", config.splade_model)
+        splade._ensure_model()
+        logger.info("SPLADE engine enabled and pre-loaded: %s", config.splade_model)
 
     # Admission scoring (Phase 1, disabled by default)
     admission = None

@@ -578,6 +578,10 @@ async def run_dashboard(
             model_name=config.splade_model,
             cache_dir=config.model_cache_dir,
         )
+        # Eager-load model at startup to avoid race condition when
+        # multiple concurrent store_memory calls trigger lazy load
+        splade._ensure_model()
+        logger.info("SPLADE model pre-loaded at startup")
 
     # Admission scoring (Phase 1, disabled by default)
     admission = None
