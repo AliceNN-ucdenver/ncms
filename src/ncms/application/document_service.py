@@ -8,6 +8,7 @@ for all document operations — the API layer calls this, not the store directly
 from __future__ import annotations
 
 import hashlib
+import json as _json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -355,12 +356,20 @@ class DocumentService:
         detail: str = "",
     ) -> None:
         """Record a pipeline node execution event."""
+        # Extract event_subtype from JSON detail if present
+        event_subtype = ""
+        if detail.lstrip().startswith("{"):
+            import contextlib
+            with contextlib.suppress(ValueError, TypeError):
+                event_subtype = _json.loads(detail).get("type", "")
+
         event = PipelineEvent(
             project_id=project_id,
             agent=agent,
             node=node,
             status=status,
             detail=detail,
+            event_subtype=event_subtype,
         )
         await self._store.save_pipeline_event(event)
 
@@ -579,6 +588,7 @@ class DocumentService:
                     "size_bytes": d.size_bytes,
                     "content_hash": d.content_hash,
                     "entity_count": len(d.entities),
+                    "metadata": d.metadata if isinstance(d.metadata, dict) else {},
                     "parent_doc_id": d.parent_doc_id,
                     "created_at": d.created_at.isoformat() if d.created_at else None,
                 }
@@ -594,7 +604,17 @@ class DocumentService:
                 for link in all_links
             ],
             "review_scores": [s.model_dump(mode="json") for s in scores],
-            "pipeline_events": len(events),
+            "pipeline_events": [
+                {
+                    "agent": e.agent,
+                    "node": e.node,
+                    "status": e.status,
+                    "detail": e.detail,
+                    "event_subtype": e.event_subtype,
+                    "timestamp": e.timestamp.isoformat() if hasattr(e.timestamp, 'isoformat') else e.timestamp,
+                }
+                for e in events
+            ],
             "quality_score": project.quality_score,
         }
 
@@ -605,7 +625,15 @@ class DocumentService:
         """
         db = self._store.db
         query = """
-            SELECT timestamp, 'pipeline' as type, agent, node || ': ' || status as detail, '' as extra
+            SELECT timestamp,
+                   CASE WHEN event_subtype != ''
+                   THEN 'research' ELSE 'pipeline'
+                   END as type,
+                   agent,
+                   node || ': ' || status as detail,
+                   CASE WHEN event_subtype != ''
+                   THEN detail ELSE ''
+                   END as extra
             FROM pipeline_events WHERE project_id = ?
             UNION ALL
             SELECT timestamp, 'approval' as type, approver as agent, decision as detail, comment as extra
@@ -928,6 +956,49 @@ class DocumentService:
                 md.append(f"| {c[0]} | {c[1]} | {c[2]:,} chars | {c[3]:,} chars | {c[4]:,}ms | {(c[5] or '?')[:25]} |")
         else:
             md.append("\nNo LLM calls recorded.")
+
+        # Research Methodology section — from timeline research events + document metadata
+        research_events = [e for e in timeline if e["type"] == "research" and e["extra"]]
+        _research_doc_meta = None
+        for d in docs:
+            if d.doc_type == "research" and d.metadata:
+                _m = d.metadata if isinstance(d.metadata, dict) else _json.loads(d.metadata or "{}")
+                if "research_methodology" in _m:
+                    _research_doc_meta = _m["research_methodology"]
+                    break
+        if research_events or _research_doc_meta:
+            md.append("\n---\n\n## Research Methodology")
+            for evt in research_events:
+                try:
+                    data = _json.loads(evt["extra"])
+                    if data.get("type") == "research_plan":
+                        md.append(f"\n### Query Plan ({evt['timestamp']})")
+                        for engine in ("web", "arxiv", "patent", "community"):
+                            queries = data.get(engine, [])
+                            if queries:
+                                md.append(f"\n**{engine.title()}** ({len(queries)} queries):")
+                                for q in queries:
+                                    md.append(f"- {q}")
+                    elif data.get("type") == "research_results":
+                        engine = data.get("engine", "?")
+                        count = data.get("result_count", 0)
+                        top = data.get("top_results", [])
+                        ts = evt["timestamp"]
+                        md.append(f"\n### {engine.title()} Results: {count} items ({ts})")
+                        for t in top[:3]:
+                            md.append(f"- {t.get('title', '?')}")
+                except (_json.JSONDecodeError, KeyError):
+                    pass
+            if _research_doc_meta:
+                md.append("\n### Embedded Methodology (from research document)")
+                plan = _research_doc_meta.get("query_plan", {})
+                summary = _research_doc_meta.get("results_summary", {})
+                for engine in ("web", "arxiv", "patent", "community"):
+                    queries = plan.get(engine, [])
+                    count = summary.get(engine, 0)
+                    if isinstance(count, dict):
+                        count = count.get("count", 0)
+                    md.append(f"- **{engine.title()}**: {len(queries)} queries, {count} results")
 
         md.append("\n---\n\n## Audit Timeline (last 50 events)")
         md.append("\n| Time | Type | Agent | Detail |")

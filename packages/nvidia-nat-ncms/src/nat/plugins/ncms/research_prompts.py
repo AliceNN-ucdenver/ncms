@@ -9,31 +9,40 @@ formal conclusions with citation chains.
 """
 
 PLAN_QUERIES_PROMPT = """\
-You are an expert research query planner. Given a topic, generate exactly 5 \
-high-quality web search queries. Each query should be specific enough to find \
-targeted results (not generic overviews) and include temporal markers (2025, 2026) \
-where relevant.
-
-The 5 queries MUST cover these distinct angles:
-1. MARKET: Market size, growth projections, key vendors, competitive landscape
-2. STANDARDS: Specific standards (e.g., NIST, OWASP, ISO), frameworks, compliance
-3. SECURITY: Threat landscape, attack vectors, vulnerability data, breach statistics
-4. IMPLEMENTATION: Architecture patterns, technology stacks, integration approaches
-5. EVIDENCE: Case studies with measurable outcomes (ROI, latency, conversion)
+You are an expert research query planner. Given a topic, generate search queries \
+optimized for four different search engines. Each engine has different constraints.
 
 Topic: {topic}
 
-Return ONLY a JSON array of 5 strings, nothing else.
-"""
+Return a JSON object with exactly these four keys:
 
-PLAN_ARXIV_QUERIES_PROMPT = """\
-Generate exactly 3 academic search queries for ArXiv papers on: {topic}
+"web" — 5 queries for Tavily web search. Tavily works like Google — use natural \
+  language queries with specific terms. Include year (2025/2026) for recency. \
+  Cover these angles:
+  1. Market size, growth projections, key vendors, competitive landscape
+  2. Specific standards (NIST, OWASP, ISO), frameworks, compliance requirements
+  3. Threat landscape, attack vectors, vulnerability data, breach statistics
+  4. Architecture patterns, technology stacks, integration approaches
+  5. Case studies with measurable outcomes (ROI, latency, conversion)
 
-Use short keyword phrases (3-6 words) optimized for ArXiv search. \
-Focus on formal methods, protocol analysis, security proofs, benchmark \
-evaluations, and novel architectures. Use technical language, not marketing.
+"arxiv" — 3 queries for ArXiv academic paper search. ArXiv uses keyword matching \
+  against paper titles and abstracts. Use SHORT technical phrases (3-6 words). \
+  Focus on formal methods, protocol analysis, security proofs, benchmarks. \
+  Example: "zero-trust authentication formal verification"
 
-Return ONLY a JSON array of 3 strings.
+"patent" — 3 queries for USPTO patent search. USPTO uses AND operators between \
+  keywords. Use exactly 2-3 technical keywords joined by AND. More than 3 terms \
+  often returns zero results. No stop words (for/the/of/with). Order from most \
+  specific to broadest so we can fall back. \
+  Example: "authentication AND cryptographic AND protocol"
+
+"community" — 3 queries for HackerNews Algolia search. HN search matches against \
+  story titles which are SHORT and casual. Use 2-3 word phrases the way a \
+  developer would title a Show HN or Ask HN post. \
+  Good: "SSO auth", "zero trust", "identity API" \
+  Bad: "identity federation adoption metrics" (too formal, zero results)
+
+Return ONLY a JSON object, no markdown, no explanation.
 """
 
 GAP_ANALYSIS_PROMPT = """\

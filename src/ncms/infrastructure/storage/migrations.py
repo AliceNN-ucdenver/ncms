@@ -271,7 +271,9 @@ CREATE TABLE IF NOT EXISTS pipeline_events (
     node TEXT NOT NULL,
     status TEXT NOT NULL,
     detail TEXT DEFAULT '',
+    event_subtype TEXT DEFAULT '',
     timestamp TEXT NOT NULL,
+    prev_hash TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 CREATE INDEX IF NOT EXISTS idx_pipeline_project ON pipeline_events(project_id);

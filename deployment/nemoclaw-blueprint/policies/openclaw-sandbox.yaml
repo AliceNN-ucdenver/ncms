@@ -126,6 +126,7 @@ network_policies:
       - { path: /usr/local/bin/openclaw }
 
   # ── USPTO Patent API ────────────────────────────────────────────────
+  # api.uspto.gov — search + metadata; data.uspto.gov — full-text XML (signed redirect)
   uspto:
     name: uspto
     endpoints:
@@ -133,6 +134,16 @@ network_policies:
         port: 443
         protocol: rest
         enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
+      - host: data.uspto.gov
+        port: 443
+        protocol: rest
+        enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
     binaries:
       - { path: "-" }
       - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }
@@ -145,6 +156,9 @@ network_policies:
         port: 443
         protocol: rest
         enforcement: enforce
+        tls: terminate
+        rules:
+          - allow: { method: GET, path: "/**" }
     binaries:
       - { path: "-" }
       - { path: /sandbox/.uv/python/cpython-3.13.12-linux-aarch64-gnu/bin/python3.13 }

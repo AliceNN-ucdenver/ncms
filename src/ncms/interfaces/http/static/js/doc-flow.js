@@ -1,7 +1,7 @@
 // ── NCMS Dashboard — Document Flow Graph (D3 DAG) ───────────────────
-// Renders a horizontal flow of documents in a project showing the
-// traceability chain with typed icons, score gauges, and link arrows.
-// Compact card-based layout instead of spread-out circle nodes.
+// Renders a horizontal flow of documents with governance metadata.
+// Taller cards with type-specific content + governance hash section.
+// No arrow lines — "derived from" / "reviews" labels between cards.
 
 const DOC_TYPE_CONFIG = {
   research:  { icon: '\uD83D\uDD0D', color: '#10b981', label: 'Research',  order: 0 },
@@ -13,20 +13,21 @@ const DOC_TYPE_CONFIG = {
 };
 
 const LINK_TYPE_CONFIG = {
-  derived_from: { color: '#58a6ff', dash: '',    label: 'derived from' },
-  reviews:      { color: '#a78bfa', dash: '6,3', label: 'reviews' },
-  supersedes:   { color: '#f59e0b', dash: '3,3', label: 'supersedes' },
-  cites:        { color: '#6e7681', dash: '2,2', label: 'cites' },
-  approved_by:  { color: '#10b981', dash: '',    label: 'approved by' },
+  derived_from: { color: '#58a6ff', label: 'derived from' },
+  reviews:      { color: '#a78bfa', label: 'reviews' },
+  supersedes:   { color: '#f59e0b', label: 'supersedes' },
+  cites:        { color: '#6e7681', label: 'cites' },
+  approved_by:  { color: '#10b981', label: 'approved by' },
 };
 
-// Card dimensions
-const CARD_W = 170;
-const CARD_H_BASE = 82;
-const CARD_H_PER_SCORE = 14;  // extra height per reviewer score line
-const CARD_GAP_X = 50;
+// Card dimensions — taller for governance metadata
+const CARD_W = 200;
+const CARD_H_BASE = 158;      // base without review scores
+const CARD_H_PER_SCORE = 16;  // extra per reviewer score line
+const CARD_GAP_X = 55;
 const CARD_GAP_Y = 16;
 const MARGIN = { top: 10, right: 16, bottom: 10, left: 16 };
+const GOV_Y_OFFSET = 88;      // where governance section starts
 
 function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   const container = document.getElementById(containerId);
@@ -40,7 +41,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     if (s.score != null) scoreMap[s.document_id].push(s.score);
   }
 
-  // Build per-reviewer score lookup: doc_id -> [{reviewer, score, round}]
+  // Per-reviewer score lookup
   const reviewerScoreMap = {};
   for (const s of (reviewScores || [])) {
     if (!reviewerScoreMap[s.document_id]) reviewerScoreMap[s.document_id] = [];
@@ -53,7 +54,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     }
   }
 
-  // Build nodes sorted by type order then creation time
+  // Build nodes
   const nodes = documents.map(d => {
     const cfg = DOC_TYPE_CONFIG[d.doc_type] || { icon: '\uD83D\uDCC4', color: '#64748b', label: d.doc_type || 'Doc', order: 9 };
     const scores = scoreMap[d.id] || [];
@@ -67,6 +68,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       from_agent: d.from_agent || '',
       size_bytes: d.size_bytes || 0,
       entity_count: d.entity_count || 0,
+      content_hash: d.content_hash || '',
+      created_at: d.created_at || '',
+      metadata: d.metadata || {},
       icon: cfg.icon,
       color: cfg.color,
       label: cfg.label,
@@ -79,11 +83,34 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   const docMap = {};
   nodes.forEach(n => { docMap[n.id] = n; });
 
-  // Layout: horizontal flow, stack versions vertically
+  // Build lineage map: target_id -> {link_type, source_label}
+  const lineageMap = {};
+  for (const link of (links || [])) {
+    if (link.link_type === 'derived_from' && docMap[link.source_doc_id]) {
+      const src = docMap[link.target_doc_id]; // derived_from: source derives from target
+      const tgt = docMap[link.source_doc_id];
+      if (tgt) {
+        lineageMap[tgt.id] = { type: 'derived from', sourceLabel: docMap[link.target_doc_id]?.label || '?' };
+      }
+    } else if (link.link_type === 'reviews' && docMap[link.source_doc_id]) {
+      const reviewer = docMap[link.source_doc_id];
+      if (reviewer) {
+        lineageMap[reviewer.id] = { type: 'reviews', sourceLabel: docMap[link.target_doc_id]?.label || '?' };
+      }
+    }
+  }
+  nodes.forEach(n => { n.lineage = lineageMap[n.id] || null; });
+
+  // Compute per-node card height
+  for (const n of nodes) {
+    const reviewLines = n.perReviewer.length > 0 ? n.perReviewer.length * CARD_H_PER_SCORE + 4 : 0;
+    n.cardH = CARD_H_BASE + reviewLines;
+  }
+
+  // Layout: horizontal columns by type
   const columns = [];
   const colMap = {};
   for (const n of nodes) {
-    const key = n.doc_type + (n.version > 1 ? '' : ''); // group by type
     if (!colMap[n.doc_type]) {
       colMap[n.doc_type] = { type: n.doc_type, nodes: [] };
       columns.push(colMap[n.doc_type]);
@@ -91,12 +118,6 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     colMap[n.doc_type].nodes.push(n);
   }
 
-  // Compute per-node card height (taller when review scores exist)
-  for (const n of nodes) {
-    n.cardH = CARD_H_BASE + (n.perReviewer.length > 0 ? n.perReviewer.length * CARD_H_PER_SCORE : 0);
-  }
-
-  // Assign positions — use max card height per column for vertical stacking
   let maxColH = 0;
   columns.forEach(col => {
     let colH = 0;
@@ -108,9 +129,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
   const totalW = columns.length * (CARD_W + CARD_GAP_X) - CARD_GAP_X + MARGIN.left + MARGIN.right;
   const totalH = maxColH + MARGIN.top + MARGIN.bottom;
   const width = Math.max(totalW, container.clientWidth || 400);
-  const height = Math.max(totalH, 92);
-
-  // Center columns horizontally
+  const height = Math.max(totalH, 140);
   const startX = MARGIN.left + (width - totalW) / 2;
 
   columns.forEach((col, ci) => {
@@ -123,47 +142,20 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     });
   });
 
-  // Build edges from explicit links
+  // Build edges from explicit links (for label placement only — no arrow lines)
   const edges = [];
-  const edgeSet = new Set(); // deduplicate
+  const edgeSet = new Set();
   for (const link of (links || [])) {
     let src = docMap[link.source_doc_id];
     let tgt = docMap[link.target_doc_id];
     if (src && tgt) {
-      const cfg = LINK_TYPE_CONFIG[link.link_type] || { color: '#6e7681', dash: '', label: link.link_type };
-      // Reverse derived_from so arrows flow left-to-right (producer → product)
-      // "PRD derived_from Research" → arrow: Research → PRD
-      if (link.link_type === 'derived_from') {
-        [src, tgt] = [tgt, src];
-      }
+      const cfg = LINK_TYPE_CONFIG[link.link_type] || { color: '#6e7681', label: link.link_type };
+      if (link.link_type === 'derived_from') [src, tgt] = [tgt, src];
       const key = src.id + '->' + tgt.id;
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
         edges.push({ source: src, target: tgt, link_type: link.link_type, ...cfg });
       }
-    }
-  }
-
-  // Infer flow arrows between adjacent columns if no explicit link exists
-  // This connects e.g. PRD → Manifest when they have no derived_from link
-  for (let ci = 0; ci < columns.length - 1; ci++) {
-    const fromCol = columns[ci];
-    const toCol = columns[ci + 1];
-    // Check if any edge already connects these columns
-    const hasEdge = edges.some(e =>
-      fromCol.nodes.some(n => n.id === e.source.id) &&
-      toCol.nodes.some(n => n.id === e.target.id)
-    );
-    if (!hasEdge && fromCol.nodes.length > 0 && toCol.nodes.length > 0) {
-      // Add a faint inferred flow arrow from first node of each column
-      edges.push({
-        source: fromCol.nodes[0],
-        target: toCol.nodes[0],
-        link_type: '_flow',
-        color: '#3b4252',
-        dash: '4,4',
-        label: '',
-      });
     }
   }
 
@@ -174,71 +166,9 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('height', height)
     .attr('class', 'doc-flow-svg');
 
-  // Arrowhead markers
-  const defs = svg.append('defs');
-  const markerColors = new Set(edges.map(e => e.color));
-  markerColors.forEach(c => {
-    defs.append('marker')
-      .attr('id', 'arr-' + c.replace('#', ''))
-      .attr('viewBox', '0 0 8 6')
-      .attr('refX', 8).attr('refY', 3)
-      .attr('markerWidth', 7).attr('markerHeight', 5)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,0 L8,3 L0,6 Z')
-      .attr('fill', c);
-  });
+  // Lineage is shown on the cards themselves — no floating labels
 
-  // Draw edges — straight lines between card edges
-  svg.selectAll('.doc-flow-edge')
-    .data(edges)
-    .enter()
-    .append('line')
-    .attr('class', 'doc-flow-edge')
-    .attr('x1', d => d.source.x + CARD_W)
-    .attr('y1', d => d.source.y + d.source.cardH / 2)
-    .attr('x2', d => d.target.x)
-    .attr('y2', d => d.target.y + d.target.cardH / 2)
-    .attr('stroke', d => d.color)
-    .attr('stroke-width', d => d.link_type === '_flow' ? 1 : 1.5)
-    .attr('stroke-dasharray', d => d.dash || null)
-    .attr('opacity', d => d.link_type === '_flow' ? 0.4 : 0.8)
-    .attr('marker-end', d => 'url(#arr-' + d.color.replace('#', '') + ')');
-
-  // Edge labels with background pill (skip inferred flow)
-  const labelGroups = svg.selectAll('.doc-flow-edge-label-g')
-    .data(edges.filter(e => e.label))
-    .enter()
-    .append('g')
-    .attr('class', 'doc-flow-edge-label-g')
-    .attr('transform', d => {
-      const mx = (d.source.x + CARD_W + d.target.x) / 2;
-      const my = (d.source.y + d.source.cardH / 2 + d.target.y + d.target.cardH / 2) / 2;
-      return `translate(${mx},${my})`;
-    });
-
-  // Background pill
-  labelGroups.append('rect')
-    .attr('rx', 3).attr('ry', 3)
-    .attr('fill', '#1a1f2e')
-    .attr('stroke', d => d.color + '40')
-    .attr('stroke-width', 0.5)
-    .each(function(d) {
-      // Size based on text length
-      const w = d.label.length * 5.5 + 10;
-      d3.select(this).attr('x', -w/2).attr('y', -8).attr('width', w).attr('height', 14);
-    });
-
-  // Label text
-  labelGroups.append('text')
-    .attr('text-anchor', 'middle')
-    .attr('dominant-baseline', 'central')
-    .attr('fill', d => d.color)
-    .attr('font-size', '8px')
-    .attr('font-weight', '600')
-    .text(d => d.label);
-
-  // Draw node cards
+  // ── Draw node cards ──────────────────────────────────────────────
   const nodeGroup = svg.selectAll('.doc-flow-node')
     .data(nodes)
     .enter()
@@ -267,7 +197,7 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('rx', 2)
     .attr('fill', d => d.color);
 
-  // Type label + icon (line 1, left)
+  // ── Line 1: Type label + size ──
   nodeGroup.append('text')
     .attr('x', 12).attr('y', 16)
     .attr('fill', d => d.color)
@@ -275,7 +205,6 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('font-weight', '700')
     .text(d => d.icon + ' ' + d.label + (d.version > 1 ? ' v' + d.version : ''));
 
-  // Size badge (line 1, right)
   nodeGroup.append('text')
     .attr('x', CARD_W - 10).attr('y', 16)
     .attr('text-anchor', 'end')
@@ -283,9 +212,17 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
     .attr('font-size', '9px')
     .text(d => d.size_bytes > 0 ? (d.size_bytes / 1024).toFixed(1) + ' KB' : '');
 
-  // Title (line 2)
+  // Accent line under type label
+  nodeGroup.append('line')
+    .attr('x1', 10).attr('x2', CARD_W - 10)
+    .attr('y1', 22).attr('y2', 22)
+    .attr('stroke', d => d.color)
+    .attr('stroke-width', 1.5)
+    .attr('opacity', 0.4);
+
+  // ── Line 2: Title ──
   nodeGroup.append('text')
-    .attr('x', 12).attr('y', 33)
+    .attr('x', 12).attr('y', 37)
     .attr('fill', 'var(--text-primary)')
     .attr('font-size', '11px')
     .attr('font-weight', '500')
@@ -293,58 +230,89 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
       let t = d.title;
       const dashIdx = t.indexOf(' \u2014 ');
       if (dashIdx > 0 && dashIdx < t.length - 5) t = t.substring(dashIdx + 3);
-      return t.length > 24 ? t.substring(0, 22) + '..' : t;
+      return t.length > 28 ? t.substring(0, 26) + '..' : t;
     });
 
-  // Agent (line 3, left)
+  // ── Line 3: Agent + Timestamp ──
   nodeGroup.append('text')
-    .attr('x', 12).attr('y', 48)
+    .attr('x', 12).attr('y', 52)
     .attr('fill', 'var(--text-muted)')
     .attr('font-size', '9px')
     .text(d => d.from_agent);
 
-  // Entities (line 3, right)
   nodeGroup.append('text')
-    .attr('x', CARD_W - 10).attr('y', 48)
+    .attr('x', CARD_W - 10).attr('y', 52)
     .attr('text-anchor', 'end')
     .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '9px')
-    .text(d => d.entity_count > 0 ? d.entity_count + ' ent' : '');
-
-  // Timestamp (line 4)
-  nodeGroup.append('text')
-    .attr('x', 12).attr('y', 62)
-    .attr('fill', '#a0aec0')
     .attr('font-size', '9px')
     .text(d => {
       if (!d.created_at) return '';
       try {
         const dt = new Date(d.created_at);
-        return dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return dt.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
       } catch { return ''; }
     });
 
-  // Per-reviewer score lines (below timestamp, inside the card)
+  // ── Line 4: Type-specific metadata in inset panel ──
+  nodeGroup.each(function(d) {
+    const g = d3.select(this);
+    let metaText = '';
+    if (d.doc_type === 'research') {
+      const rm = (typeof d.metadata === 'string' ? JSON.parse(d.metadata || '{}') : d.metadata) || {};
+      const meth = rm.research_methodology || {};
+      const s = meth.results_summary || {};
+      if (Object.keys(s).length > 0) {
+        metaText = `${s.web||0} web \u00B7 ${s.arxiv||0} papers \u00B7 ${s.patent||0} patents \u00B7 ${s.community||0} community`;
+      } else {
+        metaText = d.entity_count > 0 ? d.entity_count + ' entities' : '';
+      }
+    } else if (d.doc_type === 'manifest') {
+      metaText = d.entity_count + ' entities';
+    } else if (d.doc_type === 'review' && d.avgScore != null) {
+      metaText = 'avg: ' + d.avgScore + '%';
+    } else {
+      metaText = d.entity_count > 0 ? 'v' + d.version + ' \u00B7 ' + d.entity_count + ' entities' : 'v' + d.version;
+    }
+    if (metaText) {
+      // Inset panel background
+      g.append('rect')
+        .attr('x', 8).attr('y', 58)
+        .attr('width', CARD_W - 16).attr('height', 20)
+        .attr('rx', 4).attr('ry', 4)
+        .attr('fill', 'rgba(0,0,0,0.25)')
+        .attr('stroke', d.color + '20')
+        .attr('stroke-width', 0.5);
+      // Metadata text inside inset
+      g.append('text')
+        .attr('x', 14).attr('y', 72)
+        .attr('fill', 'var(--text-muted)')
+        .attr('font-size', '8px')
+        .text(metaText);
+    }
+  });
+
+  // ── Per-reviewer score bars (design card only) ──
   nodeGroup.each(function (d) {
     if (d.perReviewer.length === 0) return;
     const g = d3.select(this);
-    // Separator line
+
+    // Separator
     g.append('line')
       .attr('x1', 10).attr('x2', CARD_W - 10)
-      .attr('y1', CARD_H_BASE - 14).attr('y2', CARD_H_BASE - 14)
+      .attr('y1', 86).attr('y2', 86)
       .attr('stroke', 'var(--border)').attr('stroke-width', 0.5);
-    // Each reviewer on its own line
+
     d.perReviewer.forEach((rs, i) => {
-      const yPos = CARD_H_BASE - 4 + i * CARD_H_PER_SCORE;
+      const yPos = 100 + i * CARD_H_PER_SCORE;
       const sc = rs.score;
       const color = sc >= 80 ? '#10b981' : sc >= 60 ? '#f59e0b' : '#ef4444';
-      // Reviewer name
+
       g.append('text')
         .attr('x', 12).attr('y', yPos)
         .attr('fill', 'var(--text-muted)')
         .attr('font-size', '10px')
         .text(rs.reviewer);
-      // Score value
+
       g.append('text')
         .attr('x', CARD_W - 12).attr('y', yPos)
         .attr('text-anchor', 'end')
@@ -352,13 +320,56 @@ function renderDocFlowGraph(containerId, documents, links, reviewScores) {
         .attr('font-size', '10px')
         .attr('font-weight', '700')
         .text(sc + '%');
-      // Mini bar
+
       g.append('rect')
-        .attr('x', 70).attr('y', yPos - 7)
-        .attr('width', Math.max(1, (sc / 100) * 60)).attr('height', 4)
+        .attr('x', 80).attr('y', yPos - 7)
+        .attr('width', Math.max(1, (sc / 100) * 70)).attr('height', 5)
         .attr('rx', 2)
         .attr('fill', color)
         .attr('opacity', 0.5);
     });
+  });
+
+  // ── Governance section (bottom of each card) ──
+  nodeGroup.each(function (d) {
+    const g = d3.select(this);
+    const govY = d.cardH - 40;
+
+    // Dashed governance separator
+    g.append('line')
+      .attr('x1', 10).attr('x2', CARD_W - 10)
+      .attr('y1', govY).attr('y2', govY)
+      .attr('stroke', d.color + '30')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,3');
+
+    // Lineage (derived from / reviews)
+    if (d.lineage) {
+      const icon = d.lineage.type === 'reviews' ? '\u2B50' : '\u2190';
+      g.append('text')
+        .attr('x', 12).attr('y', govY + 13)
+        .attr('fill', d.lineage.type === 'reviews' ? '#a78bfa' : '#58a6ff')
+        .attr('font-size', '8px')
+        .text(icon + ' ' + d.lineage.type + ' ' + d.lineage.sourceLabel);
+    }
+
+    // SHA hash
+    const hash = d.content_hash ? d.content_hash.substring(0, 12) : '';
+    if (hash) {
+      g.append('text')
+        .attr('x', 12).attr('y', govY + 26)
+        .attr('fill', '#6e7681')
+        .attr('font-size', '8px')
+        .attr('font-family', 'monospace')
+        .text('\uD83D\uDD17 ' + hash);
+    }
+
+    // Chain verification
+    g.append('text')
+      .attr('x', CARD_W - 10).attr('y', govY + 26)
+      .attr('text-anchor', 'end')
+      .attr('fill', '#6e7681')
+      .attr('font-size', '8px')
+      .text('\u2713 chain');
   });
 }

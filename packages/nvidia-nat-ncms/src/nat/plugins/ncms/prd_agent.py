@@ -41,6 +41,8 @@ class PRDState(TypedDict):
     topic: str  # Research topic / PRD subject
     source_doc_id: str | None  # Researcher's doc ID (parsed from input)
     source_content: str  # Content from source document
+    research_id: str | None  # Research doc ID (for passing to design trigger)
+    research_methodology: dict  # Structured research metadata (query plans, results)
     expert_input: dict[str, str]  # {"architect": "...", "security": "..."}
     prd: str  # Synthesized PRD markdown
     manifest: dict  # Structured requirements manifest (JSON)
@@ -222,8 +224,20 @@ class PRDAgent:
                 doc = await self.client.read_document(doc_id)
                 content = doc.get("content", "")
                 state["source_content"] = content
+                state["research_id"] = doc_id
+                # Extract research methodology from document metadata
+                metadata = doc.get("metadata", {})
+                if isinstance(metadata, str):
+                    import json as _json
+                    metadata = _json.loads(metadata) if metadata else {}
+                state["research_methodology"] = metadata.get(
+                    "research_methodology", {},
+                )
                 logger.info(
-                    "[prd_agent] Read source document: %s (%d chars)", doc_id, len(content)
+                    "[prd_agent] Read source document: %s (%d chars, methodology=%s, doc_keys=%s)",
+                    doc_id, len(content),
+                    "yes" if state["research_methodology"] else "no",
+                    list(doc.keys())[:10],
                 )
             except Exception as e:
                 logger.warning("[prd_agent] Failed to read document %s: %s", doc_id, e)
@@ -263,6 +277,27 @@ class PRDAgent:
             except Exception as e:
                 logger.debug("[prd_agent] Failed to fetch entity metadata: %s", e)
 
+        # Build research context for expert questions
+        research_context = ""
+        methodology = state.get("research_methodology", {})
+        if methodology:
+            summary = methodology.get("results_summary", {})
+            top = methodology.get("top_sources", {})
+            parts = []
+            if summary:
+                parts.append(
+                    f"Research: {summary.get('web', 0)} web, "
+                    f"{summary.get('arxiv', 0)} papers, "
+                    f"{summary.get('patent', 0)} patents, "
+                    f"{summary.get('community', 0)} community"
+                )
+            if top.get("patent"):
+                parts.append(f"Patents: {', '.join(top['patent'][:3])}")
+            if top.get("community"):
+                parts.append(f"Community: {', '.join(top['community'][:3])}")
+            if parts:
+                research_context = "\n" + "\n".join(parts)
+
         # Announce progress to bus
         try:
             await self.client.bus_announce(
@@ -280,6 +315,7 @@ class PRDAgent:
                     f"What architectural decisions and patterns apply to this project?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
+                    f"{research_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -301,6 +337,7 @@ class PRDAgent:
                     f"What security threats and requirements apply to this project?\n"
                     f"(doc_id: {source_doc_id}) (project_id: {project_id})\n"
                     f"Key entities: {entity_keywords}"
+                    f"{research_context}"
                 )
                 result = await self.client.bus_ask(
                     question=question,
@@ -556,6 +593,7 @@ class PRDAgent:
                         clean_topic,
                         prd_id=doc_id,
                         project_id=state.get("project_id"),
+                        research_id=state.get("research_id"),
                     )
                     await self.client.bus_announce(
                         content=msg,
@@ -651,6 +689,8 @@ async def prd_agent_fn(
             "topic": input_message,
             "source_doc_id": None,
             "source_content": "",
+            "research_id": None,
+            "research_methodology": {},
             "expert_input": {},
             "prd": "",
             "manifest": {},

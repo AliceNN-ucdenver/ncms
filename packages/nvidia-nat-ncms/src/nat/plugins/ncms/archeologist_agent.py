@@ -79,6 +79,9 @@ class ArcheologistState(TypedDict):
 
     # Research path
     search_queries: list[str]
+    arxiv_queries: list[str]
+    patent_queries: list[str]
+    community_queries: list[str]
     search_results: list[dict]
     arxiv_results: list[dict]
     patent_results: list[dict]
@@ -316,7 +319,34 @@ class ArcheologistAgent:
         if project_id:
             content = f"<!-- project_id: {project_id} -->\n{content}"
 
-        logger.info("[archeologist] Publishing document: %d chars", len(content))
+        # Build research methodology metadata for provenance
+        doc_metadata: dict | None = None
+        if source_type == "research":
+            doc_metadata = {"research_methodology": {
+                "query_plan": {
+                    "web": state.get("search_queries", []),
+                    "arxiv": state.get("arxiv_queries", []),
+                    "patent": state.get("patent_queries", []),
+                    "community": state.get("community_queries", []),
+                },
+                "results_summary": {
+                    "web": sum(len(r.get("results", [])) for r in state.get("search_results", [])),
+                    "arxiv": len(state.get("arxiv_results", [])),
+                    "patent": len(state.get("patent_results", [])),
+                    "community": len(state.get("community_results", [])),
+                },
+                "top_sources": {
+                    "arxiv": [p.get("title", "") for p in state.get("arxiv_results", [])[:3]],
+                    "patent": [p.get("title", "") for p in state.get("patent_results", [])[:3]],
+                    "community": [s.get("title", "") for s in state.get("community_results", [])[:3]],
+                },
+            }}
+
+        has_meta = bool(doc_metadata and doc_metadata.get("research_methodology"))
+        logger.info(
+            "[archeologist] Publishing document: %d chars, metadata=%s",
+            len(content), "yes" if has_meta else "no",
+        )
 
         try:
             result = await self.client.publish_document(
@@ -325,6 +355,7 @@ class ArcheologistAgent:
                 from_agent=self.from_agent,
                 doc_type="research",
                 format="markdown",
+                metadata=doc_metadata,
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id
@@ -462,7 +493,7 @@ class ArcheologistAgent:
     # -- Node: Plan Queries (LLM) -------------------------------------------
 
     async def plan_queries(self, state: ArcheologistState) -> ArcheologistState:
-        """LLM generates 5 search queries covering different research angles."""
+        """LLM plans all search queries in one call: web, arxiv, patent, community."""
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "plan_queries", "started",
@@ -470,13 +501,14 @@ class ArcheologistAgent:
         if await self._check_and_interrupt(state, "plan_queries"):
             return state
         topic = state["topic"]
+        clean_topic = extract_topic(topic)
         logger.info("[archeologist/research] Planning queries for topic: %s", topic[:100])
 
         try:
             prompt = PLAN_QUERIES_PROMPT.format(topic=topic)
             response = await traced_llm_call(
                 self.llm, [
-                    SystemMessage(content="You output only valid JSON arrays. No markdown, no explanation."),
+                    SystemMessage(content="You output only valid JSON objects. No markdown, no explanation."),
                     HumanMessage(content=prompt),
                 ],
                 hub_url=self.hub_url, client=self.client,
@@ -491,16 +523,42 @@ class ArcheologistAgent:
             if text.endswith("```"):
                 text = text[:-3].strip()
 
-            queries = json.loads(text)
-            if isinstance(queries, list) and len(queries) >= 5:
-                state["search_queries"] = [str(q) for q in queries[:5]]
-                logger.info("[archeologist/research] LLM planned %d queries", len(state["search_queries"]))
-                for i, q in enumerate(state["search_queries"]):
-                    logger.debug("[archeologist/research]   Query %d: %s", i + 1, q)
+            plan = json.loads(text)
+
+            # Handle both dict (new format) and list (legacy fallback)
+            if isinstance(plan, dict):
+                state["search_queries"] = [str(q) for q in plan.get("web", [])[:5]]
+                state["arxiv_queries"] = [str(q) for q in plan.get("arxiv", [])[:3]]
+                state["patent_queries"] = [str(q) for q in plan.get("patent", [])[:3]]
+                state["community_queries"] = [str(q) for q in plan.get("community", [])[:3]]
+            elif isinstance(plan, list) and len(plan) >= 5:
+                # Legacy: LLM returned a flat array — treat as web queries only
+                state["search_queries"] = [str(q) for q in plan[:5]]
+
+            total = (
+                len(state.get("search_queries", []))
+                + len(state.get("arxiv_queries", []))
+                + len(state.get("patent_queries", []))
+                + len(state.get("community_queries", []))
+            )
+            if total > 0:
+                logger.info(
+                    "[archeologist/research] LLM planned queries: web=%d arxiv=%d patent=%d community=%d",
+                    len(state.get("search_queries", [])),
+                    len(state.get("arxiv_queries", [])),
+                    len(state.get("patent_queries", [])),
+                    len(state.get("community_queries", [])),
+                )
                 await emit_telemetry(
                     self.hub_url, state.get("project_id"),
                     self.from_agent, "plan_queries", "completed",
-                    f"{len(state['search_queries'])} queries planned",
+                    json.dumps({
+                        "type": "research_plan",
+                        "web": state.get("search_queries", []),
+                        "arxiv": state.get("arxiv_queries", []),
+                        "patent": state.get("patent_queries", []),
+                        "community": state.get("community_queries", []),
+                    }),
                 )
                 return state
         except Exception as e:
@@ -514,11 +572,31 @@ class ArcheologistAgent:
             f"{topic} implementation patterns architecture technology choices",
             f"{topic} case studies real-world examples lessons learned",
         ]
-        logger.info("[archeologist/research] Using %d template queries (fallback)", len(state["search_queries"]))
+        state["arxiv_queries"] = [
+            f"{clean_topic} formal verification security",
+            f"{clean_topic} architecture benchmark evaluation",
+            f"{clean_topic} access control protocol",
+        ]
+        _stop = {"a", "an", "the", "of", "for", "in", "on", "to", "and", "or", "with", "by", "is", "at"}
+        kw = [w for w in clean_topic.split() if w.lower() not in _stop][:4]
+        state["patent_queries"] = [" AND ".join(kw[:n]) for n in range(len(kw), max(1, len(kw) - 2), -1)]
+        state["community_queries"] = [
+            clean_topic,
+            " ".join(clean_topic.split()[:3]),
+            " ".join(clean_topic.split()[-3:]),
+        ]
+        logger.info("[archeologist/research] Using template queries (fallback)")
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "plan_queries", "completed",
-            f"{len(state['search_queries'])} queries (fallback)",
+            json.dumps({
+                "type": "research_plan",
+                "web": state.get("search_queries", []),
+                "arxiv": state.get("arxiv_queries", []),
+                "patent": state.get("patent_queries", []),
+                "community": state.get("community_queries", []),
+                "fallback": True,
+            }),
         )
         return state
 
@@ -615,7 +693,17 @@ class ArcheologistAgent:
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "parallel_search", "completed",
-            f"{total_results} results",
+            json.dumps({
+                "type": "research_results",
+                "engine": "web",
+                "query_count": len(queries),
+                "result_count": total_results,
+                "queries_used": queries,
+                "top_results": [
+                    {"title": r.get("results", [{}])[0].get("title", ""), "url": r.get("results", [{}])[0].get("url", "")}
+                    for r in results if r.get("results")
+                ][:5],
+            }),
         )
         return state
 
@@ -640,11 +728,11 @@ class ArcheologistAgent:
             import arxiv as _arxiv
             from datetime import datetime, timedelta, timezone
 
-            # Generate 3 academic-focused queries from the cleaned topic
-            arxiv_queries = [
+            # Use LLM-planned queries if available, otherwise fallback
+            arxiv_queries = state.get("arxiv_queries") or [
                 f"{clean_topic} formal verification security",
                 f"{clean_topic} architecture benchmark evaluation",
-                f"{clean_topic} zero trust access control protocol",
+                f"{clean_topic} access control protocol",
             ]
 
             cutoff = datetime.now(timezone.utc) - timedelta(days=365)
@@ -703,14 +791,29 @@ class ArcheologistAgent:
 
         await emit_telemetry(
             self.hub_url, state.get("project_id"), self.from_agent,
-            "arxiv_search", "completed", f"{len(state['arxiv_results'])} papers",
+            "arxiv_search", "completed",
+            json.dumps({
+                "type": "research_results",
+                "engine": "arxiv",
+                "result_count": len(state["arxiv_results"]),
+                "queries_used": state.get("arxiv_queries", []),
+                "top_results": [
+                    {"title": p.get("title", ""), "published": p.get("published", "")[:10]}
+                    for p in state["arxiv_results"][:3]
+                ],
+            }),
         )
         return state
 
     # -- Node: Patent Search (USPTO API, Pure Python) -------------------------
 
     async def patent_search(self, state: ArcheologistState) -> ArcheologistState:
-        """Search USPTO for related patents. No LLM, no API key."""
+        """Search USPTO for related patents + fetch abstracts from full-text XML.
+
+        Two-stage pipeline:
+          1. Search api.uspto.gov for matching patent applications (metadata)
+          2. Follow pgpubDocumentMetaData.fileLocationURI → signed XML → parse <abstract>
+        """
         await emit_telemetry(
             self.hub_url, state.get("project_id"),
             self.from_agent, "patent_search", "started",
@@ -723,13 +826,12 @@ class ArcheologistAgent:
 
         try:
             import os
+            import re as _re
 
             import httpx as _httpx
 
             api_key = os.environ.get("USPTO_API_KEY", "")
 
-            # USPTO Open Data Portal — Patent File Wrapper search
-            query = clean_topic.replace(" ", "+")
             headers = {"Accept": "application/json"}
             if api_key:
                 headers["X-API-Key"] = api_key
@@ -740,54 +842,137 @@ class ArcheologistAgent:
             from datetime import datetime, timedelta, timezone
             from urllib.parse import quote
 
-            words = clean_topic.split()[:5]  # top 5 keywords
-            and_query = " AND ".join(words)
+            # Use LLM-planned patent queries, or build from topic keywords
+            queries_to_try = state.get("patent_queries") or []
+            if not queries_to_try:
+                _stop = {"a", "an", "the", "of", "for", "in", "on", "to", "and", "or", "with", "by", "is", "at"}
+                kw = [w for w in clean_topic.split() if w.lower() not in _stop][:4]
+                queries_to_try = [" AND ".join(kw[:n]) for n in range(len(kw), max(1, len(kw) - 2), -1)]
+
             five_years_ago = (datetime.now(timezone.utc) - timedelta(days=5 * 365)).strftime("%Y-%m-%d")
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             date_filter = f"applicationMetaData.filingDate {five_years_ago}:{today}"
 
-            endpoints = [
-                f"https://api.uspto.gov/api/v1/patent/applications/search?q={quote(and_query)}&limit=10&offset=0&rangeFilters={quote(date_filter)}",
-            ]
-
-            patents = []
-            for endpoint in endpoints:
-                try:
-                    async with _httpx.AsyncClient(timeout=30.0) as client:
-                        resp = await client.get(endpoint, headers=headers)
+            patents: list[dict] = []
+            try:
+                async with _httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                    # Try each planned query until we get results
+                    results = []
+                    matched_query = ""
+                    queries_tried = []
+                    for q in queries_to_try:
+                        queries_tried.append(q)
+                        search_url = (
+                            f"https://api.uspto.gov/api/v1/patent/applications/search"
+                            f"?q={quote(q)}&limit=10&offset=0"
+                            f"&rangeFilters={quote(date_filter)}"
+                        )
+                        resp = await client.get(search_url, headers=headers)
                         if resp.status_code == 200 and "json" in resp.headers.get("content-type", ""):
-                            data = resp.json()
-                            # Handle both ODP and legacy response formats
-                            results = data.get("patentFileWrapperDataBag", data.get("results", []))
-                            for r in results[:5]:
-                                meta = r.get("applicationMetaData", r)
-                                patents.append({
-                                    "title": meta.get("inventionTitle", ""),
-                                    "filing_date": meta.get("filingDate", meta.get("effectiveFilingDate", "")),
-                                    "grant_date": meta.get("grantDate", ""),
-                                    "assignee": meta.get("firstApplicantName", ""),
-                                    "inventor": meta.get("firstInventorName", ""),
-                                    "patent_number": meta.get("patentNumber", ""),
-                                    "status": meta.get("applicationStatusDescriptionText", ""),
-                                    "classification": ", ".join((meta.get("cpcClassificationBag", []) or [])[:3]),
-                                    "category": ", ".join((meta.get("publicationCategoryBag", []) or [])[:1]),
-                                })
-                            if patents:
-                                logger.info("[archeologist/research] USPTO (%s): %d patents found", endpoint[:40], len(patents))
+                            results = resp.json().get("patentFileWrapperDataBag", [])
+                            if results:
+                                matched_query = q
+                                logger.info("[archeologist/research] USPTO query matched: %s (attempt %d/%d)", q, len(queries_tried), len(queries_to_try))
                                 break
-                except Exception as e:
-                    logger.debug("[archeologist/research] USPTO endpoint failed: %s — %s", endpoint[:40], e)
+                    if results:
+                        for r in results[:5]:
+                            meta = r.get("applicationMetaData", r)
+                            # Prefer grant XML, fall back to pre-grant pub XML
+                            xml_uri = (
+                                r.get("grantDocumentMetaData", {}).get("fileLocationURI")
+                                or r.get("pgpubDocumentMetaData", {}).get("fileLocationURI")
+                                or ""
+                            )
+                            patents.append({
+                                "title": meta.get("inventionTitle", ""),
+                                "filing_date": meta.get("filingDate", meta.get("effectiveFilingDate", "")),
+                                "grant_date": meta.get("grantDate", ""),
+                                "assignee": meta.get("firstApplicantName", ""),
+                                "inventor": meta.get("firstInventorName", ""),
+                                "patent_number": (
+                                    meta.get("patentNumber")
+                                    or meta.get("earliestPublicationNumber", "")
+                                ),
+                                "status": meta.get("applicationStatusDescriptionText", ""),
+                                "classification": ", ".join(
+                                    (meta.get("cpcClassificationBag", []) or [])[:3]
+                                ),
+                                "category": ", ".join(
+                                    (meta.get("publicationCategoryBag", []) or [])[:1]
+                                ),
+                                "abstract": "",
+                                "_xml_uri": xml_uri,  # internal, stripped before synthesis
+                            })
+                        if patents:
+                            uris_available = sum(1 for p in patents if p.get("_xml_uri"))
+                            logger.info(
+                                "[archeologist/research] USPTO search: %d patents found, %d with XML URIs",
+                                len(patents), uris_available,
+                            )
+
+                    # Stage 2: fetch abstracts from full-text XML (parallel, best-effort)
+                    async def _fetch_abstract(p: dict) -> None:
+                        uri = p.pop("_xml_uri", "")
+                        if not uri:
+                            return
+                        try:
+                            r = await client.get(uri, headers=headers, timeout=20.0)
+                            if r.status_code == 200:
+                                m = _re.search(r"<abstract[^>]*>(.*?)</abstract>", r.text, _re.DOTALL)
+                                if m:
+                                    raw = _re.sub(r"<[^>]+>", " ", m.group(1)).strip()
+                                    p["abstract"] = _re.sub(r"\s+", " ", raw)[:1000]
+                                    logger.info("[archeologist/research] Abstract fetched: %s", p["title"][:50])
+                            else:
+                                logger.info("[archeologist/research] Abstract fetch HTTP %d for: %s", r.status_code, uri[:80])
+                        except Exception as exc:
+                            logger.warning("[archeologist/research] Abstract fetch failed for %s: %s", p.get("title", "")[:40], exc)
+
+                    await asyncio.gather(*[_fetch_abstract(p) for p in patents])
+                    abstracts_found = sum(1 for p in patents if p.get("abstract"))
+                    logger.info(
+                        "[archeologist/research] USPTO abstracts: %d/%d fetched",
+                        abstracts_found, len(patents),
+                    )
+
+            except Exception as e:
+                logger.debug("[archeologist/research] USPTO search failed: %s", e)
 
             state["patent_results"] = patents
-            if not patents:
+            if patents:
+                try:
+                    titles = ", ".join(p["title"][:50] for p in patents[:3])
+                    await self.client.bus_announce(
+                        content=f"USPTO patents found: {len(patents)} — {titles}",
+                        domains=["research", "product"],
+                        from_agent=self.from_agent,
+                    )
+                except Exception:
+                    pass
+            else:
                 logger.info("[archeologist/research] USPTO: no patents found for '%s'", clean_topic[:60])
 
         except Exception as e:
             logger.warning("[archeologist/research] Patent search failed: %s", e)
 
+        _matched = locals().get("matched_query", "")
+        _tried = locals().get("queries_tried", [])
         await emit_telemetry(
             self.hub_url, state.get("project_id"), self.from_agent,
-            "patent_search", "completed", f"{len(state['patent_results'])} patents",
+            "patent_search", "completed",
+            json.dumps({
+                "type": "research_results",
+                "engine": "patent",
+                "result_count": len(state["patent_results"]),
+                "abstracts_fetched": sum(1 for p in state["patent_results"] if p.get("abstract")),
+                "queries_planned": state.get("patent_queries", []),
+                "query_matched": _matched,
+                "queries_tried": len(_tried),
+                "top_results": [
+                    {"title": p.get("title", ""), "assignee": p.get("assignee", "")}
+                    for p in state["patent_results"][:3]
+                ],
+            }),
         )
         return state
 
@@ -810,12 +995,14 @@ class ArcheologistAgent:
 
             import httpx as _httpx
 
-            # HackerNews Algolia API — search multiple shorter queries for better coverage
-            words = clean_topic.split()
-            queries = [clean_topic]  # full topic
-            if len(words) > 3:
-                queries.append(" ".join(words[:3]))  # first 3 words
-                queries.append(" ".join(words[-3:]))  # last 3 words
+            # Use LLM-planned community queries, or build from topic
+            queries = state.get("community_queries") or []
+            if not queries:
+                words = clean_topic.split()
+                queries = [clean_topic]
+                if len(words) > 3:
+                    queries.append(" ".join(words[:3]))
+                    queries.append(" ".join(words[-3:]))
 
             stories: list[dict] = []
             seen_ids: set[str] = set()
@@ -851,18 +1038,80 @@ class ArcheologistAgent:
                         if len(stories) >= 5:
                             break
 
+            # Fallback: if LLM queries found nothing, retry with simple topic words
+            used_fallback = False
+            if not stories and state.get("community_queries"):
+                _stop = {"a", "an", "the", "of", "for", "in", "on", "to", "and", "or", "with", "by", "is", "at"}
+                fallback_words = [w for w in clean_topic.split() if w.lower() not in _stop]
+                fallback_queries = [
+                    " ".join(fallback_words[:2]),
+                    " ".join(fallback_words[:3]),
+                ]
+                used_fallback = True
+                logger.info("[archeologist/research] HackerNews: LLM queries returned 0, retrying with: %s", fallback_queries)
+                for qi, q in enumerate(fallback_queries):
+                    if len(stories) >= 5:
+                        break
+                    if qi > 0:
+                        await _asyncio.sleep(1)
+                    url = f"https://hn.algolia.com/api/v1/search?query={q.replace(' ', '+')}&tags=story&hitsPerPage=10"
+                    try:
+                        resp = await client.get(url)
+                    except Exception:
+                        continue
+                    if resp.status_code == 200:
+                        for h in resp.json().get("hits", []):
+                            points = h.get("points", 0) or 0
+                            oid = h.get("objectID", "")
+                            if points < 5 or oid in seen_ids:
+                                continue
+                            seen_ids.add(oid)
+                            stories.append({
+                                "title": h.get("title", ""),
+                                "url": f"https://news.ycombinator.com/item?id={oid}",
+                                "points": points,
+                                "num_comments": h.get("num_comments", 0),
+                                "created_at": h.get("created_at", ""),
+                            })
+                            if len(stories) >= 5:
+                                break
+
             state["community_results"] = stories
             logger.info(
                 "[archeologist/research] HackerNews: %d stories found (>5 points) from %d queries",
                 len(stories), len(queries),
             )
+            if stories:
+                try:
+                    titles = ", ".join(s["title"][:50] for s in stories[:3])
+                    await self.client.bus_announce(
+                        content=f"HackerNews discussions found: {len(stories)} — {titles}",
+                        domains=["research", "product"],
+                        from_agent=self.from_agent,
+                    )
+                except Exception:
+                    pass
 
         except Exception as e:
             logger.warning("[archeologist/research] Community search failed: %s", e)
 
+        _fb = locals().get("used_fallback", False)
+        _fb_queries = locals().get("fallback_queries", []) if _fb else []
         await emit_telemetry(
             self.hub_url, state.get("project_id"), self.from_agent,
-            "community_search", "completed", f"{len(state['community_results'])} stories",
+            "community_search", "completed",
+            json.dumps({
+                "type": "research_results",
+                "engine": "community",
+                "result_count": len(state["community_results"]),
+                "queries_planned": state.get("community_queries", []),
+                "queries_fallback": _fb_queries,
+                "used_fallback": _fb,
+                "top_results": [
+                    {"title": s.get("title", ""), "points": s.get("points", 0)}
+                    for s in state["community_results"][:3]
+                ],
+            }),
         )
         return state
 
@@ -908,6 +1157,9 @@ class ArcheologistAgent:
         if patents:
             parts.append("\n---\n\n## Patent Landscape (USPTO — last 5 years)\n")
             for i, p in enumerate(patents, 1):
+                abstract_line = ""
+                if p.get("abstract"):
+                    abstract_line = f"**Abstract:** {p['abstract'][:500]}\n"
                 parts.append(
                     f"### Patent {i}: {p['title']}\n"
                     f"**Patent #:** {p.get('patent_number', 'Pending')} | "
@@ -918,6 +1170,7 @@ class ArcheologistAgent:
                     f"**Assignee:** {p.get('assignee', 'N/A')} | "
                     f"**Inventor:** {p.get('inventor', 'N/A')}\n"
                     f"**CPC Classification:** {p.get('classification', 'N/A')}\n"
+                    f"{abstract_line}"
                 )
             logger.info("[archeologist/research] Added %d patents to synthesis input", len(patents))
 
@@ -1471,6 +1724,9 @@ async def archeologist_agent_fn(
             "interrupted": False,
             # Research path
             "search_queries": [],
+            "arxiv_queries": [],
+            "patent_queries": [],
+            "community_queries": [],
             "search_results": [],
             "arxiv_results": [],
             "patent_results": [],

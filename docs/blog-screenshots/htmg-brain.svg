@@ -1,0 +1,521 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 780" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <!-- Background radial glow -->
+    <radialGradient id="bgGlow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.4"/>
+      <stop offset="60%" stop-color="#0f172a" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </radialGradient>
+
+    <!-- Circuit trace pattern (much more visible) -->
+    <pattern id="circuitGrid" x="0" y="0" width="48" height="48" patternUnits="userSpaceOnUse">
+      <!-- Grid lines -->
+      <line x1="0" y1="12" x2="48" y2="12" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="0" y1="36" x2="48" y2="36" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="12" y1="0" x2="12" y2="48" stroke="#1e3a5f" stroke-width="0.6"/>
+      <line x1="36" y1="0" x2="36" y2="48" stroke="#1e3a5f" stroke-width="0.6"/>
+      <!-- Right-angle trace segments -->
+      <path d="M 12 12 L 24 12 L 24 24" stroke="#264a6e" stroke-width="0.8" fill="none"/>
+      <path d="M 36 36 L 24 36 L 24 24" stroke="#264a6e" stroke-width="0.8" fill="none"/>
+      <!-- Junction dots (brighter) -->
+      <circle cx="12" cy="12" r="2" fill="#3b6b8a" opacity="0.9"/>
+      <circle cx="36" cy="12" r="1.5" fill="#2d5575" opacity="0.7"/>
+      <circle cx="12" cy="36" r="1.5" fill="#2d5575" opacity="0.7"/>
+      <circle cx="36" cy="36" r="2" fill="#3b6b8a" opacity="0.9"/>
+      <circle cx="24" cy="24" r="1" fill="#4a7fa0" opacity="0.6"/>
+    </pattern>
+
+    <!-- Glowing energy trace filter -->
+    <filter id="traceGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Node glow filters -->
+    <filter id="glowGreen" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowCyan" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowIndigo" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowPurple" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softShadow" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+
+    <!-- Pathway markers -->
+    <marker id="arrowUp" viewBox="0 0 10 10" refX="5" refY="10" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 10 L 5 0 L 10 10 z" fill="#a855f7" opacity="0.7"/>
+    </marker>
+    <marker id="arrowDown" viewBox="0 0 10 10" refX="5" refY="0" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 5 10 L 10 0 z" fill="#10b981" opacity="0.7"/>
+    </marker>
+  </defs>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- BACKGROUND: Dark base + visible circuit board + energy traces        -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <rect width="960" height="780" fill="#0a1628"/>
+  <!-- Circuit board grid pattern -->
+  <rect width="960" height="780" fill="url(#circuitGrid)" opacity="0.7"/>
+  <!-- Center glow over circuit -->
+  <rect width="960" height="780" fill="url(#bgGlow)"/>
+
+  <!-- Major circuit traces (visible structural backbone) -->
+  <g stroke="#1e3a5f" fill="none" stroke-width="1.2" opacity="0.7">
+    <!-- Vertical backbone (spine of the brain) -->
+    <line x1="480" y1="65" x2="480" y2="650"/>
+    <!-- Horizontal cross-bars at each level -->
+    <line x1="180" y1="130" x2="780" y2="130"/>
+    <line x1="200" y1="270" x2="760" y2="270"/>
+    <line x1="190" y1="405" x2="770" y2="405"/>
+    <line x1="195" y1="530" x2="765" y2="530"/>
+  </g>
+
+  <!-- Right-angle trace branches from backbone -->
+  <g stroke="#264a6e" fill="none" stroke-width="0.9" opacity="0.6">
+    <!-- Left hemisphere branches -->
+    <path d="M 180 130 L 180 200 L 140 200"/>
+    <path d="M 200 270 L 200 340 L 155 340"/>
+    <path d="M 190 405 L 190 460 L 150 460"/>
+    <path d="M 195 530 L 195 580 L 160 580"/>
+    <!-- Right hemisphere branches -->
+    <path d="M 780 130 L 780 200 L 820 200"/>
+    <path d="M 760 270 L 760 340 L 805 340"/>
+    <path d="M 770 405 L 770 460 L 810 460"/>
+    <path d="M 765 530 L 765 580 L 800 580"/>
+    <!-- Diagonal branches -->
+    <path d="M 350 130 L 300 180"/>
+    <path d="M 610 130 L 660 180"/>
+    <path d="M 340 405 L 290 455"/>
+    <path d="M 620 405 L 670 455"/>
+    <!-- Curved organic branches -->
+    <path d="M 140 200 Q 120 250, 140 300 Q 155 330, 155 340"/>
+    <path d="M 820 200 Q 840 250, 820 300 Q 805 330, 805 340"/>
+    <path d="M 150 460 Q 130 500, 160 580"/>
+    <path d="M 810 460 Q 830 500, 800 580"/>
+  </g>
+
+  <!-- Circuit junction nodes (bright dots at intersections) -->
+  <g fill="#3b6b8a" opacity="0.8">
+    <!-- Backbone intersections -->
+    <circle cx="480" cy="130" r="3"/>
+    <circle cx="480" cy="270" r="3"/>
+    <circle cx="480" cy="405" r="3"/>
+    <circle cx="480" cy="530" r="3"/>
+    <!-- Left branch junctions -->
+    <circle cx="180" cy="130" r="2.5"/>
+    <circle cx="180" cy="200" r="2"/>
+    <circle cx="140" cy="200" r="2"/>
+    <circle cx="200" cy="270" r="2.5"/>
+    <circle cx="200" cy="340" r="2"/>
+    <circle cx="155" cy="340" r="2"/>
+    <circle cx="190" cy="405" r="2.5"/>
+    <circle cx="190" cy="460" r="2"/>
+    <circle cx="150" cy="460" r="2"/>
+    <circle cx="195" cy="530" r="2.5"/>
+    <circle cx="160" cy="580" r="2"/>
+    <!-- Right branch junctions -->
+    <circle cx="780" cy="130" r="2.5"/>
+    <circle cx="780" cy="200" r="2"/>
+    <circle cx="820" cy="200" r="2"/>
+    <circle cx="760" cy="270" r="2.5"/>
+    <circle cx="760" cy="340" r="2"/>
+    <circle cx="805" cy="340" r="2"/>
+    <circle cx="770" cy="405" r="2.5"/>
+    <circle cx="810" cy="460" r="2"/>
+    <circle cx="765" cy="530" r="2.5"/>
+    <circle cx="800" cy="580" r="2"/>
+    <!-- Diagonal junctions -->
+    <circle cx="300" cy="180" r="1.5"/>
+    <circle cx="660" cy="180" r="1.5"/>
+    <circle cx="290" cy="455" r="1.5"/>
+    <circle cx="670" cy="455" r="1.5"/>
+  </g>
+
+  <!-- Energy traces: faint colored pulses flowing along circuit paths -->
+  <g filter="url(#traceGlow)" opacity="0.3">
+    <!-- Purple energy (dream consolidation path) -->
+    <path d="M 160 580 Q 155 500, 155 460 Q 150 400, 155 340 Q 150 280, 140 200 Q 135 160, 180 130"
+          stroke="#a855f7" stroke-width="1.5" fill="none" stroke-dasharray="6,8"/>
+    <!-- Green energy (retrieval path) -->
+    <path d="M 780 130 Q 790 180, 820 200 Q 840 250, 820 300 Q 805 340, 805 340 Q 810 400, 810 460 Q 830 500, 800 580"
+          stroke="#10b981" stroke-width="1.5" fill="none" stroke-dasharray="6,8"/>
+    <!-- Cyan energy (horizontal data flow) -->
+    <path d="M 180 405 L 480 405 L 770 405"
+          stroke="#06b6d4" stroke-width="1" fill="none" stroke-dasharray="4,10"/>
+    <path d="M 200 270 L 480 270 L 760 270"
+          stroke="#6366f1" stroke-width="1" fill="none" stroke-dasharray="4,10"/>
+  </g>
+
+  <!-- IC chip outlines (subtle component shapes) -->
+  <g stroke="#2d5575" fill="none" stroke-width="0.7" opacity="0.4">
+    <!-- Chip at top-left -->
+    <rect x="90" y="115" width="30" height="20" rx="2"/>
+    <line x1="90" y1="122" x2="82" y2="122"/>
+    <line x1="90" y1="128" x2="82" y2="128"/>
+    <line x1="120" y1="122" x2="128" y2="122"/>
+    <line x1="120" y1="128" x2="128" y2="128"/>
+    <!-- Chip at top-right -->
+    <rect x="840" y="115" width="30" height="20" rx="2"/>
+    <line x1="840" y1="122" x2="832" y2="122"/>
+    <line x1="840" y1="128" x2="832" y2="128"/>
+    <line x1="870" y1="122" x2="878" y2="122"/>
+    <line x1="870" y1="128" x2="878" y2="128"/>
+    <!-- Chip at bottom-left -->
+    <rect x="95" y="520" width="30" height="20" rx="2"/>
+    <line x1="95" y1="527" x2="87" y2="527"/>
+    <line x1="95" y1="533" x2="87" y2="533"/>
+    <line x1="125" y1="527" x2="133" y2="527"/>
+    <line x1="125" y1="533" x2="133" y2="533"/>
+    <!-- Chip at bottom-right -->
+    <rect x="835" y="520" width="30" height="20" rx="2"/>
+    <line x1="835" y1="527" x2="827" y2="527"/>
+    <line x1="835" y1="533" x2="827" y2="533"/>
+    <line x1="865" y1="527" x2="873" y2="527"/>
+    <line x1="865" y1="533" x2="873" y2="533"/>
+  </g>
+
+  <!-- Title -->
+  <text x="480" y="38" text-anchor="middle" fill="#e2e8f0" font-size="22" font-weight="700">Hierarchical Temporal Memory Graph</text>
+  <text x="480" y="60" text-anchor="middle" fill="#94a3b8" font-size="13">Four levels of cognitive memory, from raw facts to strategic insights</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- L4: ABSTRACT — Top, large glowing purple nodes                       -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#glowPurple)">
+    <circle cx="370" cy="130" r="15" fill="#a855f7" opacity="0.9">
+      <animate attributeName="r" values="15;17;15" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="500" cy="115" r="13" fill="#c084fc" opacity="0.85">
+      <animate attributeName="r" values="13;15;13" dur="3.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="610" cy="135" r="14" fill="#a855f7" opacity="0.9">
+      <animate attributeName="r" values="14;16;14" dur="4.2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- L4 connections -->
+  <line x1="385" y1="129" x2="487" y2="117" stroke="#a855f7" stroke-width="1.5" opacity="0.4"/>
+  <line x1="513" y1="117" x2="596" y2="133" stroke="#a855f7" stroke-width="1.5" opacity="0.4"/>
+  <line x1="384" y1="136" x2="597" y2="140" stroke="#c084fc" stroke-width="0.8" opacity="0.2"/>
+
+  <!-- L4 Label -->
+  <rect x="400" y="86" width="140" height="22" rx="11" fill="#7c3aed" opacity="0.9"/>
+  <text x="470" y="101" text-anchor="middle" fill="white" font-size="11" font-weight="700">L4  ABSTRACT</text>
+  <text x="490" y="162" text-anchor="middle" fill="#c4b5fd" font-size="12" font-weight="600">Strategic Insights</text>
+  <text x="490" y="178" text-anchor="middle" fill="#a1a1aa" font-size="10">Dream-consolidated patterns &amp; trajectories</text>
+
+  <!-- Connecting lines L4 to L3 -->
+  <line x1="370" y1="145" x2="320" y2="250" stroke="#a855f7" stroke-width="1" opacity="0.25" stroke-dasharray="4,3"/>
+  <line x1="500" y1="128" x2="470" y2="245" stroke="#a855f7" stroke-width="1" opacity="0.25" stroke-dasharray="4,3"/>
+  <line x1="610" y1="149" x2="630" y2="248" stroke="#a855f7" stroke-width="1" opacity="0.25" stroke-dasharray="4,3"/>
+
+  <!-- SUMMARIZES label -->
+  <text x="405" y="200" text-anchor="middle" fill="#a855f7" font-size="8" opacity="0.6" transform="rotate(-33 405 200)">SUMMARIZES</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- L3: EPISODE — Upper-middle, indigo nodes with orbiting fragments     -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#glowIndigo)">
+    <!-- Episode 1 cluster -->
+    <circle cx="300" cy="270" r="10" fill="#6366f1" opacity="0.85"/>
+    <circle cx="283" cy="256" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="317" cy="259" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="288" cy="286" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <line x1="283" y1="256" x2="300" y2="270" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="317" y1="259" x2="300" y2="270" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="288" y1="286" x2="300" y2="270" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+
+    <!-- Episode 2 cluster -->
+    <circle cx="470" cy="262" r="11" fill="#6366f1" opacity="0.85"/>
+    <circle cx="451" cy="248" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="489" cy="250" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="455" cy="280" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="485" cy="278" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <line x1="451" y1="248" x2="470" y2="262" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="489" y1="250" x2="470" y2="262" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="455" y1="280" x2="470" y2="262" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="485" y1="278" x2="470" y2="262" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+
+    <!-- Episode 3 cluster -->
+    <circle cx="630" cy="268" r="10" fill="#6366f1" opacity="0.85"/>
+    <circle cx="614" cy="254" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="648" cy="257" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <circle cx="622" cy="284" r="3.5" fill="#818cf8" opacity="0.6"/>
+    <line x1="614" y1="254" x2="630" y2="268" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="648" y1="257" x2="630" y2="268" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+    <line x1="622" y1="284" x2="630" y2="268" stroke="#818cf8" stroke-width="0.7" opacity="0.4"/>
+  </g>
+
+  <!-- L3 inter-episode connections -->
+  <line x1="310" y1="268" x2="459" y2="263" stroke="#6366f1" stroke-width="0.8" opacity="0.3"/>
+  <line x1="481" y1="264" x2="620" y2="268" stroke="#6366f1" stroke-width="0.8" opacity="0.3"/>
+
+  <!-- L3 Label -->
+  <rect x="400" y="232" width="140" height="22" rx="11" fill="#4f46e5" opacity="0.9"/>
+  <text x="470" y="247" text-anchor="middle" fill="white" font-size="11" font-weight="700">L3  EPISODE</text>
+  <text x="490" y="306" text-anchor="middle" fill="#a5b4fc" font-size="12" font-weight="600">Temporal Event Clusters</text>
+  <text x="490" y="322" text-anchor="middle" fill="#a1a1aa" font-size="10">7-signal hybrid linker groups related fragments</text>
+
+  <!-- Connecting lines L3 to L2 -->
+  <line x1="300" y1="280" x2="270" y2="395" stroke="#6366f1" stroke-width="0.8" opacity="0.2" stroke-dasharray="4,3"/>
+  <line x1="470" y1="273" x2="420" y2="390" stroke="#6366f1" stroke-width="0.8" opacity="0.2" stroke-dasharray="4,3"/>
+  <line x1="470" y1="273" x2="540" y2="393" stroke="#6366f1" stroke-width="0.8" opacity="0.2" stroke-dasharray="4,3"/>
+  <line x1="630" y1="278" x2="660" y2="390" stroke="#6366f1" stroke-width="0.8" opacity="0.2" stroke-dasharray="4,3"/>
+
+  <!-- BELONGS_TO label -->
+  <text x="350" y="345" text-anchor="middle" fill="#6366f1" font-size="8" opacity="0.5" transform="rotate(-28 350 345)">BELONGS_TO</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- L2: ENTITY_STATE — Lower-middle, cyan double-ring nodes              -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#glowCyan)">
+    <circle cx="250" cy="410" r="8" fill="#0ea5e9" opacity="0.8"/>
+    <circle cx="250" cy="410" r="11" fill="none" stroke="#0ea5e9" stroke-width="0.8" opacity="0.4"/>
+
+    <circle cx="345" cy="402" r="7" fill="#0ea5e9" opacity="0.8"/>
+    <circle cx="345" cy="402" r="10" fill="none" stroke="#0ea5e9" stroke-width="0.8" opacity="0.4"/>
+
+    <circle cx="425" cy="407" r="8" fill="#38bdf8" opacity="0.75"/>
+    <circle cx="425" cy="407" r="11" fill="none" stroke="#38bdf8" stroke-width="0.8" opacity="0.4"/>
+
+    <circle cx="540" cy="405" r="7" fill="#0ea5e9" opacity="0.8"/>
+    <circle cx="540" cy="405" r="10" fill="none" stroke="#0ea5e9" stroke-width="0.8" opacity="0.4"/>
+
+    <circle cx="630" cy="398" r="8" fill="#38bdf8" opacity="0.75"/>
+    <circle cx="630" cy="398" r="11" fill="none" stroke="#38bdf8" stroke-width="0.8" opacity="0.4"/>
+
+    <circle cx="705" cy="410" r="7" fill="#0ea5e9" opacity="0.8"/>
+    <circle cx="705" cy="410" r="10" fill="none" stroke="#0ea5e9" stroke-width="0.8" opacity="0.4"/>
+  </g>
+
+  <!-- L2 connections -->
+  <line x1="258" y1="408" x2="338" y2="403" stroke="#0ea5e9" stroke-width="0.8" opacity="0.35"/>
+  <line x1="352" y1="402" x2="418" y2="406" stroke="#0ea5e9" stroke-width="0.8" opacity="0.35"/>
+  <line x1="433" y1="407" x2="533" y2="405" stroke="#0ea5e9" stroke-width="0.8" opacity="0.35"/>
+  <line x1="547" y1="405" x2="623" y2="399" stroke="#0ea5e9" stroke-width="0.8" opacity="0.35"/>
+  <line x1="638" y1="399" x2="698" y2="409" stroke="#0ea5e9" stroke-width="0.8" opacity="0.35"/>
+  <!-- Supersedes cross-link -->
+  <path d="M 345 415 Q 385 432 425 417" stroke="#f97316" stroke-width="1.2" opacity="0.5" fill="none" stroke-dasharray="3,2"/>
+  <text x="385" y="436" text-anchor="middle" fill="#f97316" font-size="8" opacity="0.7">SUPERSEDES</text>
+
+  <!-- L2 Label -->
+  <rect x="385" y="372" width="170" height="22" rx="11" fill="#0284c7" opacity="0.9"/>
+  <text x="470" y="387" text-anchor="middle" fill="white" font-size="11" font-weight="700">L2  ENTITY_STATE</text>
+  <text x="490" y="448" text-anchor="middle" fill="#7dd3fc" font-size="12" font-weight="600">Tracked Entity Attributes</text>
+  <text x="490" y="464" text-anchor="middle" fill="#a1a1aa" font-size="10">Bitemporal versioning: observed_at + ingested_at</text>
+
+  <!-- Connecting lines L2 to L1 -->
+  <line x1="250" y1="421" x2="235" y2="510" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+  <line x1="345" y1="412" x2="325" y2="505" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+  <line x1="425" y1="418" x2="410" y2="505" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+  <line x1="540" y1="415" x2="520" y2="508" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+  <line x1="630" y1="409" x2="615" y2="510" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+  <line x1="705" y1="420" x2="695" y2="512" stroke="#0ea5e9" stroke-width="0.6" opacity="0.2" stroke-dasharray="3,3"/>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- L1: ATOMIC — Bottom, dense green node cluster                        -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#glowGreen)">
+    <!-- Row 1 -->
+    <circle cx="215" cy="520" r="4" fill="#10b981" opacity="0.7"/>
+    <circle cx="242" cy="514" r="3.5" fill="#10b981" opacity="0.65"/>
+    <circle cx="265" cy="524" r="4" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="290" cy="516" r="3.5" fill="#10b981" opacity="0.7"/>
+    <circle cx="315" cy="526" r="4" fill="#10b981" opacity="0.65"/>
+    <circle cx="340" cy="514" r="3.5" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="365" cy="522" r="4" fill="#10b981" opacity="0.7"/>
+    <circle cx="390" cy="516" r="3.5" fill="#10b981" opacity="0.65"/>
+    <circle cx="415" cy="525" r="4" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="440" cy="519" r="3.5" fill="#10b981" opacity="0.7"/>
+    <circle cx="465" cy="512" r="4" fill="#10b981" opacity="0.65"/>
+    <circle cx="490" cy="524" r="3.5" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="515" cy="517" r="4" fill="#10b981" opacity="0.7"/>
+    <circle cx="540" cy="527" r="3.5" fill="#10b981" opacity="0.65"/>
+    <circle cx="565" cy="515" r="4" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="590" cy="523" r="3.5" fill="#10b981" opacity="0.7"/>
+    <circle cx="615" cy="517" r="4" fill="#10b981" opacity="0.65"/>
+    <circle cx="640" cy="525" r="3.5" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="665" cy="514" r="4" fill="#10b981" opacity="0.7"/>
+    <circle cx="690" cy="522" r="3.5" fill="#10b981" opacity="0.65"/>
+    <circle cx="715" cy="517" r="4" fill="#6ee7b7" opacity="0.6"/>
+    <circle cx="740" cy="525" r="3.5" fill="#10b981" opacity="0.7"/>
+
+    <!-- Row 2 -->
+    <circle cx="230" cy="542" r="3.5" fill="#10b981" opacity="0.55"/>
+    <circle cx="258" cy="548" r="4" fill="#10b981" opacity="0.6"/>
+    <circle cx="285" cy="540" r="3.5" fill="#6ee7b7" opacity="0.5"/>
+    <circle cx="313" cy="550" r="4" fill="#10b981" opacity="0.55"/>
+    <circle cx="345" cy="543" r="3.5" fill="#10b981" opacity="0.6"/>
+    <circle cx="375" cy="549" r="4" fill="#6ee7b7" opacity="0.5"/>
+    <circle cx="405" cy="541" r="3.5" fill="#10b981" opacity="0.55"/>
+    <circle cx="435" cy="547" r="4" fill="#10b981" opacity="0.6"/>
+    <circle cx="465" cy="540" r="3.5" fill="#6ee7b7" opacity="0.5"/>
+    <circle cx="498" cy="545" r="4" fill="#10b981" opacity="0.55"/>
+    <circle cx="528" cy="550" r="3.5" fill="#10b981" opacity="0.6"/>
+    <circle cx="558" cy="541" r="4" fill="#6ee7b7" opacity="0.5"/>
+    <circle cx="588" cy="547" r="3.5" fill="#10b981" opacity="0.55"/>
+    <circle cx="618" cy="540" r="4" fill="#10b981" opacity="0.6"/>
+    <circle cx="648" cy="548" r="3.5" fill="#6ee7b7" opacity="0.5"/>
+    <circle cx="678" cy="542" r="4" fill="#10b981" opacity="0.55"/>
+    <circle cx="708" cy="548" r="3.5" fill="#10b981" opacity="0.6"/>
+    <circle cx="735" cy="541" r="4" fill="#6ee7b7" opacity="0.5"/>
+  </g>
+
+  <!-- L1 inter-node mesh -->
+  <g stroke="#10b981" stroke-width="0.5" opacity="0.2">
+    <line x1="215" y1="520" x2="242" y2="514"/>
+    <line x1="242" y1="514" x2="265" y2="524"/>
+    <line x1="265" y1="524" x2="290" y2="516"/>
+    <line x1="315" y1="526" x2="340" y2="514"/>
+    <line x1="365" y1="522" x2="390" y2="516"/>
+    <line x1="415" y1="525" x2="440" y2="519"/>
+    <line x1="465" y1="512" x2="490" y2="524"/>
+    <line x1="515" y1="517" x2="540" y2="527"/>
+    <line x1="565" y1="515" x2="590" y2="523"/>
+    <line x1="615" y1="517" x2="640" y2="525"/>
+    <line x1="665" y1="514" x2="690" y2="522"/>
+    <line x1="715" y1="517" x2="740" y2="525"/>
+    <line x1="230" y1="542" x2="258" y2="548"/>
+    <line x1="313" y1="550" x2="345" y2="543"/>
+    <line x1="405" y1="541" x2="435" y2="547"/>
+    <line x1="498" y1="545" x2="528" y2="550"/>
+    <line x1="588" y1="547" x2="618" y2="540"/>
+    <line x1="678" y1="542" x2="708" y2="548"/>
+    <!-- Cross-row -->
+    <line x1="242" y1="514" x2="230" y2="542"/>
+    <line x1="365" y1="522" x2="375" y2="549"/>
+    <line x1="490" y1="524" x2="498" y2="545"/>
+    <line x1="615" y1="517" x2="618" y2="540"/>
+    <line x1="740" y1="525" x2="735" y2="541"/>
+  </g>
+
+  <!-- L1 Label -->
+  <rect x="400" y="495" width="140" height="22" rx="11" fill="#059669" opacity="0.9"/>
+  <text x="470" y="510" text-anchor="middle" fill="white" font-size="11" font-weight="700">L1  ATOMIC</text>
+  <text x="490" y="576" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="600">Individual Facts &amp; Observations</text>
+  <text x="490" y="592" text-anchor="middle" fill="#a1a1aa" font-size="10">BM25 + SPLADE indexed, GLiNER entity-linked</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- LEFT PATHWAY: Dream Consolidation (upward)                           -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <path d="M 155 555 C 140 470, 135 390, 145 330 C 150 290, 160 260, 170 225 C 180 190, 195 160, 220 125"
+        stroke="#a855f7" stroke-width="2.5" fill="none" opacity="0.5" stroke-dasharray="8,4"
+        marker-end="url(#arrowUp)"/>
+
+  <!-- Moon icon -->
+  <circle cx="128" cy="310" r="13" fill="none" stroke="#a855f7" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="123" cy="306" r="10" fill="#0a1628"/>
+  <circle cx="139" cy="301" r="2" fill="#a855f7" opacity="0.4"/>
+  <circle cx="133" cy="318" r="1.5" fill="#a855f7" opacity="0.3"/>
+
+  <text x="115" y="280" text-anchor="middle" fill="#c4b5fd" font-size="12" font-weight="600" transform="rotate(-80 115 280)">Dream Consolidation</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- RIGHT PATHWAY: ACT-R Retrieval (downward)                            -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <path d="M 780 125 C 800 160, 810 200, 820 240 C 830 280, 835 330, 830 380 C 825 430, 815 490, 800 555"
+        stroke="#10b981" stroke-width="2.5" fill="none" opacity="0.5" stroke-dasharray="8,4"
+        marker-end="url(#arrowDown)"/>
+
+  <!-- Search icon -->
+  <circle cx="840" cy="310" r="10" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.5"/>
+  <line x1="847" y1="317" x2="857" y2="327" stroke="#10b981" stroke-width="2" opacity="0.5"/>
+
+  <text x="865" y="280" text-anchor="middle" fill="#6ee7b7" font-size="12" font-weight="600" transform="rotate(80 865 280)">ACT-R Retrieval</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ENRICHMENT LABELS                                                     -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Admission Scoring -->
+  <rect x="180" y="608" width="155" height="24" rx="12" fill="#1e293b" stroke="#f97316" stroke-width="1.2"/>
+  <text x="257" y="624" text-anchor="middle" fill="#fb923c" font-size="10" font-weight="600">&#x25B7; Admission Scoring</text>
+
+  <!-- State Reconciliation -->
+  <rect x="180" y="470" width="170" height="24" rx="12" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="265" y="486" text-anchor="middle" fill="#38bdf8" font-size="10" font-weight="600">&#x25B7; State Reconciliation</text>
+
+  <!-- Episode Linking -->
+  <rect x="635" y="332" width="145" height="24" rx="12" fill="#1e293b" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="707" y="348" text-anchor="middle" fill="#818cf8" font-size="10" font-weight="600">&#x25B7; Episode Linking</text>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- DREAM CYCLE CALLOUT                                                   -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <rect x="760" y="420" width="180" height="165" rx="12" fill="#1e293b" stroke="#06b6d4" stroke-width="1.5" opacity="0.9" filter="url(#softShadow)"/>
+  <rect x="760" y="420" width="180" height="30" rx="12" fill="#06b6d4" opacity="0.2"/>
+  <rect x="760" y="442" width="180" height="8" fill="#06b6d4" opacity="0.2"/>
+
+  <text x="785" y="442" fill="#67e8f9" font-size="16">&#9789;</text>
+  <text x="805" y="442" fill="#e2e8f0" font-size="13" font-weight="600">Dream Cycle</text>
+
+  <text x="780" y="472" fill="#67e8f9" font-size="13">&#8635;</text>
+  <text x="800" y="472" fill="#e2e8f0" font-size="11" font-weight="500">Rehearsal</text>
+  <text x="800" y="487" fill="#a1a1aa" font-size="9">Replay important memories</text>
+
+  <text x="780" y="510" fill="#67e8f9" font-size="13">&#8652;</text>
+  <text x="800" y="510" fill="#e2e8f0" font-size="11" font-weight="500">PMI Learning</text>
+  <text x="800" y="525" fill="#a1a1aa" font-size="9">Entity co-access weights</text>
+
+  <text x="780" y="548" fill="#67e8f9" font-size="13">&#8599;</text>
+  <text x="800" y="548" fill="#e2e8f0" font-size="11" font-weight="500">Importance Drift</text>
+  <text x="800" y="563" fill="#a1a1aa" font-size="9">Access trend adjustment</text>
+
+  <text x="850" y="580" text-anchor="middle" fill="#64748b" font-size="8">Non-LLM  &#183;  runs offline</text>
+
+  <!-- Connection from dream panel to pathway -->
+  <line x1="760" y1="505" x2="165" y2="340" stroke="#06b6d4" stroke-width="1" opacity="0.25" stroke-dasharray="4,4"/>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- BOTTOM: Feature summary bar                                          -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+
+  <rect x="30" y="670" width="900" height="90" rx="12" fill="#1e293b" stroke="#334155" stroke-width="0.8" opacity="0.85"/>
+
+  <!-- Column 1: Ingest Time -->
+  <text x="70" y="695" fill="#f97316" font-size="12" font-weight="700">Ingest Time</text>
+  <text x="70" y="713" fill="#a1a1aa" font-size="10">GLiNER NER extraction</text>
+  <text x="70" y="728" fill="#a1a1aa" font-size="10">8-feature admission gate</text>
+  <text x="70" y="743" fill="#a1a1aa" font-size="10">Bitemporal state tracking</text>
+
+  <line x1="280" y1="682" x2="280" y2="752" stroke="#334155" stroke-width="0.8"/>
+
+  <!-- Column 2: Dream Time -->
+  <text x="310" y="695" fill="#06b6d4" font-size="12" font-weight="700">Dream Time</text>
+  <text x="310" y="713" fill="#a1a1aa" font-size="10">5-signal rehearsal selector</text>
+  <text x="310" y="728" fill="#a1a1aa" font-size="10">PMI association learning</text>
+  <text x="310" y="743" fill="#a1a1aa" font-size="10">Hierarchical consolidation</text>
+
+  <line x1="520" y1="682" x2="520" y2="752" stroke="#334155" stroke-width="0.8"/>
+
+  <!-- Column 3: Query Time -->
+  <text x="550" y="695" fill="#10b981" font-size="12" font-weight="700">Query Time</text>
+  <text x="550" y="713" fill="#a1a1aa" font-size="10">Intent classification (7 types)</text>
+  <text x="550" y="728" fill="#a1a1aa" font-size="10">BM25 + SPLADE + RRF fusion</text>
+  <text x="550" y="743" fill="#a1a1aa" font-size="10">ACT-R scoring + penalties</text>
+
+  <!-- Zero LLM badge -->
+  <rect x="785" y="700" width="110" height="28" rx="14" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+  <text x="840" y="719" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="700">Zero LLM</text>
+  <text x="840" y="748" text-anchor="middle" fill="#64748b" font-size="9">at query time</text>
+
+</svg>

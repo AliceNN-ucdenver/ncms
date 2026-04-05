@@ -332,11 +332,11 @@ class SQLiteDocumentStore:
         prev_hash = await self._chain_hash("pipeline_events", record_json)
         await self.db.execute(
             """INSERT INTO pipeline_events
-               (project_id, agent, node, status, detail, timestamp, prev_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (project_id, agent, node, status, detail, event_subtype, timestamp, prev_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 event.project_id, event.agent, event.node,
-                event.status, event.detail,
+                event.status, event.detail, event.event_subtype,
                 event.timestamp.isoformat(), prev_hash,
             ),
         )
@@ -344,7 +344,7 @@ class SQLiteDocumentStore:
 
     async def get_pipeline_events(self, project_id: str) -> list[PipelineEvent]:
         cursor = await self.db.execute(
-            "SELECT project_id, agent, node, status, detail, timestamp "
+            "SELECT project_id, agent, node, status, detail, event_subtype, timestamp "
             "FROM pipeline_events WHERE project_id = ? ORDER BY seq",
             (project_id,),
         )
@@ -352,7 +352,8 @@ class SQLiteDocumentStore:
         return [
             PipelineEvent(
                 project_id=r[0], agent=r[1], node=r[2],
-                status=r[3], detail=r[4], timestamp=r[5],
+                status=r[3], detail=r[4], event_subtype=r[5] or "",
+                timestamp=r[6],
             )
             for r in rows
         ]

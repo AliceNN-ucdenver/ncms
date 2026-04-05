@@ -746,4 +746,5 @@ class PipelineEvent(BaseModel):
     node: str
     status: str  # started | completed | failed | interrupted
     detail: str = ""
+    event_subtype: str = ""  # research_plan | research_results | ""
     timestamp: datetime = Field(default_factory=_utcnow)

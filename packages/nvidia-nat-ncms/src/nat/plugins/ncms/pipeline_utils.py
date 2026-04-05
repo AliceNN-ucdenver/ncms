@@ -152,10 +152,15 @@ def build_prd_trigger(
 
 
 def build_design_trigger(
-    topic: str, prd_id: str, project_id: str | None = None,
+    topic: str,
+    prd_id: str,
+    project_id: str | None = None,
+    research_id: str | None = None,
 ) -> str:
     """Build trigger message for the Builder."""
     msg = f"Create implementation design for: {topic} (prd_id: {prd_id})"
+    if research_id:
+        msg += f" (research_id: {research_id})"
     if project_id:
         msg += f" (project_id: {project_id})"
     return msg

@@ -37,9 +37,18 @@ bracketed field with specific evidence from the inputs above.
 State what each input source establishes.
 
 ### Research Premises
+Extract a premise for EVERY major finding in the research, including:
+- Market data and competitive landscape findings
+- Standards and compliance requirements
+- Security threat landscape findings
+- Patent landscape analysis (related patents, coverage gaps, freedom to operate)
+- Jobs-to-be-Done analysis (primary job, underserved/overserved outcomes)
+- Whitespace analysis (unmet jobs, market opportunity)
+- Community evidence (developer discussions, sentiment)
+
 - **R1**: Research establishes: [specific finding] — section: [which section]
 - **R2**: Research establishes: [specific finding] — section: [which section]
-(Continue for all key findings)
+(Continue for ALL key findings — do not omit patents, JTBD, or whitespace)
 
 ### Expert Premises
 - **E1**: Architect recommends: [specific recommendation] — evidence: [quote]

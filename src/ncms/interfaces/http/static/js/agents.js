@@ -304,30 +304,13 @@ function renderAgents() {
 }
 
 function renderHumanBadge(human) {
-  let badge = document.getElementById('human-badge');
-  if (!badge) {
-    // Create badge container in the header stats bar
-    const statsBar = document.getElementById('stats-bar');
-    if (!statsBar) return;
-    badge = document.createElement('div');
-    badge.id = 'human-badge';
-    badge.className = 'human-header-badge';
-    statsBar.insertBefore(badge, statsBar.firstChild);
-  }
-
-  const isOnline = human && human.status === 'online';
+  // Update the seal badge in the left nav instead of creating a footer badge
   const pendingCount = state.approvals
     ? state.approvals.filter(a => a.status === 'pending').length
     : 0;
-  const pendingClass = pendingCount > 0 ? 'pulse' : '';
-
-  badge.innerHTML = `
-    <span class="human-dot ${isOnline ? 'online' : 'offline'}"></span>
-    <span class="human-label">Human</span>
-    <span class="human-approval-count ${pendingClass}" onclick="handleHumanApprovalClick(event)" title="View approvals">
-      ${pendingCount > 0 ? pendingCount + ' pending' : 'No approvals'}
-    </span>
-  `;
+  if (typeof updateSealBadge === 'function') {
+    updateSealBadge(pendingCount);
+  }
 }
 
 function handleHumanApprovalClick(event) {

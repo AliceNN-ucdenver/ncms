@@ -15,7 +15,12 @@ Context:
 - Security Expert Input:
 {security_input}
 
+- Research Context (Patent Landscape, Market Whitespace, Community Evidence):
+{research_summary}
+
 Task: Create a comprehensive TypeScript/Node.js implementation design for: {topic}
+When research context includes patent landscape or whitespace analysis, \
+reference specific patents and market gaps in your design rationale.
 
 Requirements:
 - Target stack: TypeScript, Node.js, Express or Fastify
@@ -52,6 +57,21 @@ Output the design as markdown with these sections:
 
 ## Deployment Configuration
 (Dockerfile, docker-compose, environment setup, health checks)
+
+## Design Rationale & Research Traceability
+This section is REQUIRED. Trace design decisions back to research findings:
+- **Patent landscape alignment**: Which patents were reviewed, how this design \
+avoids or builds on existing claims, freedom-to-operate assessment
+- **JTBD alignment**: How the architecture serves the primary job identified \
+in research, which design decisions address underserved outcomes
+- **Whitespace opportunities**: How the design capitalizes on identified market \
+gaps (cite specific whitespace findings)
+- **Community evidence**: Which implementation decisions were informed by \
+developer community discussions (cite HackerNews/forum findings)
+
+Each point must reference a specific research finding (e.g., "Per patent \
+US20240161092A1..." or "Community discussion on SAML parser differentials \
+informed our...").
 """
 
 ARCHITECTURE_REVIEW_PROMPT = """\

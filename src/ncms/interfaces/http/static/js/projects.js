@@ -228,6 +228,30 @@ async function toggleProjectExpand(projectId) {
         project.review_scores = detail.review_scores || [];
         project.quality_score = detail.quality_score;
         project.phases = detail.phases || project.phases || [];
+
+        // Hydrate pipeline progress from stored events
+        const events = detail.pipeline_events || [];
+        console.log('[projects] Hydrating pipeline from %d stored events', Array.isArray(events) ? events.length : 0);
+        if (Array.isArray(events) && events.length > 0) {
+          if (!state.pipelineProgress[projectId]) {
+            state.pipelineProgress[projectId] = {};
+          }
+          for (const evt of events) {
+            let phaseKey = null;
+            for (const [key, def] of Object.entries(PIPELINE_PHASES)) {
+              if (def.agent === evt.agent) { phaseKey = key; break; }
+            }
+            if (!phaseKey) continue;
+            if (!state.pipelineProgress[projectId][phaseKey]) {
+              state.pipelineProgress[projectId][phaseKey] = {};
+            }
+            // Latest status wins (events are ordered by seq)
+            state.pipelineProgress[projectId][phaseKey][evt.node] = {
+              status: evt.status || 'completed',
+              detail: evt.detail || '',
+            };
+          }
+        }
       }
     } catch (e) {
       console.debug('Failed to fetch project detail:', e);

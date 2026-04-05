@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/ncms-logo.png">
 <title>NCMS Dashboard</title>
 <link rel="stylesheet" href="/css/dashboard.css">
 </head>
@@ -21,7 +22,7 @@
     <!-- Logo -->
     <div class="left-nav-logo">
       <div class="connection-dot" id="connection-dot"></div>
-      <span class="logo">NCMS</span>
+      <img src="/img/ncms-logo.png" alt="NCMS" class="nav-logo-img">
     </div>
 
     <!-- Primary action -->
@@ -73,15 +74,21 @@
     </div>
   </div>
 
-  <!-- Human agent (bottom of nav) -->
+  <!-- User profile (bottom of nav) -->
   <div class="left-nav-bottom">
     <div class="left-nav-divider"></div>
-    <div class="left-nav-human" id="human-badge">
-      <span class="human-dot online"></span>
-      <span class="left-nav-label">Human</span>
-      <span class="human-approval-count" onclick="handleHumanApprovalClick(event)" title="View approvals">0</span>
+    <div class="user-profile" id="user-profile">
+      <div class="user-info" id="user-info" onclick="toggleUserMenu()">
+        <span class="user-display-name" id="user-display-name"></span>
+      </div>
+      <div class="seal-container" onclick="handleHumanApprovalClick(event)" title="Approvals">
+        <span class="seal-icon">&#x1F9AD;</span>
+        <span class="seal-badge" id="seal-badge" style="display:none">0</span>
+      </div>
+      <div class="user-menu" id="user-menu" style="display:none">
+        <button class="user-menu-item" onclick="logout()">Sign Out</button>
+      </div>
     </div>
-    <div id="user-badge" class="user-badge-container" style="display:none"></div>
   </div>
 </nav>
 
@@ -93,22 +100,30 @@
   <!-- Agent View (default) -->
   <div class="main" id="agent-view">
     <div class="main-left">
-      <div class="agents-area" id="agents-area">
-        <div class="waiting-message">Waiting for agents to connect...</div>
-      </div>
 
-      <div class="pipeline-row">
-        <div class="pipeline-panel" id="pipeline-panel">
-          <div class="pipeline-empty">No pipeline activity yet</div>
+      <!-- ── Phase 1: Document Intelligence ── -->
+      <div class="phase-container phase-active">
+        <div class="phase-header">
+          <span class="phase-label">Document Intelligence</span>
+          <span class="phase-status">Active</span>
+        </div>
+        <div class="agents-area" id="agents-area">
+          <div class="waiting-message">Waiting for agents to connect...</div>
         </div>
 
-        <div class="admission-panel" id="admission-panel" style="display:none">
-          <div class="admission-header" onclick="toggleAdmissionFeed()">
-            <span class="admission-title">&#x2696; Admission</span>
-            <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+        <div class="pipeline-row">
+          <div class="pipeline-panel" id="pipeline-panel">
+            <div class="pipeline-empty">No pipeline activity yet</div>
           </div>
-          <div class="admission-feed" id="admission-feed" style="display:none">
-            <div class="admission-empty">No admission decisions yet</div>
+
+          <div class="admission-panel" id="admission-panel" style="display:none">
+            <div class="admission-header" onclick="toggleAdmissionFeed()">
+              <span class="admission-title">&#x2696; Admission</span>
+              <span class="admission-toggle" id="admission-toggle">&#x25BC;</span>
+            </div>
+            <div class="admission-feed" id="admission-feed" style="display:none">
+              <div class="admission-empty">No admission decisions yet</div>
+            </div>
           </div>
         </div>
       </div>
@@ -116,6 +131,70 @@
       <div class="bus-backbone">
         <span class="bus-label">Knowledge Bus</span>
       </div>
+
+      <!-- ── The Forge (Coming Soon) ── -->
+      <div class="phase-container phase-coming-soon">
+        <div class="phase-header">
+          <span class="phase-label">The Forge</span>
+          <span class="phase-status coming-soon">Coming Soon</span>
+        </div>
+        <div class="forge-agents">
+          <div class="forge-card">
+            <div class="forge-card-header">
+              <span class="forge-card-name">&#x1F512; Code Gen</span>
+            </div>
+            <div class="forge-card-tags">
+              <span class="forge-tag">implementation</span>
+              <span class="forge-tag">pull-requests</span>
+            </div>
+            <div class="forge-card-desc">
+              Auto-implement from design docs, generate PRs with full traceability
+            </div>
+            <div class="forge-card-status">Waiting for connection...</div>
+          </div>
+          <div class="forge-card">
+            <div class="forge-card-header">
+              <span class="forge-card-name">&#x1F512; Test Gen</span>
+            </div>
+            <div class="forge-card-tags">
+              <span class="forge-tag">test-suites</span>
+              <span class="forge-tag">acceptance</span>
+            </div>
+            <div class="forge-card-desc">
+              Test suites from PRD acceptance criteria, coverage validation
+            </div>
+            <div class="forge-card-status">Waiting for connection...</div>
+          </div>
+          <div class="forge-card">
+            <div class="forge-card-header">
+              <span class="forge-card-name">&#x1F512; Governance</span>
+            </div>
+            <div class="forge-card-tags">
+              <span class="forge-tag">policy</span>
+              <span class="forge-tag">compliance</span>
+              <span class="forge-tag">audit</span>
+            </div>
+            <div class="forge-card-desc">
+              Policy enforcement gates, compliance verification, audit chains
+            </div>
+            <div class="forge-card-status">Waiting for connection...</div>
+          </div>
+          <div class="forge-card">
+            <div class="forge-card-header">
+              <span class="forge-card-name">&#x1F512; Learning</span>
+            </div>
+            <div class="forge-card-tags">
+              <span class="forge-tag">dream-cycles</span>
+              <span class="forge-tag">patterns</span>
+            </div>
+            <div class="forge-card-desc">
+              Dream cycles, pattern recognition, knowledge consolidation
+            </div>
+            <div class="forge-card-status">Waiting for connection...</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 

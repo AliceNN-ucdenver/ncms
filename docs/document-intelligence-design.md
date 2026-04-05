@@ -479,54 +479,116 @@ Generates a complete audit report containing:
 
 ---
 
-## 13. Market Intelligence: Patent + Community + JTBD Analysis
+## 13. Market Intelligence: Patent + Community + JTBD Analysis — Done
 
 ### Problem
 
-The Archeologist's research path does web search (Tavily) and academic search (ArXiv) — both produce general information. For product ideation, the missing layers are: what's already been invented (patents), what users complain about (community sentiment), and what job isn't being done (whitespace analysis). These sources are free and add genuinely differentiated intelligence to the research report.
+The Archeologist's research path does web search (Tavily) and academic search (ArXiv) — both produce general information. For product ideation, the missing layers are: what's already been invented (patents), what users complain about (community sentiment), and what job isn't being done (whitespace analysis).
 
-### Design
+### Implementation
 
-Add two new nodes to the research path and enhance the synthesis prompt with a Jobs-to-be-Done framework.
+**LLM-planned queries** — `plan_queries` node asks Nano to plan all 4 query types in one LLM call. The prompt explains each engine's constraints (Tavily = natural language, ArXiv = short keywords, USPTO = 2-3 AND terms, HN = 2-3 word casual phrases). Queries stored in `state["search_queries"]`, `state["arxiv_queries"]`, `state["patent_queries"]`, `state["community_queries"]`.
 
-**New pipeline (research path):**
+**Pipeline (research path):**
 ```
-plan_queries → parallel_search (Tavily) → arxiv_search → patent_search (USPTO) → community_search (HN) → synthesize_research
-```
-
-**patent_search node** — Pure Python, no LLM, no API key:
-- USPTO Open Data Portal: `https://developer.uspto.gov/ibd-api/v1/patent/application`
-- Note: USPTO is transitioning from `developer.uspto.gov` to `data.uspto.gov` (old API shutting down April 20, 2026). The node tries both endpoints with graceful degradation.
-- Search by topic keywords extracted from the research topic
-- Extract: patent title, abstract, filing date, assignee
-- Collect up to 5 patents, store in `state["patent_results"]`
-
-**community_search node** — Pure Python, no LLM, no API key:
-- HackerNews Algolia API: `https://hn.algolia.com/api/v1/search?query=...&tags=story`
-- Search by topic keywords
-- Extract: title, points, num_comments, URL
-- Filter to stories with significant engagement (>10 points)
-- Collect up to 5 stories, store in `state["community_results"]`
-
-**Updated synthesis prompt** — adds three sections to the semi-formal certificate:
-
-```
-## Jobs-to-be-Done Analysis
-- **Primary job:** [what users are hiring current solutions to do]
-- **Underserved outcomes:** [where current solutions fail, from community evidence]
-- **Overserved outcomes:** [where current solutions over-deliver, opportunity to simplify]
-
-## Patent Landscape
-- **Related patents:** [P1-PN with titles, assignees, filing dates]
-- **Coverage gaps:** [areas where no patents exist despite user demand]
-- **Freedom to operate:** [assessment of patent density in the target space]
-
-## Whitespace Analysis
-- **Unmet jobs:** [intersection of community pain + no patent + no product]
-- **Market opportunity:** [quantified from web research + patent gaps]
+plan_queries (LLM plans all 4 engines) → parallel_search (Tavily) → arxiv_search → patent_search (USPTO) → community_search (HN) → synthesize_research
 ```
 
-### Effort: 1-2 days
+**patent_search node** — Pure Python, X-API-Key auth:
+- USPTO Open Data Portal: `api.uspto.gov/api/v1/patent/applications/search`
+- q= uses AND operators between LLM-planned keywords
+- Two-stage abstract fetching: search returns `pgpubDocumentMetaData.fileLocationURI` or `grantDocumentMetaData.fileLocationURI` → follow 302 redirect to `data.uspto.gov` → parse `<abstract>` from XML
+- Progressive query broadening: tries each LLM-planned query until one returns results
+- Audit telemetry includes: `queries_planned`, `query_matched`, `queries_tried`, `abstracts_fetched`
+- Fallback: if no LLM queries, builds from topic keywords with stop-word filter
+
+**community_search node** — Pure Python, no auth:
+- HackerNews Algolia API: `hn.algolia.com/api/v1/search`
+- Uses LLM-planned short casual phrases (2-3 words)
+- Fallback: if LLM queries return 0 stories (>5 points), retries with simple topic word splits
+- Audit telemetry includes: `queries_planned`, `queries_fallback`, `used_fallback`
+
+**Updated synthesis prompt** — three JTBD sections in the semi-formal certificate:
+- Jobs-to-be-Done Analysis (primary job, underserved/overserved outcomes)
+- Patent Landscape (related patents, coverage gaps, freedom to operate)
+- Whitespace Analysis (unmet jobs, market opportunity, recommended focus)
+
+**NemoClaw network policy** — `api.uspto.gov:443` + `data.uspto.gov:443` (for abstract XML redirect) + `hn.algolia.com:443`, all with `tls: terminate` + GET rules.
+
+### Results (vs baseline)
+
+| Metric | Baseline | Market Intel |
+|--------|----------|-------------|
+| Research report | 9.4 KB | 24.8 KB (+163%) |
+| Sources cited | 9 | 37 (web+arxiv+patent+community) |
+| Total output | 54 KB | 81 KB (+49%) |
+| Patent references in PRD | 0 | 16 |
+| Patent references in design | 0 | 10 |
+
+## 14. Research Methodology Audit — Done
+
+### Problem
+
+The planned search queries and results (patents found, abstracts fetched, community stories, fallback usage) were not tracked in the audit system. No way to see what the agent searched for or what it found.
+
+### Implementation
+
+**Pipeline events with event_subtype** — When `emit_telemetry` sends JSON detail (e.g., `{"type": "research_plan", ...}`), the hub's `record_pipeline_event` extracts the `type` field and stores it in a new `event_subtype` column on the `pipeline_events` table. The audit timeline SQL checks `event_subtype != ''` to classify events as `research` type — no brittle LIKE pattern matching against JSON.
+
+**Research events in audit timeline:**
+- `research_plan`: all 4 query types with full query lists
+- `research_results` (per engine): result count, top results, queries used, fallback status, matched query, abstract count
+
+**Document metadata** — Research documents include `metadata.research_methodology` with `query_plan`, `results_summary`, and `top_sources`. This flows through to the audit report's "Research Methodology" section.
+
+**Dashboard display** — Research events show as cyan "Research" badges in the audit timeline with collapsible expand-on-click detail. Pipeline progress tooltips use `humanizeDetail()` to show clean text instead of raw JSON.
+
+## 15. Information Flow Fixes (Loss Points) — Done
+
+### Problem
+
+Research data (patents, JTBD, community evidence) was gathered by the archeologist but lost at each handoff. The PRD agent got the synthesis text but not structured metadata. The design agent never saw the research document at all.
+
+### Implementation
+
+**Loss Point 1: PRD reads research metadata** — `read_document` node extracts `metadata.research_methodology` from the document API response. Stores in `state["research_methodology"]` and `state["research_id"]`.
+
+**Loss Point 2: Expert questions include research context** — `ask_experts` node builds a concise research context string from methodology (result counts + top patent/community titles) and appends to both architect and security expert questions.
+
+**Loss Point 3: Design trigger includes research_id** — `build_design_trigger()` accepts `research_id` parameter. PRD's `verify_and_trigger` passes `state["research_id"]` through.
+
+**Loss Point 4: Design reads research doc** — Design agent extracts `research_id` from trigger, fetches the research document, and `_extract_research_summary()` pulls JTBD, Patent Landscape, Whitespace Analysis, and Formal Conclusions sections (capped at 4000 chars). Passed to synthesis prompt as `{research_summary}`.
+
+**Design Rationale section** — A 10th required output section in `SYNTHESIZE_DESIGN_PROMPT`: "Design Rationale & Research Traceability" mandating patent alignment, JTBD mapping, whitespace opportunities, and community evidence with specific citations.
+
+**PRD prompt strengthening** — Input Premises instructions now explicitly require extraction of patent landscape, JTBD analysis, whitespace findings, and community evidence from the research.
+
+## 16. Dashboard UI — Done
+
+### The Forge
+
+Below the Knowledge Bus, a "Coming Soon" container shows 4 future agent cards in the same visual style as the real agent cards but dimmed: Code Gen, Test Gen, Governance, Learning. Each has domain tags, a description, and "Waiting for connection..." status.
+
+### Document Flow Cards
+
+- Taller cards (158px base) with colored accent line under type label
+- Type-specific metadata in inset panel (dark background): research shows source breakdown, others show entity count
+- Governance section at bottom: lineage ("← derived from Research" or "⭐ reviews Design"), SHA-256 hash (monospace), chain verification badge
+- No floating labels between cards — lineage is on the cards themselves
+
+### User Profile
+
+Bottom of left nav: (green dot) Name + Seal emoji (🦭). Click name → dropdown with Sign Out. Seal badge blinks red when approvals pending. JWT fallback decodes display_name from token.
+
+### Pipeline Progress Hydration
+
+Pipeline events stored in DB are hydrated into `state.pipelineProgress` when expanding a project. No longer lost on page refresh. SSE adds live updates on top.
+
+### Other
+
+- NCMS logo (claw + brain + NVIDIA) on login page (280px) and nav header (150px)
+- Favicon from logo
+- Audit timeline: tighter column widths, collapsible research detail with expand-on-click
 
 ---
 
@@ -542,7 +604,7 @@ Review scores were saved twice per reviewer per round (request_review + verify).
 
 | Priority | Feature | Effort | Status |
 |----------|---------|--------|--------|
-| 1 | Phoenix LangGraph tracing (remove traced_llm_call, use nim + ChatNVIDIA) | 1 day | **Done** — _type: nim, dual LLM config |
+| 1 | Phoenix LangGraph tracing | 1 day | **Done** — _type: openai, dual LLM config |
 | 2 | Unified audit timeline API + table view | 2-3 days | **Done** — UNION query, table UI with tabs |
 | 3 | SQLite PRAGMA foreign_keys | 15 min | **Done** — already set in sqlite_store.py |
 | 4 | Tamper-evident hash chain | 1-2 days | **Done** — prev_hash on 5 audit tables |
@@ -554,6 +616,10 @@ Review scores were saved twice per reviewer per round (request_review + verify).
 | 10 | Quality trend analytics | 3-5 days | Future |
 | 11 | Project lifecycle completion | 0.5 days | **Done** — verify node marks completed |
 | 12 | Audit export (markdown report) | 2-3 days | **Done** — GET /projects/{id}/export |
+| 13 | Market Intelligence (patent + community + JTBD) | 2 days | **Done** — USPTO + HN + LLM-planned queries |
+| 14 | Research Methodology Audit | 1 day | **Done** — event_subtype column, audit report section |
+| 15 | Information Flow Fixes (loss points) | 1 day | **Done** — research_id through pipeline, design rationale |
+| 16 | Dashboard UI (The Forge, doc cards, seal) | 1 day | **Done** — containers, cards, governance, hydration |
 
 ---
 

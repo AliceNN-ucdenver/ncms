@@ -107,7 +107,11 @@ async function renderPipelineProgress(projectId, containerId) {
       const nodeData = phaseData[nodeKey] || {};
       const nodeStatus = nodeData.status || 'waiting';
       const nodeLabel = NODE_LABELS[nodeKey] || nodeKey;
-      const detail = nodeData.detail ? ` title="${escapeHtml(nodeData.detail)}"` : '';
+      const _humanized = nodeData.detail ? humanizeDetail(nodeData.detail) : '';
+      if (nodeData.detail && nodeData.detail.includes('research_')) {
+        console.log('[pipeline-progress] TOOLTIP node=%s raw=%s humanized=%s', nodeKey, nodeData.detail.substring(0, 60), _humanized.substring(0, 60));
+      }
+      const detailTip = _humanized ? ` title="${_humanized.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}"` : '';
 
       let statusIcon = '';
       if (nodeStatus === 'completed') statusIcon = ' &#x2713;';
@@ -146,7 +150,7 @@ async function renderPipelineProgress(projectId, containerId) {
 
       const nodeClass = `pipeline-node ${nodeStatus}${isPhaseWaiting ? ' dimmed' : ''}`;
 
-      html += `<div class="${nodeClass}" data-node="${escapeHtml(nodeKey)}" data-phase="${escapeHtml(phaseKey)}"${detail}
+      html += `<div class="${nodeClass}" data-node="${escapeHtml(nodeKey)}" data-phase="${escapeHtml(phaseKey)}"${detailTip}
         onclick="onPipelineNodeClick('${escapeHtml(projectId)}', '${escapeHtml(phaseKey)}', '${escapeHtml(nodeKey)}')"
         >${escapeHtml(nodeLabel)}${statusIcon}${extraBadge}</div>`;
     }
@@ -245,6 +249,31 @@ function handlePipelineProgressEvent(event) {
 
 // ── Node Click Handlers ──────────────────────────────────────────────
 
+function humanizeDetail(detail) {
+  if (!detail) return detail;
+  if (!detail.includes('"research_')) return detail;
+  try {
+    const d = JSON.parse(detail);
+    if (d.type === 'research_plan') {
+      const counts = ['web','arxiv','patent','community']
+        .map(e => `${e}: ${(d[e]||[]).length}`)
+        .join(', ');
+      return 'Query plan: ' + counts;
+    }
+    if (d.type === 'research_results') {
+      const top = (d.top_results || []).map(r => r.title || r.url || '').filter(Boolean);
+      let s = `${d.engine}: ${d.result_count} results`;
+      if (d.abstracts_fetched != null) s += ` (${d.abstracts_fetched} abstracts)`;
+      if (d.used_fallback) s += ' [fallback]';
+      if (d.query_matched) s += ` [matched: ${d.query_matched}]`;
+      if (d.queries_tried > 1) s += ` (attempt ${d.queries_tried})`;
+      if (top.length) s += ' — ' + top.slice(0,2).join(', ');
+      return s;
+    }
+    return detail;
+  } catch { return detail; }
+}
+
 function onPipelineNodeClick(projectId, phaseKey, nodeKey) {
   const data = state.pipelineProgress[projectId]?.[phaseKey]?.[nodeKey];
   if (!data) return;
@@ -272,6 +301,7 @@ function onPipelineNodeClick(projectId, phaseKey, nodeKey) {
   // Build inline expand panel
   const isActionable = data.status === 'started' || data.status === 'active' || data.status === 'failed';
   const detail = data.detail || '';
+  console.log('[pipeline-progress] EXPAND node=%s raw=%s humanized=%s', nodeKey, detail.substring(0, 80), humanizeDetail(detail).substring(0, 80));
 
   let actionsHTML = '';
   if (isActionable) {
@@ -286,7 +316,7 @@ function onPipelineNodeClick(projectId, phaseKey, nodeKey) {
   const expand = document.createElement('div');
   expand.className = 'pipeline-node-expanded';
   expand.innerHTML = `
-    <div class="pipeline-expand-detail">${detail ? escapeHtml(detail) : 'Status: ' + escapeHtml(data.status)}</div>
+    <div class="pipeline-expand-detail">${detail ? escapeHtml(humanizeDetail(detail)).replace(/"/g, '&quot;') : 'Status: ' + escapeHtml(data.status)}</div>
     ${actionsHTML ? '<div class="pipeline-expand-actions">' + actionsHTML + '</div>' : ''}
     <button class="pipeline-expand-close" onclick="this.closest('.pipeline-node-expanded').remove()">&#x2715;</button>
   `;

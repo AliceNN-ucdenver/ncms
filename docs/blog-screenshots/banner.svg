@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e1a"/>
+      <stop offset="50%" style="stop-color:#0f1428"/>
+      <stop offset="100%" style="stop-color:#1a1040"/>
+    </linearGradient>
+    <linearGradient id="glowLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00ff88;stop-opacity:0"/>
+      <stop offset="20%" style="stop-color:#00ff88;stop-opacity:0.6"/>
+      <stop offset="50%" style="stop-color:#7c4dff;stop-opacity:0.8"/>
+      <stop offset="80%" style="stop-color:#ff6b35;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#ff6b35;stop-opacity:0"/>
+    </linearGradient>
+    <linearGradient id="glowLine2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff4081;stop-opacity:0"/>
+      <stop offset="30%" style="stop-color:#7c4dff;stop-opacity:0.4"/>
+      <stop offset="70%" style="stop-color:#00e5ff;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#00ff88;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="textglow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="420" fill="url(#bg)" rx="12"/>
+
+  <!-- Matrix grid lines (subtle) -->
+  <g opacity="0.04" stroke="#7c4dff">
+    <line x1="0" y1="40" x2="1200" y2="40"/>
+    <line x1="0" y1="80" x2="1200" y2="80"/>
+    <line x1="0" y1="120" x2="1200" y2="120"/>
+    <line x1="0" y1="160" x2="1200" y2="160"/>
+    <line x1="0" y1="200" x2="1200" y2="200"/>
+    <line x1="0" y1="240" x2="1200" y2="240"/>
+    <line x1="0" y1="280" x2="1200" y2="280"/>
+    <line x1="0" y1="320" x2="1200" y2="320"/>
+    <line x1="100" y1="0" x2="100" y2="360"/>
+    <line x1="200" y1="0" x2="200" y2="360"/>
+    <line x1="300" y1="0" x2="300" y2="360"/>
+    <line x1="400" y1="0" x2="400" y2="360"/>
+    <line x1="500" y1="0" x2="500" y2="360"/>
+    <line x1="600" y1="0" x2="600" y2="360"/>
+    <line x1="700" y1="0" x2="700" y2="360"/>
+    <line x1="800" y1="0" x2="800" y2="360"/>
+    <line x1="900" y1="0" x2="900" y2="360"/>
+    <line x1="1000" y1="0" x2="1000" y2="360"/>
+    <line x1="1100" y1="0" x2="1100" y2="360"/>
+  </g>
+
+  <!-- Floating data particles -->
+  <g opacity="0.15" fill="#7c4dff">
+    <circle cx="80" cy="60" r="1.5"/><circle cx="230" cy="90" r="1"/>
+    <circle cx="370" cy="45" r="2"/><circle cx="520" cy="75" r="1.2"/>
+    <circle cx="680" cy="55" r="1.8"/><circle cx="830" cy="85" r="1"/>
+    <circle cx="960" cy="50" r="1.5"/><circle cx="1100" cy="70" r="1.2"/>
+    <circle cx="150" cy="280" r="1"/><circle cx="440" cy="300" r="1.5"/>
+    <circle cx="750" cy="290" r="1.2"/><circle cx="1050" cy="285" r="1.8"/>
+  </g>
+
+  <!-- Matrix rain effect (right side) -->
+  <g opacity="0.12" fill="#00ff88" font-family="monospace" font-size="10">
+    <text x="870" y="20">ﾊ ﾐ ﾋ ﾎ ﾍ</text>
+    <text x="890" y="35">0 1 1 0</text>
+    <text x="870" y="50">ﾏ ﾑ ﾒ ﾓ</text>
+    <text x="895" y="65">1 0 0 1</text>
+    <text x="875" y="80">ﾔ ﾕ ﾖ ﾗ</text>
+    <text x="890" y="95">0 1 0 1</text>
+    <text x="870" y="110">ﾘ ﾙ ﾚ ﾛ</text>
+    <text x="895" y="125">1 1 0 0</text>
+    <text x="875" y="140">ﾜ ﾝ ﾞ ﾟ</text>
+    <text x="890" y="155">0 0 1 1</text>
+    <text x="870" y="170">ﾊ ﾐ ﾋ ﾎ</text>
+    <text x="895" y="185">1 0 1 0</text>
+    <text x="875" y="200">ﾏ ﾑ ﾒ ﾓ</text>
+    <text x="890" y="215">0 1 1 1</text>
+    <text x="870" y="230">ﾔ ﾕ ﾖ ﾗ</text>
+    <text x="895" y="245">1 1 0 1</text>
+    <text x="875" y="260">ﾘ ﾙ ﾚ ﾛ</text>
+    <text x="890" y="275">0 0 1 0</text>
+    <text x="870" y="290">ﾜ ﾝ ﾞ ﾟ</text>
+    <text x="895" y="305">1 0 0 0</text>
+    <text x="875" y="320">ﾊ ﾐ ﾋ ﾎ</text>
+  </g>
+  <g opacity="0.07" fill="#00ff88" font-family="monospace" font-size="10">
+    <text x="935" y="15">ｱ ｲ ｳ</text>
+    <text x="940" y="30">1 0 1</text>
+    <text x="935" y="45">ｴ ｵ ｶ</text>
+    <text x="940" y="60">0 1 0</text>
+    <text x="935" y="75">ｷ ｸ ｹ</text>
+    <text x="940" y="90">1 1 1</text>
+    <text x="935" y="105">ｺ ｻ ｼ</text>
+    <text x="940" y="120">0 0 0</text>
+    <text x="935" y="135">ｽ ｾ ｿ</text>
+    <text x="940" y="150">1 0 0</text>
+    <text x="935" y="165">ﾀ ﾁ ﾂ</text>
+    <text x="940" y="180">0 1 1</text>
+    <text x="935" y="195">ﾃ ﾄ ﾅ</text>
+    <text x="940" y="210">1 1 0</text>
+    <text x="935" y="225">ﾆ ﾇ ﾈ</text>
+    <text x="940" y="240">0 0 1</text>
+    <text x="935" y="255">ﾉ ﾊ ﾋ</text>
+    <text x="940" y="270">1 0 1</text>
+    <text x="935" y="285">ﾌ ﾍ ﾎ</text>
+    <text x="940" y="300">0 1 0</text>
+    <text x="935" y="315">ﾏ ﾐ ﾑ</text>
+  </g>
+
+  <!-- Glow accent lines -->
+  <rect x="0" y="0" width="1200" height="2" fill="url(#glowLine)" filter="url(#softglow)"/>
+  <rect x="0" y="418" width="1200" height="2" fill="url(#glowLine2)" filter="url(#softglow)"/>
+
+  <!-- Left side: Technology stack badges -->
+  <g transform="translate(55, 55)">
+    <rect x="0" y="0" width="100" height="32" rx="6" fill="#0a1a10" stroke="#00ff88" stroke-width="1.5" opacity="0.9" filter="url(#glow)"/>
+    <text x="50" y="21" text-anchor="middle" fill="#00ff88" font-size="14" font-weight="700" letter-spacing="2">NCMS</text>
+
+    <rect x="0" y="44" width="100" height="32" rx="6" fill="#0a1408" stroke="#76b900" stroke-width="1.5" opacity="0.9" filter="url(#glow)"/>
+    <text x="50" y="65" text-anchor="middle" fill="#76b900" font-size="12" font-weight="600" letter-spacing="1">NeMo AT</text>
+
+    <rect x="0" y="88" width="100" height="32" rx="6" fill="#0e0a1a" stroke="#7c4dff" stroke-width="1.5" opacity="0.9" filter="url(#glow)"/>
+    <text x="50" y="109" text-anchor="middle" fill="#7c4dff" font-size="11" font-weight="600" letter-spacing="1">NemoClaw</text>
+  </g>
+
+  <!-- Connecting lines from badges to center -->
+  <g stroke-width="1" opacity="0.2">
+    <line x1="160" y1="71" x2="290" y2="80" stroke="#00ff88"/>
+    <line x1="160" y1="99" x2="290" y2="95" stroke="#76b900"/>
+    <line x1="160" y1="127" x2="290" y2="110" stroke="#7c4dff"/>
+  </g>
+
+  <!-- Center: Main title -->
+  <text x="600" y="62" text-anchor="middle" fill="#ffffff" font-size="38" font-weight="300" letter-spacing="3" filter="url(#textglow)">Multi-Agent Software</text>
+  <text x="600" y="106" text-anchor="middle" fill="#ffffff" font-size="38" font-weight="700" letter-spacing="3" filter="url(#textglow)">Delivery Pipeline</text>
+
+  <!-- Separator line -->
+  <rect x="340" y="120" width="520" height="1" fill="url(#glowLine)" opacity="0.5"/>
+
+  <!-- Three key phrases -->
+  <text x="600" y="145" text-anchor="middle" fill="#b0b0cc" font-size="13" font-weight="400" letter-spacing="0.5">Five AI agents research, analyze codebases, consult experts, and produce implementation designs autonomously.</text>
+  <text x="600" y="166" text-anchor="middle" fill="#c0c0dd" font-size="12" font-weight="500" letter-spacing="1.5">Semi-formal certificates + CoT (+29% traceability)  |  Tavily + ArXiv  |  Memory that actually works.</text>
+
+  <!-- Agent pipeline orbs - 5 agents with auto-chain -->
+  <g transform="translate(150, 260)">
+    <!-- Archeologist (dual-path: research + archaeology) -->
+    <circle cx="0" cy="0" r="22" fill="#0a1a10" stroke="#10b981" stroke-width="2" filter="url(#glow)"/>
+    <text x="0" y="2" text-anchor="middle" fill="#10b981" font-size="8" font-weight="700">ARC</text>
+    <text x="0" y="-26" text-anchor="middle" fill="#5aaa7a" font-size="7">Dual-path</text>
+    <text x="0" y="36" text-anchor="middle" fill="#5aaa7a" font-size="7">Research+Arch</text>
+
+    <!-- Archeologist to PO -->
+    <line x1="24" y1="0" x2="95" y2="0" stroke="#10b981" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
+    <polygon points="90,-4 100,0 90,4" fill="#10b981" opacity="0.5"/>
+
+    <!-- Report artifact -->
+    <rect x="45" y="-10" width="35" height="20" rx="3" fill="#0a1a10" stroke="#10b981" stroke-width="0.8" opacity="0.6"/>
+    <text x="62" y="4" text-anchor="middle" fill="#10b981" font-size="6" font-weight="600">11KB</text>
+
+    <!-- PO -->
+    <circle cx="120" cy="0" r="22" fill="#0a1a10" stroke="#00ff88" stroke-width="2" filter="url(#glow)"/>
+    <text x="120" y="2" text-anchor="middle" fill="#00ff88" font-size="9" font-weight="700">PO</text>
+    <text x="120" y="36" text-anchor="middle" fill="#7aaa8a" font-size="8">PRD</text>
+
+    <!-- PO to Designer -->
+    <line x1="145" y1="0" x2="215" y2="0" stroke="#00ff88" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
+    <polygon points="210,-4 220,0 210,4" fill="#00ff88" opacity="0.5"/>
+
+    <!-- PRD artifact -->
+    <rect x="163" y="-10" width="35" height="20" rx="3" fill="#0a1a10" stroke="#00ff88" stroke-width="0.8" opacity="0.6"/>
+    <text x="180" y="4" text-anchor="middle" fill="#00ff88" font-size="6" font-weight="600">16KB</text>
+
+    <!-- Designer -->
+    <circle cx="240" cy="0" r="22" fill="#1a1408" stroke="#ff9800" stroke-width="2" filter="url(#glow)"/>
+    <text x="240" y="2" text-anchor="middle" fill="#ff9800" font-size="9" font-weight="700">DSN</text>
+    <text x="240" y="36" text-anchor="middle" fill="#aa8a4a" font-size="8">Design</text>
+
+    <!-- PARALLEL label -->
+    <text x="340" y="-2" text-anchor="middle" fill="#ffffff" font-size="7" font-weight="600" letter-spacing="2" opacity="0.4">PARALLEL</text>
+
+    <!-- Designer to Architect -->
+    <line x1="265" y1="-10" x2="380" y2="-36" stroke="#ff9800" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
+    <polygon points="375,-40 385,-34 377,-31" fill="#ff9800" opacity="0.5"/>
+
+    <!-- Designer to Security -->
+    <line x1="265" y1="10" x2="380" y2="36" stroke="#ff9800" stroke-width="1.2" opacity="0.35" stroke-dasharray="5,4"/>
+    <polygon points="375,31 385,34 377,40" fill="#ff9800" opacity="0.5"/>
+
+    <!-- Architect -->
+    <circle cx="410" cy="-38" r="22" fill="#0a0e1a" stroke="#448aff" stroke-width="2" filter="url(#glow)"/>
+    <text x="410" y="-37" text-anchor="middle" fill="#448aff" font-size="9" font-weight="700">ARC</text>
+    <text x="410" y="-2" text-anchor="middle" fill="#6a8aba" font-size="8">Architect</text>
+
+    <!-- Security -->
+    <circle cx="410" cy="38" r="22" fill="#1a0a0a" stroke="#ff4081" stroke-width="2" filter="url(#glow)"/>
+    <text x="410" y="39" text-anchor="middle" fill="#ff4081" font-size="9" font-weight="700">SEC</text>
+    <text x="410" y="72" text-anchor="middle" fill="#ba6a7a" font-size="8">Security</text>
+
+    <!-- Return arrows to Design Doc -->
+    <line x1="435" y1="-24" x2="510" y2="0" stroke="#448aff" stroke-width="1" opacity="0.3"/>
+    <line x1="435" y1="24" x2="510" y2="0" stroke="#ff4081" stroke-width="1" opacity="0.3"/>
+
+    <!-- Design artifact -->
+    <rect x="515" y="-16" width="65" height="32" rx="5" fill="#1a1428" stroke="#7c4dff" stroke-width="1.2" opacity="0.8"/>
+    <text x="547" y="1" text-anchor="middle" fill="#b090ff" font-size="8" font-weight="600">21KB</text>
+    <text x="547" y="11" text-anchor="middle" fill="#8a7aaa" font-size="7">Design</text>
+  </g>
+
+  <!-- Right side: Key metrics -->
+  <g transform="translate(985, 55)">
+    <text x="80" y="0" text-anchor="middle" fill="#8080aa" font-size="10" font-weight="600" letter-spacing="3">BENCHMARKS</text>
+
+    <text x="0" y="30" fill="#00ff88" font-size="28" font-weight="700" filter="url(#textglow)">0.72</text>
+    <text x="78" y="22" fill="#7aaa8a" font-size="10">nDCG@10</text>
+    <text x="78" y="34" fill="#5a8a6a" font-size="9">SciFact</text>
+
+    <text x="0" y="68" fill="#448aff" font-size="28" font-weight="700" filter="url(#textglow)">6.3x</text>
+    <text x="82" y="60" fill="#6a8aba" font-size="10">vs Mem0</text>
+    <text x="82" y="72" fill="#4a6a8a" font-size="9">temporal reasoning</text>
+
+    <text x="0" y="106" fill="#ff9800" font-size="28" font-weight="700" filter="url(#textglow)">2.8x</text>
+    <text x="82" y="98" fill="#aa8a4a" font-size="10">vs Letta</text>
+    <text x="82" y="110" fill="#8a6a3a" font-size="9">cross-document</text>
+
+    <text x="0" y="144" fill="#7c4dff" font-size="28" font-weight="700" filter="url(#textglow)">3B</text>
+    <text x="55" y="136" fill="#8a7aaa" font-size="10">active params</text>
+    <text x="55" y="148" fill="#6a5a8a" font-size="9">256 MoE experts</text>
+  </g>
+
+  <!-- Bottom bar -->
+  <rect x="0" y="386" width="1200" height="34" fill="#060a14" rx="0"/>
+  <text x="600" y="408" text-anchor="middle" fill="#6a6a8a" font-size="10" font-weight="500" letter-spacing="3">ZERO VECTOR DBS  &#x2022;  ZERO EMBEDDING APIs  &#x2022;  KERNEL-ISOLATED SANDBOXES  &#x2022;  FULL LLM OBSERVABILITY  &#x2022;  BUILT IN &lt;2 WEEKS</text>
+</svg>

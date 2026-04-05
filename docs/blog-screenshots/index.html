@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>We Asked a 3-Billion-Active-Parameter Model to Run a Software Design Team. It Passed the Architecture Review.</title>
+<link rel="stylesheet" href="css/blog.css">
+<link rel="icon" type="image/png" href="ncms-logo.png">
+</head>
+<body>
+
+<div class="hero-masthead">
+  <div class="hero-logo-block">
+    <img src="ncms-logo.png" alt="NCMS" class="hero-logo">
+    <span class="hero-logo-subtitle">Cognitive Memory System</span>
+  </div>
+  <div class="hero-text">
+    <h1>We Asked a 3-Billion-Active-Parameter Model to Run a Software Design Team. It Passed the Architecture Review.</h1>
+    <p class="byline">Shawn McCarthy &bull; Chief Archeologist, Nvidia Deep Learning Instructor &bull; April 2026</p>
+  </div>
+</div>
+
+<p class="subtitle">From cognitive memory system to auditable document intelligence pipeline in three weeks. Powered by Nemotron 3 Nano on DGX Spark, orchestrated by NeMo Agent Toolkit, sandboxed in NemoClaw.</p>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:32px">
+  <span style="background:rgba(118,185,0,0.15);border:1px solid rgba(118,185,0,0.3);color:#76b900;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">NVIDIA Nemotron 3 Nano</span>
+  <span style="background:rgba(118,185,0,0.15);border:1px solid rgba(118,185,0,0.3);color:#76b900;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">NeMo Agent Toolkit</span>
+  <span style="background:rgba(118,185,0,0.15);border:1px solid rgba(118,185,0,0.3);color:#76b900;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">NemoClaw / OpenShell</span>
+  <span style="background:rgba(118,185,0,0.15);border:1px solid rgba(118,185,0,0.3);color:#76b900;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">DGX Spark (128GB)</span>
+  <span style="background:rgba(118,185,0,0.15);border:1px solid rgba(118,185,0,0.3);color:#76b900;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">vLLM + 512K Context</span>
+  <span style="background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.3);color:#06b6d4;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">LangGraph</span>
+  <span style="background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.3);color:#06b6d4;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">BM25 + SPLADE v3</span>
+  <span style="background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.3);color:#06b6d4;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">GLiNER NER</span>
+  <span style="background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">USPTO Patents</span>
+  <span style="background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">Semi-Formal Certificates</span>
+  <span style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">Tamper-Evident Audit</span>
+  <span style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;padding:4px 12px;border-radius:4px;font-size:0.8rem;font-weight:600">Zero Dense Embeddings</span>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<p>Fourteen minutes ago, someone typed "Research authentication patterns for identity services" into a text box and clicked Start Pipeline.</p>
+
+<p>Now there are five documents: a market research report grounded in 40 sources across web search, academic papers, USPTO patents, and HackerNews community sentiment. A PRD with full traceability to every research finding. A TypeScript implementation design reviewed against architecture decision records and STRIDE threat models. A requirements manifest. A structured review report. All persisted in a tamper-evident audit chain with SHA-256 hash verification.</p>
+
+<p>Five AI agents built this. Each one is a <strong>NeMo Agent Toolkit (NAT)</strong> workflow running in its own <strong>NemoClaw</strong> kernel-isolated sandbox on a k3s cluster. They coordinate through a domain-routed Knowledge Bus. They retrieve governance knowledge from a shared NCMS memory store. The model powering all of them: <a href="https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16" style="color:var(--accent-cyan)"><strong>NVIDIA Nemotron 3 Nano</strong></a>: a 30B-parameter Mixture-of-Experts model with 256 experts and only 3B active parameters per inference. Served by <strong>vLLM</strong> with 512K context on a <strong>DGX Spark</strong> sitting on a desk. 128GB of unified memory. Sub-second inference.</p>
+
+<p>Three weeks ago, none of this existed. NCMS was a cognitive memory system. Good at storing and retrieving knowledge across agent sessions, but not yet capable of <em>producing</em> anything.</p>
+
+<p>This is the story of how it became a Document Intelligence system, and the engineering decisions, experiments, and hard-won insights that made it work.</p>
+
+<div class="hero-quote">
+  One prompt. Five auditable documents. Research grounded in web search, academic papers, USPTO patents, and developer community evidence. Every decision traced. Every claim cited. Fourteen minutes.
+</div>
+
+<p><strong>Why does this matter?</strong> A typical engineering team takes days to produce a research report, PRD, and implementation design for a new feature. This pipeline does it in 14 minutes with full audit traceability: claims traced to sources, decisions grounded in expert knowledge, artifacts linked to predecessors. It doesn't replace the team. It gives them a 90% complete starting point with a governance chain that a compliance officer can verify.</p>
+
+<img src="2-dashboard-agentview-fresh.png" alt="NCMS Dashboard with five agents online" class="blog-img">
+<p class="blog-img-caption">The NCMS dashboard showing all five Document Intelligence agents online, with The Forge (future phases) below the Knowledge Bus.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The Three-Week Journey</h2>
+
+<div class="timeline">
+  <div class="timeline-item">
+    <div class="timeline-date">Week 1: Foundation</div>
+    <p>Document persistence, entity extraction (GLiNER), D3 document flow graph, project lifecycle, pipeline progress visualization. 16 features in Phase 2.5.</p>
+  </div>
+  <div class="timeline-item">
+    <div class="timeline-date">Week 2: Audit &amp; Governance</div>
+    <p>JWT authentication, tamper-evident hash chains, unified audit timeline, provenance certificates, compliance scoring, guardrail gates with human-in-the-loop approval. The three-model experiment (Nano vs Super vs Qwen). Agent consolidation from 6 to 5.</p>
+  </div>
+  <div class="timeline-item">
+    <div class="timeline-date">Week 3: Market Intelligence &amp; Information Flow</div>
+    <p>USPTO patent search with abstract fetching, HackerNews community sentiment, Jobs-to-be-Done synthesis, LLM-planned queries for 4 engines, research methodology audit, loss point fixes (metadata propagation from research through design), The Forge UI.</p>
+  </div>
+</div>
+
+<h2>The Foundation: A Memory System That Doesn't Need Vectors</h2>
+
+<p>Here's a dirty secret about most AI memory systems: they compress your documents into 1536-dimensional vectors and then pray that cosine similarity finds the right answer. Search for "JWT rotation policy" and you might get a document about "authentication token refresh" because they're nearby in embedding space. Close enough? Not when you're building auditable engineering documents.</p>
+
+<p>We needed something different. A memory system that could reason about time ("what was the Redis config <em>before</em> the upgrade?"), track how knowledge evolves, and understand which version of a fact is current. NCMS is that system.</p>
+
+<p>NCMS uses three complementary retrieval signals instead of dense embeddings:</p>
+
+<ul>
+  <li><strong>BM25 via Tantivy (Rust)</strong> — exact lexical matching. Search for "JWT rotation" and you get documents about JWT rotation. Not "authentication tokens." Not "credential refresh." The exact thing you asked for.</li>
+  <li><strong>SPLADE v3</strong> — learned sparse neural expansion. "API specification" also matches "endpoint", "schema", "contract" — but through explicit term expansion, not opaque vector similarity.</li>
+  <li><strong>Graph spreading activation</strong> — entity relationships in the knowledge graph discover related memories. A query matching "connection pooling" also finds memories about "PostgreSQL replication" because they share entities.</li>
+</ul>
+
+<img src="retrieval-pipeline.svg" alt="NCMS Retrieval Pipeline" class="blog-svg">
+<p class="blog-img-caption">The five-tier retrieval pipeline: Intent Classification &rarr; BM25+SPLADE Hybrid &rarr; Graph Expansion &rarr; ACT-R Scoring &rarr; Cross-Encoder Reranking &rarr; Structured Recall.</p>
+
+<div class="insight-box">
+  <div class="insight-label">Benchmark Result</div>
+  <p><strong>nDCG@10 = 0.7206 on SciFact</strong>, exceeding published ColBERTv2 (0.693, +4.0%) and SPLADE++ (0.710, +1.5%). Zero dense embeddings. Zero external API calls. Everything runs locally.</p>
+</div>
+
+<p>On 850 real GitHub issues from SWE-bench Django, NCMS delivers <strong>6.3x better temporal reasoning than Mem0</strong> and <strong>2.8x better cross-document association than Letta</strong>. Both competitors use OpenAI's <code>text-embedding-3-small</code>. We use zero API calls.</p>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>NCMS</th><th>Mem0</th><th>Letta</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Temporal Reasoning (nDCG@10)</td><td><strong>0.1217</strong></td><td>0.0194</td><td>0.0421</td></tr>
+    <tr><td>Cross-Document Association</td><td><strong>0.2031</strong></td><td>0.0614</td><td>0.0718</td></tr>
+    <tr><td>Structured Recall AR</td><td><strong>0.2031</strong></td><td>0.0614</td><td>0.0718</td></tr>
+    <tr><td>SciFact Retrieval</td><td><strong>0.7206</strong></td><td>&mdash;</td><td>&mdash;</td></tr>
+  </tbody>
+</table>
+
+<p>The architecture underneath is what makes this possible: a <strong>Hierarchical Temporal Memory Graph (HTMG)</strong> where raw facts crystallize into tracked states, states cluster into temporal episodes, and episodes consolidate into strategic insights during offline dream cycles.</p>
+
+<img src="htmg-brain.svg" alt="HTMG Architecture" class="blog-svg">
+<p class="blog-img-caption">The four-level HTMG: Atomic facts &rarr; Entity States &rarr; Episodes &rarr; Abstract Insights. Dream cycles consolidate knowledge overnight.</p>
+
+<h3>What Makes This More Than Search</h3>
+
+<p>The retrieval pipeline has seven layers of intelligence that most memory systems skip:</p>
+
+<p><strong>Intent Classification.</strong> Before retrieval begins, the query is classified into one of 7 intent types: fact lookup, current state, historical, event reconstruction, change detection, pattern, and strategic reflection. This shapes which memory types receive scoring bonuses. Asking "what changed?" boosts entity states. Asking "what patterns emerged?" boosts abstracts.</p>
+
+<p><strong>Score Normalization.</strong> SPLADE naturally scores 5-200 while BM25 scores 1-15. Without per-query min-max normalization, SPLADE gets 13x the influence regardless of configured weights. This invisible fix is essential for the benchmark results.</p>
+
+<p><strong>Selective Reranking.</strong> A 22M-parameter cross-encoder reranks candidates, but only for fact lookup and pattern queries. For temporal and state-change queries, reranking destroys chronological ordering (CR -4.2%, long-range utility -28%). Knowing when NOT to rerank matters as much as knowing when to do it.</p>
+
+<p><strong>State Reconciliation.</strong> When a new entity state arrives ("Redis upgraded to v7.4"), the system classifies its relationship to existing states: supports, refines, supersedes, or conflicts. Superseded states get <code>is_current=False</code> with bitemporal validity closure. Stale knowledge is automatically penalized in retrieval. You always get the current truth first.</p>
+
+<p><strong>Episode Formation.</strong> Related memories cluster into temporal episodes via a 7-signal hybrid linker: BM25 lexical match, SPLADE semantic match, entity overlap, domain match, temporal proximity, source agent, and structured anchors (like JIRA tickets). This gives structure to "what happened during the API v2 migration" without requiring anyone to manually organize knowledge.</p>
+
+<p><strong>Dream Cycles.</strong> Like biological sleep consolidation, NCMS runs three non-LLM passes during "sleep" to create differential access patterns that make ACT-R cognitive scoring meaningful:</p>
+
+<ul>
+  <li><strong>Dream Rehearsal</strong> selects high-value memories via a 5-signal weighted score (PageRank centrality 0.40, staleness 0.30, importance 0.20, access frequency 0.05, recency 0.05) and injects synthetic access records. The activation formula doesn't change. The system just practices remembering what matters.</li>
+  <li><strong>Association Learning</strong> computes pointwise mutual information (PMI) from entity co-access patterns in the search log. When "Redis" and "caching" consistently appear together in search results, their learned association strength feeds into spreading activation. Data-driven connections replace uniform weights.</li>
+  <li><strong>Importance Drift</strong> compares recent access rates against older rates and adjusts importance within bounded limits. Frequently accessed memories rise. Neglected ones gracefully decay. The system develops its own sense of what matters.</li>
+</ul>
+
+<p>These aren't academic features. They're the engineering underneath the benchmark numbers. The retrieval pipeline looks simple from the outside. Seven layers of intelligence make it work.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>Three Insights That Changed Everything</h2>
+
+<p>Building the document intelligence pipeline on top of this memory system taught us three things that fundamentally shaped the architecture.</p>
+
+<h3>Insight 1: Don't just tell the agent what to do. Tell it what it knows.</h3>
+
+<p>When we added knowledge-aware prompts describing what each agent has access to (STRIDE threat models with specific threat IDs for Security, ADRs and CALM specifications for the Architect), the same 3B-active-parameter model went from producing generic responses to citing THR-001, NIST IA-2(1), and OWASP ASVS v5.0 control sections. No model change. No fine-tuning. Just better prompts.</p>
+
+<p>The agents always had the capability. They just didn't know they had the knowledge to cite.</p>
+
+<h3>Insight 2: Don't let the LLM decide the workflow. Let the graph enforce it.</h3>
+
+<p>When we replaced open-ended ReAct loops with deterministic LangGraph pipelines, the agents stopped exploring and started executing. Each node in the graph has exactly one job. The LLM generates content. The graph enforces sequence, parallelism, and handoffs.</p>
+
+<p>One message produces five documents, every time, with no retries and no dead loops.</p>
+
+<h3>Insight 3: Don't let the LLM skip steps. Make it fill in a certificate.</h3>
+
+<p>Adapted from Meta's "Agentic Code Reasoning" (<a href="https://arxiv.org/abs/2603.01896" style="color:var(--accent-cyan)">arXiv:2603.01896</a>), we replaced free-form prompts with <strong>semi-formal certificate templates</strong>. Every research report must state explicit source premises ("S1: Okta reports 70% workforce MFA adoption"), trace evidence through cross-source analysis with confidence ratings (HIGH/MEDIUM/LOW), identify evidence gaps, and derive formal conclusions with citation chains before making recommendations. The PRD must extract research premises (R1-RN) and expert premises (E1-EN), then trace every functional requirement back to specific premises. You can't hand-wave. The template won't let you.</p>
+
+<div class="insight-box">
+  <div class="insight-label">Experiment Result</div>
+  <p>In an 8-way experiment (standard/semi-formal &times; CoT-on/off &times; 1-stage/2-stage), the semi-formal + CoT configuration scored <strong>53/60</strong> vs the standard baseline at <strong>41/60</strong>. A <strong>29% improvement</strong> in traceability, coverage, and grounding.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The Pipeline: Five Agents, One Prompt</h2>
+
+<p>Each agent's sandbox has explicit network policies controlling which external APIs it can reach. The Archeologist can hit USPTO and HackerNews. The Designer cannot. Secrets are injected via OpenShell providers, never hardcoded. No shared filesystem, no shared memory space.</p>
+
+<p>Coordination happens through the NCMS Knowledge Bus: fire-and-forget domain-routed announcements that trigger downstream agents automatically. No orchestrator. No polling. No shared state.</p>
+
+<img src="multi-agent-pipeline.svg" alt="Multi-Agent Pipeline" class="blog-svg">
+<p class="blog-img-caption">Five specialized agents coordinate through a shared Knowledge Bus. Each runs in its own NemoClaw sandbox with the NeMo Agent Toolkit.</p>
+
+<table>
+  <thead>
+    <tr><th>Agent</th><th>Role</th><th>Pipeline</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Archeologist</strong></td><td>Research</td><td>plan &rarr; web search (5&times;) &rarr; ArXiv &rarr; USPTO patents &rarr; HackerNews &rarr; synthesize</td></tr>
+    <tr><td><strong>Product Owner</strong></td><td>PRD</td><td>read research &rarr; ask experts &rarr; synthesize PRD &rarr; generate manifest</td></tr>
+    <tr><td><strong>Designer</strong></td><td>Design</td><td>read PRD + research &rarr; ask experts &rarr; synthesize &rarr; guardrail &rarr; review loop</td></tr>
+    <tr><td><strong>Architect</strong></td><td>Governance</td><td>classify &rarr; search NCMS memory &rarr; answer or structured review</td></tr>
+    <tr><td><strong>Security</strong></td><td>Governance</td><td>classify &rarr; search NCMS memory &rarr; answer or structured review</td></tr>
+  </tbody>
+</table>
+
+<h3>The Knowledge Workers: Architect and Security</h3>
+
+<p>The Architect and Security agents are the governance backbone of this pipeline. They don't produce documents. They make everyone else's documents better.</p>
+
+<p>Before the pipeline runs, these agents seed the NCMS memory store with domain knowledge: Architecture Decision Records (ADRs documenting technology choices and trade-offs), CALM model specifications (service boundaries, component interactions, infrastructure patterns), quality attribute scenarios (performance, scalability, availability targets), STRIDE threat models with specific threat IDs (THR-001 through THR-008), and OWASP ASVS control mappings.</p>
+
+<p>When the Product Owner builds a PRD, it consults both experts in parallel. The Architect responds with ADR-aligned recommendations. The Security agent responds with threat analysis grounded in STRIDE and NIST SP 800-63B. Their input gets woven into the PRD as formal expert premises (E1-EN) that every functional requirement must trace back to.</p>
+
+<p>When the Designer builds the implementation design, it consults the same experts again. This time they have the PRD context. The Architect checks against CALM service boundaries and quality attributes. Security checks against OWASP controls and authentication requirements. After the design is published, both experts perform structured reviews with SCORE/SEVERITY/COVERED/MISSING/CHANGES format. The design iterates until it meets the quality threshold (85% average).</p>
+
+<p>Two agents. Consulted four times. Every recommendation grounded in governance knowledge that lives in the shared memory store.</p>
+
+<img src="3-new-project.png" alt="New Project Dialog" class="blog-img blog-img-sm">
+<p class="blog-img-caption">One prompt starts the entire pipeline. Choose Research (web) or Archaeology (GitHub repo analysis).</p>
+
+<h3>It Works on Existing Codebases Too</h3>
+
+<p>The pipeline isn't limited to greenfield research. Point the Archeologist at an existing GitHub repository and it switches to archaeology mode: clone the repo, analyze the architecture, identify gaps and technical debt, run targeted web research on what it finds, and synthesize a grounded report. The same downstream agents (Product Owner, Designer, Architect, Security) then produce a PRD and design for modernizing or extending the existing codebase. Same pipeline, same audit trail, same governance. Whether you're building something new or improving something old.</p>
+
+<img src="pipeline-phases.svg" alt="Pipeline Phases" class="blog-svg">
+<p class="blog-img-caption">Detailed pipeline phases showing every node in the Research, PRD, and Design pipelines. Each node is interruptible.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>Market Intelligence: Patents, Community, and Jobs-to-be-Done</h2>
+
+<p>The original research pipeline searched the web and ArXiv. Good for general information, but missing three critical layers for product ideation: <strong>what's already been invented</strong> (patents), <strong>what developers actually complain about</strong> (community sentiment), and <strong>what job the customer is hiring this product to do</strong> (Jobs-to-be-Done whitespace analysis).</p>
+
+<p>The JTBD framework forces a different question. Instead of "what features should we build?", the research asks: "what job is the user hiring this product to do, where are current solutions failing them, and where is the market over-serving?" Combined with patent landscape analysis (freedom to operate, coverage gaps) and real developer community evidence from HackerNews, the research report becomes a product strategy document, not just a literature review.</p>
+
+<p>We added two new search engines and a Jobs-to-be-Done synthesis framework. The LLM plans all queries upfront. One call generates optimized queries for all four engines, each tailored to the platform's search semantics:</p>
+
+<ul>
+  <li><strong>Tavily</strong> — natural language queries with year markers for recency</li>
+  <li><strong>ArXiv</strong> — short technical keyword phrases (3-6 words)</li>
+  <li><strong>USPTO</strong> — 2-3 AND-joined terms (more returns 404). Two-stage fetch: search returns metadata, then we follow the XML redirect to <code>data.uspto.gov</code> to extract the full abstract</li>
+  <li><strong>HackerNews</strong> — 2-3 word casual developer phrases ("SSO auth", not "identity federation adoption metrics")</li>
+</ul>
+
+<div class="metrics-strip">
+  <div class="metric-card">
+    <span class="metric-value">40</span>
+    <span class="metric-label">Sources per report</span>
+  </div>
+  <div class="metric-card">
+    <span class="metric-value">+163%</span>
+    <span class="metric-label">Research depth vs baseline</span>
+  </div>
+  <div class="metric-card">
+    <span class="metric-value">+49%</span>
+    <span class="metric-label">Total output volume</span>
+  </div>
+  <div class="metric-card">
+    <span class="metric-value">9</span>
+    <span class="metric-label">Patent refs in design</span>
+  </div>
+</div>
+
+<p>Every search result, every query plan, every fallback decision is tracked in the audit timeline as a first-class event. The research methodology is embedded in the document metadata and flows through the entire pipeline, from research to PRD to design.</p>
+
+<img src="4-project-view-at-research.png" alt="Pipeline Progress During Research" class="blog-img">
+<p class="blog-img-caption">Pipeline progress during the research phase, showing completed search nodes with checkmarks.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The Model Experiment: Why Nano Won</h2>
+
+<p>We tested three models on the same project, same prompts, same pipeline, same expert knowledge:</p>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>Nano 30B (3B active)</th><th>Super 120B (12B active)</th><th>Qwen3.5 35B (3B active)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Review score (round 1)</td><td><strong>85% / 85%</strong></td><td>broken (0 chars)</td><td>82% / 72%</td></tr>
+    <tr><td>Revision rounds</td><td><strong>1</strong></td><td>N/A</td><td>3</td></tr>
+    <tr><td>Final quality</td><td><strong>85%</strong></td><td>N/A</td><td>83.5%</td></tr>
+    <tr><td>Pipeline time</td><td><strong>14.5 min</strong></td><td>pods killed</td><td>28.8 min</td></tr>
+    <tr><td>Documents produced</td><td>5 (54KB)</td><td>3 (broken)</td><td>7 (122KB, bloated)</td></tr>
+  </tbody>
+</table>
+
+<div class="insight-box">
+  <div class="insight-label">Key Insight</div>
+  <p><strong>Model size is not the differentiator.</strong> Nano (3B active) outperformed both Super (12B active) and Qwen3.5 (3B active) because it was specifically trained for the structured output patterns our pipeline uses. The semi-formal certificate format, SCORE/SEVERITY/COVERED review structure, and JSON manifest generation all benefit from Nano's training data alignment, not raw parameter count.</p>
+</div>
+
+<p>Super's PRD was 65KB of triplicated <code>&lt;/think&gt;</code> tags with zero usable content. Qwen's design bloated from 23KB to 31KB across three revisions without improving. Nano's manifest had 9 endpoints including GDPR and SAML compliance; Super's had 1.</p>
+
+<div class="warning-box">
+  <div class="warning-label">Lesson Learned</div>
+  <p>When your pipeline uses structured output formats (certificates, review templates, JSON manifests), test against models trained on those patterns. A 4x larger model that can't follow your template is worse than useless. It's a pipeline killer.</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>Audit, Governance, and the Chain of Trust</h2>
+
+<p>Every document produced by this pipeline is an auditable artifact. Not because we added logging as an afterthought, but because the audit system is the pipeline.</p>
+
+<h3>What gets tracked</h3>
+
+<ul>
+  <li><strong>Every LLM call</strong> — prompt size, response size, reasoning size, model, duration, prompt hash (SHA-256, truncated for PII)</li>
+  <li><strong>Every document</strong> — content hash (SHA-256), entity extraction (GLiNER NER), version chains, lineage (derived-from links)</li>
+  <li><strong>Every review</strong> — reviewer agent, round number, score, severity, covered/missing/changes</li>
+  <li><strong>Every bus conversation</strong> — question, answer, confidence, duration, from/to agent</li>
+  <li><strong>Every guardrail check</strong> — policy type, rule, escalation (warn/block/reject), overrides</li>
+  <li><strong>Every human approval</strong> — decision, approver (from JWT), comment, policies active at time of decision</li>
+  <li><strong>Research methodology</strong> — planned queries per engine, results found, fallback usage, matched queries, patent abstracts fetched</li>
+</ul>
+
+<p>All stored with <strong>tamper-evident hash chains</strong> (SHA-256 <code>prev_hash</code> on every audit table) and verified on export. JWT authentication ensures mutations are attributed. The compliance score is a 5-signal composite: review average (40%), guardrail violations (20%), grounding coverage (15%), approval gate (15%), document completeness (10%).</p>
+
+<img src="5-project-view-complete.png" alt="Document Flow with Governance" class="blog-img">
+<p class="blog-img-caption">Document flow cards showing type-specific metadata, review scores, content hashes, and chain verification badges.</p>
+
+<img src="6-7-project-view-audit.png" alt="Audit Timeline" class="blog-img">
+<p class="blog-img-caption">Audit timeline with Research badges showing query plans, search results, and patent abstract counts. Each row is expandable.</p>
+
+<img src="8-audit-report.png" alt="Audit Report Export" class="blog-img">
+<p class="blog-img-caption">Exported audit report with hash chain verification, research methodology, and compliance scoring.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The Information Flow Problem (and How We Fixed It)</h2>
+
+<p>Building a multi-agent pipeline is hard. Building one where <em>information actually flows</em> through every handoff is harder.</p>
+
+<p>Our first clean run produced a research report with 5 patents and a JTBD analysis. The PRD referenced the patents. The design doc? <strong>Zero patent references.</strong> Research data was gathered, synthesized, published, and then lost at every handoff between agents.</p>
+
+<p>The root cause was systematic: each agent passed a document ID to the next, but the structured metadata (query plans, patent counts, source breakdowns) lived only in the research document. Expert questions were generic. The design agent never even saw the research document, only the PRD. And the design prompt had no required section for research traceability, so the LLM generated 9 code-focused sections and silently dropped the research context it was given.</p>
+
+<p>The fix: <strong>metadata propagation</strong> through the entire chain. Documents now carry <code>research_methodology</code> in their metadata. Expert questions include patent counts and community evidence. The design trigger passes <code>research_id</code> alongside <code>prd_id</code>. And a 10th required output section, "Design Rationale &amp; Research Traceability", forces the LLM to cite specific patents, map JTBD alignment, and reference whitespace analysis.</p>
+
+<p>After the fix: <strong>9 patent references in the design doc</strong>, with specific patent numbers (US20260067075A1, US20260067072A1), freedom-to-operate assessment, and JTBD alignment. The data was always there. The pipeline just needed to carry it.</p>
+
+<img src="architecture-context.svg" alt="Architecture Context" class="blog-svg">
+<p class="blog-img-caption">The full system: five agents in NemoClaw sandboxes, NCMS Hub with Knowledge Bus, DGX Spark inference, and external research APIs (Tavily, ArXiv, USPTO, HackerNews).</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>What's Next: The Forge</h2>
+
+<p>Document Intelligence is Phase 1. Below the Knowledge Bus on the dashboard, four locked agent cards hint at what's coming:</p>
+
+<ul>
+  <li><strong>Code Gen</strong> — auto-implement from design docs, generate PRs with full traceability back to PRD requirements</li>
+  <li><strong>Test Gen</strong> — test suites generated from PRD acceptance criteria, coverage validation against the design</li>
+  <li><strong>Governance</strong> — policy enforcement gates, compliance verification, automated audit chains</li>
+  <li><strong>Learning</strong> — dream cycles, pattern recognition across projects, knowledge consolidation</li>
+</ul>
+
+<img src="the-forge.png" alt="The Forge" class="blog-img">
+<p class="blog-img-caption">The Forge: four future agent cards below the Knowledge Bus, matching the visual style of the active Document Intelligence agents.</p>
+
+<p>When Code Gen comes online, a design document won't just describe what to build. It will generate the implementation, create a PR, and link every function back to the PRD requirement that demanded it. Test Gen will read the PRD's acceptance criteria and generate the test suite before a line of production code is written. The Governance agent will verify policy compliance automatically. And the Learning agent will run dream cycles across all projects, discovering patterns that no single project could reveal.</p>
+
+<p>The memory system underneath already supports all of this. Dream cycles learn association strengths from search patterns. Episodes cluster related work. State reconciliation tracks what's current vs superseded. The infrastructure is waiting for the agents.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The NVIDIA Stack: From Silicon to Software Delivery</h2>
+
+<p>Every layer of this system is NVIDIA:</p>
+
+<ul>
+  <li><strong><a href="https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16" style="color:var(--accent-cyan)">NVIDIA Nemotron 3 Nano</a></strong>: 30B total parameters, 256 experts, 3B active per inference (MoE). Specifically trained for structured output, tool calling, and reasoning. Served via vLLM with <code>qwen3_coder</code> tool parser and <code>nano_v3</code> reasoning parser for clean Chain-of-Thought separation.</li>
+  <li><strong>NVIDIA DGX Spark</strong> — the hardware. 128GB unified memory. The entire model fits with room for KV cache at 512K context. Sub-second inference for the 11 LLM calls in each pipeline run.</li>
+  <li><strong>NeMo Agent Toolkit (NAT)</strong> — the agent framework. Each agent registers as a NAT workflow with FastAPI health checks. SSE listeners detect domain-routed triggers. The <code>nat start fastapi</code> command boots each agent inside its sandbox.</li>
+  <li><strong>NemoClaw (OpenShell)</strong> — the isolation. Kernel-level k3s pods with per-agent network policies and secret injection via providers. No hardcoded credentials, no shared filesystems.</li>
+</ul>
+
+<p>No external LLM APIs. No cloud inference. No orchestrator. Five agents, one DGX Spark, one desk.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>The Numbers</h2>
+
+<p>Before and after adding market intelligence (patents, community, JTBD) to the pipeline:</p>
+
+<table>
+  <thead>
+    <tr><th>Document</th><th>Baseline</th><th>Market Intel</th><th>Change</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Research Report</td><td>9.4 KB (9 sources)</td><td>24.8 KB (40 sources)</td><td>+163%</td></tr>
+    <tr><td>PRD</td><td>16.3 KB</td><td>24.6 KB</td><td>+51%</td></tr>
+    <tr><td>Design</td><td>22.0 KB (0 patent refs)</td><td>23.7 KB (9 patent refs)</td><td>+7%</td></tr>
+    <tr><td>Review</td><td>4.4 KB</td><td>7.1 KB</td><td>+63%</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>54.4 KB</strong></td><td><strong>81.4 KB</strong></td><td><strong>+49%</strong></td></tr>
+  </tbody>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>What We Learned</h2>
+
+<p>Three weeks is enough time to build something real if you make the right bets early. Here are the five that mattered most:</p>
+
+<ol>
+  <li><strong>Skip the vectors.</strong> BM25 + SPLADE + graph spreading activation beats embedding-based systems on real benchmarks (nDCG@10 = 0.72, exceeding ColBERTv2). The precision advantage compounds across every query in a multi-agent pipeline. We use zero API calls; Mem0 and Letta both require OpenAI embeddings.</li>
+
+  <li><strong>Make the graph drive the bus.</strong> Deterministic LangGraph pipelines replaced autonomous ReAct loops. The LLM generates content; the graph enforces sequence, parallelism, and handoffs. One message, five documents, every time, no retries.</li>
+
+  <li><strong>Bet on the small model that matches your format.</strong> Nano (3B active) beat Super (12B active) because it was trained on structured output patterns our pipeline uses. Super's PRD was 65KB of leaked <code>&lt;/think&gt;</code> tags. Nano's had 9 GDPR-compliant endpoints. Test models against your actual pipeline, not generic benchmarks.</li>
+
+  <li><strong>Build the audit trail first, not last.</strong> Every LLM call, every document hash, every human approval — persisted with tamper-evident hash chains from day one. When the CIO asks "how do we know this is right?", the answer is a one-click export with SHA-256 chain verification.</li>
+
+  <li><strong>Information flow is a feature, not a given.</strong> Our first run gathered 5 patents in research. The design doc had zero patent references. Data doesn't flow through handoffs by magic — you need explicit metadata propagation and required output sections. After the fix: 9 patent citations in design.</li>
+</ol>
+
+<img src="9-knowledge-graph.png" alt="Knowledge Graph" class="blog-img">
+<p class="blog-img-caption">The NCMS knowledge graph after a complete pipeline run. Every node is an entity extracted by GLiNER; every edge represents co-occurrence in agent-produced documents. This graph feeds the spreading activation signal in retrieval — when the next project starts, the system already knows that "JWT" relates to "RBAC" relates to "NIST SP 800-63B".</p>
+
+<img src="10-episodes.png" alt="Episode Timeline" class="blog-img">
+<p class="blog-img-caption">Episode timeline showing how related memories cluster automatically. Each episode groups fragments from the same project or topic.</p>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<h2>Try It</h2>
+
+<pre><code>pip install ncms
+uv run ncms demo       # See agents collaborate in 10 seconds
+uv run ncms dashboard  # Real-time observability</code></pre>
+
+<p>The full Document Intelligence pipeline requires the <a href="https://build.nvidia.com/nim/agent-blueprint" style="color: var(--accent-cyan)">NeMo Agent Toolkit</a> and a <a href="https://www.nvidia.com/en-us/products/workstations/dgx-spark/" style="color: var(--accent-cyan)">DGX Spark</a> (or any vLLM endpoint serving Nemotron Nano). The <a href="https://github.com/AliceNN-ucdenver/ncms/blob/main/docs/nemoclaw-nat-quickstart.md" style="color: var(--accent-cyan)">NemoClaw NAT Quickstart</a> has the complete deployment guide.</p>
+
+<p>The core memory system runs anywhere with <code>pip install ncms</code>. 18 MCP tools via FastMCP, Claude Code and GitHub Copilot hooks for auto-loading context on every commit, a knowledge bus for agent coordination, dream cycles for offline learning, and a real-time dashboard with D3 visualization. No GPU required. No external services. Three seconds to first query.</p>
+
+<div class="hero-quote">
+  Five agents. One DGX Spark. One desk. Zero excuses.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+
+<div class="blog-footer">
+  <p>NCMS — NeMo Cognitive Memory System</p>
+  <p>Built with NVIDIA Nemotron Nano, NeMo Agent Toolkit, NemoClaw, LangGraph, and a DGX Spark.</p>
+  <p>&copy; 2026 Shawn McCarthy</p>
+</div>
+
+</body>
+</html>

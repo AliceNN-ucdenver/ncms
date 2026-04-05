@@ -68,7 +68,7 @@ function showLoginOverlay() {
   overlay.innerHTML = `
     <div class="login-card">
       <div class="login-header">
-        <span class="login-logo">NCMS</span>
+        <img src="/img/ncms-logo.png" alt="NCMS" class="login-logo-img">
         <span class="login-subtitle">Cognitive Memory System</span>
       </div>
       <form class="login-form" onsubmit="handleLogin(event)">
@@ -142,20 +142,49 @@ function logout() {
 }
 
 function updateUserBadge() {
-  const user = getAuthUser();
-  const badge = document.getElementById('user-badge');
+  let user = getAuthUser();
+  // Fallback: decode name from JWT if user object is missing
+  if (!user && getAuthToken()) {
+    try {
+      const payload = JSON.parse(atob(getAuthToken().split('.')[1]));
+      user = { username: payload.sub || 'user', display_name: payload.name || payload.sub };
+      sessionStorage.setItem(_AUTH_USER_KEY, JSON.stringify(user));
+    } catch { /* ignore */ }
+  }
+  const nameEl = document.getElementById('user-display-name');
+  if (nameEl) {
+    nameEl.textContent = user ? (user.display_name || user.username) : '';
+  }
+}
+
+function toggleUserMenu() {
+  const menu = document.getElementById('user-menu');
+  if (menu) {
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function updateSealBadge(count) {
+  const badge = document.getElementById('seal-badge');
   if (badge) {
-    if (user) {
-      badge.innerHTML = `
-        <span class="user-name">${escapeHtml(user.display_name || user.username)}</span>
-        <button class="user-logout-btn" onclick="logout()">Logout</button>
-      `;
+    if (count > 0) {
+      badge.textContent = count;
       badge.style.display = 'flex';
     } else {
       badge.style.display = 'none';
     }
   }
 }
+
+// Close user menu on outside click
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('user-menu');
+  const info = document.getElementById('user-info');
+  if (menu && menu.style.display !== 'none'
+      && !menu.contains(e.target) && !info?.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
 
 // ── Init — check auth on page load ──────────────────────────────────
 

@@ -11,6 +11,7 @@ const AUDIT_TYPE_CONFIG = {
   approval:  { color: '#8b5cf6', label: 'Approval', icon: '\u2714' },
   grounding: { color: '#6e7681', label: 'Ground',   icon: '\uD83D\uDD17' },
   config:    { color: '#64748b', label: 'Config',   icon: '\u2699' },
+  research:  { color: '#06b6d4', label: 'Research', icon: '\uD83D\uDD0D' },
 };
 
 async function loadAuditTimeline(projectId, containerId) {
@@ -61,7 +62,43 @@ function renderAuditTimeline(events, container, projectId) {
     const cfg = AUDIT_TYPE_CONFIG[evt.type] || { color: '#64748b', label: evt.type, icon: '' };
     const time = formatAuditTime(evt.timestamp);
     const detail = escapeHtml(evt.detail || '');
-    const extra = evt.extra ? `<div class="audit-extra">${escapeHtml(evt.extra)}</div>` : '';
+    let extra = '';
+    if (evt.type === 'research' && evt.extra) {
+      try {
+        const data = JSON.parse(evt.extra);
+        const uid = 'rd-' + Math.random().toString(36).substring(2, 8);
+        if (data.type === 'research_plan') {
+          const counts = ['web','arxiv','patent','community']
+            .map(e => `${e}: ${(data[e]||[]).length}`).join(', ');
+          let expanded = ['web','arxiv','patent','community'].filter(e => (data[e]||[]).length)
+            .map(e => `<div style="margin:4px 0"><b>${e}</b>:<br>${data[e].map(q =>
+              `<span style="display:block;padding:1px 0;color:#94a3b8">\u2022 ${escapeHtml(q)}</span>`
+            ).join('')}</div>`).join('');
+          extra = `<div class="audit-extra">
+            <span class="audit-expand-summary" onclick="document.getElementById('${uid}').style.display=document.getElementById('${uid}').style.display==='none'?'block':'none'" style="cursor:pointer">
+              Query plan: ${counts} <span style="color:#58a6ff">\u25BC</span>
+            </span>
+            <div id="${uid}" style="display:none;margin-top:4px;padding:6px 8px;background:rgba(0,0,0,0.2);border-radius:4px;font-size:10px">${expanded}</div>
+          </div>`;
+        } else if (data.type === 'research_results') {
+          const top = (data.top_results || []).map(r => escapeHtml(r.title || r.url || '?'));
+          const fb = data.used_fallback ? ' <span style="color:#f59e0b">[fallback]</span>' : '';
+          const summary = `<b>${data.engine}</b>: ${data.result_count} results${fb}`;
+          let expanded = '';
+          if (top.length) expanded += top.map(t => `<span style="display:block;padding:1px 0;color:#94a3b8">\u2022 ${t}</span>`).join('');
+          if (data.query_matched) expanded += `<div style="margin-top:4px;color:#10b981">Matched: ${escapeHtml(data.query_matched)}</div>`;
+          if (data.abstracts_fetched != null) expanded += `<div style="color:#94a3b8">Abstracts: ${data.abstracts_fetched}</div>`;
+          extra = `<div class="audit-extra">
+            <span class="audit-expand-summary" onclick="document.getElementById('${uid}').style.display=document.getElementById('${uid}').style.display==='none'?'block':'none'" style="cursor:pointer">
+              ${summary} <span style="color:#58a6ff">\u25BC</span>
+            </span>
+            <div id="${uid}" style="display:none;margin-top:4px;padding:6px 8px;background:rgba(0,0,0,0.2);border-radius:4px;font-size:10px">${expanded}</div>
+          </div>`;
+        }
+      } catch(e) { extra = evt.extra ? `<div class="audit-extra">${escapeHtml(evt.extra)}</div>` : ''; }
+    } else {
+      extra = evt.extra ? `<div class="audit-extra">${escapeHtml(evt.extra)}</div>` : '';
+    }
 
     html += `<tr class="audit-row" data-type="${evt.type}">
       <td class="audit-time">${time}</td>

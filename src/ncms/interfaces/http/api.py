@@ -860,12 +860,14 @@ def create_api_app(
         if not project_id:
             return JSONResponse({"error": "project_id is required"}, status_code=400)
 
+        detail_raw = body.get("detail", "")
+
         evt = {
             "project_id": project_id,
             "agent": body.get("agent", ""),
             "node": body.get("node", ""),
             "status": body.get("status", ""),
-            "detail": body.get("detail", ""),
+            "detail": detail_raw,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -876,7 +878,7 @@ def create_api_app(
                 agent=body.get("agent", ""),
                 node=body.get("node", ""),
                 status=body.get("status", ""),
-                detail=body.get("detail", ""),
+                detail=detail_raw,
             )
 
         if event_log:
@@ -1091,6 +1093,15 @@ def create_api_app(
 
         if doc_svc:
             # Phase 2.5: persistent document with entity extraction
+            client_meta = body.get("metadata") or {}
+            doc_metadata = {
+                "plan_id": body.get("plan_id"),
+                **client_meta,
+            }
+            logger.info(
+                "[api] store_document: from=%s type=%s client_metadata_keys=%s",
+                from_agent, doc_type, list(client_meta.keys()),
+            )
             doc = await doc_svc.publish_document(
                 title=title,
                 content=content,
@@ -1098,7 +1109,7 @@ def create_api_app(
                 project_id=project_id,
                 doc_type=doc_type,
                 parent_doc_id=parent_doc_id,
-                metadata={"plan_id": body.get("plan_id")},
+                metadata=doc_metadata,
             )
 
             # Also write to filesystem for static serving
@@ -1166,6 +1177,7 @@ def create_api_app(
             return JSONResponse([
                 {
                     "document_id": d.id,
+                    "id": d.id,
                     "title": d.title,
                     "from_agent": d.from_agent,
                     "project_id": d.project_id,
@@ -1175,6 +1187,8 @@ def create_api_app(
                     "url": f"/documents/{d.id}.md",
                     "created_at": d.created_at.isoformat() if d.created_at else None,
                     "size_bytes": d.size_bytes,
+                    "entity_count": len(d.entities) if d.entities else 0,
+                    "metadata": d.metadata if isinstance(d.metadata, dict) else {},
                     "entities": d.entities,
                 }
                 for d in docs
@@ -1190,6 +1204,7 @@ def create_api_app(
                 return JSONResponse({"error": "Document not found"}, status_code=404)
             return JSONResponse({
                 "document_id": doc.id,
+                "id": doc.id,
                 "title": doc.title,
                 "from_agent": doc.from_agent,
                 "project_id": doc.project_id,
@@ -1199,7 +1214,9 @@ def create_api_app(
                 "url": f"/documents/{doc.id}.md",
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "size_bytes": doc.size_bytes,
+                "entity_count": len(doc.entities) if doc.entities else 0,
                 "entities": doc.entities,
+                "metadata": doc.metadata if isinstance(doc.metadata, dict) else {},
                 "content": doc.content,
             })
         return JSONResponse({"error": "Document not found"}, status_code=404)

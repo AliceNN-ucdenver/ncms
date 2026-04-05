@@ -219,15 +219,9 @@ function updateApprovalBadge() {
       badge.classList.remove('pulse');
     }
   });
-  // Update the human card count
-  const countEl = document.querySelector('.human-approval-count');
-  if (countEl) {
-    countEl.textContent = pendingCount > 0 ? pendingCount + ' pending' : 'No approvals';
-    if (pendingCount > 0) {
-      countEl.classList.add('pulse');
-    } else {
-      countEl.classList.remove('pulse');
-    }
+  // Update the seal badge in the nav
+  if (typeof updateSealBadge === 'function') {
+    updateSealBadge(pendingCount);
   }
 }
 

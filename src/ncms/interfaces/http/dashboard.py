@@ -518,11 +518,13 @@ def create_dashboard_app(
         Route("/api/entity-states/{entity_id}/history", api_entity_state_history),
         Mount("/js", StaticFiles(directory=str(STATIC_DIR / "js")), name="js"),
         Mount("/css", StaticFiles(directory=str(STATIC_DIR / "css")), name="css"),
+        Mount("/img", StaticFiles(directory=str(STATIC_DIR / "img")), name="img"),
         Mount("/documents", StaticFiles(directory=str(STATIC_DIR / "documents")), name="documents"),
     ]
 
-    # Ensure documents directory exists for static serving
+    # Ensure directories exist for static serving
     (STATIC_DIR / "documents").mkdir(exist_ok=True)
+    (STATIC_DIR / "img").mkdir(exist_ok=True)
 
     return Starlette(routes=routes)
 

@@ -37,13 +37,40 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_prd_id, extract_topic, emit_telemetry, check_interrupt, traced_llm_call, snapshot_agent_config
+from .pipeline_utils import extract_project_id, extract_prd_id, extract_research_id, extract_topic, emit_telemetry, check_interrupt, traced_llm_call, snapshot_agent_config
 from .design_prompts import (
     SYNTHESIZE_DESIGN_PROMPT,
     REVISE_DESIGN_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# -- Helpers -----------------------------------------------------------------
+
+_RESEARCH_SECTIONS = (
+    "Jobs-to-be-Done Analysis",
+    "Patent Landscape",
+    "Whitespace Analysis",
+    "Formal Conclusions",
+)
+
+
+def _extract_research_summary(content: str, max_chars: int = 4000) -> str:
+    """Extract key research sections (JTBD, Patents, Whitespace, Conclusions).
+
+    Returns concatenated markdown sections, capped at *max_chars*.
+    """
+    parts: list[str] = []
+    for section in _RESEARCH_SECTIONS:
+        pattern = rf"(## {re.escape(section)}.*?)(?=\n## |\Z)"
+        m = re.search(pattern, content, re.DOTALL)
+        if m:
+            parts.append(m.group(1).strip())
+    result = "\n\n".join(parts)
+    if len(result) > max_chars:
+        result = result[:max_chars] + "\n\n[... truncated ...]"
+    return result
 
 
 # -- State -------------------------------------------------------------------
@@ -55,6 +82,8 @@ class DesignState(TypedDict):
     topic: str  # Design subject
     source_doc_id: str | None  # PO's PRD doc ID (parsed from input)
     source_content: str  # PRD content
+    research_id: str | None  # Research doc ID (for patent/JTBD context)
+    research_summary: str  # Extracted JTBD + Patent + Whitespace sections
     manifest: dict  # Requirements manifest from PO (endpoints, security reqs, tech constraints)
     expert_input: dict[str, str]  # {"architect": "...", "security": "..."}
     design: str  # Implementation design markdown
@@ -443,6 +472,24 @@ class DesignAgent:
             except Exception as e:
                 logger.debug("[design_agent] Manifest fetch failed: %s", e)
 
+        # Fetch research doc for patent/JTBD/whitespace context
+        research_id = extract_research_id(topic)
+        if research_id:
+            state["research_id"] = research_id
+            try:
+                research_doc = await self.client.read_document(research_id)
+                research_content = research_doc.get("content", "")
+                state["research_summary"] = _extract_research_summary(
+                    research_content,
+                )
+                logger.info(
+                    "[design_agent] Research context: %d chars from %s",
+                    len(state["research_summary"]), research_id,
+                )
+            except Exception as e:
+                logger.debug("[design_agent] Research doc fetch failed: %s", e)
+                state["research_summary"] = ""
+
         await emit_telemetry(self.hub_url, state.get("project_id"), self.from_agent, "read_document", "completed", f"doc_id={state.get('source_doc_id')}")
         return state
 
@@ -566,11 +613,16 @@ class DesignAgent:
         if not prd_content:
             prd_content = "(no PRD document provided — design from topic description only)"
 
+        research_summary = state.get("research_summary", "")
+        if not research_summary:
+            research_summary = "(no research context available)"
+
         prompt = SYNTHESIZE_DESIGN_PROMPT.format(
             topic=topic,
             prd_content=prd_content,
             architect_input=architect_input,
             security_input=security_input,
+            research_summary=research_summary,
         )
 
         try:
@@ -1145,6 +1197,8 @@ async def design_agent_fn(
             "topic": input_message,
             "source_doc_id": None,
             "source_content": "",
+            "research_id": None,
+            "research_summary": "",
             "manifest": {},
             "expert_input": {},
             "design": "",

@@ -202,6 +202,7 @@ class NCMSHttpClient:
         doc_type: str | None = None,
         parent_doc_id: str | None = None,
         format: str = "markdown",
+        metadata: dict | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"title": title, "content": content, "format": format}
         if from_agent:
@@ -212,6 +213,8 @@ class NCMSHttpClient:
             body["doc_type"] = doc_type
         if parent_doc_id:
             body["parent_doc_id"] = parent_doc_id
+        if metadata:
+            body["metadata"] = metadata
         resp = await self._client.post("/api/v1/documents", json=body)
         resp.raise_for_status()
         return resp.json()
