@@ -212,7 +212,7 @@ class TestConsolidationKnowledge:
                     insight="First run insight about auth pipeline.",
                 ),
             ):
-                first_count = await consol.consolidate_knowledge()
+                await consol.consolidate_knowledge()
 
             # Second run with no new memories — should do nothing
             with patch(
@@ -221,7 +221,7 @@ class TestConsolidationKnowledge:
                 return_value=_insight_response(
                     insight="This should not be created.",
                 ),
-            ) as mock_llm:
+            ):
                 second_count = await consol.consolidate_knowledge()
 
             # No new memories since last run → 0 insights
@@ -299,7 +299,7 @@ class TestConsolidationKnowledge:
                     insight="Second insight should not include previous insights.",
                 ),
             ):
-                second_count = await consol.consolidate_knowledge()
+                await consol.consolidate_knowledge()
 
             # Verify insights from first run are not in clusters of second run
             all_memories = await store.list_memories(limit=10000)

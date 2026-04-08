@@ -13,7 +13,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -59,17 +59,17 @@ def create_api_app(
     _jwt_secret = _os.environ.get("NCMS_JWT_SECRET") or _secrets.token_hex(32)
 
     # Unprotected paths (no JWT required)
-    _PUBLIC_PATHS = {
+    _public_paths = {
         "/api/v1/health", "/api/v1/auth/login",
         "/api/v1/bus/events", "/api/v1/bus/register",
     }
-    _PUBLIC_PREFIXES = ("/js/", "/css/", "/api/stats", "/api/v1/agents")
+    _public_prefixes = ("/js/", "/css/", "/api/stats", "/api/v1/agents")
 
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
 
         # Public paths: no auth needed
-        if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        if path in _public_paths or any(path.startswith(p) for p in _public_prefixes):
             return await call_next(request)
 
         # GET requests: allow without auth (dashboard viewing)
@@ -629,7 +629,7 @@ def create_api_app(
     # Proxies chat requests to NAT agents' /generate endpoint.
     # Avoids CORS issues (dashboard and hub share the same origin).
     # Agent port mapping: architect=8001, security=8002, builder=8003
-    _AGENT_PORTS = {
+    _agent_ports = {
         "archeologist": 8001, "architect": 8002, "security": 8003,
         "product_owner": 8004, "designer": 8005,
     }
@@ -638,7 +638,7 @@ def create_api_app(
         import httpx as _httpx
 
         agent_id = request.path_params["agent_id"]
-        port = _AGENT_PORTS.get(agent_id)
+        port = _agent_ports.get(agent_id)
         if port is None:
             return JSONResponse(
                 {"error": f"Unknown agent: {agent_id}"}, status_code=404,
@@ -868,7 +868,7 @@ def create_api_app(
             "node": body.get("node", ""),
             "status": body.get("status", ""),
             "detail": detail_raw,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         # Persist to DB (Phase 2.5)
@@ -999,7 +999,7 @@ def create_api_app(
             "version": version,
             "content": content,
             "description": body.get("description", ""),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         _prompts[key] = meta
         return JSONResponse(meta, status_code=201)
@@ -1049,7 +1049,7 @@ def create_api_app(
             "policy_type": policy_type,
             "version": version,
             "content": content,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         _policies[policy_type] = meta
         return JSONResponse(meta, status_code=201)
@@ -1612,14 +1612,32 @@ def create_api_app(
         Route("/api/v1/audit/llm-call", record_llm_call_endpoint, methods=["POST"]),
         Route("/api/v1/audit/config-snapshot", record_config_snapshot_endpoint, methods=["POST"]),
         Route("/api/v1/audit/grounding", record_grounding_endpoint, methods=["POST"]),
-        Route("/api/v1/audit/guardrail-violation", record_guardrail_violation_endpoint, methods=["POST"]),
+        Route(
+            "/api/v1/audit/guardrail-violation",
+            record_guardrail_violation_endpoint, methods=["POST"],
+        ),
 
         # Audit & Provenance
-        Route("/api/v1/projects/{project_id}/audit-timeline", audit_timeline_endpoint, methods=["GET"]),
-        Route("/api/v1/projects/{project_id}/verify-integrity", verify_integrity_endpoint, methods=["GET"]),
-        Route("/api/v1/projects/{project_id}/compliance", compliance_score_endpoint, methods=["GET"]),
-        Route("/api/v1/projects/{project_id}/export", export_audit_report_endpoint, methods=["GET"]),
-        Route("/api/v1/documents/{doc_id}/provenance", document_provenance_endpoint, methods=["GET"]),
+        Route(
+            "/api/v1/projects/{project_id}/audit-timeline",
+            audit_timeline_endpoint, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{project_id}/verify-integrity",
+            verify_integrity_endpoint, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{project_id}/compliance",
+            compliance_score_endpoint, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/projects/{project_id}/export",
+            export_audit_report_endpoint, methods=["GET"],
+        ),
+        Route(
+            "/api/v1/documents/{doc_id}/provenance",
+            document_provenance_endpoint, methods=["GET"],
+        ),
         Route("/api/v1/documents/{doc_id}/verify", verify_document_endpoint, methods=["GET"]),
     ]
 

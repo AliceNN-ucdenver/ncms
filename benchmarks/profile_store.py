@@ -5,7 +5,7 @@ every stage of the store_memory pipeline with wall-clock timings.
 
 Usage:
     uv run python -m benchmarks.profile_store
-    uv run python -m benchmarks.profile_store --with-phases   # Enable admission/reconciliation/episodes
+    uv run python -m benchmarks.profile_store --with-phases  # admission/reconcil/episodes
     uv run python -m benchmarks.profile_store --docs 50       # More documents
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 import statistics
@@ -157,10 +158,8 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
     t_warm = time.perf_counter()
     from ncms.domain.models import Memory as _WarmupMemory
     _dummy = _WarmupMemory(content="Test warmup text for SPLADE model loading", type="fact")
-    try:
-        splade.index_memory(_dummy)
-    except Exception:
-        pass  # May fail without full init, but model loads
+    with contextlib.suppress(Exception):
+        splade.index_memory(_dummy)  # May fail without full init, but model loads
     warm_ms = (time.perf_counter() - t_warm) * 1000
     print(f"  SPLADE warm-up: {warm_ms:.0f}ms")
 
@@ -171,7 +170,7 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
 
     per_doc_times: list[float] = []
 
-    for i, (doc_id, doc) in enumerate(docs):
+    for i, (_doc_id, doc) in enumerate(docs):
         title = doc.get("title", "")
         text = doc.get("text", "")
         content = f"{title}\n{text}".strip() if title else text

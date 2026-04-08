@@ -32,14 +32,17 @@ class TestGlinerAlwaysUsed:
         assert len(results) >= 1
 
     def test_label_resolution_integrates_with_extraction(self):
-        """Resolved labels should flow through to GLiNER extraction."""
+        """Resolved labels should flow through to GLiNER extraction.
+
+        In replace mode (default), domain labels replace universals.
+        """
         cached = {"finance": ["company", "stock", "market"]}
         labels = resolve_labels(["finance"], cached_labels=cached)
-        # Domain labels merged ON TOP of universal labels
+        # Domain labels replace universal labels (replace mode)
         for domain_label in ["company", "stock", "market"]:
             assert domain_label in labels
-        for universal_label in UNIVERSAL_LABELS:
-            assert universal_label in labels
+        # Universal labels NOT included in replace mode
+        assert "person" not in labels
 
         # These labels work with GLiNER
         results = extract_entities_gliner(
@@ -50,12 +53,21 @@ class TestGlinerAlwaysUsed:
         for entity in results:
             assert entity["type"] in labels
 
-    def test_domain_cached_labels_merged_with_universal(self):
-        """Domain-cached labels should be merged with universal defaults."""
+    def test_domain_cached_labels_replace_universal(self):
+        """Domain-cached labels REPLACE universal defaults (replace mode)."""
         cached = {"biomedical": ["disease", "drug", "protein", "gene"]}
         labels = resolve_labels(["biomedical"], cached_labels=cached)
         assert "disease" in labels
-        assert "person" in labels  # Universal labels always included
+        assert "person" not in labels  # Replace mode: universals excluded
+
+    def test_domain_cached_labels_merged_with_keep_universal(self):
+        """With keep_universal=True, domain labels merge with universals."""
+        cached = {"biomedical": ["disease", "drug", "protein", "gene"]}
+        labels = resolve_labels(
+            ["biomedical"], cached_labels=cached, keep_universal=True,
+        )
+        assert "disease" in labels
+        assert "person" in labels  # Universal labels included in additive mode
 
     def test_empty_text_returns_empty(self):
         """Empty or very short text should return empty list."""

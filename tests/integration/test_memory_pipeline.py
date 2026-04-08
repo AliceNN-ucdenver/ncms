@@ -1,7 +1,6 @@
 """Integration tests for the full memory pipeline: store -> index -> search -> score."""
 
 import pytest
-import pytest_asyncio
 
 from ncms.application.memory_service import MemoryService
 from ncms.config import NCMSConfig
@@ -331,7 +330,7 @@ class TestScoringConfiguration:
         assert len(results) >= 1
         # With 0.9/0.1 weights, BM25 should dominate the combined score
         r = results[0]
-        bm25_contribution = r.bm25_score * 0.9
+        r.bm25_score * 0.9
         # Combined should be approximately bm25 * 0.9 + actr * 0.1
         assert r.total_activation > 0
 

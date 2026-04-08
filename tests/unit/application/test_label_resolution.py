@@ -8,7 +8,6 @@ import pytest
 
 from ncms.application.memory_service import MemoryService
 from ncms.config import NCMSConfig
-from ncms.domain.entity_extraction import UNIVERSAL_LABELS
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore

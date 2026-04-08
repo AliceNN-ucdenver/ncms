@@ -12,7 +12,6 @@ from ncms.domain.models import (
     EdgeType,
     Entity,
     EpisodeMeta,
-    EpisodeStatus,
     Memory,
     MemoryNode,
     NodeType,

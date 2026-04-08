@@ -5,11 +5,11 @@ import math
 import pytest
 
 from ncms.domain.scoring import (
-    base_level_activation,
-    spreading_activation,
     activation_noise,
-    total_activation,
+    base_level_activation,
     retrieval_probability,
+    spreading_activation,
+    total_activation,
 )
 
 

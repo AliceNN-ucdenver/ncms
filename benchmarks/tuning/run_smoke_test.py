@@ -134,7 +134,10 @@ async def run_smoke_test() -> dict:
     test_contents = [
         ("The auth service uses OAuth 2.0 for all API endpoints", "fact", ["api"]),
         ("Database migration to PostgreSQL 16 completed on 2026-01-15", "fact", ["database"]),
-        ("Decided to use Redis for session caching instead of Memcached", "architecture-decision", ["api"]),
+        (
+            "Decided to use Redis for session caching instead of Memcached",
+            "architecture-decision", ["api"],
+        ),
     ]
 
     store_results = []
@@ -236,9 +239,9 @@ def _write_report(results: dict) -> None:
     """Write smoke test results to markdown log."""
     lines = [
         f"# Smoke Test Log — {results['timestamp']}",
-        f"",
+        "",
         f"Git SHA: `{results['git_sha']}`",
-        f"",
+        "",
     ]
 
     for test_name, test_data in results["tests"].items():

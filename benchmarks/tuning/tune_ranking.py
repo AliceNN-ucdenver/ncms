@@ -53,7 +53,7 @@ def _generate_configs() -> list[dict]:
     keys = list(GRID.keys())
     configs = []
     for combo in itertools.product(*[GRID[k] for k in keys]):
-        cfg = dict(zip(keys, combo))
+        cfg = dict(zip(keys, combo, strict=False))
         # Skip configs with ACT-R weight > 0 but threshold disabled
         if cfg["actr"] == 0.0 and cfg["actr_threshold"] == -3.0:
             # Only need one threshold value when ACT-R is off

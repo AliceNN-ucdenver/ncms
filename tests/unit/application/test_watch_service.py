@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,7 +15,6 @@ from ncms.application.watch_service import (
     WatchService,
 )
 from ncms.domain.watch import (
-    DomainClassification,
     DomainSource,
     FileChangeEvent,
     FileChangeType,

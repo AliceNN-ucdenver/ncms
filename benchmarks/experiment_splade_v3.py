@@ -56,12 +56,12 @@ def main() -> None:
 
     # Count chunks
     v1_chunk_count = sum(len(chunk_text(d, max_chars=400, overlap=50)) for d in docs)
-    print(f"  Chunk config: 400 chars max, 50 overlap")
+    print("  Chunk config: 400 chars max, 50 overlap")
     print(f"  Total chunks: {v1_chunk_count} across {len(docs)} docs "
           f"({v1_chunk_count/len(docs):.1f} chunks/doc avg)")
 
-    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
     from ncms.domain.models import Memory
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
 
     splade_v1 = SpladeEngine()
 
@@ -104,7 +104,10 @@ def main() -> None:
         from sentence_transformers import SparseEncoder
     except ImportError:
         print("  ERROR: sentence-transformers not installed.")
-        print("  Run: uv run --with sentence-transformers python -m benchmarks.experiment_splade_v3")
+        print(
+            "  Run: uv run --with sentence-transformers"
+            " python -m benchmarks.experiment_splade_v3"
+        )
         return
 
     # Chunk at 2000 chars (512 token window ≈ 2000 chars)
@@ -151,7 +154,7 @@ def main() -> None:
         return float(np.dot(np.asarray(a).flatten(), np.asarray(b).flatten()))
 
     v3_all_scores: dict[str, list] = {}
-    for qi, (qid, qtext) in enumerate(test_queries[:5]):
+    for qi, (qid, _qtext) in enumerate(test_queries[:5]):
         q_emb = v3_query_embeddings[qi]
         scores = []
         for di in range(len(docs)):

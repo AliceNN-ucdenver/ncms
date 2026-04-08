@@ -123,6 +123,7 @@ class SpladeEngine:
                 logger.debug("[SPLADE] Model already loaded, skipping init")
                 return
             import time as _time
+
             from sentence_transformers import SparseEncoder
 
             device = _resolve_device()

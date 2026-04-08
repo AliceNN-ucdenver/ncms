@@ -9,11 +9,8 @@ the same document gives the graph connectivity for:
 Run: uv run python benchmarks/test_cooccurrence_edges.py
 """
 
-import asyncio
 import logging
-import tempfile
 from itertools import combinations
-from pathlib import Path
 
 from ncms.domain.models import Entity, Relationship
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph

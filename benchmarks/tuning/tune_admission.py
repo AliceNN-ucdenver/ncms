@@ -13,11 +13,9 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import itertools
 import json
 import subprocess
-import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -71,7 +69,8 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
         "persist", "infrastructure",
     ),
     LabeledExample(
-        "The search service uses Elasticsearch 8.x with custom analyzers for multi-language support",
+        "The search service uses Elasticsearch 8.x with custom analyzers"
+        " for multi-language support",
         "persist", "architecture_fact",
     ),
     LabeledExample(
@@ -203,27 +202,33 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
 
     # --- episode_fragment: incident-related, causal chains ---
     LabeledExample(
-        "INCIDENT: Production API latency spiked to 5s at 14:00 UTC due to database connection pool exhaustion",
+        "INCIDENT: Production API latency spiked to 5s at 14:00 UTC"
+        " due to database connection pool exhaustion",
         "persist", "incident",
     ),
     LabeledExample(
-        "Root cause identified: the connection pool leak was caused by unclosed transactions in the batch processor",
+        "Root cause identified: the connection pool leak was caused by"
+        " unclosed transactions in the batch processor",
         "persist", "root_cause",
     ),
     LabeledExample(
-        "Hotfix deployed: increased connection pool size from 20 to 50 and added connection timeout of 30s",
+        "Hotfix deployed: increased connection pool size from 20 to 50"
+        " and added connection timeout of 30s",
         "persist", "resolution",
     ),
     LabeledExample(
-        "Post-incident review: the monitoring alert for connection pool usage fired 10 minutes after the spike started",
+        "Post-incident review: the monitoring alert for connection pool usage"
+        " fired 10 minutes after the spike started",
         "persist", "post_mortem",
     ),
     LabeledExample(
-        "Sprint retrospective: the auth refactor introduced a regression in token validation affecting 3 downstream services",
+        "Sprint retrospective: the auth refactor introduced a regression"
+        " in token validation affecting 3 downstream services",
         "persist", "retrospective",
     ),
     LabeledExample(
-        "Deployment of v2.3.1 to production started at 09:00, includes fix for JIRA-4521 payment timeout issue",
+        "Deployment of v2.3.1 to production started at 09:00,"
+        " includes fix for JIRA-4521 payment timeout issue",
         "persist", "deployment",
     ),
 ]
@@ -272,7 +277,11 @@ def route_with_config(
     cfg: RoutingConfig,
 ) -> str:
     """Route memory using custom thresholds (3-way quality gate)."""
-    if score < cfg.discard_threshold and features.persistence < 0.20 and features.state_change_signal < 0.20:
+    if (
+        score < cfg.discard_threshold
+        and features.persistence < 0.20
+        and features.state_change_signal < 0.20
+    ):
         return "discard"
     if cfg.discard_threshold <= score < cfg.ephemeral_upper:
         return "ephemeral_cache"
@@ -310,7 +319,6 @@ def run_grid_search() -> dict:
     from ncms.config import NCMSConfig
     from ncms.infrastructure.graph.networkx_store import NetworkXGraph
     from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
-    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
     # Create a lightweight service for feature extraction
     config = NCMSConfig(db_path=":memory:", admission_enabled=True)
@@ -367,7 +375,7 @@ def run_grid_search() -> dict:
     print(f"\nGrid search: {total_combos} configurations "
           f"({len(routing_grid)} routing × {len(weight_configs)} weight variants)")
 
-    for wi, wc in enumerate(weight_configs):
+    for _wi, wc in enumerate(weight_configs):
         for dt, eu, sct, eat in routing_grid:
             rc = RoutingConfig(
                 discard_threshold=dt,
@@ -462,30 +470,30 @@ def _write_results(results: dict) -> None:
     # Markdown report
     best = results["best_config"]
     report_lines = [
-        f"# Admission Weight Tuning Report",
-        f"",
+        "# Admission Weight Tuning Report",
+        "",
         f"**Date**: {results['timestamp']}",
         f"**Git SHA**: `{results['git_sha']}`",
         f"**Examples**: {results['num_examples']}",
         f"**Configs tested**: {results['num_configs_tested']}",
-        f"",
-        f"## Best Configuration",
-        f"",
+        "",
+        "## Best Configuration",
+        "",
         f"**Accuracy**: {best['accuracy']:.1%} ({best['correct']}/{best['total']})",
-        f"",
-        f"### Routing Thresholds",
-        f"",
-        f"| Parameter | Default | Tuned |",
-        f"|-----------|---------|-------|",
+        "",
+        "### Routing Thresholds",
+        "",
+        "| Parameter | Default | Tuned |",
+        "|-----------|---------|-------|",
         f"| Discard threshold | 0.25 | {best['routing']['discard_threshold']} |",
         f"| Ephemeral upper | 0.45 | {best['routing']['ephemeral_upper']} |",
         f"| State change threshold | 0.50 | {best['routing']['state_change_threshold']} |",
         f"| Episode affinity threshold | 0.55 | {best['routing']['episode_affinity_threshold']} |",
-        f"",
-        f"### Feature Weights",
-        f"",
-        f"| Feature | Default | Tuned |",
-        f"|---------|---------|-------|",
+        "",
+        "### Feature Weights",
+        "",
+        "| Feature | Default | Tuned |",
+        "|---------|---------|-------|",
     ]
 
     default_weights = {
@@ -503,21 +511,21 @@ def _write_results(results: dict) -> None:
         )
 
     report_lines.extend([
-        f"",
-        f"### Per-Category Accuracy",
-        f"",
-        f"| Route | Accuracy |",
-        f"|-------|----------|",
+        "",
+        "### Per-Category Accuracy",
+        "",
+        "| Route | Accuracy |",
+        "|-------|----------|",
     ])
     for cat, acc in sorted(best["per_category"].items()):
         report_lines.append(f"| {cat} | {acc:.1%} |")
 
     report_lines.extend([
-        f"",
-        f"## Top 10 Configurations",
-        f"",
-        f"| # | Accuracy | Discard | Ephemeral | StateChg | EpisodeAff |",
-        f"|---|----------|---------|-----------|----------|------------|",
+        "",
+        "## Top 10 Configurations",
+        "",
+        "| # | Accuracy | Discard | Ephemeral | StateChg | EpisodeAff |",
+        "|---|----------|---------|-----------|----------|------------|",
     ])
     for i, cfg in enumerate(results["top_10"], 1):
         r = cfg["routing"]

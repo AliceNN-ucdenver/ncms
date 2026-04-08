@@ -7,12 +7,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 import torch
 
 from ncms.domain.models import Memory
-from ncms.infrastructure.indexing.splade_engine import SparseVector, SpladeEngine
-
+from ncms.infrastructure.indexing.splade_engine import SpladeEngine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,7 +76,7 @@ class TestSpladeEngine:
         results = engine.search("Flask REST API")
         assert len(results) > 0
         # All results should have positive scores
-        for mid, score in results:
+        for _mid, score in results:
             assert score > 0.0
 
     @patch("ncms.infrastructure.indexing.splade_engine.SpladeEngine._ensure_model")

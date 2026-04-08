@@ -153,8 +153,10 @@ class PRDAgent:
                 agent=self.from_agent, node="generate_manifest",
             )
             text = response.content.strip()
-            if text.startswith("```"): text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-            if text.endswith("```"): text = text[:-3].strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3].strip()
             state["manifest"] = json.loads(text)
             logger.info("[prd_agent] Manifest: %d endpoints, %d security reqs",
                         len(state["manifest"].get("endpoints", [])),

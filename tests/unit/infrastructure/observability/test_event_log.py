@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 import pytest
@@ -29,7 +28,7 @@ class TestDashboardEvent:
         assert "event: bus.ask" in sse
         assert "data: " in sse
         # Verify JSON payload is valid
-        data_line = [l for l in sse.split("\n") if l.startswith("data: ")][0]
+        data_line = [line for line in sse.split("\n") if line.startswith("data: ")][0]
         payload = json.loads(data_line.removeprefix("data: "))
         assert payload["agent_id"] == "api-agent"
         assert payload["data"]["question"] == "hello"

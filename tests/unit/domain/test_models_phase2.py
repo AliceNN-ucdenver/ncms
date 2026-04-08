@@ -10,7 +10,6 @@ from ncms.domain.models import (
     RelationType,
 )
 
-
 # ── RelationType ──────────────────────────────────────────────────────
 
 

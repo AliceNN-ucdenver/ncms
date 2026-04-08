@@ -468,14 +468,12 @@ class SQLiteDocumentStore:
 
         # First record should chain from "genesis"
         checked = 0
-        prev_hash = "genesis"
         for rowid, stored_hash in rows:
             checked += 1
             # We can't recompute without the full record JSON, but we CAN
             # verify the chain is continuous (each hash references the prior)
             if stored_hash is None:
                 return {"verified": False, "records_checked": checked, "break_at": rowid}
-            prev_hash = stored_hash
 
         return {"verified": True, "records_checked": checked, "break_at": None}
 

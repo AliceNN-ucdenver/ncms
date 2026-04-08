@@ -140,7 +140,7 @@ class TestSearchPipelineObservability:
         await svc.store_memory("Flask web framework for Python REST APIs")
 
         # Clear store events so we only see search events
-        store_count = log.count()
+        log.count()
 
         await svc.search("Flask API")
 

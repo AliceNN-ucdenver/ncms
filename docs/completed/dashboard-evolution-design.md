@@ -1,5 +1,7 @@
 # Dashboard Evolution: From Monitoring to Project Delivery
 
+> **Status: COMPLETE** (Phases 1, 2, 2.5 implemented). Remaining aspirational features (compliance dashboard, quality trends, audit export) captured in `ncms-resilience-update.md`.
+
 ## Context
 
 The NCMS dashboard today is an observability tool. It shows agent activity via SSE event streams, renders a D3 knowledge graph, provides per-agent chat overlays, and lists documents in a flat sidebar. It includes episode timelines, entity state history views, an admission scoring panel, and a floating approval queue. The backend is a Starlette application (`interfaces/http/dashboard.py`) serving REST endpoints and SSE streams, with a single-page frontend in `interfaces/http/static/index.html`.

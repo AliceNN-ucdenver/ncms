@@ -8,7 +8,7 @@ overlapping groups via union-find.
 from __future__ import annotations
 
 from ncms.domain.models import Entity, Memory
-from ncms.infrastructure.consolidation.clusterer import MemoryCluster, find_entity_clusters
+from ncms.infrastructure.consolidation.clusterer import find_entity_clusters
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 
 

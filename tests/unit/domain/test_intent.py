@@ -5,7 +5,6 @@ from __future__ import annotations
 from ncms.domain.intent import (
     INTENT_EXEMPLARS,
     INTENT_TARGETS,
-    IntentResult,
     QueryIntent,
     classify_intent,
 )

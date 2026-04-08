@@ -111,7 +111,7 @@ class TestGraphExpansion:
                 domains=["api"],
             )
             # Memory C: has FastAPI and React entities (2 hops from PostgreSQL-only)
-            mem_c = await svc.store_memory(
+            await svc.store_memory(
                 content="React frontend calls the FastAPI REST endpoints",
                 domains=["frontend"],
             )

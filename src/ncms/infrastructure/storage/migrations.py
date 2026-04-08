@@ -1,5 +1,7 @@
 """SQLite schema DDL and migrations for NCMS."""
 
+import contextlib
+
 SCHEMA_VERSION = 8
 
 # ── V1: Original schema ──────────────────────────────────────────────────
@@ -532,18 +534,19 @@ async def run_migrations(db: object) -> None:
         await db.executescript(V8_TABLES)
         # Add prev_hash columns to existing audit tables (nullable — safe for existing rows)
         for alter_sql in V8_HASH_CHAIN_COLUMNS:
-            try:
-                await db.execute(alter_sql)
-            except Exception:
-                pass  # Column may already exist from a partial migration
+            with contextlib.suppress(Exception):
+                await db.execute(alter_sql)  # Column may already exist
         # Seed default admin user: shawn / ncms (bcrypt hashed)
-        import bcrypt as _bcrypt
         from datetime import UTC, datetime
+
+        import bcrypt as _bcrypt
         _hash = _bcrypt.hashpw(b"ncms", _bcrypt.gensalt()).decode()
         _now = datetime.now(UTC).isoformat()
         await db.execute(
-            "INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO users"
+            " (id, username, password_hash,"
+            " display_name, role, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             ("usr-admin-001", "shawn", _hash, "Shawn", "admin", _now),
         )
         await db.execute(

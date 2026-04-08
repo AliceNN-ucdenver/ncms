@@ -3,7 +3,6 @@
 import pytest
 
 from ncms.domain.models import (
-    KnowledgeAsk,
     KnowledgePayload,
     KnowledgeProvenance,
     KnowledgeResponse,
@@ -168,7 +167,7 @@ class TestSnapshotFlow:
             domains=["api"],
         )
 
-        snapshot = await agent.sleep()
+        await agent.sleep()
 
         requester = SimpleAgent(
             "requester", ["frontend"], bus_service, memory_service, snapshot_service

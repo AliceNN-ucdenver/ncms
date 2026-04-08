@@ -1,5 +1,7 @@
 # Graph-Enhanced Retrieval Pipeline
 
+> **Status: COMPLETE** (Tiers 1-3 + SPLADE + Contradiction Detection implemented). Tier 4 (Synthesized Retrieval) superseded by `ncms-resilience-update.md` Section 6 (Compilation, Synthesis & Document Integration).
+
 ## Design Specification
 
 **From Regex Heuristics to Cognitive Retrieval**

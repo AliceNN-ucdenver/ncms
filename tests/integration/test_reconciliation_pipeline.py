@@ -124,7 +124,7 @@ class TestFullReconciliationPipeline:
         service: ReconciliationService,
     ) -> None:
         """Different values in different scopes → CONFLICTS (parallel truths)."""
-        us = await _create_entity_state(
+        await _create_entity_state(
             store, "api-gw", "status", "running", state_scope="us-east-1",
         )
         eu = await _create_entity_state(
@@ -204,7 +204,7 @@ class TestFullReconciliationPipeline:
         service: ReconciliationService,
     ) -> None:
         """Reconciliation for one entity doesn't affect another."""
-        a1 = await _create_entity_state(store, "svc-A", "status", "running")
+        await _create_entity_state(store, "svc-A", "status", "running")
         b1 = await _create_entity_state(store, "svc-B", "status", "running")
 
         a2 = await _create_entity_state(store, "svc-A", "status", "stopped")

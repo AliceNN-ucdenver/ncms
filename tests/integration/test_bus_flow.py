@@ -3,13 +3,12 @@
 import pytest
 
 from ncms.domain.models import (
+    ImpactAssessment,
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgePayload,
     KnowledgeProvenance,
     KnowledgeResponse,
-    ImpactAssessment,
-    SubscriptionFilter,
 )
 
 # Shared test timeouts — fast enough for in-process tests, long enough to avoid flakes.

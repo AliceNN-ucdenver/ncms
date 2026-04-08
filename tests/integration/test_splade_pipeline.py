@@ -6,7 +6,7 @@ pipeline: store → SPLADE index → fused search → ACT-R scoring.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -107,7 +107,7 @@ class TestSPLADEPipeline:
         )
 
         # Store a memory with content that overlaps the query via SPLADE
-        mem = await svc.store_memory(
+        await svc.store_memory(
             content="REST API endpoint design patterns",
             domains=["api"],
         )

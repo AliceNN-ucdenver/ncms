@@ -1,5 +1,7 @@
 # SWE-bench Dream Cycle Experiment Design
 
+> **Status: COMPLETE** (experiment designed and executed). 4-competency framework (AR, TTL, CR, LRU) validated. Dream cycle showed flat retrieval gain on SciFact but established methodology. See `ncms-resilience-update.md` Section 8.4 for LongMemEval as next benchmark target.
+
 ## Motivation: Lessons from SciFact
 
 The SciFact dream cycle experiment (March 2026) revealed a fundamental mismatch between BEIR-style IR benchmarks and NCMS's cognitive architecture:

@@ -10,7 +10,6 @@ from ncms.application.reconciliation_service import ReconciliationService
 from ncms.config import NCMSConfig
 from ncms.domain.models import (
     AccessRecord,
-    EdgeType,
     Memory,
     MemoryNode,
     NodeType,

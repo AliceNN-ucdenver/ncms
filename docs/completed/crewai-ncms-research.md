@@ -1,5 +1,7 @@
 # NCMS + NeMo Agent Toolkit + NemoClaw Integration Research
 
+> **Status: COMPLETE** (research concluded March 2026). Decision: NAT over CrewAI. Findings motivated the current nvidia-nat-ncms package and NemoClaw blueprint deployment.
+
 Research conducted 2026-03-28 across multiple investigations.
 
 **Decision: NeMo Agent Toolkit (NAT) over pure CrewAI** — NAT's `MemoryEditor` takes `query: str` (3 methods) vs CrewAI's `StorageBackend` takes `query_embedding: list[float]` (14 methods). NAT eliminates the embedding mismatch problem entirely and provides A2A protocol, profiling, MCP client/server, and NemoClaw-native integration.

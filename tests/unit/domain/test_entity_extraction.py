@@ -37,10 +37,21 @@ class TestResolveLabels:
         result = resolve_labels(["api"], cached_labels={})
         assert result == UNIVERSAL_LABELS
 
-    def test_cached_labels_merged_with_universal(self):
-        """Cached domain labels should be merged with universal labels."""
+    def test_cached_labels_replace_universal_by_default(self):
+        """Cached domain labels REPLACE universal labels (replace mode is default)."""
         cached = {"api": ["endpoint", "service", "protocol"]}
         result = resolve_labels(["api"], cached_labels=cached)
+        # Domain labels only (replace mode)
+        assert result == ["endpoint", "service", "protocol"]
+        # Universal labels NOT included in replace mode
+        for label in UNIVERSAL_LABELS:
+            if label not in ["endpoint", "service", "protocol"]:
+                assert label not in result
+
+    def test_cached_labels_merged_with_keep_universal(self):
+        """With keep_universal=True, domain labels merge with universals."""
+        cached = {"api": ["endpoint", "service", "protocol"]}
+        result = resolve_labels(["api"], cached_labels=cached, keep_universal=True)
         # Universal labels come first
         for label in UNIVERSAL_LABELS:
             assert label in result
@@ -89,14 +100,30 @@ class TestResolveLabels:
         result = resolve_labels(["finance"], cached_labels=cached)
         assert result == UNIVERSAL_LABELS
 
-    def test_partial_cache_merges_available(self):
-        """If some domains have cached labels, merge with universal."""
+    def test_partial_cache_replaces_with_available(self):
+        """If some domains have cached labels, use domain labels only (replace mode).
+
+        Domain 'api' has cached labels, 'finance' does not. In replace mode,
+        only the cached domain labels are returned (universals not merged).
+        """
         cached = {"api": ["endpoint", "service"]}
         result = resolve_labels(["api", "finance"], cached_labels=cached)
-        # Universal labels always included
+        # Domain labels used (replace mode)
+        assert "endpoint" in result
+        assert "service" in result
+        # Universal labels NOT included in replace mode
+        assert "person" not in result
+
+    def test_partial_cache_merges_with_keep_universal(self):
+        """With keep_universal=True, partial cache merges with universals."""
+        cached = {"api": ["endpoint", "service"]}
+        result = resolve_labels(
+            ["api", "finance"], cached_labels=cached, keep_universal=True,
+        )
+        # Universal labels included
         for label in UNIVERSAL_LABELS:
             assert label in result
-        # Available domain labels merged on top
+        # Domain labels merged on top
         assert "endpoint" in result
         assert "service" in result
 

@@ -63,7 +63,7 @@ class TestRRFFusion:
 
         fused = MemoryService._rrf_fuse(bm25, splade)
 
-        for mid, score in fused:
+        for _mid, score in fused:
             assert score > 0.0
 
     def test_rrf_sorted_descending(self):

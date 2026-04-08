@@ -1,5 +1,7 @@
 # NCMS Retrieval Pipeline Ablation Study
 
+> **Status: COMPLETE** (methodology designed, experiments executed on SciFact/NFCorpus/ArguAna). Results: nDCG@10=0.7206 tuned config. Topic seeding methodology validated. See `ncms-resilience-update.md` for agent-workload weight tuning plans.
+
 ## Goal
 
 Systematically evaluate how each retrieval pipeline component contributes to overall retrieval quality. The NCMS pipeline has five stages that can be independently enabled/disabled:

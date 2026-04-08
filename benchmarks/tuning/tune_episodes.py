@@ -18,8 +18,6 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
-import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -118,7 +116,6 @@ async def evaluate_episodes() -> dict:
     from ncms.application.admission_service import AdmissionService
     from ncms.application.episode_service import EpisodeService
     from ncms.application.memory_service import MemoryService
-    from ncms.application.reconciliation_service import ReconciliationService
     from ncms.config import NCMSConfig
     from ncms.infrastructure.graph.networkx_store import NetworkXGraph
     from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
@@ -215,7 +212,7 @@ async def evaluate_episodes() -> dict:
                     # Check: how many fragments share the same episode?
                     frag_episodes = set()
                     for mem in fragment_mems:
-                        admission_info = (mem.structured or {}).get("admission", {})
+                        (mem.structured or {}).get("admission", {})
                         ep = (mem.structured or {}).get("episode")
                         if ep:
                             frag_episodes.add(ep.get("episode_id", ""))

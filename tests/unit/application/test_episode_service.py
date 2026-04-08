@@ -6,8 +6,6 @@ weighted multi-signal scoring, and episode lifecycle.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
 import pytest
 import pytest_asyncio
 
@@ -15,17 +13,14 @@ from ncms.application.episode_service import EpisodeService
 from ncms.config import NCMSConfig
 from ncms.domain.models import (
     AccessRecord,
-    EdgeType,
     Entity,
     EpisodeMeta,
-    EpisodeStatus,
     Memory,
     MemoryNode,
     NodeType,
 )
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
 

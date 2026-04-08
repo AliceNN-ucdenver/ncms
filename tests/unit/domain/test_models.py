@@ -1,10 +1,7 @@
 """Tests for domain models."""
 
-import pytest
-from pydantic import ValidationError
 
 from ncms.domain.models import (
-    AccessRecord,
     AgentInfo,
     AskContext,
     Entity,
@@ -12,7 +9,6 @@ from ncms.domain.models import (
     KnowledgeAnnounce,
     KnowledgeAsk,
     KnowledgePayload,
-    KnowledgeProvenance,
     KnowledgeResponse,
     KnowledgeSnapshot,
     Memory,

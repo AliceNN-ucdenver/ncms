@@ -10,7 +10,6 @@ from ncms.config import NCMSConfig
 from ncms.domain.models import (
     EdgeType,
     EntityStateMeta,
-    GraphEdge,
     Memory,
     MemoryNode,
     NodeType,
@@ -18,7 +17,6 @@ from ncms.domain.models import (
     RelationType,
 )
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -316,7 +314,7 @@ class TestReconcilePipeline:
     async def test_refines_creates_edge(
         self, recon_store: SQLiteStore, recon_service: ReconciliationService,
     ) -> None:
-        existing = await _save_entity_state(
+        await _save_entity_state(
             recon_store, "svc-A", "status", "running", state_scope="global",
         )
         new_node = await _save_entity_state(
@@ -382,7 +380,7 @@ class TestReconcilePipeline:
         self, recon_store: SQLiteStore, recon_service: ReconciliationService,
     ) -> None:
         """v1 → v2 → v3: only v3 should be current at the end."""
-        v1 = await _save_entity_state(recon_store, "svc-A", "status", "starting")
+        await _save_entity_state(recon_store, "svc-A", "status", "starting")
 
         v2 = await _save_entity_state(recon_store, "svc-A", "status", "running")
         await recon_service.reconcile(v2)

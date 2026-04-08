@@ -566,7 +566,7 @@ class DocumentService:
         events = await self._store.get_pipeline_events(project_id)
 
         # Collect all document links for the project's documents
-        doc_ids = {d.id for d in docs}
+        {d.id for d in docs}
         all_links: list[DocumentLink] = []
         seen_link_ids: set[str] = set()
         for d in docs:
@@ -611,7 +611,11 @@ class DocumentService:
                     "status": e.status,
                     "detail": e.detail,
                     "event_subtype": e.event_subtype,
-                    "timestamp": e.timestamp.isoformat() if hasattr(e.timestamp, 'isoformat') else e.timestamp,
+                    "timestamp": (
+                        e.timestamp.isoformat()
+                        if hasattr(e.timestamp, 'isoformat')
+                        else e.timestamp
+                    ),
                 }
                 for e in events
             ],
@@ -624,58 +628,79 @@ class DocumentService:
         UNION query across 8 tables, normalized to a common schema.
         """
         db = self._store.db
-        query = """
-            SELECT timestamp,
-                   CASE WHEN event_subtype != ''
-                   THEN 'research' ELSE 'pipeline'
-                   END as type,
-                   agent,
-                   node || ': ' || status as detail,
-                   CASE WHEN event_subtype != ''
-                   THEN detail ELSE ''
-                   END as extra
-            FROM pipeline_events WHERE project_id = ?
-            UNION ALL
-            SELECT timestamp, 'approval' as type, approver as agent, decision as detail, comment as extra
-            FROM approval_decisions WHERE project_id = ?
-            UNION ALL
-            SELECT timestamp, 'guardrail' as type, '' as agent,
-                   escalation || ' ' || policy_type || ': ' || COALESCE(message, rule) as detail, '' as extra
-            FROM guardrail_violations WHERE project_id = ?
-            UNION ALL
-            SELECT timestamp, 'llm_call' as type, agent,
-                   node || ' (' || COALESCE(prompt_size, 0) || '→' || COALESCE(response_size, 0) || ' chars, ' || COALESCE(duration_ms, 0) || 'ms)' as detail,
-                   model as extra
-            FROM llm_calls WHERE project_id = ?
-            UNION ALL
-            SELECT timestamp, 'bus' as type, from_agent as agent,
-                   from_agent || '→' || COALESCE(to_agent, '?') || ' conf=' || COALESCE(confidence, 0) as detail,
-                   SUBSTR(question_preview, 1, 80) as extra
-            FROM bus_conversations WHERE project_id = ?
-            UNION ALL
-            SELECT rs.created_at as timestamp, 'review' as type, rs.reviewer_agent as agent,
-                   'Round ' || rs.review_round || ': ' || COALESCE(rs.score, 0) || '%' as detail, rs.severity as extra
-            FROM review_scores rs
-            JOIN documents d ON rs.document_id = d.id
-            WHERE d.project_id = ?
-            UNION ALL
-            SELECT timestamp, 'config' as type, agent,
-                   COALESCE(model_name, '?') || ' thinking=' || thinking_enabled || ' max_tokens=' || COALESCE(max_tokens, 0) as detail,
-                   '' as extra
-            FROM agent_config_snapshots WHERE project_id = ?
-            ORDER BY timestamp
-        """
+        query = (
+            "SELECT timestamp,"
+            " CASE WHEN event_subtype != ''"
+            " THEN 'research' ELSE 'pipeline' END as type,"
+            " agent, node || ': ' || status as detail,"
+            " CASE WHEN event_subtype != ''"
+            " THEN detail ELSE '' END as extra"
+            " FROM pipeline_events WHERE project_id = ?"
+            " UNION ALL"
+            " SELECT timestamp, 'approval' as type,"
+            " approver as agent, decision as detail,"
+            " comment as extra"
+            " FROM approval_decisions WHERE project_id = ?"
+            " UNION ALL"
+            " SELECT timestamp, 'guardrail' as type, '' as agent,"
+            " escalation || ' ' || policy_type || ': '"
+            " || COALESCE(message, rule) as detail,"
+            " '' as extra"
+            " FROM guardrail_violations WHERE project_id = ?"
+            " UNION ALL"
+            " SELECT timestamp, 'llm_call' as type, agent,"
+            " node || ' (' || COALESCE(prompt_size, 0)"
+            " || '\u2192' || COALESCE(response_size, 0)"
+            " || ' chars, ' || COALESCE(duration_ms, 0)"
+            " || 'ms)' as detail, model as extra"
+            " FROM llm_calls WHERE project_id = ?"
+            " UNION ALL"
+            " SELECT timestamp, 'bus' as type,"
+            " from_agent as agent,"
+            " from_agent || '\u2192' || COALESCE(to_agent, '?')"
+            " || ' conf=' || COALESCE(confidence, 0)"
+            " as detail,"
+            " SUBSTR(question_preview, 1, 80) as extra"
+            " FROM bus_conversations WHERE project_id = ?"
+            " UNION ALL"
+            " SELECT rs.created_at as timestamp,"
+            " 'review' as type, rs.reviewer_agent as agent,"
+            " 'Round ' || rs.review_round || ': '"
+            " || COALESCE(rs.score, 0) || '%' as detail,"
+            " rs.severity as extra"
+            " FROM review_scores rs"
+            " JOIN documents d ON rs.document_id = d.id"
+            " WHERE d.project_id = ?"
+            " UNION ALL"
+            " SELECT timestamp, 'config' as type, agent,"
+            " COALESCE(model_name, '?')"
+            " || ' thinking=' || thinking_enabled"
+            " || ' max_tokens='"
+            " || COALESCE(max_tokens, 0) as detail,"
+            " '' as extra"
+            " FROM agent_config_snapshots WHERE project_id = ?"
+            " ORDER BY timestamp"
+        )
         cursor = await db.execute(query, (project_id,) * 7)
         rows = await cursor.fetchall()
         return [
-            {"timestamp": r[0], "type": r[1], "agent": r[2] or "", "detail": r[3] or "", "extra": r[4] or ""}
+            {
+                "timestamp": r[0], "type": r[1],
+                "agent": r[2] or "", "detail": r[3] or "",
+                "extra": r[4] or "",
+            }
             for r in rows
         ]
 
     async def verify_project_integrity(self, project_id: str) -> dict:
         """Verify hash chain integrity for all audit tables in a project."""
         results = {}
-        for table in ["pipeline_events", "approval_decisions", "guardrail_violations", "llm_calls", "bus_conversations"]:
+        audit_tables = [
+            "pipeline_events", "approval_decisions",
+            "guardrail_violations", "llm_calls",
+            "bus_conversations",
+        ]
+        for table in audit_tables:
             results[table] = await self._store.verify_hash_chain(table)
         all_verified = all(r["verified"] for r in results.values())
         total_checked = sum(r["records_checked"] for r in results.values())
@@ -709,8 +734,12 @@ class DocumentService:
         # Lineage via BFS
         chain = await self._store.get_traceability_chain(doc_id)
         lineage = [
-            {"source": l.source_doc_id, "target": l.target_doc_id, "link_type": l.link_type}
-            for l in chain
+            {
+                "source": link.source_doc_id,
+                "target": link.target_doc_id,
+                "link_type": link.link_type,
+            }
+            for link in chain
         ]
 
         # Reviews
@@ -726,7 +755,11 @@ class DocumentService:
                 (doc.project_id,),
             )
             violations = [
-                {"policy_type": r[0], "rule": r[1], "message": r[2], "escalation": r[3], "timestamp": r[4]}
+                {
+                    "policy_type": r[0], "rule": r[1],
+                    "message": r[2], "escalation": r[3],
+                    "timestamp": r[4],
+                }
                 for r in await cursor.fetchall()
             ]
 
@@ -799,7 +832,9 @@ class DocumentService:
 
         # Grounding coverage (15%)
         cursor = await db.execute(
-            "SELECT COUNT(*) FROM grounding_log gl JOIN documents d ON gl.document_id = d.id WHERE d.project_id = ?",
+            "SELECT COUNT(*) FROM grounding_log gl"
+            " JOIN documents d ON gl.document_id = d.id"
+            " WHERE d.project_id = ?",
             (project_id,),
         )
         grounding_count = (await cursor.fetchone())[0]
@@ -825,11 +860,26 @@ class DocumentService:
         return {
             "composite_score": round(composite, 1),
             "breakdown": {
-                "review_average": {"score": round(review_avg, 1), "weight": 0.40, "count": len(score_values)},
-                "violations": {"score": round(violation_score, 1), "weight": 0.20, "count": len(violations)},
-                "grounding": {"score": round(grounding_score, 1), "weight": 0.15, "citations": grounding_count},
-                "approval_gate": {"score": round(approval_score, 1), "weight": 0.15, "denied": denied},
-                "completeness": {"score": round(completeness, 1), "weight": 0.10, "types": list(present_types)},
+                "review_average": {
+                    "score": round(review_avg, 1),
+                    "weight": 0.40, "count": len(score_values),
+                },
+                "violations": {
+                    "score": round(violation_score, 1),
+                    "weight": 0.20, "count": len(violations),
+                },
+                "grounding": {
+                    "score": round(grounding_score, 1),
+                    "weight": 0.15, "citations": grounding_count,
+                },
+                "approval_gate": {
+                    "score": round(approval_score, 1),
+                    "weight": 0.15, "denied": denied,
+                },
+                "completeness": {
+                    "score": round(completeness, 1),
+                    "weight": 0.10, "types": list(present_types),
+                },
             },
         }
 
@@ -898,7 +948,8 @@ class DocumentService:
             md.append(f"| {key} | {val['score']}% | {val['weight']*100:.0f}% |")
 
         md.append("\n---\n\n## Integrity Verification")
-        md.append(f"\n**Hash Chain Verified:** {'Yes' if integrity['verified'] else 'NO — CHAIN BROKEN'}")
+        verified_str = "Yes" if integrity["verified"] else "NO \u2014 CHAIN BROKEN"
+        md.append(f"\n**Hash Chain Verified:** {verified_str}")
         md.append(f"**Records Checked:** {integrity['records_checked']}")
         for table, result in integrity["tables"].items():
             status = "OK" if result["verified"] else f"BROKEN at row {result['break_at']}"
@@ -909,14 +960,21 @@ class DocumentService:
         md.append("|----------|-------|-------|---------|------|-------------|")
         for d in docs:
             h = d.content_hash[:12] if d.content_hash else "N/A"
-            md.append(f"| {d.doc_type} | {d.title[:50]} | {d.from_agent} | v{d.version} | {d.size_bytes:,} bytes | `{h}` |")
+            md.append(
+                f"| {d.doc_type} | {d.title[:50]} | {d.from_agent}"
+                f" | v{d.version} | {d.size_bytes:,} bytes | `{h}` |"
+            )
 
         md.append("\n---\n\n## Traceability Chain")
         if all_links:
             md.append("\n| Source | Target | Link Type |")
             md.append("|--------|--------|-----------|")
             for link in all_links:
-                md.append(f"| {link.source_doc_id[:12]} | {link.target_doc_id[:12]} | {link.link_type} |")
+                md.append(
+                    f"| {link.source_doc_id[:12]}"
+                    f" | {link.target_doc_id[:12]}"
+                    f" | {link.link_type} |"
+                )
         else:
             md.append("\nNo document links found.")
 
@@ -925,7 +983,10 @@ class DocumentService:
             md.append("\n| Reviewer | Round | Score | Severity |")
             md.append("|----------|-------|-------|----------|")
             for s in scores:
-                md.append(f"| {s.reviewer_agent} | {s.review_round} | {s.score}% | {s.severity or 'N/A'} |")
+                md.append(
+                    f"| {s.reviewer_agent} | {s.review_round}"
+                    f" | {s.score}% | {s.severity or 'N/A'} |"
+                )
         else:
             md.append("\nNo review scores recorded.")
 
@@ -944,7 +1005,10 @@ class DocumentService:
             md.append("|-------|-------|----------|-----------|------|")
             for c in configs:
                 thinking = "ON" if c[2] else "OFF"
-                md.append(f"| {c[0]} | {(c[1] or '?')[:30]} | {thinking} | {c[3] or '?'} | {c[4]} |")
+                md.append(
+                    f"| {c[0]} | {(c[1] or '?')[:30]}"
+                    f" | {thinking} | {c[3] or '?'} | {c[4]} |"
+                )
         else:
             md.append("\nNo config snapshots recorded.")
 
@@ -953,7 +1017,11 @@ class DocumentService:
             md.append("\n| Agent | Node | Prompt | Response | Duration | Model |")
             md.append("|-------|------|--------|----------|----------|-------|")
             for c in llm_calls:
-                md.append(f"| {c[0]} | {c[1]} | {c[2]:,} chars | {c[3]:,} chars | {c[4]:,}ms | {(c[5] or '?')[:25]} |")
+                md.append(
+                    f"| {c[0]} | {c[1]} | {c[2]:,} chars"
+                    f" | {c[3]:,} chars | {c[4]:,}ms"
+                    f" | {(c[5] or '?')[:25]} |"
+                )
         else:
             md.append("\nNo LLM calls recorded.")
 

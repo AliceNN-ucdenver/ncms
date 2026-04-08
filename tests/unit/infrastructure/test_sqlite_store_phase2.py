@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 import pytest_asyncio
 
 from ncms.domain.models import Memory, MemoryNode, NodeType
