@@ -1,8 +1,9 @@
 # NCMS Resilience, Data Integrity & Performance Update
 
 **Status:** Proposed
-**Date:** 2026-04-06
-**Context:** Audit of the live NCMS Hub (ncms-hub container, 67 memories, 6 agents, IMDB Lite architecture exercise) revealed data integrity issues in the ingestion pipeline, gaps in graph persistence, and opportunities for performance improvement. This document proposes concrete fixes, architectural improvements, and an operational lifecycle for recurring maintenance events.
+**Date:** 2026-04-08
+**Authors:** Shawn McCarthy, with analysis assistance from Claude (Anthropic)
+**Context:** Audit of the live NCMS Hub (ncms-hub container, 67 memories, 6 agents, IMDB Lite architecture exercise) revealed data integrity issues in the ingestion pipeline, gaps in graph persistence, and opportunities for performance improvement. This document proposes concrete fixes, architectural improvements, and an operational lifecycle for recurring maintenance events. Design informed by competitive analysis of MemPalace and Karpathy's LLM Knowledge Bases, and a survey of Jan-Apr 2026 agent memory research.
 
 ---
 
@@ -13,7 +14,7 @@
 3. [Data Integrity Improvements](#3-data-integrity-improvements)
 4. [Graph Persistence & Rebuild-from-Store](#4-graph-persistence--rebuild-from-store)
 5. [Ingestion Performance Improvements](#5-ingestion-performance-improvements)
-6. [Compilation & Synthesis Layer](#6-compilation--synthesis-layer)
+6. [Compilation, Synthesis & Document Integration](#6-compilation-synthesis--document-integration)
 7. [Recurring Events & Operational Lifecycle](#7-recurring-events--operational-lifecycle)
 8. [Competitive Context](#8-competitive-context)
 9. [Retrieval Quality & System Resilience](#9-retrieval-quality--system-resilience)
@@ -122,20 +123,30 @@ LongMemEval (conversation memory) would exercise exactly these features. MemPala
 
 **Problem**: No check for duplicate content before storing. Each `store_memory()` call generates a fresh UUID.
 
-**Design**: Add a content-hash dedup check as the first gate in `store_memory()`, before admission scoring.
+**Design**: Add a content-hash dedup check as the very first gate in `store_memory()`, before classification and admission scoring.
+
+The full gate ordering in `store_memory()` after all phases are implemented:
 
 ```
 store_memory(content, ...)
   |
   v
-content_hash = hashlib.sha256(content.encode()).hexdigest()
+[Gate 1: Content-hash dedup] -- duplicate? --> return existing memory (no-op)
   |
   v
-[Check dedup_hashes set or SQLite index] -- duplicate? --> return existing memory (no-op)
+[Gate 2: Content classification] -- navigable doc? --> section-aware ingestion (Section 6.2)
+  |                                  atomic fragment? --> standard pipeline below
+  v
+[Gate 3: Size validation] -- per section (navigable) or per memory (atomic)
   |
   v
-[Existing pipeline: admission -> persist -> index -> entity -> episode]
+[Gate 4: Admission scoring] -- discard / ephemeral / persist
+  |
+  v
+[Persist -> Index -> Entity -> Episode]
 ```
+
+Dedup runs on the raw content hash before any classification or chunking. This ensures identical documents are caught regardless of whether the content classifier detects them as navigable.
 
 **Implementation**:
 - Add `content_hash TEXT` column to `memories` table with a unique index
@@ -153,11 +164,17 @@ content_hash = hashlib.sha256(content.encode()).hexdigest()
 
 **Problem**: No maximum content size limit. 28K-char raw LLM outputs pass through the full pipeline (GLiNER, SPLADE, entity extraction, episode scoring).
 
-**Design**: Add configurable `NCMS_MAX_CONTENT_LENGTH` (default: 5,000 chars).
+**Design**: Add configurable `NCMS_MAX_CONTENT_LENGTH` (default: 5,000 chars) applied **after** content classification (Section 6.2.1).
 
-- Content exceeding the limit is **rejected at the API layer** with a 413 response
-- The `store_memory()` method validates before any processing
-- Document ingestion (via `knowledge_loader` or `document_service`) uses its own chunking and is exempt from this limit
+The enforcement order in `store_memory()` is:
+1. Content-hash dedup (Section 3.1)
+2. Content classification — detect navigable documents (Section 6.2.1, Phase 4)
+3. Size validation — applied per **section** for navigable documents, per **memory** for atomic fragments
+4. Admission scoring (existing pipeline)
+
+Before Phase 4 is implemented, the size limit applies to the whole content with an exemption for memories with `importance >= 8.0` (which already bypass admission). This prevents rejecting high-importance structured documents (ADRs at importance=9.0) while still blocking raw LLM outputs (importance=5.0, 28K chars).
+
+- Document ingestion via `knowledge_loader` and `document_service` uses its own chunking and is exempt
 - The MCP `store_memory` tool and HTTP `POST /api/v1/memories` both enforce the limit
 
 **Configuration**: `NCMS_MAX_CONTENT_LENGTH = 5000` (env var, Pydantic Settings)
@@ -192,6 +209,8 @@ Additional rules:
 ### 3.4 Entity State Detection Tightening (P2)
 
 **Problem**: The admission service's `state_change_signal` feature triggers on large LLM outputs that contain patterns resembling state declarations, creating meaningless entity_state nodes.
+
+**Note**: Section 3.5 (NAT wrapper fix) eliminates the root cause — raw 28K-char LLM outputs no longer enter the pipeline. This tightening is a defense-in-depth measure against future similar content from other sources.
 
 **Current behavior**: State change detected when content contains patterns like `Entity: key = value` or status keywords. The state_value is truncated to 500 chars of the raw content.
 
@@ -347,6 +366,8 @@ The deferred task:
 
 **Risk**: A contradicted memory is searchable for the 500ms-2s before the check completes. Acceptable for non-safety-critical use cases.
 
+**Interaction with section-aware ingestion (Section 6.2.2)**: When a navigable document is section-indexed, the deferred contradiction check runs once per **child section memory**, not once for the parent document. This is correct — contradictions occur at the section level ("Decision section of ADR-003 contradicts the Compliance section of the threat model"), not at the whole-document level. The parent section-index memory is excluded from contradiction checking (it contains only headings and summaries, not assertive content).
+
 **Effort**: Low (~40 lines, extract existing code into async task)
 
 ### 5.3 Proposed: Batch Episode Candidate Queries
@@ -422,74 +443,218 @@ uv run ncms load --bulk /path/to/files/
 
 ## 6. Compilation, Synthesis & Document Integration
 
-### 6.1 Current Architecture: Two Separate Knowledge Stores
+### 6.1 Two Classes of Knowledge
 
-NCMS has two independent persistent stores that today operate in isolation:
+NCMS ingests two fundamentally different kinds of content, but today treats them identically in `store_memory()`:
 
-| Aspect | Memory Store | Document Store |
-|--------|-------------|----------------|
-| **Content** | Semantic chunks (typically 80-500 chars), agent announcements, episode seeds | Full-text versioned artifacts (1K-29K chars): research reports, PRDs, designs, reviews |
-| **Indexing** | BM25 + SPLADE + entity graph expansion | SQL queries (LIKE on entity JSON, JOIN on review scores) |
-| **Entities** | GLiNER per memory chunk → entity graph (319 entities, 611 links in hub) | GLiNER on full document → JSON array (stored inline, not graph-linked) |
-| **Relationships** | HTMG: episodes, derived_from, co-occurrence edges | document_links: derivation chains, review relationships |
-| **Retrieval** | Semantic search with multi-signal scoring | Direct lookup by doc_id, entity name, project_id |
-| **Provenance** | source_agent, domains, tags | from_agent, project_id, content_hash, version chain |
-| **Tables** | memories, entities, relationships, memory_entities, memory_nodes, graph_edges | documents, projects, document_links, review_scores, pipeline_events |
+#### Class 1: Navigable Documents
+Structured content with internal sections, headings, and schemas. The right unit of retrieval is a **section**, not the whole document.
 
-**The gap**: The memory store has rich retrieval (BM25 + SPLADE + graph + ACT-R) but only sees 460-char summary stubs of documents. The document store has full content with versioning and traceability but has no semantic search — only SQL LIKE queries on entity JSON. Neither store references the other except through weak tag-based links (`tags=["document", doc_id]` on memory stubs).
+Examples from the hub: ADR-003 (2,306 chars with Status/Context/Decision/Consequences sections), CALM JSON (12,981 chars with nodes/relationships/metadata), STRIDE threat model (4,913 chars with per-threat entries), security compliance checklist (774 chars with categorized items).
 
-In the hub, the 5 published documents (research report, PRD, requirements manifest, implementation design, design review) total 83,830 chars of substantive content. The memory store holds 460-488 char stubs of each — **roughly 3% of the actual knowledge**. When an agent searches for "JWT authentication patterns," it hits the memory stub but has no path to the full 25K-char design document that contains the detailed implementation.
+These arrive via three paths:
+- `store_memory()` by agents — stored as **single flat blobs** (the problem)
+- `publish_document()` by document service — stored in document store with 460-char stub in memory store
+- `ncms load` by knowledge loader — **already chunked by heading** via `_chunk_markdown()` (the correct behavior)
 
-### 6.2 Design: Unified Knowledge Retrieval
+#### Class 2: Atomic Fragments
+Self-contained, no internal structure. The right unit of retrieval is the **whole memory**.
 
-**Principle**: Documents are first-class knowledge artifacts, not metadata appendages. They should participate in the same retrieval pipeline as memories.
+Examples from the hub: announcements (85-212 chars), episode keyword seeds (189-552 chars), user prompts (76-176 chars), document summary stubs (460-488 chars).
 
-#### 6.2.1 Document Indexing in BM25 + SPLADE
+#### The Problem: Flat Ingestion
 
-When a document is published via `DocumentService.publish_document()`, in addition to storing the full content in the document store:
+The hub's 67 memories break down as:
 
-1. **Chunk the document** using the same sentence-boundary splitter as `knowledge_loader.py`
-2. **Index each chunk** in Tantivy (BM25) and SPLADE with metadata: `{doc_id, chunk_index, doc_type, project_id, from_agent}`
-3. **Store chunk→document mapping** so search results can expand to full document context on demand
-4. **Entity-link document entities** into the main entity graph (not just JSON arrays)
+| Content Type | Count | Total Chars | Avg Chars | Treatment Today |
+|---|---|---|---|---|
+| **Navigable docs** (ADRs, CALM, threat models, checklists) | 13 | 31,815 | 2,447 | Flat blobs via `store_memory()` — no section awareness |
+| **Announcements** | 35 | 5,320 | 152 | Atomic fragments — correctly handled |
+| **Document summaries** | 5 | 2,359 | 472 | Stubs — correctly handled but only 3% of document content |
+| **Keyword fragments** | 8 | 2,757 | 345 | Episode seeds — correctly handled |
+| **Raw LLM outputs** | 3 | 78,116 | 26,039 | Should not be here (NAT wrapper issue, Section 3.5) |
 
-This means `search()` and `recall()` will surface document chunks alongside memory fragments, scored by the same BM25 + SPLADE + graph signals. The document store remains the source of truth for full content; the memory indexes provide retrieval access.
+When someone searches "JWT refresh token rotation," BM25 hits the entire 2,306-char ADR-003 blob. The relevant content is in the Decision section (lines 26-55), but the system returns the whole document. At scale with 100+ documents, this wastes context window and buries the precise answer.
 
-```python
-# In document_service.py publish_document():
-async def publish_document(self, title, content, ...):
-    doc = await self._doc_store.save_document(...)  # Full content to document store
+Meanwhile, the `knowledge_loader` already solves this for files loaded via `ncms load` — `_chunk_markdown()` splits by heading, `_chunk_json()` splits by top-level keys. But agents calling `store_memory()` bypass this entirely.
 
-    # NEW: Index document chunks in memory retrieval pipeline
-    chunks = chunk_text(content, max_chars=2000, overlap=200)
-    for i, chunk in enumerate(chunks):
-        await self._memory_svc.store_memory(
-            content=chunk,
-            memory_type="document_chunk",
-            domains=domains,
-            source_agent=from_agent,
-            importance=7.0,  # Higher than announcements (5.0), lower than knowledge files (9.0)
-            tags=["document_chunk", doc.id, f"chunk:{i}"],
-            structured={"doc_id": doc.id, "chunk_index": i, "doc_type": doc_type},
-        )
+#### The Two-Store Gap
 
-    # NEW: Link document entities into entity graph
-    for entity in doc.entities:
-        entity_id = await self._graph_svc.resolve_or_create_entity(entity["name"], entity["type"])
-        await self._store.link_entity_to_memory(doc.id, entity_id)
+The memory store has rich retrieval (BM25 + SPLADE + graph) but only sees 460-char summary stubs of documents published via the document service. The document store has full content with versioning, review scores, and derivation chains but has no semantic search — only SQL LIKE queries on entity JSON. Neither references the other except through weak tag-based links.
+
+The 5 published documents total 83,830 chars of substantive content. The memory store sees ~3% of it. When an agent searches for "JWT authentication patterns," it hits the stub but has no path to the 25K-char design document with the actual implementation.
+
+### 6.2 Design: Content-Aware Ingestion
+
+**Principle**: Classify content at ingest time. Navigable documents get section-aware indexing with a structured table of contents. Atomic fragments go through the current pipeline unchanged.
+
+#### 6.2.1 Ingest-Time Content Classification
+
+Add a classification step as Gate 2 in `store_memory()`, after content-hash dedup (Section 3.1) but before size validation and admission scoring:
+
+```
+store_memory(content, memory_type, ...)
+  |
+  v
+[Gate 1: Content-hash dedup — Section 3.1]
+  |
+  v
+[Gate 2: Content classification — heuristic, no LLM]
+  |
+  ├── ATOMIC FRAGMENT (len < 1000, no headings, no structure)
+  |   └── Current pipeline unchanged: size check, admission, BM25, SPLADE, GLiNER, episode
+  |
+  └── NAVIGABLE DOCUMENT (detected structure)
+      |
+      ├── [1. Section extraction — reuse knowledge_loader chunking logic]
+      ├── [2. Section index generation — heading + summary per section]
+      ├── [3. Size validation — per section, not per whole document]
+      ├── [4. Index memory — store the section index as parent memory]
+      ├── [5. Section memories — store each section as child memory]
+      └── [6. Entity extraction — GLiNER per section, not per blob]
 ```
 
-**Trade-off**: This increases memory store size. A 25K-char document produces ~13 chunks at 2K each. For 5 documents, that's ~65 new memories. Acceptable — the retrieval quality improvement justifies the storage cost.
+**Detection heuristics** (fast, no LLM):
 
-#### 6.2.2 Document-Aware Recall
+| Signal | Detection | Example |
+|--------|-----------|---------|
+| Markdown headings | `re.match(r"^#{1,4}\s+", line)` with 2+ headings | ADR-003 with `## Status`, `## Context`, `## Decision` |
+| JSON object | Content starts with `{` and `json.loads()` succeeds | CALM architecture model |
+| YAML document | Content matches `^\w+:\s*$` with 2+ top-level keys | Security controls, compliance checklists |
+| Long + structured | `len > 1000` AND `content.count("\n\n") >= 3` | Research reports, PRDs |
+| Explicit type | `memory_type="document_chunk"` or `memory_type="document"` | Caller declares it |
 
-Extend `recall()` to detect when results reference document chunks and automatically provide document context:
+**Fallback**: If classification is uncertain, treat as atomic. False negatives (a document treated as atomic) are less harmful than false positives (an announcement split into sections).
+
+#### 6.2.2 Section-Aware Indexing
+
+For content classified as navigable, the ingestion pipeline produces three artifacts:
+
+**1. Section extraction** — Reuse the `knowledge_loader` chunking logic already implemented:
+- Markdown: `_chunk_markdown()` splits by `#{1-4}` headings
+- JSON: `_chunk_json()` splits by top-level keys
+- YAML: Split by top-level keys (new, mirrors JSON logic)
+- Plain text with structure: Split by double-newline paragraphs with heading detection
+
+**2. Section index** — A lightweight table of contents stored as the parent memory:
+
+```markdown
+# ADR-003: JWT with Inline RBAC — Section Index
+doc_id: cfafab12  |  type: architecture_decision  |  agent: architect  |  sections: 4
+
+- **Status & Context** — Decision status (accepted), team, problem statement
+- **Decision** — JWT with inline RBAC claims, refresh token rotation, Passport.js
+- **Consequences** — Token size trade-offs, revocation complexity, monitoring needs
+- **Compliance** — OWASP A07 mapping, NIST SP 800-63-3 alignment
+```
+
+This index is ~300 chars and gets indexed in BM25/SPLADE. It serves two purposes:
+- **Retrieval routing**: A search for "token revocation" hits the index and identifies the Consequences section as relevant
+- **Navigation**: An agent reading the index sees the full knowledge topology without loading any section content
+
+**3. Section memories** — Each section stored as a child memory linked to the parent index:
+
+```python
+# Parent: section index
+index_mem = await self._memory_svc.store_memory(
+    content=section_index_text,
+    memory_type="section_index",
+    importance=7.0,
+    tags=["section_index", doc_id_or_hash],
+    structured={
+        "doc_id": doc_id,          # Link to document store if published
+        "section_count": len(sections),
+        "content_hash": content_hash,
+    },
+)
+
+# Children: individual sections
+for i, section in enumerate(sections):
+    await self._memory_svc.store_memory(
+        content=section.text,
+        memory_type="document_section",
+        importance=7.0,
+        tags=["document_section", doc_id_or_hash, f"section:{i}"],
+        structured={
+            "doc_id": doc_id,
+            "parent_index_id": index_mem.id,
+            "section_index": i,
+            "section_heading": section.heading,
+        },
+    )
+```
+
+**Entity extraction** runs per section (not per blob). This produces more focused entities — the Decision section of ADR-003 yields `JWT`, `RBAC`, `Passport.js`, `refresh token` rather than the diluted set from the full ADR.
+
+**Episode assignment** runs on the parent index memory. All child sections inherit the episode membership via their `parent_index_id` link.
+
+#### 6.2.3 Level-First Retrieval
+
+**Problem with current approach**: Today, every query runs flat BM25+SPLADE across ALL HTMG levels. Intent classification adds bonus scores and supplementary candidates, but the primary search pool is undifferentiated. A `pattern_lookup` query gets flooded with L1 atomic fragments that happen to contain matching keywords, drowning the L4 insights that actually answer the question.
+
+**Design**: Use intent classification to determine the **traversal direction** and **starting HTMG level**, not just signal weights. The existing `INTENT_NODE_TYPES` mapping and `_get_intent_weights()` method (already in `memory_service.py:1665`) provide the foundation — the change is making them control the retrieval *strategy*, not just additive bonuses.
+
+**Traversal strategies**:
+
+| Intent | Direction | Start Level | Primary Graph | Expansion |
+|--------|-----------|-------------|---------------|-----------|
+| `fact_lookup` | **Bottom-up** | L1 atomic + L1 sections | Semantic (BM25+SPLADE) | Entity graph for related facts |
+| `current_state_lookup` | **Direct** | L2 entity_state | Entity graph (direct lookup by entity) | Temporal for recency ordering |
+| `historical_lookup` | **Temporal** | L2 entity_state | Temporal ordering (`observed_at`) | Causal graph for supersession chains |
+| `event_reconstruction` | **Lateral** | L3 episode | Episode membership | Temporal for event ordering within episode |
+| `change_detection` | **Temporal** | L2 entity_state | Temporal diffs + causal edges | L1 atomics for causal context |
+| `pattern_lookup` | **Top-down** | L4 abstract | Semantic over L4 only | Drill to L3 episodes → L1 evidence |
+| `strategic_reflection` | **Top-down** | L4 abstract | Semantic over L4 only | Cross-level evidence chains |
+
+**Implementation**: Extend `search()` to scope the BM25/SPLADE candidate generation by node type:
+
+```python
+async def search(self, query: str, ...):
+    intent = self._classify_intent(query)
+    target_levels = INTENT_NODE_TYPES[intent.intent]  # Already exists
+
+    # NEW: Primary search scoped to target levels
+    primary_candidates = await self._scoped_search(
+        query, node_types=target_levels, limit=top_k,
+    )
+
+    # Secondary: expand to adjacent levels for context
+    if intent.direction == "top_down":
+        # Drill from L4 → L3 episodes → L1 evidence
+        expansion = await self._drill_down(primary_candidates)
+    elif intent.direction == "bottom_up":
+        # Expand from L1 → L3 episodes for context
+        expansion = await self._expand_up(primary_candidates)
+    elif intent.direction == "temporal":
+        # Chronological ordering of L2 states
+        expansion = await self._temporal_expand(primary_candidates, query)
+    elif intent.direction == "lateral":
+        # Episode member expansion
+        expansion = await self._lateral_expand(primary_candidates)
+    else:
+        expansion = []
+
+    all_candidates = primary_candidates + expansion
+    # Continue with existing scoring pipeline (normalization, ACT-R, penalties)
+```
+
+The `_scoped_search()` method over-fetches from BM25/SPLADE (e.g., top-200 instead of top-50) and then filters to only include memories with matching node types (via the existing `nodes_by_memory` batch preload). Over-fetching is necessary because rare node types (L4 abstracts may be <5% of the corpus) would yield zero results from a standard top-50 retrieval. The BM25/SPLADE query cost is dominated by scoring, not candidate count, so over-fetching adds minimal latency.
+
+**Config**: `NCMS_SCOPED_SEARCH_OVERFETCH = 200` (candidates to retrieve before node-type filtering).
+
+**Fallback**: If scoped search returns fewer than `min_candidates` (default: 5) after filtering, fall back to unscoped search with standard top-K. This prevents empty results when target levels have insufficient content (e.g., 0 L4 abstracts in the current hub before consolidation runs).
+
+**Compatibility**: When intent classification is disabled (`NCMS_INTENT_CLASSIFICATION_ENABLED=false`), retrieval behaves exactly as today — flat BM25+SPLADE with no level scoping.
+
+#### 6.2.4 Document-Aware Recall
+
+Extend `recall()` to detect document-linked results and enrich with provenance:
 
 ```python
 class RecallResult:
     memory: ScoredMemory
     context: RecallContext
-    document: DocumentContext | None  # NEW
+    document: DocumentContext | None  # Populated when structured.doc_id exists
 
 class DocumentContext:
     doc_id: str
@@ -498,30 +663,94 @@ class DocumentContext:
     from_agent: str
     project_id: str | None
     version: int
+    section_index: str | None        # The full section index text (for navigation)
+    current_section: str | None      # Which section this result came from
     review_scores: list[ReviewScore]  # Architect: 85%, Security: 85%
     derivation_chain: list[str]       # [research_id] -> [prd_id] -> [design_id]
-    sibling_chunks: list[str]         # Adjacent chunk memory_ids for context expansion
+    sibling_sections: list[str]       # Other section memory_ids in same document
     full_content_url: str             # /api/v1/documents/{doc_id} for on-demand full text
 ```
 
-When a recall result's `structured.doc_id` exists, the system fetches the document metadata and derivation chain from the document store. This gives the consuming agent:
-- The document's review history (was this approved? what score?)
+When a recall result has `structured.doc_id` or `structured.parent_index_id`, the system fetches document metadata, the section index, and the derivation chain from the document store. The agent gets:
+- Which document and section this came from
+- The full section index (so it can request other sections without another search)
 - The derivation chain (this design came from this PRD which came from this research)
-- Adjacent chunks for context expansion without loading the entire document
+- Review status (was this approved? what score?)
 
-### 6.3 Design: Progressive Context Loading
+#### 6.2.5 Integration with Document Store
 
-Inspired by MemPalace's L0-L3 stack, but incorporating documents as a distinct knowledge tier:
+For documents published via `DocumentService.publish_document()`, the section-aware ingestion runs automatically. The document store remains the source of truth for full content; the memory store holds section indexes and section content for retrieval. The link is the `doc_id` in the memory's `structured` metadata.
 
-| Level | Token Budget | Content Sources | Use Case |
-|-------|-------------|-----------------|----------|
-| **L0: Identity** | ~200 tokens | Project metadata + active agent roster | System prompt injection |
-| **L1: Briefing** | ~800 tokens | Entity state snapshots + latest episode summaries + document titles with review status | Agent wake-up, task handoff |
-| **L2: Summary** | ~3000 tokens | Top-5 recall results + related abstracts + document chunk excerpts with derivation context | Standard query response |
-| **L3: Deep** | ~8000 tokens | Full recall + synthesis + causal chains + full document sections | Complex analysis, design review |
-| **L4: Archive** | On-demand | Full document content via `/api/v1/documents/{doc_id}` | Agent requests explicit deep read |
+For documents stored directly via `store_memory()` by agents (the hub's 13 structured docs), the content classification gate detects the structure and applies section-aware indexing. These memories don't have a `doc_id` in the document store — the `content_hash` serves as their identity.
 
-**Key difference from MemPalace**: NCMS's progressive loading is **document-aware**. At L1, an agent knows "there's an approved design doc at 85% for authentication patterns." At L2, it gets the relevant chunks. At L3, it gets the full section with review context. At L4, it can pull the entire 25K-char document if needed.
+**Entity graph linking**: Document entities (currently stored as JSON arrays in the document store) are linked into the main entity graph during section-aware ingestion, not kept in a separate silo.
+
+### 6.3 Design: Progressive Context Loading with Emergent Topic Map
+
+NCMS provides tiered context loading that leverages the full HTMG hierarchy. The key innovation over MemPalace's L0-L3 stack and Karpathy's wiki index: **the navigational layer (topics + section indexes) is built automatically from the HTMG hierarchy, not manually curated**.
+
+#### 6.3.1 Emergent Topics from L4 Abstracts
+
+Topics are **not** a new HTMG level — they are an emergent property of L4 content. When consolidation generates episode summaries, state trajectories, and recurring patterns, these L4 nodes share `topic_entities` (the entity set from their source episodes). Clustering L4 nodes by `topic_entities` Jaccard overlap produces emergent topics.
+
+From the hub's 7 episodes (once consolidation runs), clustering would produce:
+
+| Emergent Topic | Source Episodes | Key Entities | L4 Abstracts |
+|---|---|---|---|
+| **Authentication Architecture** | ADR-001 architecture, Designer implementation | JWT, RBAC, Passport.js, MongoDB | Episode summaries + ADR state trajectory |
+| **Security Posture** | VUL-001 remediation, Architecture (security members) | STRIDE, OWASP, SQL injection, MFA | Threat model trajectory + compliance pattern |
+| **Project Lifecycle** | PRD/Research, Product owner consultation, Archeologist research | PRD, research_id, project_id | Cross-document synthesis |
+
+This clustering reuses the existing `_cluster_by_entity_overlap()` method from `consolidation_service.py` (Phase 5C pattern detection). No new algorithm needed — just a different input (all L4 nodes instead of just episode summaries).
+
+**Storage**: Topics are stored as L4 abstract nodes with `abstract_type: "topic_summary"`. They are regenerated during each consolidation pass (Section 7.2) from the current set of L4 nodes. This makes them self-maintaining — as new episodes close and new abstracts are generated, the topic map evolves.
+
+#### 6.3.2 Progressive Context Levels
+
+| Level | Token Budget | Content Source | Use Case |
+|-------|-------------|----------------|----------|
+| **L0: Identity** | ~200 | Project metadata + active agent roster | System prompt injection |
+| **L1: Topic Map** | ~500 | Emergent topics from L4 clustering — 3-5 topics with one-line summaries. The agent sees the knowledge landscape. | Agent wake-up, task orientation |
+| **L1.5: Index** | ~1500 | Section indexes for project documents + episode member lists. Navigable overviews of all structured knowledge. | Navigation, targeted requests |
+| **L2: Summary** | ~3000 | Level-appropriate results from level-first retrieval (Section 6.2.3): L4 insights for strategic queries, L2 states for state queries, L1 sections for fact queries | Standard query response |
+| **L3: Deep** | ~8000 | Full recall with cross-level evidence chains (L4 insight → L3 episodes → L1 evidence) + document sections with review context | Complex analysis |
+| **L4: Archive** | On-demand | Full document content via `GET /api/v1/documents/{doc_id}` | Explicit deep read (separate API, not a synthesize mode) |
+
+**L1 Topic Map example** (generated from L4 abstracts, ~300 tokens):
+
+```
+## Knowledge Landscape — PRJ-45050f76
+
+### Authentication Architecture (12 memories, 3 episodes, 2 ADRs)
+JWT with inline RBAC selected. Design approved at 85%. Implementation complete.
+Key decisions: ADR-003 (JWT), ADR-004 (test strategy). Open: token revocation.
+
+### Security Posture (8 memories, 2 episodes, 1 threat model)
+STRIDE analysis complete (8 threats). VUL-001 identified, remediation pending.
+Compliance: OWASP A07 mapped, NIST SP 800-63-3 aligned.
+
+### Project Pipeline (5 documents, 86 pipeline events)
+Research → PRD → Design: complete. All approved at 85%+.
+```
+
+**L1.5 Index example** (section indexes + episode outlines, ~800 tokens):
+
+```
+### ADR-003: JWT with Inline RBAC (architect)
+- Status & Context — Decision status, problem statement
+- Decision — JWT claims, refresh rotation, Passport.js
+- Consequences — Token size, revocation complexity
+- Compliance — OWASP A07, NIST SP 800-63-3
+
+### Episode: Architecture Decisions (10 members, architect + security)
+- ADR-001 through ADR-004, CALM model, quality attributes, fitness functions
+- Security: threat model, compliance checklist, controls
+
+### Episode: Designer Implementation (17 members, designer)
+- Expert queries, design synthesis, guardrail checks, review rounds
+```
+
+**Key differences from Karpathy**: (1) Topic map is emergent from consolidation, not manually curated by the LLM. (2) Section indexes are generated automatically from document structure at ingest time. (3) Both are regenerated during maintenance — they self-maintain as knowledge evolves. (4) Level-first retrieval means the system traverses the right level for each query type, not just reading the index top-to-bottom.
 
 **Implementation**:
 
@@ -529,18 +758,27 @@ Inspired by MemPalace's L0-L3 stack, but incorporating documents as a distinct k
 async def synthesize(
     self,
     query: str,
-    mode: Literal["identity", "briefing", "summary", "deep"] = "summary",
+    mode: Literal["identity", "topics", "index", "summary", "deep"] = "summary",
     project_id: str | None = None,
 ) -> SynthesizedResponse:
     if mode == "identity":
         return await self._build_identity_context(project_id)
-    elif mode == "briefing":
-        return await self._build_briefing(query, project_id)
+    elif mode == "topics":
+        return await self._build_topic_map(query, project_id)  # L1: emergent topic map
+    elif mode == "index":
+        return await self._build_index(query, project_id)      # L1.5: section + episode indexes
     elif mode == "summary":
-        return await self._build_summary(query, project_id)
+        return await self._build_summary(query, project_id)    # L2: level-first retrieval results
     elif mode == "deep":
-        return await self._build_deep(query, project_id)
+        return await self._build_deep(query, project_id)       # L3: cross-level evidence chains
 ```
+
+Modes map to progressive context levels (Section 6.3.2):
+- `"identity"` → L0 (~200 tokens) — project metadata + agent roster
+- `"topics"` → L1 (~500 tokens) — emergent topic map from L4 abstracts
+- `"index"` → L1.5 (~1500 tokens) — section indexes + episode outlines
+- `"summary"` → L2 (~3000 tokens) — level-first retrieval results (intent-appropriate level)
+- `"deep"` → L3 (~8000 tokens) — cross-level evidence chains + full sections
 
 Exposed as:
 - MCP tool: `synthesize_knowledge(query, mode, project_id)`
@@ -548,49 +786,59 @@ Exposed as:
 
 ### 6.4 Design: `synthesize()` Pipeline
 
-The synthesis pipeline unifies both stores:
+The synthesis pipeline unifies both stores, using level-first retrieval and emergent topics:
 
 ```
 Query + Mode + optional Project
   |
   v
-[1. recall() — memory search pipeline: BM25 + SPLADE + graph + scoring]
+[1. Intent classification — determine traversal direction + start level]
   |
   v
-[2. Document expansion — for results with doc_id, fetch document metadata,
-    review scores, derivation chain from document store]
+[2. Level-first retrieval — scoped BM25+SPLADE at target HTMG level
+    + directional expansion (top-down/bottom-up/temporal/lateral)]
   |
   v
-[3. Abstract gathering — episode summaries, state trajectories, patterns
-    from consolidation layer]
+[3. Section expansion — for section index hits, fetch relevant child
+    sections. For section hits, fetch parent index + siblings.]
   |
   v
-[4. Project context — if project_id given, load project metadata,
-    all documents in project with their review status]
+[4. Document provenance — for results with doc_id, fetch review scores,
+    derivation chain, version history from document store]
   |
   v
-[5. Token budgeting — trim and prioritize based on mode:
-    briefing → entity states + doc titles + latest episode
-    summary  → top-5 results + abstracts + doc excerpts
-    deep     → everything + full document sections + causal chains]
+[5. Topic context — load emergent topic map from L4 abstracts
+    (pre-built by consolidation, not generated per query)]
   |
   v
-[6. LLM compilation — synthesize into structured narrative
-    with citations back to memory IDs and document IDs]
+[6. Token budgeting — trim and prioritize based on mode:
+    topics  → emergent topic map (~500 tokens)
+    index   → section indexes + episode outlines (~1500 tokens)
+    summary → level-appropriate results + abstracts (~3000 tokens)
+    deep    → cross-level evidence chains + full sections (~8000 tokens)]
+  |
+  v
+[7. Optional LLM compilation (deep mode only) — synthesize into
+    narrative with citations to memory IDs, doc_ids, section headings]
   |
   v
 SynthesizedResponse {
     query: str
     mode: str
-    base_results: list[RecallResult]         # Ranked fragments with scores
-    documents: list[DocumentContext]          # Referenced documents with review status
+    intent: str                              # Classified intent driving retrieval
+    traversal: str                           # bottom_up, top_down, temporal, lateral
+    topic_map: list[TopicSummary] | None     # Emergent topics from L4 clustering
+    base_results: list[RecallResult]         # Level-appropriate results with scores
+    documents: list[DocumentContext]          # Referenced docs with section indexes
     abstracts: list[AbstractMemory]          # Episode summaries, trajectories, patterns
-    project: ProjectContext | None           # Project metadata and document inventory
-    synthesis: str                           # LLM-generated narrative with citations
+    project: ProjectContext | None           # Project metadata + document inventory
+    synthesis: str | None                    # LLM narrative (deep mode only)
     entity_snapshot: dict[str, str]          # Current state of all mentioned entities
     token_count: int                         # Actual tokens used
 }
 ```
+
+Note: LLM compilation is reserved for `deep` mode only. The `topics`, `index`, and `summary` modes return structured data without an LLM call — the progressive levels are designed to be useful without synthesis overhead.
 
 ### 6.5 Design: Wiki Export from Document Store
 
@@ -636,14 +884,14 @@ wiki/
 ```
 
 **Key design decisions**:
-- Documents are exported **from the document store** (full content, not memory stubs)
-- Entity pages are generated by **joining both stores**: memory search results + document entity JSON
-- Episode pages are generated from **HTMG episode nodes** with member memories and their document references
+- **Section indexes drive the wiki structure**: Each document's wiki page is organized by its section index, not exported as a flat blob. Entity/episode/agent pages link to specific sections, not whole documents.
+- Entity pages are generated by **joining both stores**: section-level entity extraction from memories + document entity JSON from document store
+- Episode pages are generated from **HTMG episode nodes** with member memories and their document section references
 - Agent pages show **provenance**: what this agent stored, authored, and reviewed
 - Derivation chains come from **document_links** table (not memory relationships)
 - Timeline comes from **pipeline_events** table (86 events in the hub)
-- All markdown files contain **backlinks** (entity pages link to documents and episodes; documents link to entities and derivation chains)
-- The wiki is a **read-only snapshot** — regenerated on demand, not maintained incrementally (unlike Karpathy's approach where the LLM edits the wiki)
+- All markdown files contain **backlinks** (entity pages link to document sections and episodes; sections link to entities and derivation chains)
+- **Incremental index maintenance**: Section indexes are generated at ingest time and persisted in the memory store. The wiki export reads these indexes rather than regenerating structure from scratch. New documents update the wiki incrementally — only affected pages are regenerated.
 
 ### 6.6 Design: Document-Level Consolidation
 
@@ -695,7 +943,7 @@ if temporal_target:
 
 **Phase 2** (episode-aware): Event-anchored resolution using episode timelines. "After the security review" resolves to the timestamp of the VUL-001 episode closure.
 
-**Config**: `NCMS_SCORING_WEIGHT_TEMPORAL = 0.2` (default, tunable via grid search). Applied only when a temporal reference is detected — zero-cost for non-temporal queries.
+**Config**: `NCMS_SCORING_WEIGHT_TEMPORAL = 0.2` (placeholder default — should be tuned alongside all scoring weights in the agent-workload weight sweep proposed in Section 9.2). Applied only when a temporal reference is detected — zero-cost for non-temporal queries. Per-query min-max normalization (already implemented) ensures the temporal signal competes fairly with BM25/SPLADE/Graph regardless of raw scale.
 
 **Document temporal boost**: Documents also carry timestamps. When temporal boosting is active and document chunks are in the result set, the boost applies to the document's `created_at` (or the associated pipeline_event timestamp if available, which gives more precise timing — e.g., when the design was actually published vs. when the memory was created).
 
@@ -835,7 +1083,7 @@ Extend `GET /api/v1/health` to include maintenance status:
 | MemPalace Feature | NCMS Equivalent | Gap |
 |-------------------|-----------------|-----|
 | Hybrid keyword fusion (`fused_dist = dist * (1.0 - 0.30 * overlap)`) | BM25 + SPLADE + Graph (3-signal weighted) | NCMS has richer signals but no temporal boosting |
-| Temporal date parsing + 40% proximity boost | Bitemporal fields exist but no query-time temporal boost | Add temporal proximity scoring (Section 8.3) |
+| Temporal date parsing + 40% proximity boost | Bitemporal fields exist but no query-time temporal boost | Add temporal proximity scoring (Section 6.7) |
 | Two-pass assistant retrieval | `source_agent` metadata filter | Could add conversation-turn-aware search |
 | 4-layer progressive loading (L0-L3) | No context budgeting | Add briefing/summary/deep modes (Section 6.3) |
 | AAAK compression dialect (30x) | N/A | Novel but niche; synthesis layer is a better approach |
@@ -865,15 +1113,47 @@ Neither MemPalace nor Karpathy's approach has a structured document store. MemPa
 
 This is a differentiated capability. The compilation and synthesis layer (Section 6) is designed to exploit this structure — showing not just *what the system knows* but *how that knowledge was produced, reviewed, and validated*. No other agent memory system provides this level of knowledge provenance.
 
-### 8.4 Benchmark Gap: LongMemEval
+### 8.4 Benchmark Targets
 
-NCMS benchmarks exclusively on BEIR (static document retrieval) and SWE-bench (code retrieval). Neither exercises temporal reasoning, conversation memory, or multi-agent coordination. Adding LongMemEval evaluation would:
+NCMS benchmarks exclusively on BEIR (static document retrieval) and SWE-bench (code retrieval). Neither exercises temporal reasoning, conversation memory, or multi-agent coordination. Recent research (Jan-Apr 2026) has established clear benchmark targets:
 
-- Validate temporal/episode/reconciliation features that show no gain on BEIR
-- Enable direct comparison with MemPalace's 96.6% baseline
-- Expose whether ACT-R and dream cycles help on realistic access patterns
+**Primary benchmark targets**:
 
-### 8.5 Uncaptured Ideas from Completed Design Docs
+| Benchmark | Current SOTA | System | What It Tests | NCMS Advantage |
+|-----------|-------------|--------|---------------|----------------|
+| **LoCoMo** | 0.700 | [MAGMA](https://arxiv.org/abs/2601.03236) | Long-horizon conversational reasoning | Level-first retrieval + HTMG hierarchy |
+| **LoCoMo-Plus** | 93.3% judge | [Kumiho](https://arxiv.org/abs/2603.17244) | Belief revision + temporal grounding | Reconciliation (supports/supersedes/conflicts) |
+| **LongMemEval** | 96.6% R@5 | MemPalace | Long-term conversation memory | Episode grouping + temporal boosting |
+| **MemoryAgentBench** | ≤7% multi-hop forgetting | None pass | 4 competencies inc. selective forgetting | Dream cycles + ACT-R decay + importance drift |
+
+**MemoryAgentBench** ([ICLR 2026](https://arxiv.org/abs/2507.05257)) is the most important target. It evaluates four competencies that map directly to NCMS capabilities:
+
+| MAB Competency | NCMS Mechanism | Current State |
+|----------------|---------------|---------------|
+| Accurate Retrieval | BM25+SPLADE+Graph, level-first retrieval | Proven on BEIR (nDCG@10=0.7206) |
+| Test-Time Learning | Admission scoring + content classification | 65.9% accuracy, needs improvement |
+| Long-Range Understanding | Graph spreading activation + top-down L4→L1 traversal | Designed, needs LoCoMo validation |
+| **Selective Forgetting** | Dream cycles + ACT-R decay + reconciliation penalties + `is_current` flags | **Unique mechanism — no competitor has this** |
+
+The selective forgetting competency is where every existing system fails (≤7% accuracy on multi-hop scenarios). NCMS's combination of `is_current=False` state closure, ACT-R base-level decay, dream cycle importance drift, and reconciliation supersession penalties is the most complete selective forgetting architecture in the literature. Proving this on MemoryAgentBench would be a defining result.
+
+MAB includes two new datasets — **EventQA** and **FactConsolidation** — that should be added alongside LoCoMo and LongMemEval for comprehensive evaluation.
+
+### 8.5 Research Landscape (Jan-Apr 2026)
+
+The agent memory field has converged on several ideas that validate NCMS's architecture:
+
+| Paper | Key Insight | NCMS Alignment | Gap / Opportunity |
+|-------|------------|----------------|-------------------|
+| [MAGMA](https://arxiv.org/abs/2601.03236) (Jan 2026) | Multi-graph decomposition (semantic, temporal, causal, entity) with query-adaptive traversal | NCMS has all 4 graph types; level-first retrieval (Section 6.2.3) applies MAGMA's traversal concept to HTMG | Intent-driven graph selection is new |
+| [Kumiho](https://arxiv.org/abs/2603.17244) (Mar 2026) | Formal AGM belief revision for versioned memory, 93.3% LoCoMo-Plus | NCMS reconciliation does informal belief revision; entity_state versioning is structurally similar | Could formalize as AGM-compliant (future work) |
+| [EverMemOS](https://arxiv.org/abs/2601.02163) (Jan 2026) | Engram lifecycle: episodic traces → semantic consolidation → reconstructive recollection | Almost exactly NCMS's pipeline: memories → episodes → consolidation → recall | "Foresight signals" (time-bounded predictions) are novel — could feed temporal boosting |
+| [A-MEM](https://arxiv.org/abs/2502.12110) (NeurIPS 2025) | Zettelkasten-inspired self-organizing notes with dynamic indexing | Section-index design (6.2.2) implements this; emergent topics (6.3.1) extend it | Memory evolution (updating existing representations) not yet in NCMS |
+| [MemoryAgentBench](https://arxiv.org/abs/2507.05257) (ICLR 2026) | 4-competency evaluation; selective forgetting is unsolved | NCMS SWE-bench framework has same 4 competencies; dream cycles target forgetting | Must prove on MAB datasets |
+| [Mem0g](https://arxiv.org/abs/2504.19413) | Graph-enhanced production memory; F1=51.55 | NCMS SWE-bench: 6.3x better temporal reasoning than Mem0 | Mem0's production scale is a benchmark for operational maturity |
+| [ICLR MemAgents Workshop](https://openreview.net/pdf?id=U51WxL382H) | Agent memory recognized as distinct subfield | NCMS's 5-layer taxonomy aligns with workshop's mechanism families | Community engagement opportunity |
+
+### 8.6 Uncaptured Ideas from Completed Design Docs
 
 Three ideas from the completed design documents are not yet addressed elsewhere in this document:
 
@@ -1092,6 +1372,81 @@ The codebase is clean — no widespread unused imports detected. Lazy imports ar
 
 ## 11. Implementation Roadmap
 
+### Phase 0: Baseline Benchmarks (Pre-Work, Week 0)
+
+Before any code changes, establish baseline measurements across all target benchmarks. These baselines become the "before" in before/after comparisons for every subsequent phase.
+
+#### 0.1 Benchmark Harness Setup
+
+| Task | Effort | Files |
+|------|--------|-------|
+| LoCoMo harness (download dataset, adapter for NCMS search/recall) | 6h | `benchmarks/locomo/` |
+| LongMemEval harness (conversation memory evaluation) | 4h | `benchmarks/longmemeval/` |
+| MemoryAgentBench harness (4-competency: AR, TTL, LRU, SF) | 6-10h | `benchmarks/memoryagentbench/` (verify dataset availability: [github.com/HUST-AI-HYZ/MemoryAgentBench](https://github.com/HUST-AI-HYZ/MemoryAgentBench); if EventQA/FactConsolidation not yet released, use LoCoMo subsets for SF evaluation) |
+| Hub workload replay harness (replay the 67-memory hub ingest + queries) | 4h | `benchmarks/hub_replay/` |
+| Ingestion performance profiler (latency per pipeline stage) | 2h | Extend `benchmarks/profile_store.py` |
+
+#### 0.2 Baseline Measurements
+
+Run each harness with **current NCMS configuration** (no changes) and record:
+
+| Metric | Benchmark | What It Measures | Expected Baseline |
+|--------|-----------|-----------------|-------------------|
+| **LoCoMo judge score** | LoCoMo | Long-horizon conversational reasoning | < 0.700 (MAGMA's SOTA) |
+| **LoCoMo-Plus judge accuracy** | LoCoMo-Plus | Belief revision + temporal grounding | < 93.3% (Kumiho's SOTA) |
+| **LongMemEval R@5** | LongMemEval | Conversation memory recall | < 96.6% (MemPalace's baseline) |
+| **MAB AR nDCG@10** | MemoryAgentBench | Accurate retrieval | ~0.72 (from BEIR SciFact) |
+| **MAB TTL accuracy** | MemoryAgentBench | Test-time learning (admission routing) | ~65.9% (from tuning results) |
+| **MAB CR temporal MRR** | MemoryAgentBench | Conflict resolution | ~0.09 (from SWE-bench) |
+| **MAB LRU nDCG@10** | MemoryAgentBench | Long-range understanding | ~0.35 (from SWE-bench) |
+| **MAB SF accuracy** | MemoryAgentBench | Selective forgetting | Unknown (dream cycles untested) |
+| **Hub ingest latency p50/p95** | Hub replay | End-to-end store_memory() time | ~350ms p50, ~5400ms p95 (from tuning) |
+| **Hub search latency p50** | Hub replay | End-to-end search() time | ~38ms p50 (from tuning) |
+| **Hub duplicate rate** | Hub replay | % of memories that are exact duplicates | 27% (from audit) |
+| **Hub entity noise rate** | Hub replay | % of entities matching junk patterns | 11% (from audit) |
+
+#### 0.3 Per-Phase Regression Gates
+
+After each implementation phase, re-run the full benchmark suite. **No phase merges to main unless**:
+
+| Gate | Requirement |
+|------|-------------|
+| **No regression** | Every metric ≥ baseline (within 2% measurement noise) |
+| **Target improvement** | At least one metric improves by ≥5% vs. baseline |
+| **Latency budget** | Ingestion p95 does not increase by >50% |
+| **Test suite** | All existing tests pass (812+) |
+| **Lint** | Zero ruff errors |
+
+#### 0.4 Phase-Specific Measurement Focus
+
+Each phase has specific metrics that should improve. If they don't, the phase needs debugging before moving on:
+
+| Phase | Primary Metrics to Improve | Secondary Metrics (must not regress) |
+|-------|---------------------------|--------------------------------------|
+| **Phase 1: Data Integrity** | Hub duplicate rate → 0%, entity noise rate → <3%, orphaned memories → 0 | Search latency, LoCoMo score |
+| **Phase 2: Performance** | Ingest latency p95 ↓ 30%+, search latency p50 stable | All benchmark scores |
+| **Phase 3: Operational** | N/A (infrastructure, no retrieval change) | All benchmark scores, latency |
+| **Phase 4: Content-Aware Ingestion** | Hub entity quality ↑ (per-section extraction), section index coverage | Ingest latency (may increase — budget 50% p95 increase) |
+| **Phase 5: Level-First Retrieval** | LoCoMo ↑, LongMemEval R@5 ↑, MAB LRU ↑ | MAB AR (fact_lookup must not regress), ingest latency |
+| **Phase 6: Export & Feedback** | N/A (infrastructure + tooling) | All benchmark scores |
+| **Phase 7: Evaluation** | All benchmarks: publish final numbers vs. MAGMA/Kumiho/MemPalace | N/A (final measurement phase) |
+
+#### 0.5 Hub Replay Workload
+
+The hub replay benchmark replays the exact 67-memory ingest sequence from the hub audit (Appendix A) against a clean NCMS instance. This provides:
+
+1. **Deterministic before/after comparison** — same content, same order, same agents
+2. **Data integrity metrics** — duplicate count, junk entity count, orphaned nodes after ingest
+3. **Performance metrics** — per-memory ingest latency, per-stage timing (BM25, SPLADE, GLiNER, admission, episode)
+4. **Retrieval quality** — run a fixed query set against the hub corpus and record per-query scores
+
+The query set should include:
+- Fact queries: "What database does the IMDB Lite app use?" (should hit ADR-002)
+- State queries: "What is the current status of ADR-003?" (should hit entity_state)
+- Temporal queries: "What was decided after the security review?" (should use temporal ordering)
+- Pattern queries: "What patterns emerged in the design review process?" (should hit L4 when available)
+- Cross-agent queries: "What did the security agent flag about authentication?" (should cross agent boundaries)
+
 ### Phase 1: Data Integrity (Week 1)
 
 | Task | Effort | Files |
@@ -1121,48 +1476,57 @@ The codebase is clean — no widespread unused imports detected. Lazy imports ar
 | `ncms reindex` command | 6h | New: `cli/reindex.py`, `application/reindex_service.py` |
 | Health endpoint enhancement | 2h | `http/api.py` |
 
-### Phase 4: Document Integration & Temporal (Week 4)
+### Phase 4: Content-Aware Ingestion & Temporal (Weeks 4-5)
 
 | Task | Effort | Files |
 |------|--------|-------|
-| Document chunk indexing in BM25 + SPLADE | 6h | `document_service.py`, `memory_service.py` |
-| Document entity graph linking | 3h | `document_service.py`, `graph_service.py` |
-| Document-aware recall (DocumentContext) | 4h | `memory_service.py`, `models.py` |
-| Temporal query parser (Phase 1: regex) | 4h | New: `domain/temporal_parser.py`, `scoring.py` |
+| Ingest-time content classifier (heuristic) | 4h | `memory_service.py`, new `domain/content_classifier.py` |
+| Section extraction (reuse + extend knowledge_loader chunking for YAML) | 6h | `memory_service.py`, `knowledge_loader.py` |
+| Section index generation + parent/child memory linking | 5h | `memory_service.py`, `models.py` |
+| Document entity graph linking (per-section GLiNER calls) | 4h | `document_service.py`, `graph_service.py` |
+| Document-aware recall (DocumentContext + section navigation) | 5h | `memory_service.py`, `models.py` |
+| Temporal query parser (Phase 1: regex, 6+ pattern types) | 6h | New: `domain/temporal_parser.py`, `scoring.py` |
 | Temporal scoring integration | 2h | `memory_service.py` |
 
-### Phase 5: Synthesis & Export (Week 5)
+### Phase 5: Level-First Retrieval & Synthesis (Weeks 5-6)
+
+**Dependency**: Emergent topic map requires L4 abstracts. Before testing topic clustering, run at least one consolidation pass via the maintenance scheduler (Phase 3) or manually via `ncms` CLI / HTTP endpoint. Level-first retrieval and the synthesize() pipeline can be tested independently — they fall back gracefully when L4 content is absent.
 
 | Task | Effort | Files |
 |------|--------|-------|
-| `synthesize()` pipeline with token budgeting | 6h | `memory_service.py`, new `SynthesizedResponse` model |
-| Progressive context modes (identity/briefing/summary/deep) | 4h | `memory_service.py` |
+| Level-first retrieval: scoped search with over-fetch + node-type filter | 6h | `memory_service.py` |
+| Traversal strategies (top-down/bottom-up/temporal/lateral) | 8h | `memory_service.py`, `intent.py` |
+| Emergent topic map generation (L4 clustering) | 4h | `consolidation_service.py`, `models.py` |
+| `synthesize()` pipeline with 5 modes + token budgeting | 8h | `memory_service.py`, new `SynthesizedResponse` model |
 | MCP + HTTP synthesis endpoints | 2h | `mcp/tools.py`, `http/api.py` |
-| Wiki export from document store + memory store | 8h | New: `cli/export.py` |
 
-### Phase 6: Retrieval Quality & Feedback (Week 6)
+### Phase 6: Export & Feedback (Weeks 6-7)
 
 | Task | Effort | Files |
 |------|--------|-------|
+| Wiki export from document store + memory store (entity, episode, agent, project pages with backlinks) | 14h | New: `cli/export.py` |
 | Search-access correlation (implicit feedback) | 4h | `memory_service.py`, `sqlite_store.py` |
 | Retrieval debug diagnostics (`NCMS_PIPELINE_DEBUG`) | 3h | `memory_service.py`, `event_log.py` |
 | Bus heartbeat + offline detection | 4h | `async_bus.py`, `bus_service.py` |
 | Automated snapshot publish on agent disconnect | 3h | `bus_service.py`, `snapshot_service.py` |
 | Scale-aware feature flags (reranker/intent thresholds) | 2h | `config.py`, `memory_service.py` |
 
-### Phase 7: Evaluation & Housekeeping (Week 7)
+### Phase 7: Evaluation & Housekeeping (Weeks 8-9)
 
 | Task | Effort | Files |
 |------|--------|-------|
-| LongMemEval benchmark harness | 8h | `benchmarks/longmemeval/` |
-| Agent workload weight tuning (hub or LongMemEval) | 6h | `benchmarks/tuning/` |
+| LoCoMo + LoCoMo-Plus benchmark harness | 8h | `benchmarks/locomo/` |
+| LongMemEval benchmark harness | 6h | `benchmarks/longmemeval/` |
+| MemoryAgentBench harness (AR, TTL, LRU, selective forgetting) | 8h | `benchmarks/memoryagentbench/` |
+| Agent workload weight tuning (incl. temporal weight) | 6h | `benchmarks/tuning/` |
 | Bulk import mode | 6h | `cli/main.py`, `memory_service.py` |
-| User/assistant retrieval asymmetry | 3h | `memory_service.py` (search filter by `source_agent` role, two-pass session matching) |
+| User/assistant retrieval asymmetry | 3h | `memory_service.py` |
 | Admission scoring: content-type prefix classifier | 3h | `admission_service.py` |
 | Expanded admission labeled dataset (200+ examples) | 4h | `benchmarks/tuning/` |
 | Design doc reorganization | 1h | `docs/` directory restructure (Section 10.3) |
 | Remove or archive dormant CLI hooks | 30m | `cli/commit_hook.py`, `cli/context_loader.py` |
 | Hub re-test with all fixes | 4h | Manual validation |
+| Update all documentation (Appendix D) | 4h | See Appendix D |
 
 ---
 
@@ -1212,3 +1576,98 @@ snapshots:          0    (no agent sleep/wake cycles)
 | `Document: 6f01603fe96a` | document | 3 | Leaked document reference |
 | `S5`, `S6`, `S7` | database/document | 1 each | Source citation labels |
 | `avg 85%` | metric | 3 | Aggregate review score |
+
+## Appendix D: Documentation & Assets to Update Post-Implementation
+
+Once the resilience work is completed across Phases 1-7, the following project documentation and assets require updates to reflect the new capabilities.
+
+### README & Quickstart
+
+| File | Updates Needed |
+|------|----------------|
+| **`README.md`** (project root) | Add content-aware ingestion to feature list. Update architecture diagram if present. Note section-index retrieval and progressive context loading as capabilities. Update configuration reference with new `NCMS_MAX_CONTENT_LENGTH`, `NCMS_SCORING_WEIGHT_TEMPORAL`, `NCMS_MAINTENANCE_*`, `NCMS_FEEDBACK_ENABLED` env vars. |
+| **`docs/quickstart.md`** | Add `ncms lint` and `ncms reindex` to CLI commands. Document `synthesize_knowledge` MCP tool. Add section on maintenance scheduler configuration. Update config table with new env vars. |
+| **`docs/nemoclaw-nat-quickstart.md`** | Update NAT wrapper config section to note `save_ai_messages_to_memory: false`. Document section-aware ingestion behavior for structured documents. Note dedup behavior. |
+| **`docs/nemoclaw-nat-step-by-step.md`** | Add troubleshooting entries for content dedup (expected behavior when duplicates are rejected) and content classification (how to verify a document was section-indexed). |
+
+### CLAUDE.md (Project Instructions)
+
+| Section | Updates Needed |
+|---------|----------------|
+| **Commands** | Add `ncms lint`, `ncms reindex`, `ncms export --format wiki` |
+| **Architecture** | Add `domain/content_classifier.py`, `domain/temporal_parser.py`, `application/maintenance_scheduler.py`, `application/lint_service.py`, `cli/lint.py`, `cli/reindex.py`, `cli/export.py` to the source tree |
+| **Key Design Decisions** | Add items for: (1) two-class knowledge model (navigable docs vs. atomic fragments), (2) section-index retrieval, (3) level-first retrieval with intent-driven traversal direction, (4) emergent topic map from L4 clustering, (5) progressive context loading with 5 modes, (6) maintenance scheduler |
+| **Data Flow** | Update Store flow to include 4-gate chain (dedup → classification → size → admission) and section-aware indexing. Update Search flow to include level-first retrieval with traversal strategies and temporal boosting. Add Synthesize flow with 5 modes. |
+| **Configuration** | Add all new `NCMS_*` env vars from this document |
+| **Database Schema** | Note `content_hash` column on memories (V5). Document `section_index`, `document_section`, and `topic_summary` memory/abstract types. |
+| **Testing Conventions** | Note tests for content classifier, temporal parser, section-aware ingestion, level-first retrieval, topic map generation |
+
+### Design Spec
+
+| File | Updates Needed |
+|------|----------------|
+| **`docs/ncms-design-spec.md`** | Update Section 4 (Retrieval Pipeline) to document temporal signal. Update Section 7 (Consolidation) to document maintenance scheduler. Update Section 12 (Rehydration) to document co-occurrence edge persistence and association strength loading. Add Section for content-aware ingestion and progressive context loading. |
+
+### Dashboard & API
+
+| Asset | Updates Needed |
+|-------|----------------|
+| **Dashboard UI** (`interfaces/http/static/index.html`) | Add maintenance status panel (last consolidation, dream cycle, lint). Add Quality Trend Analytics tab (Section 8.6). |
+| **API documentation** | Document `GET /api/v1/memories/synthesize` endpoint. Document `GET /api/v1/health` enhanced response. Document search feedback endpoint if implemented. |
+
+### Benchmark Documentation
+
+| File | Updates Needed |
+|------|----------------|
+| **`benchmarks/README.md`** (if exists) | Add LoCoMo, LoCoMo-Plus, LongMemEval, and MemoryAgentBench harness documentation. Document 4-competency evaluation framework (AR, TTL, CR, LRU). Document agent-workload weight tuning methodology. Include target scores: LoCoMo ≥0.700 (MAGMA), LoCoMo-Plus ≥93.3% (Kumiho), MAB selective forgetting >7% (all current systems). |
+| **`docs/completed/ablation-study-design.md`** | Append note about agent-workload weight tuning results when available. |
+
+### Deployment
+
+| File | Updates Needed |
+|------|----------------|
+| **`deployment/nemoclaw-blueprint/configs/*.yml`** | Apply `save_ai_messages_to_memory: false` fix (Section 3.5). |
+| **`deployment/nemoclaw-blueprint/docker-compose.hub.yaml`** | Add maintenance scheduler env vars. Enable dream cycles if desired. |
+| **`deployment/nemoclaw-blueprint/entrypoint-hub.sh`** | No changes unless maintenance scheduler requires startup hooks. |
+
+### Research Paper
+
+| File | Updates Needed |
+|------|----------------|
+| **`docs/paper.md`** | Update results with LoCoMo/LoCoMo-Plus/LongMemEval/MemoryAgentBench numbers. Add level-first retrieval, content-aware ingestion, emergent topic map, and section-index retrieval to methodology. Update architecture diagram to show HTMG traversal strategies. Document temporal scoring signal. Add selective forgetting results (MAB). Add comparison table vs. MAGMA (0.700), Kumiho (93.3%), Mem0g (F1=51.55). Revise "Limitations" section. Add references to all cited works (Appendix E). |
+
+---
+
+## Appendix E: References & Attribution
+
+This design was informed by the following research and projects. All cited benchmark numbers, architectural insights, and design patterns are attributed to their original authors.
+
+### Agent Memory Systems
+
+| Ref | Citation | Key Contribution to This Design |
+|-----|----------|--------------------------------|
+| [1] | Jiang, F. et al. **"MAGMA: A Multi-Graph based Agentic Memory Architecture for AI Agents."** arXiv:2601.03236, January 2026. | Multi-graph decomposition (semantic, temporal, causal, entity) with query-adaptive traversal. Inspired level-first retrieval (Section 6.2.3). LoCoMo SOTA: 0.700. |
+| [2] | Park, Y.B. **"Graph-Native Cognitive Memory for AI Agents: Formal Belief Revision Semantics for Versioned Memory Architectures" (Kumiho).** arXiv:2603.17244, March 2026. | Formal AGM belief revision for versioned memory. Validates NCMS reconciliation approach. LoCoMo-Plus SOTA: 93.3%. |
+| [3] | Yao, J. et al. **"EverMemOS: A Self-Organizing Memory Operating System for Structured Long-Horizon Reasoning."** arXiv:2601.02163, January 2026. | Engram lifecycle: episodic traces → semantic consolidation → reconstructive recollection. Validates NCMS consolidation pipeline. Foresight signals concept. |
+| [4] | Xu, W. et al. **"A-MEM: Agentic Memory for LLM Agents."** NeurIPS 2025. arXiv:2502.12110. | Zettelkasten-inspired self-organizing notes with dynamic indexing. Validates section-index design (Section 6.2.2). |
+| [5] | Huang, Y. et al. **"Evaluating Memory in LLM Agents via Incremental Multi-Turn Interactions" (MemoryAgentBench).** ICLR 2026. arXiv:2507.05257. | 4-competency evaluation framework (AR, TTL, LRU, selective forgetting). Finding: all systems ≤7% on multi-hop selective forgetting. Adopted as evaluation framework (Section 8.4). |
+| [6] | Chhaya, T. et al. **"Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory."** arXiv:2504.19413. | Graph-enhanced production memory (Mem0g). F1=51.55, 91% lower latency than full-context. Comparison baseline for NCMS. |
+| [7] | Liu, S. et al. **"Memory in the Age of AI Agents: A Survey."** arXiv:2512.13564, December 2025. | Taxonomy of agent memory mechanisms: context-resident compression, retrieval-augmented stores, reflective self-improvement, hierarchical virtual context, policy-learned management. |
+| [8] | ICLR 2026 Workshop. **"MemAgents: Memory for LLM-Based Agentic Systems."** OpenReview, 2026. | Established agent memory as a recognized subfield with standardized evaluation methodology. |
+| [9] | **"Human-Like Remembering and Forgetting in LLM Agents: An ACT-R-Inspired Memory Architecture."** HAI 2025, ACM. doi:10.1145/3765766.3765803. | ACT-R vector-based activation with temporal decay, semantic similarity, and probabilistic noise for LLM agents. Independent validation of NCMS's ACT-R integration approach. |
+
+### Competitive Systems & Approaches
+
+| Ref | Citation | Key Contribution to This Design |
+|-----|----------|--------------------------------|
+| [10] | Milla-Jovovich, B. et al. **MemPalace.** GitHub: milla-jovovich/mempalace, 2026. | ChromaDB-based conversation memory achieving 96.6% R@5 on LongMemEval. Hybrid keyword fusion, temporal date boosting, two-pass assistant retrieval, 4-layer progressive loading. Inspired progressive context design (Section 6.3) and temporal query boosting (Section 6.7). |
+| [11] | Karpathy, A. **"LLM Knowledge Bases."** GitHub Gist, April 2026. [gist.github.com/karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | Compile-don't-search paradigm: LLM-maintained wiki with index.md navigation, lint operations, and incremental compilation. Inspired section-index design (Section 6.2.2), wiki export (Section 6.5), and lint command (Section 7.3). |
+
+### Retrieval & NLP Foundations
+
+| Ref | Citation | Relevance |
+|-----|----------|-----------|
+| [12] | Anderson, J.R. **"The Adaptive Character of Thought."** Lawrence Erlbaum Associates, 1990. | ACT-R cognitive architecture: base-level activation (recency + frequency decay) + spreading activation. Foundation for NCMS scoring (domain/scoring.py). |
+| [13] | Formal, T. et al. **"SPLADE v2: Sparse Lexical and Expansion Model for Information Retrieval."** SIGIR 2022. | Learned sparse retrieval via MLM token expansion. NCMS uses SPLADE v3 (naver/splade-v3) as the sparse neural signal. |
+| [14] | Alchourrón, C.E., Gärdenfors, P., and Makinson, D. **"On the Logic of Theory Change: Partial Meet Contraction and Revision Functions."** Journal of Symbolic Logic, 50(2), 510-530, 1985. | AGM postulates (K*2-K*6) for rational belief change. The foundational framework for belief revision. Kumiho [2] proves graph memory satisfies these postulates; NCMS reconciliation could be formalized similarly. |
+| [15] | Zarrella, G. and Marsh, S. **"GLiNER: Generalist Model for Named Entity Recognition using Bidirectional Transformer."** NAACL 2024. | Zero-shot NER used for entity extraction in NCMS (urchade/gliner_medium-v2.1). |
