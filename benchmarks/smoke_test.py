@@ -19,9 +19,9 @@ import logging
 import random
 import time
 
-from benchmarks.configs import ABLATION_CONFIGS, CORE_CONFIGS
-from benchmarks.datasets import load_beir_dataset
-from benchmarks.harness import evaluate_dataset
+from benchmarks.beir.harness import evaluate_dataset
+from benchmarks.core.configs import ABLATION_CONFIGS, CORE_CONFIGS
+from benchmarks.core.datasets import load_beir_dataset
 
 logger = logging.getLogger("benchmarks")
 

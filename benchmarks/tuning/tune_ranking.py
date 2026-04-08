@@ -130,9 +130,9 @@ async def evaluate_grid(
 
     Returns full results dict with provenance.
     """
-    from benchmarks.datasets import DATASET_TOPICS, load_beir_dataset
-    from benchmarks.harness import ingest_corpus
-    from benchmarks.metrics import compute_all_metrics
+    from benchmarks.beir.harness import ingest_corpus
+    from benchmarks.core.datasets import DATASET_TOPICS, load_beir_dataset
+    from benchmarks.core.metrics import compute_all_metrics
 
     configs = _generate_configs()
     total_configs = len(configs)

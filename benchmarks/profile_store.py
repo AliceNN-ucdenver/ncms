@@ -19,7 +19,7 @@ import logging
 import statistics
 import time
 
-from benchmarks.datasets import DATASET_TOPICS, load_beir_dataset
+from benchmarks.core.datasets import DATASET_TOPICS, load_beir_dataset
 
 logger = logging.getLogger(__name__)
 
