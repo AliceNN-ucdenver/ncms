@@ -67,6 +67,11 @@ async def _run_standard(
         conversations=conversations,
         questions=questions,
         top_k=args.top_k,
+        use_rag=args.rag,
+        answer_model=args.answer_model,
+        answer_api_base=args.answer_api_base,
+        judge_model=args.judge_model,
+        judge_api_base=args.judge_api_base,
     )
 
     _save_results(results, output_dir, "locomo", args.top_k)
@@ -310,6 +315,35 @@ def main() -> None:
         type=str,
         default="http://spark-ee7d.local:8000/v1",
         help="LLM API base URL for judge scoring",
+    )
+    parser.add_argument(
+        "--rag",
+        action="store_true",
+        help="Enable RAG evaluation: generate answers via LLM, judge via LLM",
+    )
+    parser.add_argument(
+        "--answer-model",
+        type=str,
+        default="openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        help="LLM model for answer generation (RAG mode)",
+    )
+    parser.add_argument(
+        "--answer-api-base",
+        type=str,
+        default="http://spark-ee7d.local:8000/v1",
+        help="LLM API base URL for answer generation (RAG mode)",
+    )
+    parser.add_argument(
+        "--judge-model",
+        type=str,
+        default="openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        help="LLM model for judge scoring (RAG mode)",
+    )
+    parser.add_argument(
+        "--judge-api-base",
+        type=str,
+        default="http://spark-ee7d.local:8000/v1",
+        help="LLM API base URL for judge scoring (RAG mode)",
     )
     parser.add_argument(
         "--verbose", "-v",

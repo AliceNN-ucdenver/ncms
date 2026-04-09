@@ -1,13 +1,24 @@
-"""SQLite schema DDL and migrations for NCMS."""
+"""SQLite schema DDL for NCMS.
 
-import contextlib
+Single-pass schema creation — no incremental migrations.
+All tables created in their final form.
+"""
 
 SCHEMA_VERSION = 8
 
-# ── V1: Original schema ──────────────────────────────────────────────────
+CREATE_SCHEMA_SQL = """
+-- ═══════════════════════════════════════════════════════════════════════
+-- Schema version tracking
+-- ═══════════════════════════════════════════════════════════════════════
 
-V1_TABLES = """
--- Core memory records
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY
+);
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Core memory storage (V1)
+-- ═══════════════════════════════════════════════════════════════════════
+
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -82,22 +93,17 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_agent ON snapshots(agent_id, timestamp DESC);
 
--- Consolidation state (singleton-ish key-value)
+-- Consolidation state (key-value)
 CREATE TABLE IF NOT EXISTS consolidation_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
--- Schema version tracking
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY
-);
-"""
+-- ═══════════════════════════════════════════════════════════════════════
+-- HTMG typed nodes + admission routing (V2 + V3 bitemporal columns)
+-- ═══════════════════════════════════════════════════════════════════════
 
-# ── V2: HTMG typed nodes + admission routing (Phase 1) ──────────────────
-
-V2_TABLES = """
 -- Typed HTMG nodes linked to canonical memories
 CREATE TABLE IF NOT EXISTS memory_nodes (
     id TEXT PRIMARY KEY,
@@ -109,7 +115,9 @@ CREATE TABLE IF NOT EXISTS memory_nodes (
     valid_from TEXT,
     valid_to TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    observed_at TEXT,
+    ingested_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_mnodes_memory ON memory_nodes(memory_id);
 CREATE INDEX IF NOT EXISTS idx_mnodes_type ON memory_nodes(node_type);
@@ -141,12 +149,11 @@ CREATE TABLE IF NOT EXISTS ephemeral_cache (
     expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ephemeral_expires ON ephemeral_cache(expires_at);
-"""
 
-# ── V4: Dream cycle search logging + association strengths (Phase 8) ─────
+-- ═══════════════════════════════════════════════════════════════════════
+-- Dream cycle search logging + association strengths (V4)
+-- ═══════════════════════════════════════════════════════════════════════
 
-V4_TABLES = """
--- Search log for tracking query → returned memory associations (dream cycle PMI)
 CREATE TABLE IF NOT EXISTS search_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query TEXT NOT NULL,
@@ -157,7 +164,6 @@ CREATE TABLE IF NOT EXISTS search_log (
 );
 CREATE INDEX IF NOT EXISTS idx_search_log_ts ON search_log(timestamp);
 
--- Learned association strengths between entity pairs (dream cycle PMI output)
 CREATE TABLE IF NOT EXISTS association_strengths (
     entity_id_1 TEXT NOT NULL,
     entity_id_2 TEXT NOT NULL,
@@ -165,12 +171,11 @@ CREATE TABLE IF NOT EXISTS association_strengths (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (entity_id_1, entity_id_2)
 );
-"""
 
-# ── V5: Dashboard event persistence for time-travel replay ───────────────
+-- ═══════════════════════════════════════════════════════════════════════
+-- Dashboard event persistence (V5)
+-- ═══════════════════════════════════════════════════════════════════════
 
-V5_TABLES = """
--- Persistent dashboard events for historical replay / time-travel debugging
 CREATE TABLE IF NOT EXISTS dashboard_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
@@ -181,15 +186,11 @@ CREATE TABLE IF NOT EXISTS dashboard_events (
 );
 CREATE INDEX IF NOT EXISTS idx_devents_ts ON dashboard_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_devents_type ON dashboard_events(type);
-"""
 
-V6_TABLES = """
 -- ═══════════════════════════════════════════════════════════════════════
--- Phase 2.5: Document Intelligence Persistence
--- Projects, documents, reviews, traceability, and audit tables.
+-- Document Intelligence Persistence (V6)
 -- ═══════════════════════════════════════════════════════════════════════
 
--- Projects: persistent, queryable, survives restarts
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     topic TEXT NOT NULL,
@@ -206,7 +207,6 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at);
 
--- Documents: persistent, versioned, entity-enriched
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -229,7 +229,6 @@ CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type);
 CREATE INDEX IF NOT EXISTS idx_documents_agent ON documents(from_agent);
 CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_doc_id);
 
--- Document relationships: cross-document traceability
 CREATE TABLE IF NOT EXISTS document_links (
     id TEXT PRIMARY KEY,
     source_doc_id TEXT NOT NULL,
@@ -244,7 +243,6 @@ CREATE INDEX IF NOT EXISTS idx_doclinks_source ON document_links(source_doc_id);
 CREATE INDEX IF NOT EXISTS idx_doclinks_target ON document_links(target_doc_id);
 CREATE INDEX IF NOT EXISTS idx_doclinks_type ON document_links(link_type);
 
--- Review scores: structured, queryable
 CREATE TABLE IF NOT EXISTS review_scores (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
@@ -265,7 +263,6 @@ CREATE INDEX IF NOT EXISTS idx_reviews_doc ON review_scores(document_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_project ON review_scores(project_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_score ON review_scores(score);
 
--- Pipeline state: persistent workflow tracking
 CREATE TABLE IF NOT EXISTS pipeline_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id TEXT NOT NULL,
@@ -281,11 +278,6 @@ CREATE TABLE IF NOT EXISTS pipeline_events (
 CREATE INDEX IF NOT EXISTS idx_pipeline_project ON pipeline_events(project_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_ts ON pipeline_events(timestamp);
 
--- ═══════════════════════════════════════════════════════════════════════
--- Audit tables
--- ═══════════════════════════════════════════════════════════════════════
-
--- Human approval decisions
 CREATE TABLE IF NOT EXISTS approval_decisions (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -295,12 +287,12 @@ CREATE TABLE IF NOT EXISTS approval_decisions (
     comment TEXT,
     policies_active TEXT DEFAULT '{}',
     timestamp TEXT NOT NULL,
+    prev_hash TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id),
     FOREIGN KEY (document_id) REFERENCES documents(id)
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_project ON approval_decisions(project_id);
 
--- Guardrail violations linked to documents
 CREATE TABLE IF NOT EXISTS guardrail_violations (
     id TEXT PRIMARY KEY,
     document_id TEXT,
@@ -312,12 +304,12 @@ CREATE TABLE IF NOT EXISTS guardrail_violations (
     overridden INTEGER DEFAULT 0,
     override_reason TEXT,
     timestamp TEXT NOT NULL,
+    prev_hash TEXT,
     FOREIGN KEY (document_id) REFERENCES documents(id),
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 CREATE INDEX IF NOT EXISTS idx_guardrails_project ON guardrail_violations(project_id);
 
--- Knowledge grounding: links review citations to NCMS memories
 CREATE TABLE IF NOT EXISTS grounding_log (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
@@ -332,7 +324,6 @@ CREATE TABLE IF NOT EXISTS grounding_log (
 );
 CREATE INDEX IF NOT EXISTS idx_grounding_doc ON grounding_log(document_id);
 
--- LLM call metadata + Phoenix trace link
 CREATE TABLE IF NOT EXISTS llm_calls (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -347,12 +338,12 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     duration_ms INTEGER,
     trace_id TEXT,
     timestamp TEXT NOT NULL,
+    prev_hash TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 CREATE INDEX IF NOT EXISTS idx_llm_project ON llm_calls(project_id);
 CREATE INDEX IF NOT EXISTS idx_llm_agent ON llm_calls(agent);
 
--- Agent config snapshot at pipeline start
 CREATE TABLE IF NOT EXISTS agent_config_snapshots (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -366,7 +357,6 @@ CREATE TABLE IF NOT EXISTS agent_config_snapshots (
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 
--- Bus conversation log (ask/respond pairs)
 CREATE TABLE IF NOT EXISTS bus_conversations (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -378,19 +368,16 @@ CREATE TABLE IF NOT EXISTS bus_conversations (
     confidence REAL,
     duration_ms INTEGER,
     timestamp TEXT NOT NULL,
+    prev_hash TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 CREATE INDEX IF NOT EXISTS idx_bus_project ON bus_conversations(project_id);
 CREATE INDEX IF NOT EXISTS idx_bus_askid ON bus_conversations(ask_id);
-"""
 
-# ═════════════════════════════════════════════════════════════════════════
-# V7: Guardrail Approval Gate (human-in-the-loop at guardrail checks)
-# ═════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+-- Guardrail Approval Gate (V7)
+-- ═══════════════════════════════════════════════════════════════════════
 
-V7_TABLES = """
--- Pending approvals: agent creates when guardrails flag block/reject violations.
--- Human approves or denies via dashboard. Agent polls for decision.
 CREATE TABLE IF NOT EXISTS pending_approvals (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -407,14 +394,11 @@ CREATE TABLE IF NOT EXISTS pending_approvals (
 );
 CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_approvals(status);
 CREATE INDEX IF NOT EXISTS idx_pending_project ON pending_approvals(project_id);
-"""
 
-# ═════════════════════════════════════════════════════════════════════════
-# V8: Authentication + Tamper-evident hash chains
-# ═════════════════════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════
+-- Authentication (V8)
+-- ═══════════════════════════════════════════════════════════════════════
 
-V8_TABLES = """
--- Users: local auth with bcrypt-hashed passwords
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -426,131 +410,78 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
 """
 
-V8_HASH_CHAIN_COLUMNS = [
-    "ALTER TABLE pipeline_events ADD COLUMN prev_hash TEXT",
-    "ALTER TABLE approval_decisions ADD COLUMN prev_hash TEXT",
-    "ALTER TABLE guardrail_violations ADD COLUMN prev_hash TEXT",
-    "ALTER TABLE llm_calls ADD COLUMN prev_hash TEXT",
-    "ALTER TABLE bus_conversations ADD COLUMN prev_hash TEXT",
-]
-
 # Backward compat alias used by older code paths
-CREATE_TABLES = V1_TABLES
+CREATE_TABLES = CREATE_SCHEMA_SQL
 
 
-async def run_migrations(db: object) -> None:
-    """Run schema migrations on the given aiosqlite connection."""
+async def create_schema(db: object) -> None:
+    """Create all NCMS tables in their final form (single-pass, no migrations)."""
     import aiosqlite
 
     assert isinstance(db, aiosqlite.Connection)
 
-    # Check current version
+    await db.executescript(CREATE_SCHEMA_SQL)
     await db.execute(
-        "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)"
+        "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
+        (SCHEMA_VERSION,),
     )
+
+    # Seed default admin user: shawn / ncms (bcrypt hashed)
+    from datetime import UTC, datetime
+
+    import bcrypt as _bcrypt
+
+    _hash = _bcrypt.hashpw(b"ncms", _bcrypt.gensalt()).decode()
+    _now = datetime.now(UTC).isoformat()
+    await db.execute(
+        "INSERT OR IGNORE INTO users"
+        " (id, username, password_hash,"
+        " display_name, role, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        ("usr-admin-001", "shawn", _hash, "Shawn", "admin", _now),
+    )
+    await db.commit()
+
+
+async def run_migrations(db: object) -> None:
+    """Initialize schema — creates fresh or validates existing.
+
+    For fresh databases, creates all tables in a single pass.
+    For existing databases at the current version, does nothing.
+    For older databases, logs a warning (no incremental migration support).
+    """
+    import logging
+
+    import aiosqlite
+
+    assert isinstance(db, aiosqlite.Connection)
+    logger = logging.getLogger("ncms.migrations")
+
+    # Check if schema_version table exists
+    cursor = await db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+    )
+    has_version_table = await cursor.fetchone() is not None
+
+    if not has_version_table:
+        # Fresh database — create everything
+        await create_schema(db)
+        return
+
+    # Existing database — check version
     cursor = await db.execute("SELECT MAX(version) FROM schema_version")
     row = await cursor.fetchone()
     current_version = row[0] if row and row[0] else 0
 
-    if current_version < 1:
-        await db.executescript(V1_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (1,),
-        )
-        await db.commit()
-        current_version = 1
+    if current_version == SCHEMA_VERSION:
+        return  # Already up to date
 
-    if current_version < 2:
-        await db.executescript(V2_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (2,),
+    if current_version < SCHEMA_VERSION:
+        logger.warning(
+            "Database schema version %d is outdated (current: %d). "
+            "Delete the database file to recreate with the latest schema.",
+            current_version,
+            SCHEMA_VERSION,
         )
-        await db.commit()
-        current_version = 2
-
-    if current_version < 3:
-        # V3: Bitemporal columns for state reconciliation (Phase 2B)
-        # Nullable columns — existing rows get NULL (safe)
-        await db.execute(
-            "ALTER TABLE memory_nodes ADD COLUMN observed_at TEXT"
-        )
-        await db.execute(
-            "ALTER TABLE memory_nodes ADD COLUMN ingested_at TEXT"
-        )
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (3,),
-        )
-        await db.commit()
-        current_version = 3
-
-    if current_version < 4:
-        # V4: Dream cycle tables (Phase 8 — search logging + association learning)
-        await db.executescript(V4_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (4,),
-        )
-        await db.commit()
-        current_version = 4
-
-    if current_version < 5:
-        # V5: Dashboard event persistence for time-travel replay
-        await db.executescript(V5_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (5,),
-        )
-        await db.commit()
-        current_version = 5
-
-    if current_version < 6:  # noqa: PLR1702
-        # V6: Document Intelligence Persistence (Phase 2.5)
-        # 11 tables: projects, documents, document_links, review_scores,
-        # pipeline_events, approval_decisions, guardrail_violations,
-        # grounding_log, llm_calls, agent_config_snapshots, bus_conversations
-        await db.executescript(V6_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (6,),
-        )
-        await db.commit()
-        current_version = 6
-
-    if current_version < 7:
-        # V7: Guardrail Approval Gate (human-in-the-loop)
-        await db.executescript(V7_TABLES)
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (7,),
-        )
-        await db.commit()
-        current_version = 7
-
-    if current_version < 8:
-        # V8: Authentication + tamper-evident hash chains
-        await db.executescript(V8_TABLES)
-        # Add prev_hash columns to existing audit tables (nullable — safe for existing rows)
-        for alter_sql in V8_HASH_CHAIN_COLUMNS:
-            with contextlib.suppress(Exception):
-                await db.execute(alter_sql)  # Column may already exist
-        # Seed default admin user: shawn / ncms (bcrypt hashed)
-        from datetime import UTC, datetime
-
-        import bcrypt as _bcrypt
-        _hash = _bcrypt.hashpw(b"ncms", _bcrypt.gensalt()).decode()
-        _now = datetime.now(UTC).isoformat()
-        await db.execute(
-            "INSERT OR IGNORE INTO users"
-            " (id, username, password_hash,"
-            " display_name, role, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            ("usr-admin-001", "shawn", _hash, "Shawn", "admin", _now),
-        )
-        await db.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
-            (8,),
-        )
-        await db.commit()
+        # Attempt to create any missing tables (IF NOT EXISTS makes this safe)
+        await create_schema(db)

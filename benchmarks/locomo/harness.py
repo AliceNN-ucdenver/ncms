@@ -2,6 +2,10 @@
 
 Pattern follows the hub_replay and BEIR harnesses: create in-memory backends,
 ingest data, run queries, compute metrics.
+
+Supports two modes:
+- Retrieval-only (default): fast containment/F1 metrics on retrieved content.
+- RAG (use_rag=True): generate answer via LLM, judge via LLM, plus token F1.
 """
 
 from __future__ import annotations
@@ -17,9 +21,39 @@ from benchmarks.core.qa_metrics import (
     llm_judge_score,
     recall_at_k_qa,
 )
+from benchmarks.core.rag_pipeline import (
+    DEFAULT_API_BASE,
+    DEFAULT_MODEL,
+    build_context_from_memories,
+    generate_answer,
+    llm_judge,
+)
 from benchmarks.locomo.loader import Conversation, PlusQuestion, QAQuestion
 
 logger = logging.getLogger(__name__)
+
+# Refusal phrases for adversarial (category 5) detection
+_REFUSAL_PHRASES = (
+    "no information available",
+    "not mentioned",
+    "not provided",
+    "cannot answer",
+    "can't answer",
+    "no relevant information",
+    "i don't know",
+    "i don't have",
+    "not discussed",
+    "not available",
+    "no evidence",
+    "not enough information",
+    "insufficient information",
+    "unable to determine",
+    "unable to answer",
+    "not specified",
+    "no record",
+    "not in the context",
+    "not in the conversation",
+)
 
 
 class ConversationState:
@@ -153,19 +187,37 @@ async def evaluate_qa(
     state: ConversationState,
     questions: list[QAQuestion],
     top_k: int = 5,
+    use_rag: bool = False,
+    answer_model: str = DEFAULT_MODEL,
+    answer_api_base: str = DEFAULT_API_BASE,
+    judge_model: str = DEFAULT_MODEL,
+    judge_api_base: str = DEFAULT_API_BASE,
 ) -> dict[str, float]:
     """Evaluate QA retrieval against a populated conversation state.
 
     For each question, searches NCMS and checks whether the top-k results
     contain the ground-truth answer.
 
+    When use_rag=True, also generates answers via LLM and judges them,
+    with category-specific evaluation matching the LoCoMo reference:
+      - Category 1 (multi-hop): comma-split F1
+      - Category 2 (temporal): append date context to question
+      - Category 5 (adversarial): check for refusal phrases
+
     Args:
         state: ConversationState from replay_conversation().
         questions: QA questions for this conversation.
         top_k: Number of top results to consider.
+        use_rag: If True, generate answers and judge them via LLM.
+        answer_model: LLM model for answer generation.
+        answer_api_base: API base URL for answer generation.
+        judge_model: LLM model for judging.
+        judge_api_base: API base URL for judging.
 
     Returns:
         Dict with Recall@k, Contains, F1, and per-category breakdowns.
+        When use_rag=True, also includes QA_F1, Judge_Accuracy, and
+        per-category QA metrics.
     """
     from ncms.application.memory_service import MemoryService
 
@@ -175,6 +227,12 @@ async def evaluate_qa(
     contains_scores: list[float] = []
     f1_scores: list[float] = []
     category_scores: dict[str, list[float]] = {}
+
+    # RAG-specific accumulators
+    qa_f1_scores: list[float] = []
+    judge_scores: list[float] = []
+    category_qa_f1: dict[str, list[float]] = {}
+    category_judge: dict[str, list[float]] = {}
 
     for q in questions:
         results = await svc.search(query=q.question, limit=top_k)
@@ -195,6 +253,74 @@ async def evaluate_qa(
             category_scores[cat] = []
         category_scores[cat].append(recall)
 
+        # RAG evaluation
+        if use_rag:
+            context = build_context_from_memories(results, max_chars=4000)
+
+            # Category-specific question modification
+            eval_question = q.question
+            if cat == "temporal":
+                eval_question = (
+                    q.question
+                    + " Use the date of the conversation to "
+                    "answer with an approximate date."
+                )
+
+            # Category-specific system prompt
+            if cat == "adversarial":
+                system = (
+                    "Answer the following question based on the context. "
+                    "If the information is not available in the context, "
+                    'say "No information available".'
+                )
+            else:
+                system = (
+                    "Answer in 1-5 words only. Use exact names, dates, "
+                    "places and terms from the context. "
+                    "Never write full sentences."
+                )
+
+            prediction = await generate_answer(
+                eval_question,
+                context,
+                system_prompt=system,
+                model=answer_model,
+                api_base=answer_api_base,
+                max_tokens=50,
+            )
+
+            # Score: category-specific token F1
+            if cat == "multi-hop":
+                # Comma-split F1 for multi-hop questions
+                qa_f1 = _multihop_f1(prediction, q.answer)
+            elif cat == "adversarial":
+                # Binary: model should refuse
+                lower = prediction.lower()
+                qa_f1 = 1.0 if any(p in lower for p in _REFUSAL_PHRASES) else 0.0
+            elif cat == "open-domain":
+                # Use primary answer (before semicolon)
+                primary = q.answer.split(";")[0].strip()
+                qa_f1 = f1_token_overlap(prediction, primary)
+            else:
+                qa_f1 = f1_token_overlap(prediction, q.answer)
+            qa_f1_scores.append(qa_f1)
+
+            # LLM judge (skip for adversarial — use F1 result)
+            if cat == "adversarial":
+                judge_ok = 1.0 if qa_f1 == 1.0 else 0.0
+            else:
+                judge_ok = 1.0 if await llm_judge(
+                    q.question, q.answer, prediction,
+                    judge_type="temporal" if cat == "temporal" else "default",
+                    model=judge_model,
+                    api_base=judge_api_base,
+                ) else 0.0
+            judge_scores.append(judge_ok)
+
+            # Per-category RAG metrics
+            category_qa_f1.setdefault(cat, []).append(qa_f1)
+            category_judge.setdefault(cat, []).append(judge_ok)
+
     n = len(recall_scores) or 1
     metrics: dict[str, float] = {
         f"Recall@{top_k}": sum(recall_scores) / n,
@@ -209,13 +335,49 @@ async def evaluate_qa(
         metrics[f"Recall@{top_k}_{cat}"] = sum(scores) / cat_n
         metrics[f"num_{cat}"] = float(len(scores))
 
+    # RAG metrics
+    if use_rag and qa_f1_scores:
+        qa_n = len(qa_f1_scores) or 1
+        metrics["QA_F1"] = sum(qa_f1_scores) / qa_n
+        metrics["Judge_Accuracy"] = sum(judge_scores) / qa_n
+
+        for cat, scores in sorted(category_qa_f1.items()):
+            cat_n = len(scores) or 1
+            metrics[f"QA_F1_{cat}"] = sum(scores) / cat_n
+
+        for cat, scores in sorted(category_judge.items()):
+            cat_n = len(scores) or 1
+            metrics[f"Judge_{cat}"] = sum(scores) / cat_n
+
     return metrics
+
+
+def _multihop_f1(prediction: str, answer: str) -> float:
+    """Compute F1 over comma-separated answer elements (for multi-hop questions)."""
+    pred_parts = {p.strip().lower() for p in prediction.split(",") if p.strip()}
+    answer_parts = {a.strip().lower() for a in answer.split(",") if a.strip()}
+
+    if not pred_parts or not answer_parts:
+        return f1_token_overlap(prediction, answer)
+
+    tp = len(pred_parts & answer_parts)
+    precision = tp / len(pred_parts) if pred_parts else 0.0
+    recall = tp / len(answer_parts) if answer_parts else 0.0
+
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
 
 
 async def run_locomo_benchmark(
     conversations: list[Conversation],
     questions: list[QAQuestion],
     top_k: int = 5,
+    use_rag: bool = False,
+    answer_model: str = DEFAULT_MODEL,
+    answer_api_base: str = DEFAULT_API_BASE,
+    judge_model: str = DEFAULT_MODEL,
+    judge_api_base: str = DEFAULT_API_BASE,
 ) -> dict:
     """Run the full LoCoMo benchmark: replay each conversation, evaluate QA.
 
@@ -223,6 +385,11 @@ async def run_locomo_benchmark(
         conversations: List of parsed conversations.
         questions: All QA questions (will be grouped by conversation_id).
         top_k: Number of top results for recall computation.
+        use_rag: If True, generate answers and judge via LLM.
+        answer_model: LLM model for answer generation.
+        answer_api_base: API base URL for answer generation.
+        judge_model: LLM model for judging.
+        judge_api_base: API base URL for judging.
 
     Returns:
         Dict with per-conversation metrics and overall aggregates.
@@ -236,6 +403,8 @@ async def run_locomo_benchmark(
     all_recall: list[float] = []
     all_contains: list[float] = []
     all_f1: list[float] = []
+    all_qa_f1: list[float] = []
+    all_judge: list[float] = []
 
     for conv in conversations:
         conv_questions = questions_by_conv.get(conv.conversation_id, [])
@@ -254,7 +423,14 @@ async def run_locomo_benchmark(
 
         state = await replay_conversation(conv)
         try:
-            metrics = await evaluate_qa(state, conv_questions, top_k=top_k)
+            metrics = await evaluate_qa(
+                state, conv_questions, top_k=top_k,
+                use_rag=use_rag,
+                answer_model=answer_model,
+                answer_api_base=answer_api_base,
+                judge_model=judge_model,
+                judge_api_base=judge_api_base,
+            )
         finally:
             await state.store.close()  # type: ignore[union-attr]
 
@@ -266,16 +442,21 @@ async def run_locomo_benchmark(
             all_recall.extend([metrics[f"Recall@{top_k}"]] * n)
             all_contains.extend([metrics["Contains"]] * n)
             all_f1.extend([metrics["F1"]] * n)
+            if use_rag and "QA_F1" in metrics:
+                all_qa_f1.extend([metrics["QA_F1"]] * n)
+                all_judge.extend([metrics["Judge_Accuracy"]] * n)
 
-        logger.info(
-            "  %s: Recall@%d=%.4f  Contains=%.4f  F1=%.4f  (%d questions)",
-            conv.conversation_id,
-            top_k,
-            metrics[f"Recall@{top_k}"],
-            metrics["Contains"],
-            metrics["F1"],
-            n,
+        log_msg = (
+            f"  {conv.conversation_id}: Recall@{top_k}={metrics[f'Recall@{top_k}']:.4f}"
+            f"  Contains={metrics['Contains']:.4f}  F1={metrics['F1']:.4f}"
         )
+        if use_rag and "QA_F1" in metrics:
+            log_msg += (
+                f"  QA_F1={metrics['QA_F1']:.4f}"
+                f"  Judge={metrics['Judge_Accuracy']:.4f}"
+            )
+        log_msg += f"  ({n} questions)"
+        logger.info(log_msg)
 
     # Overall aggregates
     total_n = len(all_recall) or 1
@@ -287,10 +468,23 @@ async def run_locomo_benchmark(
         "num_conversations": float(len(per_conversation)),
     }
 
+    if use_rag and all_qa_f1:
+        qa_n = len(all_qa_f1) or 1
+        overall["QA_F1"] = sum(all_qa_f1) / qa_n
+        overall["Judge_Accuracy"] = sum(all_judge) / qa_n
+
     logger.info("=" * 60)
-    logger.info("LoCoMo Overall: Recall@%d=%.4f  Contains=%.4f  F1=%.4f  (%d questions)",
-                top_k, overall[f"Recall@{top_k}"], overall["Contains"],
-                overall["F1"], len(all_recall))
+    log_msg = (
+        f"LoCoMo Overall: Recall@{top_k}={overall[f'Recall@{top_k}']:.4f}"
+        f"  Contains={overall['Contains']:.4f}  F1={overall['F1']:.4f}"
+    )
+    if use_rag and "QA_F1" in overall:
+        log_msg += (
+            f"  QA_F1={overall['QA_F1']:.4f}"
+            f"  Judge={overall['Judge_Accuracy']:.4f}"
+        )
+    log_msg += f"  ({len(all_recall)} questions)"
+    logger.info(log_msg)
     logger.info("=" * 60)
 
     return {

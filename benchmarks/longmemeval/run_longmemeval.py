@@ -66,6 +66,11 @@ async def _run(args: argparse.Namespace) -> None:
         sessions_by_question=sessions_by_question,
         questions=questions,
         top_k=args.top_k,
+        use_rag=args.rag,
+        answer_model=args.answer_model,
+        answer_api_base=args.answer_api_base,
+        judge_model=args.judge_model,
+        judge_api_base=args.judge_api_base,
     )
 
     # Save results
@@ -117,6 +122,9 @@ def _format_markdown(results: dict, top_k: int) -> str:
     lines.append(f"| Recall@{top_k} | {overall.get(f'Recall@{top_k}', 0):.4f} |")
     lines.append(f"| Contains | {overall.get('Contains', 0):.4f} |")
     lines.append(f"| F1 | {overall.get('F1', 0):.4f} |")
+    if "QA_F1" in overall:
+        lines.append(f"| QA F1 | {overall.get('QA_F1', 0):.4f} |")
+        lines.append(f"| Judge Accuracy | {overall.get('Judge_Accuracy', 0):.4f} |")
     lines.append(f"| Questions | {int(overall.get('num_questions', 0))} |")
     lines.append(f"| Total sessions | {results.get('total_sessions', 0)} |")
     lines.append(f"| Total memories | {results.get('total_memories', 0)} |")
@@ -182,6 +190,35 @@ def main() -> None:
         "--test",
         action="store_true",
         help="Test mode: process first 3 questions only",
+    )
+    parser.add_argument(
+        "--rag",
+        action="store_true",
+        help="Enable RAG evaluation: generate answers via LLM, judge via LLM",
+    )
+    parser.add_argument(
+        "--answer-model",
+        type=str,
+        default="openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        help="LLM model for answer generation (RAG mode)",
+    )
+    parser.add_argument(
+        "--answer-api-base",
+        type=str,
+        default="http://spark-ee7d.local:8000/v1",
+        help="LLM API base URL for answer generation (RAG mode)",
+    )
+    parser.add_argument(
+        "--judge-model",
+        type=str,
+        default="openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        help="LLM model for judge scoring (RAG mode)",
+    )
+    parser.add_argument(
+        "--judge-api-base",
+        type=str,
+        default="http://spark-ee7d.local:8000/v1",
+        help="LLM API base URL for judge scoring (RAG mode)",
     )
     parser.add_argument(
         "--verbose", "-v",

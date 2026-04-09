@@ -154,29 +154,65 @@ def load_locomo_dataset(
         else:
             continue
 
-        # Parse conversation turns
+        # Parse conversation turns from LoCoMo session-based format.
+        # The "conversation" value is a dict with keys: speaker_a, speaker_b,
+        # session_N_date_time, session_N (list of {speaker, text, dia_id} dicts).
         conv = Conversation(conversation_id=str(cid))
 
-        raw_turns = entry.get("conversation", entry.get("turns", entry.get("dialog", [])))
-        for turn_idx, turn in enumerate(raw_turns):
-            if isinstance(turn, dict):
-                role = turn.get("role", turn.get("speaker", "unknown"))
-                content = turn.get("content", turn.get("text", turn.get("utterance", "")))
-                session_id = str(turn.get("session_id", turn.get("session", "0")))
-            elif isinstance(turn, str):
-                role = "user" if turn_idx % 2 == 0 else "assistant"
-                content = turn
-                session_id = "0"
-            else:
-                continue
+        raw_conv = entry.get("conversation", entry.get("turns", entry.get("dialog", {})))
+        turn_idx = 0
 
-            conv.turns.append(ConversationTurn(
-                turn_id=turn_idx,
-                role=str(role),
-                content=str(content),
-                session_id=session_id,
-                conversation_id=str(cid),
-            ))
+        if isinstance(raw_conv, dict):
+            # LoCoMo format: extract ordered sessions
+            session_num = 1
+            while True:
+                session_key = f"session_{session_num}"
+                if session_key not in raw_conv:
+                    break
+                session_turns = raw_conv[session_key]
+                session_id = str(session_num)
+                for turn in session_turns:
+                    if isinstance(turn, dict):
+                        role = turn.get("speaker", "unknown")
+                        content = turn.get("text", turn.get("utterance", ""))
+                    elif isinstance(turn, str):
+                        # Fallback: plain strings alternate speakers
+                        speaker_a = raw_conv.get("speaker_a", "Speaker A")
+                        speaker_b = raw_conv.get("speaker_b", "Speaker B")
+                        role = speaker_a if turn_idx % 2 == 0 else speaker_b
+                        content = turn
+                    else:
+                        continue
+                    conv.turns.append(ConversationTurn(
+                        turn_id=turn_idx,
+                        role=str(role),
+                        content=str(content),
+                        session_id=session_id,
+                        conversation_id=str(cid),
+                    ))
+                    turn_idx += 1
+                session_num += 1
+        elif isinstance(raw_conv, list):
+            # Flat list of turn dicts or strings
+            for turn in raw_conv:
+                if isinstance(turn, dict):
+                    role = turn.get("role", turn.get("speaker", "unknown"))
+                    content = turn.get("content", turn.get("text", ""))
+                    session_id = str(turn.get("session_id", turn.get("session", "0")))
+                elif isinstance(turn, str):
+                    role = "user" if turn_idx % 2 == 0 else "assistant"
+                    content = turn
+                    session_id = "0"
+                else:
+                    continue
+                conv.turns.append(ConversationTurn(
+                    turn_id=turn_idx,
+                    role=str(role),
+                    content=str(content),
+                    session_id=session_id,
+                    conversation_id=str(cid),
+                ))
+                turn_idx += 1
 
         conversations.append(conv)
 

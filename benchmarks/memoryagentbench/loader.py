@@ -24,14 +24,14 @@ DATASET_REPO = "ai-hyz/MemoryAgentBench"
 DATASET_URL = f"https://huggingface.co/datasets/{DATASET_REPO}"
 
 # Expected split names in the dataset
-COMPETENCY_SPLITS = ("ar", "ttl", "lru", "sf")
+COMPETENCY_SPLITS = ("ar", "ttl", "lru", "cr")
 
 # HuggingFace split names → our short names
 _HF_SPLIT_MAP: dict[str, str] = {
     "accurate_retrieval": "ar",
     "test_time_learning": "ttl",
     "long_range_understanding": "lru",
-    "conflict_resolution": "sf",  # CR maps to selective forgetting evaluation
+    "conflict_resolution": "cr",
 }
 
 

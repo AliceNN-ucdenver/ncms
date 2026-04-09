@@ -9,13 +9,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import string
 
 logger = logging.getLogger(__name__)
 
+_ARTICLES_RE = re.compile(r"\b(a|an|the)\b", re.IGNORECASE)
+
 
 def _normalize(text: str) -> str:
-    """Lowercase and strip whitespace for comparison."""
-    return text.lower().strip()
+    """Normalize text for comparison: lowercase, remove articles/punctuation/whitespace."""
+    text = text.lower()
+    text = _ARTICLES_RE.sub(" ", text)
+    text = "".join(ch for ch in text if ch not in string.punctuation)
+    text = " ".join(text.split())
+    return text.strip()
 
 
 def exact_match(prediction: str, ground_truth: str) -> float:
@@ -62,6 +70,22 @@ def f1_token_overlap(prediction: str, ground_truth: str) -> float:
     if precision + recall == 0:
         return 0.0
     return 2 * precision * recall / (precision + recall)
+
+
+def substring_em(prediction: str, ground_truth: str) -> float:
+    """Check if normalized ground truth is a substring of normalized prediction.
+
+    Uses the stronger normalization (lowercase, remove articles/punctuation,
+    collapse whitespace) before checking substring containment.
+
+    Returns:
+        1.0 if normalized ground truth is found in normalized prediction, 0.0 otherwise.
+    """
+    norm_pred = _normalize(prediction)
+    norm_truth = _normalize(ground_truth)
+    if not norm_truth:
+        return 0.0
+    return 1.0 if norm_truth in norm_pred else 0.0
 
 
 def contains_match(prediction: str, ground_truth: str) -> float:

@@ -2,28 +2,28 @@
 
 Evaluates NCMS against the MemoryAgentBench benchmark across 4 memory
 competencies: Accurate Retrieval (AR), Test-Time Learning (TTL),
-Long-Range Understanding (LRU), and Selective Forgetting (SF).
+Long-Range Understanding (LRU), and Conflict Resolution (CR).
 
-Follows the same patterns as benchmarks/swebench/harness.py:
-- In-memory backends (no disk state)
-- Phases 1-3 enabled (admission, reconciliation, episodes)
-- Reuses core metrics (nDCG@10, classification_accuracy, etc.)
+Each sample has a long context, 100 questions, and answer lists.
+The protocol for each sample:
+  1. Chunk the context into ~2000-char pieces
+  2. Ingest each chunk as a separate memory into a fresh NCMS instance
+  3. For each question: search NCMS, score retrieved context vs answers
+  4. Aggregate per-split and overall
+
+This is a retrieval-quality baseline (no LLM answer generation).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
+import string
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
-
-from benchmarks.core.metrics import (
-    classification_accuracy,
-    compute_all_metrics,
-    temporal_mrr,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -36,111 +36,164 @@ TUNED_WEIGHTS = {
     "hierarchy": 0.0,
 }
 
+# Split names as used in the MAB benchmark
+ALL_SPLITS = ("ar", "ttl", "lru", "cr")
 
-# ── Data containers ──────────────────────────────────────────────────────
+# Chunk size for splitting context into memories (chars)
+DEFAULT_CHUNK_SIZE = 2000
+DEFAULT_CHUNK_OVERLAP = 200
 
-
-@dataclass
-class MABState:
-    """Holds all in-memory backends and mappings for a MAB experiment."""
-
-    store: Any  # SQLiteStore
-    index: Any  # TantivyEngine
-    graph: Any  # NetworkXGraph
-    splade: Any  # SpladeEngine
-    config: Any  # NCMSConfig
-    doc_to_mem: dict[str, str] = field(default_factory=dict)
-    mem_to_doc: dict[str, str] = field(default_factory=dict)
-    domain: str = "mab"
-    # Ingestion stats
-    docs_ingested: int = 0
-    ingestion_seconds: float = 0.0
+# How many results to retrieve per question
+DEFAULT_TOP_K = 10
 
 
-# ── Helpers for extracting fields from MAB data ─────────────────────────
+# -- Scoring helpers --------------------------------------------------------
 
 
-def _get_text(item: dict[str, Any], keys: tuple[str, ...] = ("text", "content", "memory")) -> str:
-    """Extract text content from a MAB data item, trying common field names."""
-    for key in keys:
-        if key in item and item[key]:
-            return str(item[key])
-    # Fallback: concatenate all string values
-    parts = [str(v) for v in item.values() if isinstance(v, str) and len(str(v)) > 10]
-    return " ".join(parts) if parts else ""
+def _normalize(text: str) -> str:
+    """Normalize text for scoring: lowercase, strip punctuation/articles/whitespace."""
+    text = text.lower()
+    # Remove punctuation
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    # Remove articles
+    text = re.sub(r"\b(a|an|the)\b", " ", text)
+    # Collapse whitespace
+    text = " ".join(text.split())
+    return text
 
 
-def _get_id(item: dict[str, Any], index: int) -> str:
-    """Extract or generate a document ID from a MAB data item."""
-    for key in ("id", "doc_id", "instance_id", "memory_id"):
-        if key in item and item[key]:
-            return str(item[key])
-    return f"mab_doc_{index}"
+def _tokenize(text: str) -> list[str]:
+    """Tokenize normalized text."""
+    return _normalize(text).split()
 
 
-def _get_query(item: dict[str, Any]) -> str:
-    """Extract query text from a MAB data item."""
-    for key in ("query", "question", "prompt"):
-        if key in item and item[key]:
-            return str(item[key])
-    return ""
+def token_f1(prediction: str, ground_truth: str) -> float:
+    """Compute token-level F1 between prediction and ground truth."""
+    pred_tokens = _tokenize(prediction)
+    gold_tokens = _tokenize(ground_truth)
+    if not pred_tokens or not gold_tokens:
+        return 0.0
+    common = Counter(pred_tokens) & Counter(gold_tokens)
+    num_common = sum(common.values())
+    if num_common == 0:
+        return 0.0
+    precision = num_common / len(pred_tokens)
+    recall = num_common / len(gold_tokens)
+    return 2 * precision * recall / (precision + recall)
 
 
-def _get_label(item: dict[str, Any]) -> str:
-    """Extract label/category from a MAB data item."""
-    for key in ("label", "category", "class", "type", "answer"):
-        if key in item and item[key]:
-            return str(item[key])
-    return "unknown"
+def exact_match(prediction: str, ground_truth: str) -> bool:
+    """Check if normalized prediction equals normalized ground truth."""
+    return _normalize(prediction) == _normalize(ground_truth)
 
 
-def _get_relevant_ids(item: dict[str, Any]) -> list[str]:
-    """Extract relevant document IDs from a MAB data item."""
-    for key in ("relevant_ids", "relevant_docs", "gold_ids", "positive_ids"):
-        if key in item and item[key]:
-            val = item[key]
-            if isinstance(val, list):
-                return [str(v) for v in val]
-            if isinstance(val, str):
-                return [v.strip() for v in val.split(",") if v.strip()]
-    return []
+def substring_match(prediction: str, ground_truth: str) -> bool:
+    """Check if normalized ground truth appears in normalized prediction."""
+    return _normalize(ground_truth) in _normalize(prediction)
 
 
-def _get_outdated_ids(item: dict[str, Any]) -> list[str]:
-    """Extract outdated/superseded document IDs from a MAB data item."""
-    for key in ("outdated_ids", "superseded_ids", "forget_ids", "obsolete_ids"):
-        if key in item and item[key]:
-            val = item[key]
-            if isinstance(val, list):
-                return [str(v) for v in val]
-            if isinstance(val, str):
-                return [v.strip() for v in val.split(",") if v.strip()]
-    return []
-
-
-# ── Ingestion ────────────────────────────────────────────────────────────
-
-
-async def ingest_mab_corpus(
-    data: dict[str, Any],
-    config: Any | None = None,
-) -> MABState:
-    """Ingest memory chunks from MAB dataset into in-memory NCMS.
-
-    Collects all unique documents across all competency splits and
-    ingests them into a fresh NCMS instance with phases 1-3 enabled.
+def score_answer(retrieved_text: str, answer_list: list[str]) -> dict[str, float]:
+    """Score retrieved text against a list of acceptable answers.
 
     Args:
-        data: MAB dataset dict with keys 'ar', 'ttl', 'lru', 'sf'.
-        config: Optional NCMSConfig override.
+        retrieved_text: Concatenated top-k retrieved memory contents.
+        answer_list: List of acceptable answers (from multiple annotators).
 
     Returns:
-        MABState with populated backends and ID mappings.
+        Dict with contains_any, best_f1, best_exact_match, best_substring.
     """
-    from ncms.application.admission_service import AdmissionService
-    from ncms.application.episode_service import EpisodeService
+    if not answer_list or not retrieved_text:
+        return {
+            "contains_any": 0.0,
+            "best_f1": 0.0,
+            "best_exact_match": 0.0,
+            "best_substring": 0.0,
+        }
+
+    best_f1 = 0.0
+    best_em = 0.0
+    best_sub = 0.0
+
+    for answer in answer_list:
+        ans = str(answer).strip()
+        if not ans:
+            continue
+        f1 = token_f1(retrieved_text, ans)
+        em = 1.0 if exact_match(retrieved_text, ans) else 0.0
+        sub = 1.0 if substring_match(retrieved_text, ans) else 0.0
+
+        best_f1 = max(best_f1, f1)
+        best_em = max(best_em, em)
+        best_sub = max(best_sub, sub)
+
+    return {
+        "contains_any": best_sub,  # Does retrieved text contain any answer?
+        "best_f1": best_f1,
+        "best_exact_match": best_em,
+        "best_substring": best_sub,
+    }
+
+
+# -- Text chunking ---------------------------------------------------------
+
+
+def chunk_context(context: str, chunk_size: int = DEFAULT_CHUNK_SIZE,
+                  overlap: int = DEFAULT_CHUNK_OVERLAP) -> list[str]:
+    """Split context into overlapping chunks at sentence boundaries.
+
+    Args:
+        context: Full context string to chunk.
+        chunk_size: Target chunk size in characters.
+        overlap: Overlap between consecutive chunks in characters.
+
+    Returns:
+        List of text chunks.
+    """
+    if not context:
+        return []
+
+    # Split on sentence boundaries (period/question/exclamation + space)
+    sentences = re.split(r'(?<=[.!?])\s+', context)
+
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+
+    for sentence in sentences:
+        sentence_len = len(sentence)
+        if current_len + sentence_len > chunk_size and current:
+            chunks.append(" ".join(current))
+            # Keep overlap: walk backwards to find sentences within overlap window
+            overlap_parts: list[str] = []
+            overlap_len = 0
+            for s in reversed(current):
+                if overlap_len + len(s) > overlap:
+                    break
+                overlap_parts.insert(0, s)
+                overlap_len += len(s) + 1
+            current = overlap_parts
+            current_len = overlap_len
+        current.append(sentence)
+        current_len += sentence_len + 1
+
+    if current:
+        chunks.append(" ".join(current))
+
+    return chunks
+
+
+# -- Per-sample NCMS instance creation --------------------------------------
+
+
+async def _create_ncms_instance(
+    domain: str = "mab",
+) -> tuple[Any, Any, Any, Any, Any, Any]:
+    """Create a fresh in-memory NCMS instance for one sample.
+
+    Returns:
+        Tuple of (memory_service, store, index, graph, splade, config).
+    """
     from ncms.application.memory_service import MemoryService
-    from ncms.application.reconciliation_service import ReconciliationService
     from ncms.config import NCMSConfig
     from ncms.infrastructure.graph.networkx_store import NetworkXGraph
     from ncms.infrastructure.indexing.splade_engine import SpladeEngine
@@ -156,24 +209,22 @@ async def ingest_mab_corpus(
     graph = NetworkXGraph()
     splade = SpladeEngine()
 
-    if config is None:
-        config = NCMSConfig(
-            db_path=":memory:",
-            actr_noise=0.0,  # Deterministic for benchmarks
-            splade_enabled=True,
-            graph_expansion_enabled=True,
-            scoring_weight_bm25=TUNED_WEIGHTS["bm25"],
-            scoring_weight_actr=TUNED_WEIGHTS["actr"],
-            scoring_weight_splade=TUNED_WEIGHTS["splade"],
-            scoring_weight_graph=TUNED_WEIGHTS["graph"],
-            actr_threshold=-999.0,  # ACT-R disabled
-            # Enable phases 1-3
-            admission_enabled=True,
-            reconciliation_enabled=True,
-            episodes_enabled=True,
-            # Intent classification for structured retrieval
-            intent_classification_enabled=True,
-        )
+    config = NCMSConfig(
+        db_path=":memory:",
+        actr_noise=0.0,  # Deterministic for benchmarks
+        splade_enabled=True,
+        graph_expansion_enabled=True,
+        scoring_weight_bm25=TUNED_WEIGHTS["bm25"],
+        scoring_weight_actr=TUNED_WEIGHTS["actr"],
+        scoring_weight_splade=TUNED_WEIGHTS["splade"],
+        scoring_weight_graph=TUNED_WEIGHTS["graph"],
+        actr_threshold=-999.0,  # Effectively disable ACT-R threshold
+        # Disable phases that add overhead without helping retrieval baseline
+        admission_enabled=False,
+        reconciliation_enabled=False,
+        episodes_enabled=False,
+        intent_classification_enabled=False,
+    )
 
     # Seed domain-specific topics for GLiNER entity extraction
     from benchmarks.core.datasets import MAB_TOPICS
@@ -182,528 +233,397 @@ async def ingest_mab_corpus(
     mab_labels = topic_info.get("labels", [])
     if mab_labels:
         await store.set_consolidation_value(
-            "entity_labels:mab",
+            f"entity_labels:{domain}",
             json.dumps(mab_labels),
         )
-        logger.info("Seeded MAB entity labels: %s", mab_labels)
-
-    # Create phase services
-    admission = AdmissionService(store=store, index=index, graph=graph, config=config)
-    reconciliation = ReconciliationService(store=store, config=config)
-    episode = EpisodeService(store=store, index=index, config=config, splade=splade)
 
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission, reconciliation=reconciliation,
-        episode=episode,
+        splade=splade,
     )
 
-    # Collect all unique documents across splits
-    all_docs: dict[str, str] = {}  # doc_id -> content
+    return svc, store, index, graph, splade, config
 
-    for split_name, split_data in data.items():
-        if not isinstance(split_data, list):
-            continue
-        for i, item in enumerate(split_data):
-            # Items may contain corpus documents or queries with references
-            doc_id = _get_id(item, i)
-            text = _get_text(item)
-            if text and doc_id not in all_docs:
-                all_docs[doc_id] = text
 
-            # Also extract any inline corpus/memory items
-            for key in ("memories", "corpus", "documents", "context"):
-                if key in item and isinstance(item[key], list):
-                    for j, sub in enumerate(item[key]):
-                        if isinstance(sub, dict):
-                            sub_id = _get_id(sub, j)
-                            sub_text = _get_text(sub)
-                            if sub_text and sub_id not in all_docs:
-                                all_docs[sub_id] = sub_text
-                        elif isinstance(sub, str) and len(sub) > 10:
-                            sub_id = f"{split_name}_{doc_id}_ctx_{j}"
-                            if sub_id not in all_docs:
-                                all_docs[sub_id] = sub
+# -- Per-sample evaluation --------------------------------------------------
 
-    logger.info("Collected %d unique documents from MAB dataset", len(all_docs))
 
-    # Ingest all documents
-    doc_to_mem: dict[str, str] = {}
-    mem_to_doc: dict[str, str] = {}
-    t0 = time.perf_counter()
-    skipped = 0
+@dataclass
+class SampleResult:
+    """Results for a single MAB sample (one context, 100 questions)."""
 
-    for i, (doc_id, content) in enumerate(all_docs.items()):
-        # Truncate very long documents
-        content = content[:10000]
+    sample_id: str
+    split: str
+    source: str
+    num_chunks: int
+    num_questions: int
+    ingestion_seconds: float
+    search_seconds: float
+    # Per-question scores
+    contains_any: list[float] = field(default_factory=list)
+    best_f1: list[float] = field(default_factory=list)
+    best_substring: list[float] = field(default_factory=list)
+    best_exact_match: list[float] = field(default_factory=list)
+    # Per-question types (if available)
+    question_types: list[str] = field(default_factory=list)
+    question_ids: list[str] = field(default_factory=list)
 
-        memory = await svc.store_memory(
-            content=content,
+    @property
+    def avg_contains_any(self) -> float:
+        return sum(self.contains_any) / max(len(self.contains_any), 1)
+
+    @property
+    def avg_f1(self) -> float:
+        return sum(self.best_f1) / max(len(self.best_f1), 1)
+
+    @property
+    def avg_substring(self) -> float:
+        return sum(self.best_substring) / max(len(self.best_substring), 1)
+
+    @property
+    def avg_exact_match(self) -> float:
+        return sum(self.best_exact_match) / max(len(self.best_exact_match), 1)
+
+
+async def evaluate_sample(
+    sample: dict[str, Any],
+    split: str,
+    sample_index: int,
+    top_k: int = DEFAULT_TOP_K,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+) -> SampleResult:
+    """Evaluate a single MAB sample.
+
+    Creates a fresh NCMS instance, ingests chunked context, then
+    searches for each question and scores the retrieved content.
+
+    Args:
+        sample: MAB sample dict with context, questions, answers, metadata.
+        split: Split name (ar, ttl, lru, cr).
+        sample_index: Index within the split.
+        top_k: Number of results to retrieve per question.
+        chunk_size: Context chunk size in characters.
+
+    Returns:
+        SampleResult with per-question scores.
+    """
+    context = sample.get("context", "")
+    questions = sample.get("questions", [])
+    answers = sample.get("answers", [])
+    metadata = sample.get("metadata", {})
+    source = metadata.get("source", split)
+    q_types = metadata.get("question_types") or []
+    q_ids = metadata.get("question_ids") or []
+
+    sample_id = f"{split}-{sample_index}"
+
+    # Create fresh NCMS instance
+    svc, store, index, graph, splade, config = await _create_ncms_instance()
+
+    # Chunk context
+    chunks = chunk_context(context, chunk_size=chunk_size)
+    if not chunks:
+        logger.warning("Sample %s: empty context, skipping", sample_id)
+        return SampleResult(
+            sample_id=sample_id, split=split, source=source,
+            num_chunks=0, num_questions=len(questions),
+            ingestion_seconds=0.0, search_seconds=0.0,
+        )
+
+    # Ingest chunks
+    t_ingest = time.perf_counter()
+    for i, chunk_text in enumerate(chunks):
+        await svc.store_memory(
+            content=chunk_text,
             memory_type="fact",
             domains=["mab"],
             tags=[],
-            structured={"mab_doc_id": doc_id},
+            structured={"chunk_index": i, "sample_id": sample_id},
+        )
+    ingestion_secs = time.perf_counter() - t_ingest
+
+    logger.debug(
+        "Sample %s: ingested %d chunks (%.1fs), context=%d chars",
+        sample_id, len(chunks), ingestion_secs, len(context),
+    )
+
+    # Search and score each question
+    result = SampleResult(
+        sample_id=sample_id, split=split, source=source,
+        num_chunks=len(chunks), num_questions=len(questions),
+        ingestion_seconds=ingestion_secs, search_seconds=0.0,
+    )
+
+    t_search_total = time.perf_counter()
+    for qi in range(len(questions)):
+        question = questions[qi]
+        answer_list = answers[qi] if qi < len(answers) else []
+        q_type = q_types[qi] if qi < len(q_types) else ""
+        q_id = q_ids[qi] if qi < len(q_ids) else f"{sample_id}-q{qi}"
+
+        # Ensure answer_list is a list
+        if isinstance(answer_list, str):
+            answer_list = [answer_list]
+
+        # Search NCMS
+        search_results = await svc.search(
+            query=question, domain="mab", limit=top_k,
         )
 
-        route = (memory.structured or {}).get("admission", {}).get("route")
-        if route in ("discard", "ephemeral_cache"):
-            skipped += 1
-            continue
-
-        doc_to_mem[doc_id] = memory.id
-        mem_to_doc[memory.id] = doc_id
-
-        if (i + 1) % 100 == 0:
-            logger.info("  Ingested %d/%d docs", i + 1, len(all_docs))
-
-    elapsed = time.perf_counter() - t0
-
-    if skipped > 0:
-        logger.warning("Skipped %d/%d docs (ephemeral/discarded)", skipped, len(all_docs))
-    logger.info(
-        "Ingestion complete: %d docs in %.1fs (%.1f docs/sec)",
-        len(doc_to_mem), elapsed,
-        len(doc_to_mem) / elapsed if elapsed > 0 else 0,
-    )
-
-    return MABState(
-        store=store, index=index, graph=graph, splade=splade,
-        config=config, doc_to_mem=doc_to_mem, mem_to_doc=mem_to_doc,
-        domain="mab", docs_ingested=len(doc_to_mem),
-        ingestion_seconds=elapsed,
-    )
-
-
-# ── AR: Accurate Retrieval ──────────────────────────────────────────────
-
-
-async def evaluate_ar(state: MABState, data: list[dict[str, Any]]) -> dict[str, float]:
-    """Evaluate Accurate Retrieval competency.
-
-    For each query in the AR split, search NCMS and compute nDCG@10,
-    MRR@10, and Recall@10/100 against relevance judgments.
-
-    Args:
-        state: Ingested MABState.
-        data: AR split items, each containing a query and relevant doc IDs.
-
-    Returns:
-        Dict with nDCG@10, MRR@10, Recall@10, Recall@100, num_queries.
-    """
-    from ncms.application.memory_service import MemoryService
-
-    svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
-    )
-
-    queries: dict[str, str] = {}
-    qrels: dict[str, dict[str, int]] = {}
-
-    for i, item in enumerate(data):
-        query = _get_query(item)
-        if not query:
-            continue
-        qid = _get_id(item, i)
-        queries[qid] = query
-
-        # Build relevance judgments
-        relevant = _get_relevant_ids(item)
-        if relevant:
-            qrels[qid] = {doc_id: 1 for doc_id in relevant}
-
-    if not queries or not qrels:
-        logger.warning("AR: No valid queries with relevance judgments found")
-        return {"nDCG@10": 0.0, "MRR@10": 0.0, "Recall@10": 0.0, "Recall@100": 0.0,
-                "num_queries": 0}
-
-    rankings: dict[str, list[str]] = {}
-    for qid, query_text in queries.items():
-        results = await svc.search(query=query_text, domain="mab", limit=100)
-        doc_ids: list[str] = []
-        for scored in results:
-            doc_id = state.mem_to_doc.get(scored.memory.id)
-            if doc_id and doc_id not in doc_ids:
-                doc_ids.append(doc_id)
-        rankings[qid] = doc_ids
-
-    metrics = compute_all_metrics(rankings, qrels)
-    logger.info(
-        "AR: nDCG@10=%.4f  MRR@10=%.4f  Recall@10=%.4f  (%d queries)",
-        metrics["nDCG@10"], metrics["MRR@10"], metrics["Recall@10"],
-        metrics["num_queries"],
-    )
-    return metrics
-
-
-# ── TTL: Test-Time Learning ─────────────────────────────────────────────
-
-
-async def evaluate_ttl(state: MABState, data: list[dict[str, Any]]) -> dict[str, float]:
-    """Evaluate Test-Time Learning competency.
-
-    For each query, retrieve top-5 results and predict the label via
-    majority vote on the labels of retrieved documents. Measures whether
-    NCMS can effectively learn from ingested context.
-
-    Args:
-        state: Ingested MABState.
-        data: TTL split items with queries and expected labels.
-
-    Returns:
-        Dict with accuracy and num_queries.
-    """
-    from ncms.application.memory_service import MemoryService
-
-    svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
-    )
-
-    # Build label mapping from corpus documents
-    doc_labels: dict[str, str] = {}
-    predictions: dict[str, str] = {}
-    labels: dict[str, str] = {}
-
-    for i, item in enumerate(data):
-        # Each TTL item should have a query, expected label, and context docs
-        qid = _get_id(item, i)
-        query = _get_query(item)
-        expected = _get_label(item)
-
-        if not query or expected == "unknown":
-            continue
-
-        labels[qid] = expected
-
-        # Extract labels from context/corpus items
-        for key in ("memories", "corpus", "documents", "context"):
-            if key in item and isinstance(item[key], list):
-                for j, sub in enumerate(item[key]):
-                    if isinstance(sub, dict):
-                        sub_id = _get_id(sub, j)
-                        sub_label = _get_label(sub)
-                        if sub_label != "unknown":
-                            doc_labels[sub_id] = sub_label
-
-        # Retrieve and predict via majority vote
-        results = await svc.search(query=query[:2000], domain="mab", limit=5)
-        votes: Counter[str] = Counter()
-        for scored in results:
-            doc_id = state.mem_to_doc.get(scored.memory.id)
-            if doc_id and doc_id in doc_labels:
-                votes[doc_labels[doc_id]] += 1
-
-        if votes:
-            predictions[qid] = votes.most_common(1)[0][0]
-        else:
-            predictions[qid] = "unknown"
-
-    if not labels:
-        logger.warning("TTL: No valid queries with labels found")
-        return {"accuracy": 0.0, "num_queries": 0}
-
-    acc = classification_accuracy(predictions, labels)
-    logger.info("TTL: accuracy=%.4f  (%d queries)", acc, len(predictions))
-    return {"accuracy": acc, "num_queries": len(predictions)}
-
-
-# ── LRU: Long-Range Understanding ───────────────────────────────────────
-
-
-async def evaluate_lru(state: MABState, data: list[dict[str, Any]]) -> dict[str, float]:
-    """Evaluate Long-Range Understanding competency.
-
-    Tests whether NCMS can find cross-topic connections by retrieving
-    documents that span multiple memory contexts. Uses standard IR
-    metrics (nDCG@10) over relevance judgments.
-
-    Args:
-        state: Ingested MABState.
-        data: LRU split items with cross-topic queries and relevance judgments.
-
-    Returns:
-        Dict with nDCG@10, MRR@10, Recall@10, Recall@100, num_queries.
-    """
-    from ncms.application.memory_service import MemoryService
-
-    svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
-    )
-
-    queries: dict[str, str] = {}
-    qrels: dict[str, dict[str, int]] = {}
-
-    for i, item in enumerate(data):
-        query = _get_query(item)
-        if not query:
-            continue
-        qid = _get_id(item, i)
-        queries[qid] = query
-
-        relevant = _get_relevant_ids(item)
-        if relevant:
-            qrels[qid] = {doc_id: 1 for doc_id in relevant}
-
-    if not queries or not qrels:
-        logger.warning("LRU: No valid queries with relevance judgments found")
-        return {"nDCG@10": 0.0, "MRR@10": 0.0, "Recall@10": 0.0, "Recall@100": 0.0,
-                "num_queries": 0}
-
-    rankings: dict[str, list[str]] = {}
-    for qid, query_text in queries.items():
-        results = await svc.search(query=query_text, domain="mab", limit=100)
-        doc_ids: list[str] = []
-        for scored in results:
-            doc_id = state.mem_to_doc.get(scored.memory.id)
-            if doc_id and doc_id not in doc_ids:
-                doc_ids.append(doc_id)
-        rankings[qid] = doc_ids
-
-    metrics = compute_all_metrics(rankings, qrels)
-    logger.info(
-        "LRU: nDCG@10=%.4f  MRR@10=%.4f  (%d queries)",
-        metrics["nDCG@10"], metrics["MRR@10"], metrics["num_queries"],
-    )
-    return metrics
-
-
-# ── SF: Selective Forgetting ────────────────────────────────────────────
-
-
-async def evaluate_sf(state: MABState, data: list[dict[str, Any]]) -> dict[str, float]:
-    """Evaluate Selective Forgetting competency.
-
-    The hardest competency. Tests whether NCMS properly suppresses
-    outdated/superseded memories. For each SF query:
-
-    1. Identify which documents should be "forgotten" (superseded)
-    2. Mark them via NCMS reconciliation (is_current=False)
-    3. Search and verify forgotten content is ranked below current content
-
-    Uses temporal_mrr (current doc should rank first) and a forgetting
-    accuracy metric (fraction of queries where superseded docs rank
-    below current docs).
-
-    Args:
-        state: Ingested MABState.
-        data: SF split items with outdated/current document pairs.
-
-    Returns:
-        Dict with forgetting_accuracy, temporal_mrr, num_queries.
-    """
-    from ncms.application.memory_service import MemoryService
-
-    svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
-    )
-
-    queries: dict[str, str] = {}
-    targets: dict[str, str] = {}  # qid -> current (non-forgotten) doc
-    outdated: dict[str, list[str]] = {}  # qid -> list of outdated doc IDs
-    qrels: dict[str, dict[str, int]] = {}
-
-    for i, item in enumerate(data):
-        query = _get_query(item)
-        if not query:
-            continue
-        qid = _get_id(item, i)
-        queries[qid] = query
-
-        # Current (non-outdated) relevant docs
-        current_ids = _get_relevant_ids(item)
-        # Outdated/superseded docs that should be forgotten
-        forget_ids = _get_outdated_ids(item)
-
-        if not current_ids and not forget_ids:
-            continue
-
-        # Build graded qrels: current=2, outdated=0
-        qrel: dict[str, int] = {}
-        for doc_id in current_ids:
-            qrel[doc_id] = 2
-        for doc_id in forget_ids:
-            qrel[doc_id] = 0
-        qrels[qid] = qrel
-
-        # Target = first current doc
-        if current_ids:
-            targets[qid] = current_ids[0]
-        outdated[qid] = forget_ids
-
-        # Apply supersession: mark outdated docs as not current
-        # This uses NCMS's reconciliation mechanism
-        for forget_id in forget_ids:
-            mem_id = state.doc_to_mem.get(forget_id)
-            if not mem_id:
-                continue
-            try:
-                nodes = await state.store.get_nodes_for_memory(mem_id)
-                for node in nodes:
-                    if node.node_type == "entity_state" and node.metadata.get("is_current", True):
-                        meta = dict(node.metadata)
-                        meta["is_current"] = False
-                        meta["superseded_reason"] = "mab_selective_forgetting"
-                        node.metadata = meta
-                        await state.store.update_memory_node(node)
-            except Exception:
-                # Not all memories have entity_state nodes; that's OK
-                pass
-
-    if not queries:
-        logger.warning("SF: No valid queries found")
-        return {"forgetting_accuracy": 0.0, "temporal_mrr": 0.0, "num_queries": 0}
-
-    # Search and evaluate
-    rankings: dict[str, list[str]] = {}
-    for qid, query_text in queries.items():
-        results = await svc.search(query=query_text, domain="mab", limit=100)
-        doc_ids: list[str] = []
-        for scored in results:
-            doc_id = state.mem_to_doc.get(scored.memory.id)
-            if doc_id and doc_id not in doc_ids:
-                doc_ids.append(doc_id)
-        rankings[qid] = doc_ids
-
-    # Temporal MRR: current doc should rank first
-    t_mrr = temporal_mrr(rankings, targets) if targets else 0.0
-
-    # Forgetting accuracy: fraction of queries where ALL outdated docs
-    # rank below ALL current docs (or don't appear at all)
-    correct = 0
-    total = 0
-    for qid in queries:
-        if qid not in outdated or qid not in targets:
-            continue
-        total += 1
-        ranked = rankings.get(qid, [])
-
-        # Find position of the target (current) doc
-        target_pos = len(ranked)  # Not found = worst
-        target_id = targets.get(qid)
-        if target_id and target_id in ranked:
-            target_pos = ranked.index(target_id)
-
-        # Check all outdated docs rank below target
-        all_below = True
-        for forget_id in outdated[qid]:
-            if forget_id in ranked:
-                forget_pos = ranked.index(forget_id)
-                if forget_pos <= target_pos:
-                    all_below = False
-                    break
-        if all_below:
-            correct += 1
-
-    forgetting_acc = correct / max(total, 1)
+        # Concatenate retrieved memory contents
+        retrieved_parts: list[str] = []
+        for scored in search_results:
+            retrieved_parts.append(scored.memory.content)
+        retrieved_text = "\n".join(retrieved_parts)
+
+        # Score
+        scores = score_answer(retrieved_text, answer_list)
+
+        result.contains_any.append(scores["contains_any"])
+        result.best_f1.append(scores["best_f1"])
+        result.best_substring.append(scores["best_substring"])
+        result.best_exact_match.append(scores["best_exact_match"])
+        result.question_types.append(q_type)
+        result.question_ids.append(str(q_id))
+
+    result.search_seconds = time.perf_counter() - t_search_total
 
     logger.info(
-        "SF: forgetting_accuracy=%.4f  temporal_mrr=%.4f  (%d queries)",
-        forgetting_acc, t_mrr, total,
+        "Sample %s [%s]: contains_any=%.3f  f1=%.3f  substring=%.3f  "
+        "(%d questions, %d chunks, ingest=%.1fs, search=%.1fs)",
+        sample_id, source,
+        result.avg_contains_any, result.avg_f1, result.avg_substring,
+        len(questions), len(chunks),
+        result.ingestion_seconds, result.search_seconds,
     )
-    return {
-        "forgetting_accuracy": forgetting_acc,
-        "temporal_mrr": t_mrr,
-        "num_queries": total,
+
+    return result
+
+
+# -- Aggregate metrics ------------------------------------------------------
+
+
+def aggregate_results(
+    results: list[SampleResult],
+    split_name: str | None = None,
+) -> dict[str, Any]:
+    """Aggregate SampleResults into summary metrics.
+
+    Args:
+        results: List of per-sample results.
+        split_name: Optional split label for logging.
+
+    Returns:
+        Dict with averaged metrics and per-question-type breakdowns.
+    """
+    if not results:
+        return {
+            "num_samples": 0,
+            "num_questions": 0,
+            "contains_any": 0.0,
+            "f1": 0.0,
+            "substring": 0.0,
+            "exact_match": 0.0,
+        }
+
+    all_contains: list[float] = []
+    all_f1: list[float] = []
+    all_sub: list[float] = []
+    all_em: list[float] = []
+    total_ingest = 0.0
+    total_search = 0.0
+
+    # Per question-type breakdown
+    by_type: dict[str, dict[str, list[float]]] = {}
+
+    for r in results:
+        all_contains.extend(r.contains_any)
+        all_f1.extend(r.best_f1)
+        all_sub.extend(r.best_substring)
+        all_em.extend(r.best_exact_match)
+        total_ingest += r.ingestion_seconds
+        total_search += r.search_seconds
+
+        for i, qt in enumerate(r.question_types):
+            if qt not in by_type:
+                by_type[qt] = {"contains_any": [], "f1": [], "substring": []}
+            by_type[qt]["contains_any"].append(r.contains_any[i])
+            by_type[qt]["f1"].append(r.best_f1[i])
+            by_type[qt]["substring"].append(r.best_substring[i])
+
+    n = max(len(all_contains), 1)
+    metrics: dict[str, Any] = {
+        "num_samples": len(results),
+        "num_questions": len(all_contains),
+        "contains_any": sum(all_contains) / n,
+        "f1": sum(all_f1) / n,
+        "substring": sum(all_sub) / n,
+        "exact_match": sum(all_em) / n,
+        "total_ingest_seconds": round(total_ingest, 2),
+        "total_search_seconds": round(total_search, 2),
     }
 
+    # Question-type breakdown (if types are present)
+    if by_type:
+        type_metrics: dict[str, dict[str, float]] = {}
+        for qt, scores in sorted(by_type.items()):
+            if not qt:
+                continue
+            nt = max(len(scores["contains_any"]), 1)
+            type_metrics[qt] = {
+                "count": len(scores["contains_any"]),
+                "contains_any": sum(scores["contains_any"]) / nt,
+                "f1": sum(scores["f1"]) / nt,
+                "substring": sum(scores["substring"]) / nt,
+            }
+        if type_metrics:
+            metrics["by_question_type"] = type_metrics
 
-# ── Main benchmark runner ───────────────────────────────────────────────
+    label = split_name or "ALL"
+    logger.info(
+        "%s: contains_any=%.4f  f1=%.4f  substring=%.4f  exact_match=%.4f  "
+        "(%d samples, %d questions)",
+        label, metrics["contains_any"], metrics["f1"],
+        metrics["substring"], metrics["exact_match"],
+        metrics["num_samples"], metrics["num_questions"],
+    )
+
+    return metrics
+
+
+# -- Main benchmark runner --------------------------------------------------
 
 
 async def run_mab_benchmark(
     data: dict[str, Any],
-    competencies: tuple[str, ...] = ("ar", "ttl", "lru", "sf"),
+    splits: tuple[str, ...] = ALL_SPLITS,
+    top_k: int = DEFAULT_TOP_K,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    max_samples: int | None = None,
 ) -> dict[str, Any]:
-    """Run all requested MemoryAgentBench competency evaluations.
+    """Run all requested MemoryAgentBench evaluations.
+
+    For each split, for each sample: creates a fresh NCMS instance,
+    ingests chunked context, searches for each question, and scores
+    the retrieved content against ground truth answers.
 
     Args:
-        data: MAB dataset dict with keys 'ar', 'ttl', 'lru', 'sf'.
-        competencies: Which competencies to evaluate.
+        data: MAB dataset dict with keys like 'ar', 'ttl', 'lru', 'cr'.
+        splits: Which splits to evaluate.
+        top_k: Number of results to retrieve per question.
+        chunk_size: Context chunk size in characters.
+        max_samples: Optional limit on samples per split (for testing).
 
     Returns:
-        Nested dict with per-competency results and aggregate stats.
+        Nested dict with per-split results and aggregate stats.
     """
     t0 = time.perf_counter()
 
     logger.info("=" * 60)
     logger.info("MemoryAgentBench Evaluation")
     logger.info("=" * 60)
-    logger.info("  Competencies: %s", ", ".join(competencies))
-    logger.info("  Available splits: %s", ", ".join(data.keys()))
+    logger.info("  Splits: %s", ", ".join(splits))
+    logger.info("  Available: %s", ", ".join(data.keys()))
+    logger.info("  Top-K: %d, Chunk size: %d chars", top_k, chunk_size)
+    if max_samples:
+        logger.info("  Max samples per split: %d", max_samples)
 
-    # Ingest all data
-    logger.info("Ingesting corpus...")
-    state = await ingest_mab_corpus(data)
+    all_sample_results: list[SampleResult] = []
+    split_metrics: dict[str, Any] = {}
 
-    results: dict[str, Any] = {
-        "ingestion": {
-            "docs_ingested": state.docs_ingested,
-            "ingestion_seconds": round(state.ingestion_seconds, 2),
-        },
-        "competencies": {},
-    }
-
-    # Evaluate each requested competency
-    evaluators = {
-        "ar": evaluate_ar,
-        "ttl": evaluate_ttl,
-        "lru": evaluate_lru,
-        "sf": evaluate_sf,
-    }
-
-    for comp in competencies:
-        if comp not in data:
-            logger.warning("Skipping %s: split not available in dataset", comp.upper())
-            results["competencies"][comp] = {"skipped": True, "reason": "split_not_available"}
+    for split in splits:
+        if split not in data:
+            logger.warning("Skipping %s: split not available in dataset", split.upper())
+            split_metrics[split] = {"skipped": True, "reason": "split_not_available"}
             continue
 
-        if comp not in evaluators:
-            logger.warning("Skipping %s: no evaluator implemented", comp.upper())
-            results["competencies"][comp] = {"skipped": True, "reason": "no_evaluator"}
+        split_data = data[split]
+        if not isinstance(split_data, list) or not split_data:
+            logger.warning("Skipping %s: empty or invalid data", split.upper())
+            split_metrics[split] = {"skipped": True, "reason": "empty_data"}
             continue
+
+        # Apply max_samples limit
+        samples = split_data[:max_samples] if max_samples else split_data
 
         logger.info("")
-        logger.info("Evaluating %s...", comp.upper())
-        comp_start = time.perf_counter()
+        logger.info(
+            "Evaluating %s: %d samples (%d total in dataset)...",
+            split.upper(), len(samples), len(split_data),
+        )
+        split_start = time.perf_counter()
 
-        try:
-            comp_results = await evaluators[comp](state, data[comp])
-            comp_results["elapsed_seconds"] = round(time.perf_counter() - comp_start, 2)
-            results["competencies"][comp] = comp_results
-        except Exception as exc:
-            logger.error("Failed to evaluate %s: %s", comp.upper(), exc, exc_info=True)
-            results["competencies"][comp] = {
-                "error": str(exc),
-                "elapsed_seconds": round(time.perf_counter() - comp_start, 2),
-            }
+        split_results: list[SampleResult] = []
+        for si, sample in enumerate(samples):
+            try:
+                sr = await evaluate_sample(
+                    sample=sample,
+                    split=split,
+                    sample_index=si,
+                    top_k=top_k,
+                    chunk_size=chunk_size,
+                )
+                split_results.append(sr)
+                all_sample_results.append(sr)
+            except Exception as exc:
+                logger.error(
+                    "Failed sample %s-%d: %s", split, si, exc, exc_info=True,
+                )
+
+        # Aggregate this split
+        sm = aggregate_results(split_results, split_name=split.upper())
+        sm["elapsed_seconds"] = round(time.perf_counter() - split_start, 2)
+        split_metrics[split] = sm
+
+    # Overall aggregation
+    overall = aggregate_results(all_sample_results, split_name="OVERALL")
 
     total_elapsed = time.perf_counter() - t0
-    results["total_seconds"] = round(total_elapsed, 1)
+    results: dict[str, Any] = {
+        "splits": split_metrics,
+        "overall": overall,
+        "total_seconds": round(total_elapsed, 1),
+        "config": {
+            "top_k": top_k,
+            "chunk_size": chunk_size,
+            "weights": TUNED_WEIGHTS,
+        },
+    }
 
+    # Summary table
     logger.info("")
-    logger.info("MemoryAgentBench evaluation complete: %.1fs total", total_elapsed)
-
-    # Summary
-    for comp in competencies:
-        comp_data = results["competencies"].get(comp, {})
-        if comp_data.get("skipped"):
-            logger.info("  %s: SKIPPED (%s)", comp.upper(), comp_data.get("reason"))
-        elif comp_data.get("error"):
-            logger.info("  %s: ERROR (%s)", comp.upper(), comp_data["error"])
-        elif comp == "ar":
-            logger.info("  AR:  nDCG@10=%.4f", comp_data.get("nDCG@10", 0))
-        elif comp == "ttl":
-            logger.info("  TTL: accuracy=%.4f", comp_data.get("accuracy", 0))
-        elif comp == "lru":
-            logger.info("  LRU: nDCG@10=%.4f", comp_data.get("nDCG@10", 0))
-        elif comp == "sf":
+    logger.info("=" * 60)
+    logger.info("MemoryAgentBench Summary")
+    logger.info("=" * 60)
+    logger.info(
+        "  %-6s  %8s  %8s  %8s  %8s  %8s",
+        "Split", "Samples", "Qs", "Contain", "F1", "SubStr",
+    )
+    logger.info("  " + "-" * 54)
+    for split in splits:
+        sm = split_metrics.get(split, {})
+        if sm.get("skipped"):
+            logger.info("  %-6s  SKIPPED (%s)", split.upper(), sm.get("reason"))
+        else:
             logger.info(
-                "  SF:  forgetting_acc=%.4f  temporal_mrr=%.4f",
-                comp_data.get("forgetting_accuracy", 0),
-                comp_data.get("temporal_mrr", 0),
+                "  %-6s  %8d  %8d  %8.4f  %8.4f  %8.4f",
+                split.upper(),
+                sm.get("num_samples", 0),
+                sm.get("num_questions", 0),
+                sm.get("contains_any", 0),
+                sm.get("f1", 0),
+                sm.get("substring", 0),
             )
+    logger.info("  " + "-" * 54)
+    logger.info(
+        "  %-6s  %8d  %8d  %8.4f  %8.4f  %8.4f",
+        "TOTAL",
+        overall.get("num_samples", 0),
+        overall.get("num_questions", 0),
+        overall.get("contains_any", 0),
+        overall.get("f1", 0),
+        overall.get("substring", 0),
+    )
+    logger.info("  Total time: %.1fs", total_elapsed)
 
     return results

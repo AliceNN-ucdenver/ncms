@@ -1,10 +1,10 @@
 """MemoryAgentBench CLI runner.
 
 Usage:
-    uv run python -m benchmarks.memoryagentbench.run_mab
-    uv run python -m benchmarks.memoryagentbench.run_mab --competencies ar,ttl
-    uv run python -m benchmarks.memoryagentbench.run_mab --test
-    uv run python -m benchmarks.memoryagentbench.run_mab --cache-dir /tmp/mab
+    uv run python -m benchmarks mab
+    uv run python -m benchmarks mab --splits ar,ttl
+    uv run python -m benchmarks mab --test
+    uv run python -m benchmarks mab --cache-dir /tmp/mab
 """
 
 from __future__ import annotations
@@ -16,11 +16,12 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_DIR = "benchmarks/results/memoryagentbench"
-ALL_COMPETENCIES = ("ar", "ttl", "lru", "sf")
+ALL_SPLITS = ("ar", "ttl", "lru", "cr")
 
 
 def setup_logging(output_dir: Path, verbose: bool = False) -> None:
@@ -48,7 +49,7 @@ def setup_logging(output_dir: Path, verbose: bool = False) -> None:
     logger.info("MemoryAgentBench log: %s", log_file)
 
 
-def save_results(results: dict, output_dir: Path) -> None:
+def save_results(results: dict[str, Any], output_dir: Path) -> None:
     """Save results as JSON and markdown summary table."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,67 +73,60 @@ def save_results(results: dict, output_dir: Path) -> None:
         f"**Date**: {timestamp}",
         f"**Total time**: {results.get('total_seconds', 0):.1f}s",
         "",
-        "## Ingestion",
+        "## Per-Split Results",
         "",
-        f"- Documents ingested: {results.get('ingestion', {}).get('docs_ingested', 0)}",
-        f"- Ingestion time: {results.get('ingestion', {}).get('ingestion_seconds', 0):.2f}s",
-        "",
-        "## Competency Results",
-        "",
-        "| Competency | Primary Metric | Value | Queries |",
-        "|------------|---------------|-------|---------|",
+        "| Split | Samples | Questions | Contains | F1 | Substring | EM |",
+        "|-------|---------|-----------|----------|------|-----------|-----|",
     ]
 
-    competencies = results.get("competencies", {})
+    splits = results.get("splits", {})
 
-    for comp_name, comp_data in competencies.items():
-        if comp_data.get("skipped"):
+    for split_name, sm in splits.items():
+        if sm.get("skipped"):
             lines.append(
-                f"| {comp_name.upper()} | - | SKIPPED | - |"
+                f"| {split_name.upper()} | - | - | SKIPPED | - | - | - |"
             )
-        elif comp_data.get("error"):
+        else:
             lines.append(
-                f"| {comp_name.upper()} | - | ERROR | - |"
+                f"| {split_name.upper()} "
+                f"| {sm.get('num_samples', 0)} "
+                f"| {sm.get('num_questions', 0)} "
+                f"| {sm.get('contains_any', 0):.4f} "
+                f"| {sm.get('f1', 0):.4f} "
+                f"| {sm.get('substring', 0):.4f} "
+                f"| {sm.get('exact_match', 0):.4f} |"
             )
-        elif comp_name == "ar":
-            lines.append(
-                f"| AR | nDCG@10 | {comp_data.get('nDCG@10', 0):.4f} "
-                f"| {comp_data.get('num_queries', 0)} |"
-            )
-        elif comp_name == "ttl":
-            lines.append(
-                f"| TTL | accuracy | {comp_data.get('accuracy', 0):.4f} "
-                f"| {comp_data.get('num_queries', 0)} |"
-            )
-        elif comp_name == "lru":
-            lines.append(
-                f"| LRU | nDCG@10 | {comp_data.get('nDCG@10', 0):.4f} "
-                f"| {comp_data.get('num_queries', 0)} |"
-            )
-        elif comp_name == "sf":
-            lines.append(
-                f"| SF | forgetting_acc | {comp_data.get('forgetting_accuracy', 0):.4f} "
-                f"| {comp_data.get('num_queries', 0)} |"
-            )
+
+    overall = results.get("overall", {})
+    if overall:
+        lines.append(
+            f"| **TOTAL** "
+            f"| {overall.get('num_samples', 0)} "
+            f"| {overall.get('num_questions', 0)} "
+            f"| {overall.get('contains_any', 0):.4f} "
+            f"| {overall.get('f1', 0):.4f} "
+            f"| {overall.get('substring', 0):.4f} "
+            f"| {overall.get('exact_match', 0):.4f} |"
+        )
 
     lines.append("")
 
-    # Detailed metrics per competency
-    lines.append("## Detailed Metrics")
-    lines.append("")
-    for comp_name, comp_data in competencies.items():
-        if comp_data.get("skipped") or comp_data.get("error"):
-            continue
-        lines.append(f"### {comp_name.upper()}")
-        lines.append("")
-        for key, value in comp_data.items():
-            if key == "elapsed_seconds":
-                lines.append(f"- Elapsed: {value:.2f}s")
-            elif isinstance(value, float):
-                lines.append(f"- {key}: {value:.4f}")
-            else:
-                lines.append(f"- {key}: {value}")
-        lines.append("")
+    # Per-question-type breakdown if available
+    for split_name, sm in splits.items():
+        by_qt = sm.get("by_question_type")
+        if by_qt:
+            lines.append(f"### {split_name.upper()} by question type")
+            lines.append("")
+            lines.append("| Type | Count | Contains | F1 | Substring |")
+            lines.append("|------|-------|----------|------|-----------|")
+            for qt, qm in by_qt.items():
+                lines.append(
+                    f"| {qt} | {qm['count']} "
+                    f"| {qm['contains_any']:.4f} "
+                    f"| {qm['f1']:.4f} "
+                    f"| {qm['substring']:.4f} |"
+                )
+            lines.append("")
 
     md_path.write_text("\n".join(lines))
     logger.info("Results markdown: %s", md_path)
@@ -146,8 +140,10 @@ def save_results(results: dict, output_dir: Path) -> None:
 async def run_benchmark(
     cache_dir: Path | None,
     output_dir: Path,
-    competencies: tuple[str, ...],
+    splits: tuple[str, ...],
     test_mode: bool = False,
+    top_k: int = 10,
+    chunk_size: int = 2000,
 ) -> None:
     """Run the MemoryAgentBench benchmark."""
     from benchmarks.memoryagentbench.loader import load_mab_dataset
@@ -162,40 +158,47 @@ async def run_benchmark(
             "The dataset may not be publicly released yet (ICLR 2026). "
             "Skipping benchmark."
         )
-        # Save a skip record so the run is documented
-        skip_result = {
+        skip_result: dict[str, Any] = {
             "status": "skipped",
             "reason": "dataset_not_available",
-            "message": (
-                "MemoryAgentBench dataset (ai-hyz/MemoryAgentBench) could not "
-                "be downloaded. Install with: pip install datasets && "
-                "python -c \"from datasets import load_dataset; "
-                "load_dataset('ai-hyz/MemoryAgentBench')\""
-            ),
+            "total_seconds": 0.0,
         }
         save_results(skip_result, output_dir)
         return
 
     available = set(data.keys())
-    requested = set(competencies)
+    requested = set(splits)
     missing = requested - available
     if missing:
         logger.warning(
-            "Requested competencies not in dataset: %s. Available: %s",
+            "Requested splits not in dataset: %s. Available: %s",
             ", ".join(sorted(missing)), ", ".join(sorted(available)),
         )
 
+    # In test mode, limit samples and truncate large contexts
+    max_samples = 2 if test_mode else None
+    max_context_chars = 50_000 if test_mode else None
     if test_mode:
-        # Truncate data for quick testing
-        logger.info("TEST MODE: Truncating each split to 10 items")
-        for split in data:
-            if isinstance(data[split], list) and len(data[split]) > 10:
-                data[split] = data[split][:10]
+        logger.info("TEST MODE: limiting to %d samples per split, max context %d chars",
+                     max_samples, max_context_chars)
+        # Truncate large contexts to speed up test runs
+        for _split_name, split_data in data.items():
+            if isinstance(split_data, list):
+                for sample in split_data:
+                    ctx = sample.get("context", "")
+                    if max_context_chars and len(ctx) > max_context_chars:
+                        sample["context"] = ctx[:max_context_chars]
 
     # Run benchmark
     from benchmarks.memoryagentbench.harness import run_mab_benchmark
 
-    results = await run_mab_benchmark(data, competencies=competencies)
+    results = await run_mab_benchmark(
+        data,
+        splits=splits,
+        top_k=top_k,
+        chunk_size=chunk_size,
+        max_samples=max_samples,
+    )
 
     # Save results
     save_results(results, output_dir)
@@ -219,15 +222,27 @@ def main() -> None:
         help=f"Output directory for results (default: {DEFAULT_OUTPUT_DIR})",
     )
     parser.add_argument(
-        "--competencies",
+        "--splits",
         type=str,
-        default="ar,ttl,lru,sf",
-        help="Comma-separated competencies to evaluate (default: ar,ttl,lru,sf)",
+        default="ar,ttl,lru,cr",
+        help="Comma-separated splits to evaluate (default: ar,ttl,lru,cr)",
     )
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Test mode: truncate data to 10 items per split",
+        help="Test mode: limit to 2 samples per split for quick validation",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        help="Number of results to retrieve per question (default: 10)",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=2000,
+        help="Context chunk size in characters (default: 2000)",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -236,13 +251,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Parse competencies
-    competencies = tuple(c.strip().lower() for c in args.competencies.split(","))
-    invalid = [c for c in competencies if c not in ALL_COMPETENCIES]
+    # Parse splits
+    splits = tuple(c.strip().lower() for c in args.splits.split(","))
+    invalid = [c for c in splits if c not in ALL_SPLITS]
     if invalid:
-        valid = ", ".join(ALL_COMPETENCIES)
+        valid = ", ".join(ALL_SPLITS)
         bad = ", ".join(invalid)
-        parser.error(f"Invalid competencies: {bad}. Choose from: {valid}")
+        parser.error(f"Invalid splits: {bad}. Choose from: {valid}")
 
     # Load env
     try:
@@ -254,16 +269,19 @@ def main() -> None:
     setup_logging(args.output_dir, verbose=args.verbose)
 
     logger.info("NCMS MemoryAgentBench Evaluation")
-    logger.info("  Competencies: %s", ", ".join(competencies))
+    logger.info("  Splits: %s", ", ".join(splits))
     logger.info("  Cache dir: %s", args.cache_dir or "(default)")
     logger.info("  Output: %s", args.output_dir)
     logger.info("  Test mode: %s", args.test)
+    logger.info("  Top-K: %d, Chunk size: %d", args.top_k, args.chunk_size)
 
     asyncio.run(run_benchmark(
         cache_dir=args.cache_dir,
         output_dir=args.output_dir,
-        competencies=competencies,
+        splits=splits,
         test_mode=args.test,
+        top_k=args.top_k,
+        chunk_size=args.chunk_size,
     ))
 
 

@@ -4,6 +4,10 @@ Each question has its own haystack (set of sessions to ingest).  We create a
 fresh NCMS instance per question, ingest that question's sessions, then evaluate.
 
 Primary metric is Recall@5 (to compare against MemPalace's reported 96.6%).
+
+Supports two modes:
+- Retrieval-only (default): fast containment/F1 metrics on retrieved content.
+- RAG (use_rag=True): generate answer via LLM, judge via LLM with type-specific prompts.
 """
 
 from __future__ import annotations
@@ -13,6 +17,13 @@ import logging
 import time
 
 from benchmarks.core.qa_metrics import contains_match, f1_token_overlap, recall_at_k_qa
+from benchmarks.core.rag_pipeline import (
+    DEFAULT_API_BASE,
+    DEFAULT_MODEL,
+    build_context_from_memories,
+    generate_answer,
+    llm_judge,
+)
 from benchmarks.longmemeval.loader import LongMemQuestion, Session
 
 logger = logging.getLogger(__name__)
@@ -98,15 +109,35 @@ async def _ingest_sessions(
     return memory_ids
 
 
+def _get_judge_type(category: str, question_id: str) -> str:
+    """Map question category/id to the appropriate judge type."""
+    if "_abs" in question_id:
+        return "abstention"
+    if "temporal" in category:
+        return "temporal"
+    if category == "knowledge-update":
+        return "knowledge-update"
+    return "default"
+
+
 async def evaluate_question(
     svc: object,
     question: LongMemQuestion,
     top_k: int = 5,
+    use_rag: bool = False,
+    answer_model: str = DEFAULT_MODEL,
+    answer_api_base: str = DEFAULT_API_BASE,
+    judge_model: str = DEFAULT_MODEL,
+    judge_api_base: str = DEFAULT_API_BASE,
 ) -> dict[str, float]:
     """Evaluate a single question against an NCMS instance.
 
+    When use_rag=True, generates an answer via LLM and judges it using
+    question-type-specific prompts (temporal-reasoning, knowledge-update,
+    abstention, etc.).
+
     Returns:
-        Dict with recall, contains, and f1 scores.
+        Dict with recall, contains, f1, and (when use_rag) qa_f1, judge scores.
     """
     from ncms.application.memory_service import MemoryService
 
@@ -120,13 +151,74 @@ async def evaluate_question(
     contains = contains_match(concat_content, question.answer)
     f1 = f1_token_overlap(concat_content, question.answer)
 
-    return {"recall": recall, "contains": contains, "f1": f1}
+    scores: dict[str, float] = {"recall": recall, "contains": contains, "f1": f1}
+
+    if use_rag:
+        context = build_context_from_memories(results, max_chars=4000)
+
+        # Determine system prompt based on question type
+        is_abstention = "_abs" in question.question_id
+        cat = question.category
+
+        if is_abstention:
+            system = (
+                "You are answering questions about a user's conversation history. "
+                "If the specific information asked about was never discussed, "
+                'clearly state that the information is not available or "I don\'t know".'
+            )
+        elif "temporal" in cat:
+            system = (
+                "You are answering questions about a user's conversation history. "
+                "Pay careful attention to dates and temporal ordering. "
+                f"The current date is {question.question_date}. "
+                "Answer with specific dates or time spans when asked."
+            )
+        elif cat == "knowledge-update":
+            system = (
+                "You are answering questions about a user's conversation history. "
+                "The user's information may have changed over time. "
+                "Always answer with the most recent/updated information."
+            )
+        else:
+            system = (
+                "You are answering questions about a user's conversation history. "
+                "Answer concisely based on the available context."
+            )
+
+        prediction = await generate_answer(
+            question.question,
+            context,
+            system_prompt=system,
+            model=answer_model,
+            api_base=answer_api_base,
+            max_tokens=200,
+        )
+
+        # Token F1 between generated answer and ground truth
+        scores["qa_f1"] = f1_token_overlap(prediction, question.answer)
+
+        # LLM judge with type-specific prompt
+        judge_type = _get_judge_type(cat, question.question_id)
+        judge_ok = await llm_judge(
+            question.question, question.answer, prediction,
+            judge_type=judge_type,
+            model=judge_model,
+            api_base=judge_api_base,
+        )
+        scores["judge"] = 1.0 if judge_ok else 0.0
+
+    return scores
 
 
 async def run_longmemeval_benchmark(
     sessions_by_question: dict[str, list[Session]],
     questions: list[LongMemQuestion],
     top_k: int = 5,
+    use_rag: bool = False,
+    answer_model: str = DEFAULT_MODEL,
+    answer_api_base: str = DEFAULT_API_BASE,
+    judge_model: str = DEFAULT_MODEL,
+    judge_api_base: str = DEFAULT_API_BASE,
 ) -> dict:
     """Run the full LongMemEval benchmark.
 
@@ -137,12 +229,17 @@ async def run_longmemeval_benchmark(
         sessions_by_question: Dict mapping question_id to its list of sessions.
         questions: All evaluation questions.
         top_k: Number of top results for recall computation.
+        use_rag: If True, generate answers and judge via LLM.
+        answer_model: LLM model for answer generation.
+        answer_api_base: API base URL for answer generation.
+        judge_model: LLM model for judging.
+        judge_api_base: API base URL for judging.
 
     Returns:
         Dict with overall metrics and category breakdowns.
     """
     logger.info("=" * 60)
-    logger.info("LongMemEval Benchmark")
+    logger.info("LongMemEval Benchmark%s", " (RAG mode)" if use_rag else "")
     logger.info("  Questions: %d", len(questions))
     logger.info("=" * 60)
 
@@ -152,6 +249,12 @@ async def run_longmemeval_benchmark(
     category_scores: dict[str, list[float]] = {}
     total_memories = 0
     total_sessions = 0
+
+    # RAG accumulators
+    qa_f1_scores: list[float] = []
+    judge_scores: list[float] = []
+    category_qa_f1: dict[str, list[float]] = {}
+    category_judge: dict[str, list[float]] = {}
 
     t0 = time.perf_counter()
 
@@ -174,7 +277,14 @@ async def run_longmemeval_benchmark(
             total_sessions += len(q_sessions)
 
             # Evaluate
-            scores = await evaluate_question(svc, q, top_k=top_k)
+            scores = await evaluate_question(
+                svc, q, top_k=top_k,
+                use_rag=use_rag,
+                answer_model=answer_model,
+                answer_api_base=answer_api_base,
+                judge_model=judge_model,
+                judge_api_base=judge_api_base,
+            )
         finally:
             await store.close()
 
@@ -187,13 +297,25 @@ async def run_longmemeval_benchmark(
             category_scores[cat] = []
         category_scores[cat].append(scores["recall"])
 
+        # RAG metrics
+        if use_rag and "qa_f1" in scores:
+            qa_f1_scores.append(scores["qa_f1"])
+            judge_scores.append(scores["judge"])
+            category_qa_f1.setdefault(cat, []).append(scores["qa_f1"])
+            category_judge.setdefault(cat, []).append(scores["judge"])
+
         if (qi + 1) % 10 == 0 or qi == 0:
             elapsed = time.perf_counter() - t0
-            logger.info(
-                "  [%d/%d] %.1fs  Recall@%d so far: %.4f",
-                qi + 1, len(questions), elapsed, top_k,
-                sum(recall_scores) / len(recall_scores),
+            log_msg = (
+                f"  [{qi + 1}/{len(questions)}] {elapsed:.1f}s"
+                f"  Recall@{top_k} so far: "
+                f"{sum(recall_scores) / len(recall_scores):.4f}"
             )
+            if use_rag and judge_scores:
+                log_msg += (
+                    f"  Judge: {sum(judge_scores) / len(judge_scores):.4f}"
+                )
+            logger.info(log_msg)
 
     elapsed = time.perf_counter() - t0
     n = len(recall_scores) or 1
@@ -206,31 +328,50 @@ async def run_longmemeval_benchmark(
     }
 
     # Per-category recall
-    for cat, scores in sorted(category_scores.items()):
-        cat_n = len(scores) or 1
-        metrics[f"Recall@{top_k}_{cat}"] = sum(scores) / cat_n
-        metrics[f"num_{cat}"] = float(len(scores))
+    for cat, cat_scores in sorted(category_scores.items()):
+        cat_n = len(cat_scores) or 1
+        metrics[f"Recall@{top_k}_{cat}"] = sum(cat_scores) / cat_n
+        metrics[f"num_{cat}"] = float(len(cat_scores))
+
+    # RAG aggregate metrics
+    if use_rag and qa_f1_scores:
+        qa_n = len(qa_f1_scores) or 1
+        metrics["QA_F1"] = sum(qa_f1_scores) / qa_n
+        metrics["Judge_Accuracy"] = sum(judge_scores) / qa_n
+
+        for cat, cat_scores in sorted(category_qa_f1.items()):
+            cat_n = len(cat_scores) or 1
+            metrics[f"QA_F1_{cat}"] = sum(cat_scores) / cat_n
+
+        for cat, cat_scores in sorted(category_judge.items()):
+            cat_n = len(cat_scores) or 1
+            metrics[f"Judge_{cat}"] = sum(cat_scores) / cat_n
 
     logger.info("=" * 60)
-    logger.info(
-        "LongMemEval Overall: Recall@%d=%.4f  Contains=%.4f  F1=%.4f  (%d questions, %.1fs)",
-        top_k,
-        metrics[f"Recall@{top_k}"],
-        metrics["Contains"],
-        metrics["F1"],
-        int(metrics["num_questions"]),
-        elapsed,
+    log_msg = (
+        f"LongMemEval Overall: Recall@{top_k}={metrics[f'Recall@{top_k}']:.4f}"
+        f"  Contains={metrics['Contains']:.4f}  F1={metrics['F1']:.4f}"
     )
+    if use_rag and "QA_F1" in metrics:
+        log_msg += (
+            f"  QA_F1={metrics['QA_F1']:.4f}"
+            f"  Judge={metrics['Judge_Accuracy']:.4f}"
+        )
+    log_msg += (
+        f"  ({int(metrics['num_questions'])} questions, {elapsed:.1f}s)"
+    )
+    logger.info(log_msg)
 
     # Log per-category results
     category_keys = [k for k in metrics if k.startswith(f"Recall@{top_k}_")]
     for key in sorted(category_keys):
         cat = key.split("_", 1)[1] if "_" in key else key
         count_key = f"num_{cat}"
-        logger.info(
-            "  %s: Recall@%d=%.4f (%d questions)",
-            cat, top_k, metrics[key], int(metrics.get(count_key, 0)),
-        )
+        cat_log = f"  {cat}: Recall@{top_k}={metrics[key]:.4f}"
+        if use_rag and f"Judge_{cat}" in metrics:
+            cat_log += f"  Judge={metrics[f'Judge_{cat}']:.4f}"
+        cat_log += f" ({int(metrics.get(count_key, 0))} questions)"
+        logger.info(cat_log)
 
     logger.info("=" * 60)
 
