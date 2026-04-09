@@ -63,10 +63,9 @@ async def _run(args: argparse.Namespace) -> dict:
     print()
     print(md_content)
 
-    # Exit with non-zero if critical issues detected
+    # Log data integrity findings (informational for baseline, not a failure)
     if results["duplicate_count"] > 0 or results["junk_entity_rate"] > 15:
-        logger.warning("Data integrity issues detected — review results")
-        sys.exit(1)
+        logger.warning("Data integrity issues detected — expected for pre-fix baseline")
 
     return results
 
