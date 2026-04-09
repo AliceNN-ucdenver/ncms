@@ -15,7 +15,6 @@ import json
 import logging
 import re
 import shutil
-import sqlite3
 import tempfile
 import time
 from datetime import datetime, timedelta
@@ -102,7 +101,7 @@ class BackendSnapshot:
     """
 
     def __init__(self) -> None:
-        self._sqlite_backup: sqlite3.Connection | None = None
+        self._sqlite_bytes: bytes = b""
         self._tantivy_snapshot_dir: str | None = None
         self._graph_data: dict | None = None
         self._splade_vectors_snapshot: dict | None = None
@@ -125,11 +124,8 @@ class BackendSnapshot:
         assert isinstance(store, object) and hasattr(store, "db")
         db: aiosqlite.Connection = store.db  # type: ignore[union-attr]
 
-        backup_conn = sqlite3.connect(":memory:")
-        # aiosqlite._execute(fn, *args, **kw) calls partial(fn, *args, **kw)()
-        # on the worker thread. We pass the raw conn's backup method + target.
-        await db._execute(db._conn.backup, backup_conn)
-        self._sqlite_backup = backup_conn
+        # Serialize DB to bytes on the worker thread (avoids cross-thread conn issues)
+        self._sqlite_bytes: bytes = await db._execute(db._conn.serialize)
 
         # Tantivy: copy the index directory
         tantivy_engine: TantivyEngine = index  # type: ignore[assignment]
@@ -177,14 +173,13 @@ class BackendSnapshot:
         from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
         from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
-        assert self._sqlite_backup is not None, "No snapshot captured"
+        assert self._sqlite_bytes, "No snapshot captured"
 
-        # SQLite: create a new in-memory DB and restore from backup
+        # SQLite: create a new in-memory DB and deserialize the snapshot into it
         store = SQLiteStore(db_path=":memory:")
         await store.initialize()
-        # Overwrite the freshly-initialized DB with the snapshot
         await store.db._execute(
-            self._sqlite_backup.backup, store.db._conn,  # type: ignore[union-attr]
+            store.db._conn.deserialize, self._sqlite_bytes,
         )
 
         # Tantivy: copy the snapshot dir to a new temp dir, open index there
@@ -234,9 +229,7 @@ class BackendSnapshot:
         if self._tantivy_snapshot_dir:
             shutil.rmtree(self._tantivy_snapshot_dir, ignore_errors=True)
             self._tantivy_snapshot_dir = None
-        if self._sqlite_backup:
-            self._sqlite_backup.close()
-            self._sqlite_backup = None
+        self._sqlite_bytes = b""
 
 
 async def replay_conversation(
