@@ -104,7 +104,7 @@ class BackendSnapshot:
     def __init__(self) -> None:
         self._sqlite_backup: sqlite3.Connection | None = None
         self._tantivy_snapshot_dir: str | None = None
-        self._graph_snapshot: object | None = None
+        self._graph_data: dict | None = None
         self._splade_vectors_snapshot: dict | None = None
 
     async def capture(
@@ -142,9 +142,20 @@ class BackendSnapshot:
         shutil.copytree(tantivy_engine._index_dir, snapshot_dir)
         self._tantivy_snapshot_dir = snapshot_dir
 
-        # NetworkX: deep copy the full graph object
+        # NetworkX: snapshot the graph data (can't deepcopy — contains RLock)
         nx_graph: NetworkXGraph = graph  # type: ignore[assignment]
-        self._graph_snapshot = copy.deepcopy(nx_graph)
+        import networkx as nx
+
+        self._graph_data = {
+            "digraph": nx.node_link_data(nx_graph._graph),
+            "name_index": dict(nx_graph._name_index),
+            "memory_entities": {
+                k: set(v) for k, v in nx_graph._memory_entities.items()
+            },
+            "entity_memories": {
+                k: set(v) for k, v in nx_graph._entity_memories.items()
+            },
+        }
 
         # SPLADE: deep copy the vectors dict (model stays shared / lazy-loaded)
         splade_engine: SpladeEngine = splade  # type: ignore[assignment]
@@ -185,8 +196,18 @@ class BackendSnapshot:
         index = TantivyEngine(path=restore_dir)
         index.initialize(path=restore_dir)
 
-        # NetworkX: deep copy from the snapshot
-        graph: NetworkXGraph = copy.deepcopy(self._graph_snapshot)  # type: ignore[assignment]
+        # NetworkX: reconstruct from snapshot data
+        import networkx as nx
+
+        graph = NetworkXGraph()
+        graph._graph = nx.node_link_graph(self._graph_data["digraph"])
+        graph._name_index = dict(self._graph_data["name_index"])
+        graph._memory_entities = {
+            k: set(v) for k, v in self._graph_data["memory_entities"].items()
+        }
+        graph._entity_memories = {
+            k: set(v) for k, v in self._graph_data["entity_memories"].items()
+        }
 
         # SPLADE: create engine with copied vectors (shares the model singleton)
         splade = SpladeEngine()
