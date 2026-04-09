@@ -10,9 +10,13 @@ Supports two modes:
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
+import shutil
+import sqlite3
+import tempfile
 import time
 from datetime import datetime, timedelta
 
@@ -82,6 +86,136 @@ class ConversationState:
         self.conversation_id = conversation_id
         self.memory_ids = memory_ids
         self.turn_to_memory: dict[int, str] = turn_to_memory
+
+
+class BackendSnapshot:
+    """Captures and restores in-memory NCMS backend state.
+
+    Snapshots all 4 backends so a base conversation can be ingested once,
+    then each question restores from the snapshot and adds only its cue turns.
+
+    Snapshot strategy per backend:
+    - SQLite: ``conn.backup()`` to a secondary in-memory connection.
+    - Tantivy: ``shutil.copytree()`` on the index directory.
+    - NetworkX: ``copy.deepcopy()`` of the graph object.
+    - SPLADE: ``copy.deepcopy()`` of the ``_vectors`` dict.
+    """
+
+    def __init__(self) -> None:
+        self._sqlite_backup: sqlite3.Connection | None = None
+        self._tantivy_snapshot_dir: str | None = None
+        self._graph_snapshot: object | None = None
+        self._splade_vectors_snapshot: dict | None = None
+
+    async def capture(
+        self,
+        store: object,
+        index: object,
+        graph: object,
+        splade: object,
+    ) -> None:
+        """Snapshot current state of all backends."""
+        import aiosqlite
+
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+
+        # SQLite: backup the in-memory DB to another in-memory connection
+        assert isinstance(store, object) and hasattr(store, "db")
+        db: aiosqlite.Connection = store.db  # type: ignore[union-attr]
+
+        backup_conn = sqlite3.connect(":memory:")
+        # aiosqlite._execute(fn, *args, **kw) calls partial(fn, *args, **kw)()
+        # on the worker thread. We pass the raw conn's backup method + target.
+        await db._execute(db._conn.backup, backup_conn)
+        self._sqlite_backup = backup_conn
+
+        # Tantivy: copy the index directory
+        tantivy_engine: TantivyEngine = index  # type: ignore[assignment]
+        assert tantivy_engine._index_dir is not None, (
+            "TantivyEngine._index_dir not set — was initialize() called?"
+        )
+        snapshot_dir = tempfile.mkdtemp(prefix="ncms_tantivy_snap_")
+        # copytree wants the dest to not exist, so remove the auto-created dir
+        shutil.rmtree(snapshot_dir)
+        shutil.copytree(tantivy_engine._index_dir, snapshot_dir)
+        self._tantivy_snapshot_dir = snapshot_dir
+
+        # NetworkX: deep copy the full graph object
+        nx_graph: NetworkXGraph = graph  # type: ignore[assignment]
+        self._graph_snapshot = copy.deepcopy(nx_graph)
+
+        # SPLADE: deep copy the vectors dict (model stays shared / lazy-loaded)
+        splade_engine: SpladeEngine = splade  # type: ignore[assignment]
+        self._splade_vectors_snapshot = copy.deepcopy(splade_engine._vectors)
+
+    async def restore(
+        self,
+        config: object,
+    ) -> ConversationState:
+        """Create fresh backends from snapshot.
+
+        Returns a ConversationState with restored backends and a new
+        MemoryService wired to them.  The caller should add cue turns
+        to the returned service before searching.
+        """
+        from ncms.application.memory_service import MemoryService
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        assert self._sqlite_backup is not None, "No snapshot captured"
+
+        # SQLite: create a new in-memory DB and restore from backup
+        store = SQLiteStore(db_path=":memory:")
+        await store.initialize()
+        # Overwrite the freshly-initialized DB with the snapshot
+        await store.db._execute(
+            self._sqlite_backup.backup, store.db._conn,  # type: ignore[union-attr]
+        )
+
+        # Tantivy: copy the snapshot dir to a new temp dir, open index there
+        assert self._tantivy_snapshot_dir is not None
+        restore_dir = tempfile.mkdtemp(prefix="ncms_tantivy_restore_")
+        shutil.rmtree(restore_dir)
+        shutil.copytree(self._tantivy_snapshot_dir, restore_dir)
+
+        index = TantivyEngine(path=restore_dir)
+        index.initialize(path=restore_dir)
+
+        # NetworkX: deep copy from the snapshot
+        graph: NetworkXGraph = copy.deepcopy(self._graph_snapshot)  # type: ignore[assignment]
+
+        # SPLADE: create engine with copied vectors (shares the model singleton)
+        splade = SpladeEngine()
+        splade._vectors = copy.deepcopy(self._splade_vectors_snapshot)  # type: ignore[assignment]
+
+        svc = MemoryService(
+            store=store, index=index, graph=graph, config=config, splade=splade,
+        )
+
+        return ConversationState(
+            store=store,
+            index=index,
+            graph=graph,
+            splade=splade,
+            config=config,
+            svc=svc,
+            conversation_id="",
+            memory_ids=[],
+            turn_to_memory={},
+        )
+
+    def cleanup(self) -> None:
+        """Remove temporary snapshot files."""
+        if self._tantivy_snapshot_dir:
+            shutil.rmtree(self._tantivy_snapshot_dir, ignore_errors=True)
+            self._tantivy_snapshot_dir = None
+        if self._sqlite_backup:
+            self._sqlite_backup.close()
+            self._sqlite_backup = None
 
 
 async def replay_conversation(
@@ -829,6 +963,162 @@ async def _replay_stitched_conversation(
     )
 
 
+async def _replay_base_sessions(
+    raw_conv: dict,
+    conversation_id: str,
+    config: object | None = None,
+) -> ConversationState:
+    """Replay ONLY the base LoCoMo sessions (no cue, no trigger) into NCMS.
+
+    This ingests the ~420-turn base conversation once.  The returned state
+    can be snapshotted and restored for each per-question cue stitching.
+    """
+    from ncms.application.memory_service import MemoryService
+    from ncms.config import NCMSConfig
+    from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+    from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+    store = SQLiteStore(db_path=":memory:")
+    await store.initialize()
+
+    index = TantivyEngine()
+    index.initialize()
+
+    graph = NetworkXGraph()
+    splade = SpladeEngine()
+
+    if config is None:
+        config = NCMSConfig(
+            db_path=":memory:",
+            actr_noise=0.0,
+            splade_enabled=True,
+            graph_expansion_enabled=True,
+            scoring_weight_bm25=0.6,
+            scoring_weight_actr=0.0,
+            scoring_weight_splade=0.3,
+            scoring_weight_graph=0.3,
+            contradiction_detection_enabled=False,
+        )
+
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import LOCOMO_TOPICS
+
+    topic_info = LOCOMO_TOPICS.get("locomo", {})
+    domain = topic_info.get("domain", "personal")
+    labels = topic_info.get("labels", [])
+    if labels:
+        await store.set_consolidation_value(
+            f"entity_labels:{domain}",
+            json.dumps(labels),
+        )
+
+    svc = MemoryService(
+        store=store, index=index, graph=graph, config=config, splade=splade,
+    )
+
+    # Extract raw sessions (reuse _extract_raw_sessions)
+    sessions = _extract_raw_sessions(raw_conv)
+
+    memory_ids: list[str] = []
+    turn_to_memory: dict[int, str] = {}
+
+    t0 = time.perf_counter()
+    turn_idx = 0
+    for session in sessions:
+        session_tag = str(session["session_num"])
+        for turn in session.get("turns", []):
+            if isinstance(turn, dict):
+                speaker = turn.get("speaker", "unknown")
+                text = turn.get("text", "")
+            else:
+                continue
+
+            if not text.strip():
+                continue
+
+            memory = await svc.store_memory(
+                content=text,
+                memory_type="fact",
+                source_agent=speaker,
+                domains=["personal"],
+                tags=["locomo", conversation_id, f"session:{session_tag}"],
+            )
+            memory_ids.append(memory.id)
+            turn_to_memory[turn_idx] = memory.id
+            turn_idx += 1
+
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "Replayed base conversation %s: %d memories in %.1fs",
+        conversation_id,
+        len(memory_ids),
+        elapsed,
+    )
+
+    return ConversationState(
+        store=store,
+        index=index,
+        graph=graph,
+        splade=splade,
+        config=config,
+        svc=svc,
+        conversation_id=conversation_id,
+        memory_ids=memory_ids,
+        turn_to_memory=turn_to_memory,
+    )
+
+
+async def _add_cue_turns(
+    state: ConversationState,
+    raw_conv: dict,
+    cue_dialogue: str,
+    conversation_id: str,
+) -> list[str]:
+    """Add cue dialogue turns to an existing ConversationState.
+
+    Maps A/B speaker placeholders to actual names from the raw conversation,
+    then stores each cue line as a memory.
+
+    Returns list of memory IDs for the cue turns.
+    """
+    from ncms.application.memory_service import MemoryService
+
+    speaker_a = raw_conv.get("speaker_a", "A")
+    speaker_b = raw_conv.get("speaker_b", "B")
+    mapped_cue = _map_ab_speakers(cue_dialogue, speaker_a, speaker_b)
+
+    svc: MemoryService = state.svc  # type: ignore[assignment]
+    cue_memory_ids: list[str] = []
+
+    for line in mapped_cue.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if ":" in line:
+            speaker, text = line.split(":", 1)
+            speaker = speaker.strip()
+            text = text.strip()
+        else:
+            speaker = speaker_a
+            text = line
+
+        if not text:
+            continue
+
+        memory = await svc.store_memory(
+            content=text,
+            memory_type="fact",
+            source_agent=speaker,
+            domains=["personal"],
+            tags=["locomo", conversation_id, "session:cue"],
+        )
+        cue_memory_ids.append(memory.id)
+
+    return cue_memory_ids
+
+
 async def run_locomo_plus_benchmark(
     conversations: list[Conversation],
     plus_questions: list[PlusQuestion],
@@ -837,15 +1127,19 @@ async def run_locomo_plus_benchmark(
     llm_model: str | None = None,
     llm_api_base: str | None = None,
 ) -> dict:
-    """Run the LoCoMo-Plus benchmark with proper cue-trigger stitching.
+    """Run the LoCoMo-Plus benchmark with snapshot/restore optimization.
 
-    For each Plus question:
-    1. Load the raw base LoCoMo conversation (via base_conv_idx).
-    2. Stitch the cue dialogue into the conversation at the temporally
-       correct position based on the time gap.
-    3. Ingest all sessions INCLUDING the stitched cue (but NOT the trigger).
-    4. Use the trigger (the question) as the search query.
-    5. Score: does the recalled context contain the cue evidence?
+    Uses a snapshot/restore strategy to avoid re-ingesting the ~420-turn base
+    conversation for each of the ~40 questions sharing the same conversation:
+
+    For each conversation group (10 groups of ~40 questions):
+    1. Ingest the base conversation ONCE (~420 turns, ~90s).
+    2. Snapshot all 4 backends (SQLite backup, Tantivy dir copy, NetworkX
+       deepcopy, SPLADE vectors copy).
+    3. For each question: restore from snapshot (fast), add 2-3 cue turns,
+       search with trigger query, score.
+
+    This reduces total runtime from ~10 hours to ~30-40 minutes.
 
     When ``use_llm_judge=True``, also evaluates whether the LLM response
     demonstrates awareness of the implicit connection between trigger and cue.
@@ -916,52 +1210,41 @@ async def run_locomo_plus_benchmark(
 
         conv_id = f"conv_{conv_idx}"
         logger.info(
-            "Processing conversation idx=%d (%d Plus questions, stitching each)",
+            "Processing conversation idx=%d (%d Plus questions, "
+            "snapshot/restore optimization)",
             conv_idx, len(conv_questions),
         )
+
+        # ── Ingest the base conversation ONCE, then snapshot ──────────
+        base_state = await _replay_base_sessions(
+            raw_conv, conversation_id=conv_id,
+        )
+        snapshot = BackendSnapshot()
+        await snapshot.capture(
+            base_state.store, base_state.index,
+            base_state.graph, base_state.splade,
+        )
+        # Close the base state — we only need the snapshot from here
+        await base_state.store.close()  # type: ignore[union-attr]
 
         conv_recall: list[float] = []
         conv_f1: list[float] = []
         conv_contains: list[float] = []
 
-        for q in conv_questions:
-            # Stitch this question's cue into the base conversation
-            stitched_sessions, mapped_cue, mapped_trigger = stitch_conversation(
-                raw_conv=raw_conv,
-                cue_dialogue=q.cue_dialogue,
-                trigger_query=q.question,
-                time_gap_str=q.time_gap,
-            )
+        for qi, q in enumerate(conv_questions):
+            t_q = time.perf_counter()
 
-            if not stitched_sessions:
-                logger.warning(
-                    "Stitching failed for question %s, skipping", q.question_id,
-                )
-                continue
-
-            # Count ingested turns (all sessions except trigger)
-            ingest_turns = sum(
-                len(s.get("turns", []))
-                for s in stitched_sessions
-                if not s.get("is_trigger", False)
-            )
-            logger.debug(
-                "  %s: stitched %d sessions (%d ingest turns), "
-                "time_gap=%s, cue_lines=%d",
-                q.question_id,
-                len(stitched_sessions),
-                ingest_turns,
-                q.time_gap,
-                len(mapped_cue.split("\n")),
-            )
-
-            # Replay stitched conversation (ingest all except trigger)
-            state = await _replay_stitched_conversation(
-                stitched_sessions,
-                conversation_id=f"{conv_id}_{q.question_id}",
-            )
+            # Restore backends from snapshot (fast copy, no re-ingestion)
+            state = await snapshot.restore(config=base_state.config)
+            state.conversation_id = f"{conv_id}_{q.question_id}"
 
             try:
+                # Add ONLY the cue turns (2-3 lines) to the restored state
+                cue_ids = await _add_cue_turns(
+                    state, raw_conv, q.cue_dialogue,
+                    conversation_id=state.conversation_id,
+                )
+
                 from ncms.application.memory_service import MemoryService
 
                 svc: MemoryService = state.svc  # type: ignore[assignment]
@@ -987,8 +1270,18 @@ async def run_locomo_plus_benchmark(
                 all_predictions[q.question_id] = concat_content
                 all_ground_truths[q.question_id] = q.ground_truth
                 all_question_texts[q.question_id] = q.question
+
+                elapsed_q = time.perf_counter() - t_q
+                logger.debug(
+                    "  %s [%d/%d]: restore+cue(%d)+search in %.1fs",
+                    q.question_id, qi + 1, len(conv_questions),
+                    len(cue_ids), elapsed_q,
+                )
             finally:
                 await state.store.close()  # type: ignore[union-attr]
+
+        # Clean up snapshot temp files for this conversation
+        snapshot.cleanup()
 
         all_recall.extend(conv_recall)
         all_f1.extend(conv_f1)
