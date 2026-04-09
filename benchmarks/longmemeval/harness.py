@@ -1,11 +1,14 @@
 """LongMemEval evaluation harness — replay sessions into NCMS, evaluate QA retrieval.
 
-Same conversation-replay pattern as LoCoMo.  Primary metric is Recall@5
-(to compare against MemPalace's reported 96.6%).
+Each question has its own haystack (set of sessions to ingest).  We create a
+fresh NCMS instance per question, ingest that question's sessions, then evaluate.
+
+Primary metric is Recall@5 (to compare against MemPalace's reported 96.6%).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 
@@ -15,44 +18,11 @@ from benchmarks.longmemeval.loader import LongMemQuestion, Session
 logger = logging.getLogger(__name__)
 
 
-class ConversationState:
-    """Holds NCMS backends populated from session replays."""
-
-    def __init__(
-        self,
-        store: object,
-        index: object,
-        graph: object,
-        splade: object,
-        config: object,
-        svc: object,
-        memory_ids: list[str],
-        session_count: int,
-    ):
-        self.store = store
-        self.index = index
-        self.graph = graph
-        self.splade = splade
-        self.config = config
-        self.svc = svc
-        self.memory_ids = memory_ids
-        self.session_count = session_count
-
-
-async def replay_sessions(
-    sessions: list[Session],
-    config: object | None = None,
-) -> ConversationState:
-    """Replay all chat sessions into fresh in-memory NCMS backends.
-
-    Each turn is stored as a separate memory with session metadata in tags.
-
-    Args:
-        sessions: List of chat sessions to ingest.
-        config: Optional NCMSConfig override.
+async def _create_ncms_instance(config: object | None = None):
+    """Create a fresh in-memory NCMS instance.
 
     Returns:
-        ConversationState with populated backends.
+        Tuple of (store, index, graph, splade, config, svc).
     """
     from ncms.application.memory_service import MemoryService
     from ncms.config import NCMSConfig
@@ -83,91 +53,151 @@ async def replay_sessions(
             contradiction_detection_enabled=False,
         )
 
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import LONGMEMEVAL_TOPICS
+
+    topic_info = LONGMEMEVAL_TOPICS.get("longmemeval", {})
+    domain = topic_info.get("domain", "assistant")
+    labels = topic_info.get("labels", [])
+    if labels:
+        await store.set_consolidation_value(
+            f"entity_labels:{domain}",
+            json.dumps(labels),
+        )
+
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
 
+    return store, index, graph, splade, config, svc
+
+
+async def _ingest_sessions(
+    svc: object,
+    sessions: list[Session],
+) -> list[str]:
+    """Ingest sessions into an NCMS MemoryService, return stored memory IDs."""
+    from ncms.application.memory_service import MemoryService
+
+    svc_typed: MemoryService = svc  # type: ignore[assignment]
     memory_ids: list[str] = []
-    t0 = time.perf_counter()
 
     for session in sessions:
         for turn in session.turns:
             if not turn.content.strip():
                 continue
-
-            memory = await svc.store_memory(
+            memory = await svc_typed.store_memory(
                 content=turn.content,
                 memory_type="fact",
                 source_agent=turn.role,
+                domains=["assistant"],
                 tags=["longmemeval", f"session:{session.session_id}"],
             )
             memory_ids.append(memory.id)
 
-    elapsed = time.perf_counter() - t0
-    logger.info(
-        "Replayed %d sessions (%d memories) in %.1fs",
-        len(sessions), len(memory_ids), elapsed,
-    )
-
-    return ConversationState(
-        store=store,
-        index=index,
-        graph=graph,
-        splade=splade,
-        config=config,
-        svc=svc,
-        memory_ids=memory_ids,
-        session_count=len(sessions),
-    )
+    return memory_ids
 
 
-async def evaluate_qa(
-    state: ConversationState,
-    questions: list[LongMemQuestion],
+async def evaluate_question(
+    svc: object,
+    question: LongMemQuestion,
     top_k: int = 5,
 ) -> dict[str, float]:
-    """Evaluate QA retrieval against populated NCMS backends.
-
-    For each question, searches NCMS and checks whether the top-k results
-    contain the ground-truth answer.
-
-    Args:
-        state: ConversationState from replay_sessions().
-        questions: Evaluation questions.
-        top_k: Number of top results to consider.
+    """Evaluate a single question against an NCMS instance.
 
     Returns:
-        Dict with Recall@k, Contains, F1, and per-category breakdowns.
+        Dict with recall, contains, and f1 scores.
     """
     from ncms.application.memory_service import MemoryService
 
-    svc: MemoryService = state.svc  # type: ignore[assignment]
+    svc_typed: MemoryService = svc  # type: ignore[assignment]
+
+    results = await svc_typed.search(query=question.question, limit=top_k)
+    retrieved_contents = [s.memory.content for s in results]
+
+    recall = recall_at_k_qa(retrieved_contents, question.answer, k=top_k)
+    concat_content = " ".join(retrieved_contents[:top_k])
+    contains = contains_match(concat_content, question.answer)
+    f1 = f1_token_overlap(concat_content, question.answer)
+
+    return {"recall": recall, "contains": contains, "f1": f1}
+
+
+async def run_longmemeval_benchmark(
+    sessions_by_question: dict[str, list[Session]],
+    questions: list[LongMemQuestion],
+    top_k: int = 5,
+) -> dict:
+    """Run the full LongMemEval benchmark.
+
+    Each question gets its own NCMS instance populated with that question's
+    haystack sessions.
+
+    Args:
+        sessions_by_question: Dict mapping question_id to its list of sessions.
+        questions: All evaluation questions.
+        top_k: Number of top results for recall computation.
+
+    Returns:
+        Dict with overall metrics and category breakdowns.
+    """
+    logger.info("=" * 60)
+    logger.info("LongMemEval Benchmark")
+    logger.info("  Questions: %d", len(questions))
+    logger.info("=" * 60)
 
     recall_scores: list[float] = []
     contains_scores: list[float] = []
     f1_scores: list[float] = []
     category_scores: dict[str, list[float]] = {}
+    total_memories = 0
+    total_sessions = 0
 
-    for q in questions:
-        results = await svc.search(query=q.question, limit=top_k)
-        retrieved_contents = [s.memory.content for s in results]
+    t0 = time.perf_counter()
 
-        # Recall@k: does any top-k result contain the answer?
-        recall = recall_at_k_qa(retrieved_contents, q.answer, k=top_k)
-        recall_scores.append(recall)
+    for qi, q in enumerate(questions):
+        q_sessions = sessions_by_question.get(q.question_id, [])
 
-        # Concatenate top-k content for token-level metrics
-        concat_content = " ".join(retrieved_contents[:top_k])
-        contains_scores.append(contains_match(concat_content, q.answer))
-        f1_scores.append(f1_token_overlap(concat_content, q.answer))
+        if not q_sessions:
+            logger.warning(
+                "Question %s has no sessions, skipping", q.question_id,
+            )
+            continue
 
-        # Track per-category
+        # Create fresh NCMS instance for this question
+        store, _index, _graph, _splade, _config, svc = await _create_ncms_instance()
+
+        try:
+            # Ingest this question's sessions
+            mem_ids = await _ingest_sessions(svc, q_sessions)
+            total_memories += len(mem_ids)
+            total_sessions += len(q_sessions)
+
+            # Evaluate
+            scores = await evaluate_question(svc, q, top_k=top_k)
+        finally:
+            await store.close()
+
+        recall_scores.append(scores["recall"])
+        contains_scores.append(scores["contains"])
+        f1_scores.append(scores["f1"])
+
         cat = q.category
         if cat not in category_scores:
             category_scores[cat] = []
-        category_scores[cat].append(recall)
+        category_scores[cat].append(scores["recall"])
 
+        if (qi + 1) % 10 == 0 or qi == 0:
+            elapsed = time.perf_counter() - t0
+            logger.info(
+                "  [%d/%d] %.1fs  Recall@%d so far: %.4f",
+                qi + 1, len(questions), elapsed, top_k,
+                sum(recall_scores) / len(recall_scores),
+            )
+
+    elapsed = time.perf_counter() - t0
     n = len(recall_scores) or 1
+
     metrics: dict[str, float] = {
         f"Recall@{top_k}": sum(recall_scores) / n,
         "Contains": sum(contains_scores) / n,
@@ -181,51 +211,15 @@ async def evaluate_qa(
         metrics[f"Recall@{top_k}_{cat}"] = sum(scores) / cat_n
         metrics[f"num_{cat}"] = float(len(scores))
 
-    return metrics
-
-
-async def run_longmemeval_benchmark(
-    sessions: list[Session],
-    questions: list[LongMemQuestion],
-    top_k: int = 5,
-) -> dict:
-    """Run the full LongMemEval benchmark.
-
-    All sessions are replayed into a single NCMS instance, then all questions
-    are evaluated against it (unlike LoCoMo which is per-conversation).
-
-    Args:
-        sessions: List of parsed chat sessions.
-        questions: All evaluation questions.
-        top_k: Number of top results for recall computation.
-
-    Returns:
-        Dict with overall metrics and category breakdowns.
-    """
-    logger.info("=" * 60)
-    logger.info("LongMemEval Benchmark")
-    logger.info("  Sessions: %d, Questions: %d", len(sessions), len(questions))
-    logger.info("=" * 60)
-
-    # Replay all sessions into one NCMS instance
-    logger.info("Phase 1: Replaying sessions...")
-    state = await replay_sessions(sessions)
-
-    try:
-        # Evaluate questions
-        logger.info("Phase 2: Evaluating %d questions...", len(questions))
-        metrics = await evaluate_qa(state, questions, top_k=top_k)
-    finally:
-        await state.store.close()  # type: ignore[union-attr]
-
     logger.info("=" * 60)
     logger.info(
-        "LongMemEval Overall: Recall@%d=%.4f  Contains=%.4f  F1=%.4f  (%d questions)",
+        "LongMemEval Overall: Recall@%d=%.4f  Contains=%.4f  F1=%.4f  (%d questions, %.1fs)",
         top_k,
         metrics[f"Recall@{top_k}"],
         metrics["Contains"],
         metrics["F1"],
         int(metrics["num_questions"]),
+        elapsed,
     )
 
     # Log per-category results
@@ -242,7 +236,8 @@ async def run_longmemeval_benchmark(
 
     return {
         "overall": metrics,
-        "sessions_count": len(sessions),
-        "total_turns": sum(len(s.turns) for s in sessions),
-        "memories_stored": len(state.memory_ids),
+        "questions_count": len(questions),
+        "total_sessions": total_sessions,
+        "total_memories": total_memories,
+        "elapsed_seconds": round(elapsed, 1),
     }

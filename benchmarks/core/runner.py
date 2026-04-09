@@ -51,6 +51,11 @@ def setup_logging(
     Returns:
         Path to the created log file.
     """
+    # Ensure .env is loaded (HF_TOKEN for SPLADE model access, etc.)
+    from benchmarks.env import load_dotenv as _load_dotenv
+
+    _load_dotenv()
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Timestamped log file (never overwrites previous runs)

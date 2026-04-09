@@ -12,6 +12,7 @@ Follows the same patterns as benchmarks/swebench/harness.py:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import Counter
@@ -173,6 +174,18 @@ async def ingest_mab_corpus(
             # Intent classification for structured retrieval
             intent_classification_enabled=True,
         )
+
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import MAB_TOPICS
+
+    topic_info = MAB_TOPICS.get("mab", {})
+    mab_labels = topic_info.get("labels", [])
+    if mab_labels:
+        await store.set_consolidation_value(
+            "entity_labels:mab",
+            json.dumps(mab_labels),
+        )
+        logger.info("Seeded MAB entity labels: %s", mab_labels)
 
     # Create phase services
     admission = AdmissionService(store=store, index=index, graph=graph, config=config)

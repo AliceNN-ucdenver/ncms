@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Cached datasets (downloaded at runtime, not committed)
+results/.cache/

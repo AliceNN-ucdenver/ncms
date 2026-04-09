@@ -104,6 +104,19 @@ async def replay_ingest(
             contradiction_detection_enabled=False,
         )
 
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import HUB_REPLAY_TOPICS
+
+    topic_info = HUB_REPLAY_TOPICS.get("hub_replay", {})
+    hub_domain = topic_info.get("domain", "architecture")
+    hub_labels = topic_info.get("labels", [])
+    if hub_labels:
+        await store.set_consolidation_value(
+            f"entity_labels:{hub_domain}",
+            json.dumps(hub_labels),
+        )
+        logger.info("Seeded hub replay entity labels: %s", hub_labels)
+
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
@@ -204,7 +217,7 @@ async def run_queries(
         results[name] = [
             {
                 "memory_id": s.memory.id,
-                "score": round(s.score, 4),
+                "score": round(s.total_activation, 4),
                 "content_preview": s.memory.content[:200],
             }
             for s in scored

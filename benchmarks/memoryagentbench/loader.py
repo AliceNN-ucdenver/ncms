@@ -26,6 +26,14 @@ DATASET_URL = f"https://huggingface.co/datasets/{DATASET_REPO}"
 # Expected split names in the dataset
 COMPETENCY_SPLITS = ("ar", "ttl", "lru", "sf")
 
+# HuggingFace split names → our short names
+_HF_SPLIT_MAP: dict[str, str] = {
+    "accurate_retrieval": "ar",
+    "test_time_learning": "ttl",
+    "long_range_understanding": "lru",
+    "conflict_resolution": "sf",  # CR maps to selective forgetting evaluation
+}
+
 
 def _default_cache_dir() -> Path:
     """Return the default cache directory for MAB data."""
@@ -154,15 +162,28 @@ def load_mab_dataset(cache_dir: Path | None = None) -> dict[str, Any] | None:
     cached_any = False
 
     for split in COMPETENCY_SPLITS:
-        split_path = cache / f"{split}.json"
-        if split_path.exists():
-            try:
-                data = json.loads(split_path.read_text())
-                result[split] = data
-                cached_any = True
-                logger.info("Loaded cached split '%s': %d items", split, len(data))
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Failed to read cached %s: %s", split, exc)
+        # Try short name first (ar.json), then HF names (Accurate_Retrieval.json)
+        candidates = [cache / f"{split}.json"]
+        for hf_name, short in _HF_SPLIT_MAP.items():
+            if short == split:
+                # Try both capitalized and lowercase HF names
+                capitalized = hf_name.replace("_", " ").title().replace(" ", "_")
+                candidates.append(cache / f"{capitalized}.json")
+                candidates.append(cache / f"{hf_name}.json")
+
+        for split_path in candidates:
+            if split_path.exists():
+                try:
+                    data = json.loads(split_path.read_text())
+                    result[split] = data
+                    cached_any = True
+                    logger.info(
+                        "Loaded cached split '%s' from %s: %d items",
+                        split, split_path.name, len(data),
+                    )
+                    break
+                except (json.JSONDecodeError, OSError) as exc:
+                    logger.warning("Failed to read cached %s: %s", split_path, exc)
 
     if cached_any and len(result) > 0:
         logger.info(

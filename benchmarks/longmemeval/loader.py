@@ -2,6 +2,22 @@
 
 Data source: https://huggingface.co/datasets/xiaowu0162/LongMemEval
 Paper: "LongMemEval: Benchmarking Chat Assistants on Long-Term Interactive Memory"
+
+The dataset format embeds sessions inside each question entry:
+    {
+        "question_id": "gpt4_...",
+        "question_type": "temporal-reasoning",
+        "question": "...",
+        "answer": "...",
+        "question_date": "2023/04/10 (Mon) 23:07",
+        "haystack_dates": ["2023/03/15", ...],
+        "haystack_session_ids": ["session_1", ...],
+        "haystack_sessions": [[{role, content}, ...], ...],
+        "answer_session_ids": ["session_2"]
+    }
+
+Each question has its OWN haystack — the sessions to ingest for that question.
+Different questions may have different (overlapping) session sets.
 """
 
 from __future__ import annotations
@@ -15,24 +31,22 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-HF_DATASET_ID = "xiaowu0162/LongMemEval"
-# Direct raw download URLs for the dataset files on HuggingFace
+HF_DATASET_ID = "xiaowu0162/longmemeval-cleaned"
+# Direct raw download URLs for the cleaned dataset on HuggingFace
 HF_RAW_BASE = (
-    "https://huggingface.co/datasets/xiaowu0162/LongMemEval/resolve/main"
+    "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main"
 )
 DEFAULT_CACHE_DIR = Path("benchmarks/results/.cache")
 
-# Known dataset files to attempt downloading
+# Known dataset files (per README: oracle, small-cleaned, medium-cleaned)
 DATASET_FILES = [
-    "data/longmemeval.json",
-    "longmemeval.json",
-    "data/test.json",
-    "test.json",
-    "data/questions.json",
-    "data/longmemeval_s1.json",
-    "data/longmemeval_s2.json",
-    "data/longmemeval_s3.json",
+    "longmemeval_oracle.json",
+    "longmemeval_s_cleaned.json",
+    "longmemeval_m_cleaned.json",
 ]
+
+# Also check the kumiho-benchmarks submodule as a local fallback
+KUMIHO_LONGMEMEVAL_DIR = Path("/tmp/kumiho-benchmarks/LongMemEval/data")
 
 
 @dataclass
@@ -60,8 +74,11 @@ class LongMemQuestion:
     question_id: str
     question: str
     answer: str
-    category: str  # information_extraction, multi_session, temporal, knowledge_update, abstention
-    session_ids: list[str] = field(default_factory=list)
+    category: str  # question_type: temporal-reasoning, knowledge-update, etc.
+    question_date: str = ""
+    haystack_dates: list[str] = field(default_factory=list)
+    haystack_session_ids: list[str] = field(default_factory=list)
+    answer_session_ids: list[str] = field(default_factory=list)
 
 
 def download_longmemeval(cache_dir: Path | None = None) -> Path:
@@ -91,7 +108,23 @@ def download_longmemeval(cache_dir: Path | None = None) -> Path:
         )
         return data_dir
 
-    # Try huggingface_hub first
+    # Try kumiho-benchmarks local clone first (already has the data as submodule)
+    kumiho_data = KUMIHO_LONGMEMEVAL_DIR
+    if kumiho_data.is_dir():
+        json_files = list(kumiho_data.glob("*.json"))
+        if json_files:
+            logger.info(
+                "Found LongMemEval in kumiho-benchmarks at %s (%d files)",
+                kumiho_data, len(json_files),
+            )
+            for f in json_files:
+                dest = data_dir / f.name
+                if not dest.exists():
+                    import shutil
+                    shutil.copy2(f, dest)
+            return data_dir
+
+    # Try huggingface_hub
     if _try_hf_hub_download(data_dir):
         return data_dir
 
@@ -186,178 +219,114 @@ def _try_http_download(data_dir: Path) -> bool:
 
 def load_longmemeval_dataset(
     cache_dir: Path | None = None,
-) -> tuple[list[Session], list[LongMemQuestion]]:
+    dataset_file: str = "longmemeval_oracle.json",
+) -> tuple[dict[str, list[Session]], list[LongMemQuestion]]:
     """Download and parse the LongMemEval dataset.
+
+    Each question entry contains its own haystack_sessions, so we return
+    sessions keyed by question_id rather than a flat list.
 
     Args:
         cache_dir: Directory for cached data.
+        dataset_file: Which JSON file to load (default: oracle with 500 entries).
 
     Returns:
-        Tuple of (sessions, questions).
+        Tuple of (sessions_by_question, questions) where sessions_by_question
+        maps question_id to the list of Session objects for that question.
 
     Raises:
         FileNotFoundError: If no data files are found after download.
     """
     data_dir = download_longmemeval(cache_dir)
 
-    # Find JSON files
-    json_files = sorted(data_dir.rglob("*.json"))
-    if not json_files:
-        msg = f"No JSON files found in {data_dir}"
-        raise FileNotFoundError(msg)
+    # Prefer the specified dataset file
+    target = data_dir / dataset_file
+    if not target.exists():
+        # Try any JSON file
+        json_files = sorted(data_dir.rglob("*.json"))
+        if not json_files:
+            msg = f"No JSON files found in {data_dir}"
+            raise FileNotFoundError(msg)
+        target = json_files[0]
+        logger.warning("Requested %s not found, using %s", dataset_file, target.name)
 
-    logger.info("Found %d JSON files: %s", len(json_files), [f.name for f in json_files])
+    logger.info("Parsing %s...", target.name)
+    with open(target) as f:
+        raw_data = json.load(f)
 
-    sessions: list[Session] = []
+    if not isinstance(raw_data, list):
+        msg = f"Expected a JSON array in {target.name}, got {type(raw_data).__name__}"
+        raise ValueError(msg)
+
+    sessions_by_question: dict[str, list[Session]] = {}
     questions: list[LongMemQuestion] = []
 
-    for json_file in json_files:
-        logger.info("Parsing %s...", json_file.name)
-        with open(json_file) as f:
-            raw_data = json.load(f)
-
-        _parse_longmemeval_data(raw_data, sessions, questions, json_file.stem)
-
-    logger.info(
-        "Loaded %d sessions (%d total turns) and %d questions",
-        len(sessions),
-        sum(len(s.turns) for s in sessions),
-        len(questions),
-    )
-
-    return sessions, questions
-
-
-def _parse_longmemeval_data(
-    raw_data: object,
-    sessions: list[Session],
-    questions: list[LongMemQuestion],
-    file_stem: str,
-) -> None:
-    """Parse raw JSON data into sessions and questions.
-
-    Handles multiple possible data formats:
-    - List of question objects with embedded chat history
-    - Dict with separate sessions and questions keys
-    - List of session objects
-    """
-    if isinstance(raw_data, list):
-        for idx, item in enumerate(raw_data):
-            if not isinstance(item, dict):
-                continue
-
-            # Check if this is a question entry (has question + answer fields)
-            if "question" in item or "query" in item:
-                _parse_question_entry(item, questions, sessions, file_stem, idx)
-            elif "turns" in item or "dialog" in item or "messages" in item:
-                _parse_session_entry(item, sessions, file_stem, idx)
-
-    elif isinstance(raw_data, dict):
-        # Dict format: may have "data", "sessions", "questions" keys
-        data_list = raw_data.get("data", raw_data.get("examples", []))
-        if isinstance(data_list, list):
-            _parse_longmemeval_data(data_list, sessions, questions, file_stem)
-
-        raw_sessions = raw_data.get("sessions", raw_data.get("conversations", []))
-        if isinstance(raw_sessions, list):
-            for idx, s in enumerate(raw_sessions):
-                if isinstance(s, dict):
-                    _parse_session_entry(s, sessions, file_stem, idx)
-
-        raw_questions = raw_data.get("questions", raw_data.get("queries", []))
-        if isinstance(raw_questions, list):
-            for idx, q in enumerate(raw_questions):
-                if isinstance(q, dict):
-                    _parse_question_entry(q, questions, sessions, file_stem, idx)
-
-
-def _parse_session_entry(
-    item: dict,
-    sessions: list[Session],
-    file_stem: str,
-    idx: int,
-) -> None:
-    """Parse a single session entry."""
-    sid = str(item.get("session_id", item.get("id", f"{file_stem}_s{idx}")))
-    session = Session(session_id=sid)
-
-    raw_turns = item.get("turns", item.get("dialog", item.get("messages", [])))
-    for t_idx, turn in enumerate(raw_turns):
-        if isinstance(turn, dict):
-            role = str(turn.get("role", turn.get("speaker", "user")))
-            content = str(turn.get("content", turn.get("text", turn.get("utterance", ""))))
-        elif isinstance(turn, str):
-            role = "user" if t_idx % 2 == 0 else "assistant"
-            content = turn
-        else:
+    for entry in raw_data:
+        if not isinstance(entry, dict):
             continue
 
-        session.turns.append(SessionTurn(
-            turn_id=t_idx,
-            role=role,
-            content=content,
-            session_id=sid,
-        ))
+        qid = str(entry.get("question_id", ""))
+        if not qid:
+            continue
 
-    if session.turns:
-        sessions.append(session)
-
-
-def _parse_question_entry(
-    item: dict,
-    questions: list[LongMemQuestion],
-    sessions: list[Session],
-    file_stem: str,
-    idx: int,
-) -> None:
-    """Parse a question entry, which may also contain chat history."""
-    qid = str(item.get("question_id", item.get("id", f"{file_stem}_q{idx}")))
-    question_text = str(item.get("question", item.get("query", "")))
-    answer_text = str(item.get("answer", item.get("response", item.get("ground_truth", ""))))
-    category = str(item.get("category", item.get("type", item.get("ability", "unknown"))))
-
-    # Session IDs associated with this question
-    session_ids_raw = item.get("session_ids", item.get("sessions", []))
-    session_ids = [str(s) for s in session_ids_raw] if isinstance(session_ids_raw, list) else []
-
-    if question_text:
-        questions.append(LongMemQuestion(
+        # Parse question fields
+        question = LongMemQuestion(
             question_id=qid,
-            question=question_text,
-            answer=answer_text,
-            category=category,
-            session_ids=session_ids,
-        ))
+            question=str(entry.get("question", "")),
+            answer=str(entry.get("answer", "")),
+            category=str(entry.get("question_type", entry.get("category", "unknown"))),
+            question_date=str(entry.get("question_date", "")),
+            haystack_dates=entry.get("haystack_dates", []),
+            haystack_session_ids=entry.get("haystack_session_ids", []),
+            answer_session_ids=entry.get("answer_session_ids", []),
+        )
+        if question.question:
+            questions.append(question)
 
-    # If this entry has embedded chat history, extract as sessions
-    chat_history = item.get(
-        "chat_history",
-        item.get("history", item.get("sessions_detail", item.get("context"))),
-    )
-    if chat_history is None:
-        return
+        # Parse haystack_sessions: list of sessions, each session is a list of turns
+        raw_sessions = entry.get("haystack_sessions", [])
+        session_ids = entry.get("haystack_session_ids", [])
+        question_sessions: list[Session] = []
 
-    if isinstance(chat_history, list):
-        for s_idx, session_data in enumerate(chat_history):
-            if isinstance(session_data, dict):
-                _parse_session_entry(
-                    session_data, sessions, f"{file_stem}_q{idx}", s_idx,
-                )
-            elif isinstance(session_data, list):
-                # List of turns directly
-                sid = f"{file_stem}_q{idx}_s{s_idx}"
-                session = Session(session_id=sid)
-                for t_idx, turn in enumerate(session_data):
-                    if isinstance(turn, dict):
-                        role = str(turn.get("role", "user"))
-                        content = str(turn.get("content", turn.get("text", "")))
-                    elif isinstance(turn, str):
-                        role = "user" if t_idx % 2 == 0 else "assistant"
-                        content = turn
-                    else:
-                        continue
+        for s_idx, session_turns in enumerate(raw_sessions):
+            if not isinstance(session_turns, list):
+                continue
+
+            # Use the matching session_id if available, else generate one
+            sid = str(session_ids[s_idx]) if s_idx < len(session_ids) else f"{qid}_s{s_idx}"
+
+            session = Session(session_id=sid)
+            for t_idx, turn in enumerate(session_turns):
+                if isinstance(turn, dict):
+                    role = str(turn.get("role", "user"))
+                    content = str(turn.get("content", turn.get("text", "")))
+                elif isinstance(turn, str):
+                    role = "user" if t_idx % 2 == 0 else "assistant"
+                    content = turn
+                else:
+                    continue
+
+                if content.strip():
                     session.turns.append(SessionTurn(
-                        turn_id=t_idx, role=role, content=content, session_id=sid,
+                        turn_id=t_idx,
+                        role=role,
+                        content=content,
+                        session_id=sid,
                     ))
-                if session.turns:
-                    sessions.append(session)
+
+            if session.turns:
+                question_sessions.append(session)
+
+        sessions_by_question[qid] = question_sessions
+
+    total_sessions = sum(len(s) for s in sessions_by_question.values())
+    total_turns = sum(
+        sum(len(s.turns) for s in sess)
+        for sess in sessions_by_question.values()
+    )
+    logger.info(
+        "Loaded %d questions, %d total session instances (%d total turns)",
+        len(questions), total_sessions, total_turns,
+    )
+
+    return sessions_by_question, questions

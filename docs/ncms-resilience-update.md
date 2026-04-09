@@ -1378,13 +1378,19 @@ Before any code changes, establish baseline measurements across all target bench
 
 #### 0.1 Benchmark Harness Setup
 
-| Task | Effort | Files |
-|------|--------|-------|
-| LoCoMo harness (download dataset, adapter for NCMS search/recall) | 6h | `benchmarks/locomo/` |
-| LongMemEval harness (conversation memory evaluation) | 4h | `benchmarks/longmemeval/` |
-| MemoryAgentBench harness (4-competency: AR, TTL, LRU, SF) | 6-10h | `benchmarks/memoryagentbench/` (verify dataset availability: [github.com/HUST-AI-HYZ/MemoryAgentBench](https://github.com/HUST-AI-HYZ/MemoryAgentBench); if EventQA/FactConsolidation not yet released, use LoCoMo subsets for SF evaluation) |
-| Hub workload replay harness (replay the 67-memory hub ingest + queries) | 4h | `benchmarks/hub_replay/` |
-| Ingestion performance profiler (latency per pipeline stage) | 2h | Extend `benchmarks/profile_store.py` |
+**Status: COMPLETE.** All harnesses implemented and committed (`9b42323`, `f2cbb6b`).
+
+| Suite | Harness | Dataset | Status |
+|-------|---------|---------|--------|
+| `benchmarks hub` | Hub workload replay (67-memory fixture + 5 queries) | Embedded in `hub_replay/hub_memories.json` | ✅ Ready |
+| `benchmarks beir` | BEIR retrieval ablation (SciFact, NFCorpus, ArguAna) | Auto-download from BEIR | ✅ Ready (existing, paths updated) |
+| `benchmarks swebench` | SWE-bench Django 4-competency (AR, TTL, CR, LRU) | HuggingFace SWE-bench | ✅ Ready (existing, paths updated) |
+| `benchmarks locomo` | LoCoMo conversational reasoning (10 conversations) | `snap-research/locomo` (git clone) | ✅ Ready |
+| `benchmarks locomo --plus` | LoCoMo-Plus cognitive memory (401 entries) | `kumihoclouds/kumiho-benchmarks` checkpoint | ✅ Ready |
+| `benchmarks longmemeval` | LongMemEval conversation memory (500 questions) | HuggingFace `xiaowu0162/longmemeval-cleaned` | ✅ Ready |
+| `benchmarks mab` | MemoryAgentBench 4-competency (AR, TTL, LRU, SF) | HuggingFace `ai-hyz/MemoryAgentBench` | ✅ Ready (graceful skip if dataset unavailable) |
+| `benchmarks smoke` | Quick 100-doc SciFact validation | BEIR SciFact subset | ✅ Ready (existing) |
+| LLM-judge scoring | Spark Nemotron Nano as evaluation judge | N/A (endpoint) | ✅ Tested (1.0/0.6/0.0 for exact/partial/miss) |
 
 #### 0.2 Baseline Measurements
 
@@ -1392,14 +1398,16 @@ Run each harness with **current NCMS configuration** (no changes) and record:
 
 | Metric | Benchmark | What It Measures | Expected Baseline |
 |--------|-----------|-----------------|-------------------|
-| **LoCoMo judge score** | LoCoMo | Long-horizon conversational reasoning | < 0.700 (MAGMA's SOTA) |
-| **LoCoMo-Plus judge accuracy** | LoCoMo-Plus | Belief revision + temporal grounding | < 93.3% (Kumiho's SOTA) |
+| **BEIR SciFact nDCG@10** | BEIR | Retrieval ranking quality (scientific facts) | ~0.72 (previous run: 0.7206 tuned) |
+| **BEIR NFCorpus nDCG@10** | BEIR | Retrieval ranking quality (biomedical) | ~0.35 (previous run: 0.3505) |
+| **SWE-bench AR nDCG@10** | SWE-bench | Accurate retrieval on code repos | ~0.18 (previous: 0.1759) |
+| **SWE-bench CR temporal MRR** | SWE-bench | Conflict resolution (temporal state) | ~0.09 (previous: 0.0947) |
+| **SWE-bench LRU nDCG@10** | SWE-bench | Long-range understanding (cross-subsystem) | ~0.35 (previous: 0.3523) |
+| **LoCoMo R@5** | LoCoMo | Conversational reasoning retrieval | Unknown (first run) |
+| **LoCoMo-Plus judge score** | LoCoMo-Plus | Cognitive memory (cue-trigger disconnect) | < 42% (Mem0/A-MEM SOTA), < 93.3% (Kumiho) |
 | **LongMemEval R@5** | LongMemEval | Conversation memory recall | < 96.6% (MemPalace's baseline) |
-| **MAB AR nDCG@10** | MemoryAgentBench | Accurate retrieval | ~0.72 (from BEIR SciFact) |
-| **MAB TTL accuracy** | MemoryAgentBench | Test-time learning (admission routing) | ~65.9% (from tuning results) |
-| **MAB CR temporal MRR** | MemoryAgentBench | Conflict resolution | ~0.09 (from SWE-bench) |
-| **MAB LRU nDCG@10** | MemoryAgentBench | Long-range understanding | ~0.35 (from SWE-bench) |
-| **MAB SF accuracy** | MemoryAgentBench | Selective forgetting | Unknown (dream cycles untested) |
+| **MAB AR nDCG@10** | MemoryAgentBench | Accurate retrieval | Unknown (first run, expect ~0.72) |
+| **MAB SF accuracy** | MemoryAgentBench | Selective forgetting | Unknown (dream cycles untested, all systems ≤7%) |
 | **Hub ingest latency p50/p95** | Hub replay | End-to-end store_memory() time | ~350ms p50, ~5400ms p95 (from tuning) |
 | **Hub search latency p50** | Hub replay | End-to-end search() time | ~38ms p50 (from tuning) |
 | **Hub duplicate rate** | Hub replay | % of memories that are exact duplicates | 27% (from audit) |

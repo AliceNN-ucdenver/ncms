@@ -52,14 +52,70 @@ DATASET_TOPICS: dict[str, dict[str, list[str] | str]] = {
 }
 
 # SWE-bench Django entity labels (code-entity tuned for GLiNER)
+# Trimmed from 20 to 10: kept labels GLiNER reliably detects in issue text.
+# Dropped: url_pattern, template, queryset, manager, migration, signal,
+#           test_case, exception, setting, mixin (too code-internal for NER).
 SWEBENCH_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "swebench_django": {
         "domain": "django",
         "labels": [
             "class", "method", "function", "module", "field",
-            "model", "view", "middleware", "url_pattern", "form",
-            "template", "queryset", "manager", "migration", "signal",
-            "test_case", "exception", "setting", "command", "mixin",
+            "model", "view", "middleware", "form", "command",
+        ],
+    },
+}
+
+# LoCoMo: personal conversations between friends about daily life.
+# Labels target entities that appear in informal dialogue about hobbies,
+# relationships, health, work, events, travel, food, and education.
+LOCOMO_TOPICS: dict[str, dict[str, list[str] | str]] = {
+    "locomo": {
+        "domain": "personal",
+        "labels": [
+            "person", "location", "event", "hobby",
+            "food", "organization", "health_condition",
+            "date", "travel_destination", "occupation",
+        ],
+    },
+}
+
+# LongMemEval: user-assistant conversations about daily life tasks.
+# Labels target entities from car maintenance, travel planning,
+# scheduling, recommendations, and personal organization queries.
+LONGMEMEVAL_TOPICS: dict[str, dict[str, list[str] | str]] = {
+    "longmemeval": {
+        "domain": "assistant",
+        "labels": [
+            "person", "location", "date", "product",
+            "event", "organization", "task",
+            "preference", "vehicle", "appointment",
+        ],
+    },
+}
+
+# MemoryAgentBench: mixed-domain content across 4 competency splits.
+# AR = scientific documents, TTL = movie dialogues, LRU = literature,
+# CR = factual knowledge. Labels cover this diversity without over-specializing.
+MAB_TOPICS: dict[str, dict[str, list[str] | str]] = {
+    "mab": {
+        "domain": "mab",
+        "labels": [
+            "person", "organization", "location", "concept",
+            "event", "work_title", "scientific_term",
+            "date", "technology", "topic",
+        ],
+    },
+}
+
+# Hub Replay: multi-agent software architecture (ADRs, CALM models,
+# threat models, compliance). Uses NemoClaw blueprint labels.
+HUB_REPLAY_TOPICS: dict[str, dict[str, list[str] | str]] = {
+    "hub_replay": {
+        "domain": "architecture",
+        "labels": [
+            "framework", "database", "protocol", "standard",
+            "threat", "pattern", "security_control",
+            "api_endpoint", "data_model", "architecture_decision",
         ],
     },
 }

@@ -1,9 +1,10 @@
 """CLI runner for the LongMemEval benchmark.
 
 Usage:
-    uv run python -m benchmarks.longmemeval.run_longmemeval
-    uv run python -m benchmarks.longmemeval.run_longmemeval --test
-    uv run python -m benchmarks.longmemeval.run_longmemeval --verbose --output-dir /tmp/results
+    uv run python -m benchmarks longmemeval
+    uv run python -m benchmarks longmemeval --test
+    uv run python -m benchmarks longmemeval --test --verbose
+    uv run python -m benchmarks longmemeval --dataset longmemeval_s_cleaned.json
 """
 
 from __future__ import annotations
@@ -31,34 +32,38 @@ async def _run(args: argparse.Namespace) -> None:
 
     # Load dataset
     logger.info("Loading LongMemEval dataset...")
-    sessions, questions = load_longmemeval_dataset(cache_dir=cache_dir)
-
-    if not sessions:
-        logger.error("No sessions loaded. Check dataset download.")
-        sys.exit(1)
+    sessions_by_question, questions = load_longmemeval_dataset(
+        cache_dir=cache_dir,
+        dataset_file=args.dataset,
+    )
 
     if not questions:
         logger.error("No questions loaded. Check dataset format.")
         sys.exit(1)
 
-    # Test mode: limit to first 5 sessions and their questions
+    if not sessions_by_question:
+        logger.error("No sessions loaded. Check dataset download.")
+        sys.exit(1)
+
+    # Test mode: limit to first N questions
     if args.test:
-        sessions = sessions[:5]
-        session_ids = {s.session_id for s in sessions}
-        # Keep questions that reference these sessions, or all if no session_ids in questions
-        filtered = [
-            q for q in questions
-            if not q.session_ids or any(sid in session_ids for sid in q.session_ids)
-        ]
-        # If filtering removed all questions, just take first 20
-        if not filtered:
-            filtered = questions[:20]
-        questions = filtered
-        logger.info("Test mode: %d sessions, %d questions", len(sessions), len(questions))
+        test_limit = 3
+        questions = questions[:test_limit]
+        # Keep only the sessions for the selected questions
+        qids = {q.question_id for q in questions}
+        sessions_by_question = {
+            qid: sessions
+            for qid, sessions in sessions_by_question.items()
+            if qid in qids
+        }
+        logger.info(
+            "Test mode: %d questions, %d session sets",
+            len(questions), len(sessions_by_question),
+        )
 
     # Run benchmark
     results = await run_longmemeval_benchmark(
-        sessions=sessions,
+        sessions_by_question=sessions_by_question,
         questions=questions,
         top_k=args.top_k,
     )
@@ -113,9 +118,9 @@ def _format_markdown(results: dict, top_k: int) -> str:
     lines.append(f"| Contains | {overall.get('Contains', 0):.4f} |")
     lines.append(f"| F1 | {overall.get('F1', 0):.4f} |")
     lines.append(f"| Questions | {int(overall.get('num_questions', 0))} |")
-    lines.append(f"| Sessions | {results.get('sessions_count', 0)} |")
-    lines.append(f"| Total turns | {results.get('total_turns', 0)} |")
-    lines.append(f"| Memories stored | {results.get('memories_stored', 0)} |")
+    lines.append(f"| Total sessions | {results.get('total_sessions', 0)} |")
+    lines.append(f"| Total memories | {results.get('total_memories', 0)} |")
+    lines.append(f"| Elapsed | {results.get('elapsed_seconds', 0)}s |")
     lines.append("")
 
     # Reference comparison
@@ -162,6 +167,12 @@ def main() -> None:
         help="Directory for result files (default: benchmarks/results/longmemeval)",
     )
     parser.add_argument(
+        "--dataset",
+        type=str,
+        default="longmemeval_oracle.json",
+        help="Dataset file to load (default: longmemeval_oracle.json)",
+    )
+    parser.add_argument(
         "--top-k",
         type=int,
         default=5,
@@ -170,7 +181,7 @@ def main() -> None:
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Test mode: run on limited data only",
+        help="Test mode: process first 3 questions only",
     )
     parser.add_argument(
         "--verbose", "-v",

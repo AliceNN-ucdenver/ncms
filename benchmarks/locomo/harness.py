@@ -6,6 +6,7 @@ ingest data, run queries, compute metrics.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 
@@ -92,6 +93,18 @@ async def replay_conversation(
             contradiction_detection_enabled=False,
         )
 
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import LOCOMO_TOPICS
+
+    topic_info = LOCOMO_TOPICS.get("locomo", {})
+    domain = topic_info.get("domain", "personal")
+    labels = topic_info.get("labels", [])
+    if labels:
+        await store.set_consolidation_value(
+            f"entity_labels:{domain}",
+            json.dumps(labels),
+        )
+
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
@@ -108,6 +121,7 @@ async def replay_conversation(
             content=turn.content,
             memory_type="fact",
             source_agent=turn.role,
+            domains=["personal"],
             tags=["locomo", conversation.conversation_id, f"session:{turn.session_id}"],
         )
         memory_ids.append(memory.id)

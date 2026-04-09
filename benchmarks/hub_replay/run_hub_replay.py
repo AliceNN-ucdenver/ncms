@@ -9,45 +9,19 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from benchmarks.core.runner import log_run_header, run_async, setup_logging
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="NCMS Hub Replay Benchmark")
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="benchmarks/results/hub_replay",
-        help="Directory for result files (default: benchmarks/results/hub_replay)",
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable debug logging",
-    )
-    args = parser.parse_args()
+logger = logging.getLogger("hub_replay")
 
-    # Configure logging
-    level = logging.DEBUG if args.verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    # Suppress noisy library loggers
-    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-    logging.getLogger("transformers").setLevel(logging.WARNING)
-    logging.getLogger("torch").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    logger = logging.getLogger("hub_replay")
-
-    # Import fixtures
+async def _run(args: argparse.Namespace) -> dict:
+    """Async entry point for the hub replay benchmark."""
     from benchmarks.hub_replay.fixtures import HUB_MEMORIES, HUB_QUERIES
     from benchmarks.hub_replay.harness import evaluate_replay
 
@@ -55,10 +29,9 @@ def main() -> None:
     logger.info("  Memories: %d", len(HUB_MEMORIES))
     logger.info("  Queries: %d", len(HUB_QUERIES))
 
-    # Run evaluation
-    results = asyncio.run(evaluate_replay(HUB_MEMORIES, HUB_QUERIES))
+    results = await evaluate_replay(HUB_MEMORIES, HUB_QUERIES)
 
-    # Create output directory
+    # Save results
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -94,6 +67,35 @@ def main() -> None:
     if results["duplicate_count"] > 0 or results["junk_entity_rate"] > 15:
         logger.warning("Data integrity issues detected — review results")
         sys.exit(1)
+
+    return results
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="NCMS Hub Replay Benchmark")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="benchmarks/results/hub_replay",
+        help="Directory for result files (default: benchmarks/results/hub_replay)",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable debug logging",
+    )
+    args = parser.parse_args()
+
+    output_dir = Path(args.output_dir)
+    setup_logging("hub_replay", output_dir, verbose=args.verbose)
+
+    # Suppress noisy library loggers
+    for name in ("sentence_transformers", "transformers", "torch", "httpx"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    log_run_header("NCMS Hub Replay Benchmark", logger)
+
+    run_async(_run(args), "Hub Replay benchmark")
 
 
 def _format_markdown(results: dict) -> str:
