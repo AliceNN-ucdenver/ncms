@@ -29,8 +29,17 @@ from benchmarks.longmemeval.loader import LongMemQuestion, Session
 logger = logging.getLogger(__name__)
 
 
-async def _create_ncms_instance(config: object | None = None):
+async def _create_ncms_instance(
+    config: object | None = None,
+    shared_splade: object | None = None,
+):
     """Create a fresh in-memory NCMS instance.
+
+    Args:
+        config: Optional NCMSConfig override.
+        shared_splade: Pre-loaded SpladeEngine to reuse across questions
+            (avoids 1s model reload per question). Created once by the
+            benchmark runner and passed to each question's instance.
 
     Returns:
         Tuple of (store, index, graph, splade, config, svc).
@@ -49,7 +58,7 @@ async def _create_ncms_instance(config: object | None = None):
     index.initialize()
 
     graph = NetworkXGraph()
-    splade = SpladeEngine()
+    splade = shared_splade if shared_splade is not None else SpladeEngine()
 
     if config is None:
         config = NCMSConfig(
@@ -258,6 +267,13 @@ async def run_longmemeval_benchmark(
 
     t0 = time.perf_counter()
 
+    # Create SPLADE engine ONCE and share across all questions
+    # (avoids 1s model reload × 500 questions = 8+ min wasted)
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+    shared_splade = SpladeEngine()
+    logger.info("Shared SPLADE engine created (model loads on first use)")
+
     for qi, q in enumerate(questions):
         q_sessions = sessions_by_question.get(q.question_id, [])
 
@@ -267,8 +283,12 @@ async def run_longmemeval_benchmark(
             )
             continue
 
-        # Create fresh NCMS instance for this question
-        store, _index, _graph, _splade, _config, svc = await _create_ncms_instance()
+        # Create fresh NCMS instance but SHARE the SPLADE engine (model stays loaded)
+        # Clear vectors from previous question so search is clean
+        shared_splade._vectors = {}
+        store, _index, _graph, _splade, _config, svc = await _create_ncms_instance(
+            shared_splade=shared_splade,
+        )
 
         try:
             # Ingest this question's sessions
