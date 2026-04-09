@@ -97,22 +97,28 @@ run_suite() {
     shift
     local cmd="$*"
 
+    # Per-suite log file (not shared)
+    local suite_slug=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' ' '_' | tr -cd '[:alnum:]_')
+    local suite_log="$PHASE0_DIR/phase0_${suite_slug}_${TIMESTAMP}.log"
+
     log "──────────────────────────────────────────────────────────"
     log "Starting: $name"
     log "  Command: $cmd"
+    log "  Log: $suite_log"
     log ""
 
     local start_time=$(date +%s)
 
-    if eval "$cmd" >> "$LOG_FILE" 2>&1; then
+    if eval "$cmd" > "$suite_log" 2>&1; then
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
         log "  PASSED: $name (${duration}s)"
         PASSED=$((PASSED + 1))
     else
+        local exit_code=$?
         local end_time=$(date +%s)
         local duration=$((end_time - start_time))
-        log "  FAILED: $name (${duration}s) — check $LOG_FILE for details"
+        log "  FAILED: $name (${duration}s, exit=$exit_code) — check $suite_log"
         FAILED=$((FAILED + 1))
     fi
     log ""
