@@ -228,7 +228,7 @@ async def run_queries(
             name,
             len(scored),
             elapsed_ms,
-            scored[0].score if scored else 0.0,
+            scored[0].total_activation if scored else 0.0,
         )
 
     return results
