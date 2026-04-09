@@ -265,6 +265,11 @@ class PlusQuestion:
     Extends the standard QA format with cognitive question types
     (causal, goal, state, value) and maps back to a base conversation
     via ``base_conv_idx``.
+
+    The ``cue_dialogue`` is the earlier conversation fragment that should
+    be recalled when the ``question`` (trigger query) is posed.  The
+    ``time_gap`` describes the temporal distance between cue and trigger
+    (e.g. "two weeks later").
     """
 
     question_id: str
@@ -272,6 +277,8 @@ class PlusQuestion:
     ground_truth: str
     question_type: str
     base_conv_idx: int
+    cue_dialogue: str = ""
+    time_gap: str = ""
 
 
 def load_locomo_plus_dataset(
@@ -359,6 +366,8 @@ def load_locomo_plus_dataset(
                 ground_truth=obj.get("ground_truth", ""),
                 question_type=obj.get("question_type", "unknown"),
                 base_conv_idx=int(metadata.get("base_conv_idx", 0)),
+                cue_dialogue=obj.get("ground_truth", ""),
+                time_gap=metadata.get("time_gap", "two weeks later"),
             ))
 
     logger.info(

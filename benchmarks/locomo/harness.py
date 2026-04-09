@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from datetime import datetime, timedelta
 
 from benchmarks.core.qa_metrics import (
     compute_qa_metrics,
@@ -493,6 +495,340 @@ async def run_locomo_benchmark(
     }
 
 
+# ---------------------------------------------------------------------------
+# Cue-trigger stitching for LoCoMo-Plus
+# ---------------------------------------------------------------------------
+
+_WORD_NUMS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "several": 4,
+}
+
+_TIME_GAP_RE = re.compile(
+    r"(?:about\s+|around\s+)?(\w+)\s+(week|month|year)s?\s+later",
+    re.IGNORECASE,
+)
+
+
+def parse_time_gap(gap_str: str) -> int:
+    """Convert a time-gap string like 'two weeks later' to a number of days."""
+    m = _TIME_GAP_RE.search(gap_str)
+    if not m:
+        return 14  # default: 2 weeks
+    num_word, unit = m.group(1).lower(), m.group(2).lower()
+    num = _WORD_NUMS.get(num_word)
+    if num is None:
+        try:
+            num = int(num_word)
+        except ValueError:
+            num = 2
+    if unit == "week":
+        return num * 7
+    elif unit == "month":
+        return num * 30
+    elif unit == "year":
+        return num * 365
+    return num * 7
+
+
+_DATE_PATTERNS = [
+    # "1:56 pm on 8 May, 2023"
+    re.compile(r"(\d{1,2}:\d{2}\s*[ap]m)\s+on\s+(\d{1,2}\s+\w+,?\s+\d{4})", re.I),
+    # "8 May, 2023"
+    re.compile(r"(\d{1,2}\s+\w+,?\s+\d{4})", re.I),
+]
+
+
+def _parse_session_date(dt_str: str) -> datetime | None:
+    """Parse LoCoMo date_time strings into datetime objects."""
+    for pat in _DATE_PATTERNS:
+        m = pat.search(dt_str)
+        if m:
+            date_part = m.groups()[-1].replace(",", "")
+            try:
+                return datetime.strptime(date_part, "%d %B %Y")
+            except ValueError:
+                pass
+    return None
+
+
+def _extract_raw_sessions(raw_conv: dict) -> list[dict]:
+    """Extract ordered sessions with parsed dates from a raw LoCoMo conversation dict."""
+    sessions: list[dict] = []
+    idx = 1
+    while True:
+        key = f"session_{idx}"
+        if key not in raw_conv:
+            break
+        dt_str = raw_conv.get(f"session_{idx}_date_time", "")
+        sessions.append({
+            "session_num": idx,
+            "date_time": dt_str,
+            "parsed_date": _parse_session_date(dt_str),
+            "turns": raw_conv[key],
+        })
+        idx += 1
+    return sessions
+
+
+def _map_ab_speakers(text: str, speaker_a: str, speaker_b: str) -> str:
+    """Replace A:/B: with actual speaker names in dialogue text."""
+    lines = []
+    for line in text.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("A:"):
+            lines.append(f"{speaker_a}: {line[2:].strip()}")
+        elif line.startswith("B:"):
+            lines.append(f"{speaker_b}: {line[2:].strip()}")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def stitch_conversation(
+    raw_conv: dict,
+    cue_dialogue: str,
+    trigger_query: str,
+    time_gap_str: str,
+) -> tuple[list[dict], str, str]:
+    """Stitch cue dialogue and trigger query into a LoCoMo conversation.
+
+    The stitching protocol:
+    1. Parse the base conversation into sessions with dates.
+    2. Set trigger_date = last_session_date + 7 days.
+    3. Set cue_date = trigger_date - time_gap_days.
+    4. Insert the cue dialogue at the temporally correct position.
+    5. Append the trigger query as the final session.
+
+    Args:
+        raw_conv: Raw LoCoMo conversation dict (with speaker_a, speaker_b,
+            session_N, session_N_date_time keys).
+        cue_dialogue: The cue dialogue text (ground_truth from the checkpoint).
+        trigger_query: The trigger query text (question from the checkpoint).
+        time_gap_str: Temporal gap description (e.g. "two weeks later").
+
+    Returns:
+        Tuple of (sessions, mapped_cue, mapped_trigger) where sessions is the
+        full list including stitched cue and trigger sessions.
+    """
+    speaker_a = raw_conv.get("speaker_a", "A")
+    speaker_b = raw_conv.get("speaker_b", "B")
+
+    sessions = _extract_raw_sessions(raw_conv)
+    if not sessions:
+        return [], cue_dialogue, trigger_query
+
+    # Map A/B to actual speaker names
+    mapped_cue = _map_ab_speakers(cue_dialogue, speaker_a, speaker_b)
+    mapped_trigger = _map_ab_speakers(trigger_query, speaker_a, speaker_b)
+
+    # Compute insertion points
+    time_gap_days = parse_time_gap(time_gap_str)
+    last_date = None
+    for s in reversed(sessions):
+        if s["parsed_date"]:
+            last_date = s["parsed_date"]
+            break
+
+    if last_date is None:
+        # Fallback: put cue before last session, trigger after
+        cue_insert_idx = max(0, len(sessions) - 2)
+    else:
+        trigger_date = last_date + timedelta(days=7)
+        cue_date = trigger_date - timedelta(days=time_gap_days)
+
+        # Find insertion index for cue (first session at or after cue_date)
+        cue_insert_idx = len(sessions)
+        for i, s in enumerate(sessions):
+            if s["parsed_date"] and s["parsed_date"] >= cue_date:
+                cue_insert_idx = i
+                break
+
+    # Build cue turns
+    cue_turns = []
+    for line in mapped_cue.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if ":" in line:
+            speaker, text = line.split(":", 1)
+            cue_turns.append({"speaker": speaker.strip(), "text": text.strip()})
+        else:
+            cue_turns.append({"speaker": speaker_a, "text": line})
+
+    # Compute cue session date string
+    cue_dt = ""
+    if last_date is not None:
+        cue_target = last_date + timedelta(days=7) - timedelta(days=time_gap_days)
+        try:
+            cue_dt = cue_target.strftime("%-I:%M %p on %-d %B, %Y")
+        except ValueError:
+            cue_dt = cue_target.strftime("%I:%M %p on %d %B, %Y").lstrip("0")
+    elif cue_insert_idx < len(sessions):
+        cue_dt = sessions[cue_insert_idx]["date_time"]
+
+    cue_session = {
+        "session_num": -1,
+        "date_time": cue_dt,
+        "parsed_date": None,
+        "turns": cue_turns,
+        "is_cue": True,
+    }
+
+    # Build trigger turns
+    trigger_turns = []
+    for line in mapped_trigger.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if ":" in line:
+            speaker, text = line.split(":", 1)
+            trigger_turns.append({"speaker": speaker.strip(), "text": text.strip()})
+        else:
+            trigger_turns.append({"speaker": speaker_a, "text": line})
+
+    trigger_dt = ""
+    if last_date is not None:
+        trigger_target = last_date + timedelta(days=7)
+        try:
+            trigger_dt = trigger_target.strftime("%-I:%M %p on %-d %B, %Y")
+        except ValueError:
+            trigger_dt = trigger_target.strftime("%I:%M %p on %d %B, %Y").lstrip("0")
+
+    trigger_session = {
+        "session_num": -2,
+        "date_time": trigger_dt,
+        "parsed_date": None,
+        "turns": trigger_turns,
+        "is_trigger": True,
+    }
+
+    # Insert cue at the correct temporal position, trigger at the end
+    result = list(sessions)
+    result.insert(cue_insert_idx, cue_session)
+    result.append(trigger_session)
+
+    return result, mapped_cue, mapped_trigger
+
+
+async def _replay_stitched_conversation(
+    stitched_sessions: list[dict],
+    conversation_id: str,
+    config: object | None = None,
+) -> ConversationState:
+    """Replay stitched sessions (base + cue, excluding trigger) into NCMS.
+
+    All sessions except the trigger session (``is_trigger=True``) are ingested.
+    Each session's turns are stored as individual memories.
+
+    Args:
+        stitched_sessions: Sessions from :func:`stitch_conversation`.
+        conversation_id: Identifier for this conversation.
+        config: Optional NCMSConfig override.
+
+    Returns:
+        ConversationState with populated backends.
+    """
+    from ncms.application.memory_service import MemoryService
+    from ncms.config import NCMSConfig
+    from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+    from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+    store = SQLiteStore(db_path=":memory:")
+    await store.initialize()
+
+    index = TantivyEngine()
+    index.initialize()
+
+    graph = NetworkXGraph()
+    splade = SpladeEngine()
+
+    if config is None:
+        config = NCMSConfig(
+            db_path=":memory:",
+            actr_noise=0.0,
+            splade_enabled=True,
+            graph_expansion_enabled=True,
+            scoring_weight_bm25=0.6,
+            scoring_weight_actr=0.0,
+            scoring_weight_splade=0.3,
+            scoring_weight_graph=0.3,
+            contradiction_detection_enabled=False,
+        )
+
+    # Seed domain-specific topics for GLiNER entity extraction
+    from benchmarks.core.datasets import LOCOMO_TOPICS
+
+    topic_info = LOCOMO_TOPICS.get("locomo", {})
+    domain = topic_info.get("domain", "personal")
+    labels = topic_info.get("labels", [])
+    if labels:
+        await store.set_consolidation_value(
+            f"entity_labels:{domain}",
+            json.dumps(labels),
+        )
+
+    svc = MemoryService(
+        store=store, index=index, graph=graph, config=config, splade=splade,
+    )
+
+    memory_ids: list[str] = []
+    turn_to_memory: dict[int, str] = {}
+
+    t0 = time.perf_counter()
+    turn_idx = 0
+    for session in stitched_sessions:
+        # Skip the trigger session — it's the query, not data to ingest
+        if session.get("is_trigger", False):
+            continue
+
+        session_tag = "cue" if session.get("is_cue", False) else str(session["session_num"])
+
+        for turn in session.get("turns", []):
+            if isinstance(turn, dict):
+                speaker = turn.get("speaker", "unknown")
+                text = turn.get("text", "")
+            else:
+                continue
+
+            if not text.strip():
+                continue
+
+            memory = await svc.store_memory(
+                content=text,
+                memory_type="fact",
+                source_agent=speaker,
+                domains=["personal"],
+                tags=["locomo", conversation_id, f"session:{session_tag}"],
+            )
+            memory_ids.append(memory.id)
+            turn_to_memory[turn_idx] = memory.id
+            turn_idx += 1
+
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "Replayed stitched conversation %s: %d memories in %.1fs",
+        conversation_id,
+        len(memory_ids),
+        elapsed,
+    )
+
+    return ConversationState(
+        store=store,
+        index=index,
+        graph=graph,
+        splade=splade,
+        config=config,
+        svc=svc,
+        conversation_id=conversation_id,
+        memory_ids=memory_ids,
+        turn_to_memory=turn_to_memory,
+    )
+
+
 async def run_locomo_plus_benchmark(
     conversations: list[Conversation],
     plus_questions: list[PlusQuestion],
@@ -501,17 +837,24 @@ async def run_locomo_plus_benchmark(
     llm_model: str | None = None,
     llm_api_base: str | None = None,
 ) -> dict:
-    """Run the LoCoMo-Plus benchmark: replay conversations, evaluate cognitive QA.
+    """Run the LoCoMo-Plus benchmark with proper cue-trigger stitching.
 
-    LoCoMo-Plus adds 401 cognitive reasoning questions (causal, goal, state,
-    value) stitched into the standard LoCoMo-10 conversations.  Each Plus
-    question maps to a base conversation via ``base_conv_idx``.
+    For each Plus question:
+    1. Load the raw base LoCoMo conversation (via base_conv_idx).
+    2. Stitch the cue dialogue into the conversation at the temporally
+       correct position based on the time gap.
+    3. Ingest all sessions INCLUDING the stitched cue (but NOT the trigger).
+    4. Use the trigger (the question) as the search query.
+    5. Score: does the recalled context contain the cue evidence?
+
+    When ``use_llm_judge=True``, also evaluates whether the LLM response
+    demonstrates awareness of the implicit connection between trigger and cue.
 
     Args:
         conversations: Conversations from :func:`load_locomo_dataset`.
         plus_questions: Questions from :func:`load_locomo_plus_dataset`.
         top_k: Number of top results for recall computation.
-        use_llm_judge: Whether to compute LLM judge scores.
+        use_llm_judge: Whether to compute LLM cognitive judge scores.
         llm_model: litellm model identifier (required if use_llm_judge=True).
         llm_api_base: LLM API base URL (required if use_llm_judge=True).
 
@@ -519,17 +862,40 @@ async def run_locomo_plus_benchmark(
         Dict with per-question-type metrics, per-conversation metrics, and
         overall aggregates.
     """
-    # Build conversation index by position (base_conv_idx is 0-based)
-    conv_by_idx: dict[int, Conversation] = {
-        i: conv for i, conv in enumerate(conversations)
-    }
+    from benchmarks.locomo.loader import download_locomo
+
+    # Load raw LoCoMo data for stitching (need the raw conversation dicts)
+    repo_dir = download_locomo()
+    candidates = [
+        repo_dir / "data" / "locomo10.json",
+        repo_dir / "locomo10.json",
+    ]
+    raw_data_file = None
+    for candidate in candidates:
+        if candidate.is_file():
+            raw_data_file = candidate
+            break
+
+    raw_conversations: list[dict] = []
+    if raw_data_file:
+        with open(raw_data_file) as f:
+            raw_data = json.load(f)
+        if isinstance(raw_data, list):
+            raw_conversations = raw_data
+        elif isinstance(raw_data, dict):
+            raw_conversations = list(raw_data.values())
+
+    # Build raw conversation index by position (base_conv_idx is 0-based)
+    raw_conv_by_idx: dict[int, dict] = {}
+    for i, entry in enumerate(raw_conversations):
+        if isinstance(entry, dict):
+            raw_conv_by_idx[i] = entry.get("conversation", entry)
 
     # Group Plus questions by base_conv_idx
     questions_by_conv: dict[int, list[PlusQuestion]] = {}
     for q in plus_questions:
         questions_by_conv.setdefault(q.base_conv_idx, []).append(q)
 
-    # Replay each needed conversation once and evaluate all its questions
     per_conversation: dict[str, dict[str, float]] = {}
     per_question_type: dict[str, list[float]] = {}
     all_predictions: dict[str, str] = {}
@@ -540,78 +906,111 @@ async def run_locomo_plus_benchmark(
     all_contains: list[float] = []
 
     for conv_idx, conv_questions in sorted(questions_by_conv.items()):
-        conv = conv_by_idx.get(conv_idx)
-        if conv is None:
+        raw_conv = raw_conv_by_idx.get(conv_idx)
+        if raw_conv is None:
             logger.warning(
-                "No conversation at index %d for %d Plus questions, skipping",
+                "No raw conversation at index %d for %d Plus questions, skipping",
                 conv_idx, len(conv_questions),
             )
             continue
 
+        conv_id = f"conv_{conv_idx}"
         logger.info(
-            "Processing conversation idx=%d (%s, %d turns, %d Plus questions)",
-            conv_idx,
-            conv.conversation_id,
-            len(conv.turns),
-            len(conv_questions),
+            "Processing conversation idx=%d (%d Plus questions, stitching each)",
+            conv_idx, len(conv_questions),
         )
 
-        state = await replay_conversation(conv)
-        try:
-            from ncms.application.memory_service import MemoryService
+        conv_recall: list[float] = []
+        conv_f1: list[float] = []
+        conv_contains: list[float] = []
 
-            svc: MemoryService = state.svc  # type: ignore[assignment]
+        for q in conv_questions:
+            # Stitch this question's cue into the base conversation
+            stitched_sessions, mapped_cue, mapped_trigger = stitch_conversation(
+                raw_conv=raw_conv,
+                cue_dialogue=q.cue_dialogue,
+                trigger_query=q.question,
+                time_gap_str=q.time_gap,
+            )
 
-            conv_recall: list[float] = []
-            conv_f1: list[float] = []
-            conv_contains: list[float] = []
+            if not stitched_sessions:
+                logger.warning(
+                    "Stitching failed for question %s, skipping", q.question_id,
+                )
+                continue
 
-            for q in conv_questions:
+            # Count ingested turns (all sessions except trigger)
+            ingest_turns = sum(
+                len(s.get("turns", []))
+                for s in stitched_sessions
+                if not s.get("is_trigger", False)
+            )
+            logger.debug(
+                "  %s: stitched %d sessions (%d ingest turns), "
+                "time_gap=%s, cue_lines=%d",
+                q.question_id,
+                len(stitched_sessions),
+                ingest_turns,
+                q.time_gap,
+                len(mapped_cue.split("\n")),
+            )
+
+            # Replay stitched conversation (ingest all except trigger)
+            state = await _replay_stitched_conversation(
+                stitched_sessions,
+                conversation_id=f"{conv_id}_{q.question_id}",
+            )
+
+            try:
+                from ncms.application.memory_service import MemoryService
+
+                svc: MemoryService = state.svc  # type: ignore[assignment]
+
+                # Use the trigger query to search
                 results = await svc.search(query=q.question, limit=top_k)
                 retrieved_contents = [s.memory.content for s in results]
 
-                # Recall@k
-                recall = recall_at_k_qa(retrieved_contents, q.ground_truth, k=top_k)
+                # Score against the cue dialogue (ground truth)
+                recall = recall_at_k_qa(
+                    retrieved_contents, q.ground_truth, k=top_k,
+                )
                 conv_recall.append(recall)
 
-                # Token-level metrics against concatenated top-k
                 concat_content = " ".join(retrieved_contents[:top_k])
                 f1 = f1_token_overlap(concat_content, q.ground_truth)
                 contains = contains_match(concat_content, q.ground_truth)
                 conv_f1.append(f1)
                 conv_contains.append(contains)
 
-                # Track per question type
                 per_question_type.setdefault(q.question_type, []).append(recall)
 
-                # Collect for LLM judge
                 all_predictions[q.question_id] = concat_content
                 all_ground_truths[q.question_id] = q.ground_truth
                 all_question_texts[q.question_id] = q.question
+            finally:
+                await state.store.close()  # type: ignore[union-attr]
 
-            all_recall.extend(conv_recall)
-            all_f1.extend(conv_f1)
-            all_contains.extend(conv_contains)
+        all_recall.extend(conv_recall)
+        all_f1.extend(conv_f1)
+        all_contains.extend(conv_contains)
 
-            n = len(conv_recall) or 1
-            per_conversation[conv.conversation_id] = {
-                f"Recall@{top_k}": sum(conv_recall) / n,
-                "F1": sum(conv_f1) / n,
-                "Contains": sum(conv_contains) / n,
-                "num_questions": float(len(conv_recall)),
-            }
+        n = len(conv_recall) or 1
+        per_conversation[conv_id] = {
+            f"Recall@{top_k}": sum(conv_recall) / n,
+            "F1": sum(conv_f1) / n,
+            "Contains": sum(conv_contains) / n,
+            "num_questions": float(len(conv_recall)),
+        }
 
-            logger.info(
-                "  %s: Recall@%d=%.4f  F1=%.4f  Contains=%.4f  (%d questions)",
-                conv.conversation_id,
-                top_k,
-                per_conversation[conv.conversation_id][f"Recall@{top_k}"],
-                per_conversation[conv.conversation_id]["F1"],
-                per_conversation[conv.conversation_id]["Contains"],
-                len(conv_recall),
-            )
-        finally:
-            await state.store.close()  # type: ignore[union-attr]
+        logger.info(
+            "  %s: Recall@%d=%.4f  F1=%.4f  Contains=%.4f  (%d questions)",
+            conv_id,
+            top_k,
+            per_conversation[conv_id][f"Recall@{top_k}"],
+            per_conversation[conv_id]["F1"],
+            per_conversation[conv_id]["Contains"],
+            len(conv_recall),
+        )
 
     # Overall aggregates
     total_n = len(all_recall) or 1
@@ -639,9 +1038,11 @@ async def run_locomo_plus_benchmark(
     overall["EM"] = deterministic.get("EM", 0.0)
     overall["F1_token"] = deterministic.get("F1", 0.0)
 
-    # Optional LLM judge
+    # Optional LLM cognitive judge
     if use_llm_judge and llm_model and llm_api_base:
-        logger.info("Running LLM judge scoring on %d questions...", len(all_predictions))
+        logger.info(
+            "Running cognitive LLM judge on %d questions...", len(all_predictions),
+        )
         import asyncio
 
         tasks = [
@@ -657,7 +1058,7 @@ async def run_locomo_plus_benchmark(
         ]
         scores = await asyncio.gather(*tasks)
         overall["llm_judge_score"] = sum(scores) / len(scores) if scores else 0.0
-        logger.info("LLM judge score: %.4f", overall["llm_judge_score"])
+        logger.info("Cognitive LLM judge score: %.4f", overall["llm_judge_score"])
 
     logger.info("=" * 60)
     logger.info(
