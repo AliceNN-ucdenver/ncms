@@ -629,6 +629,54 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [self._row_to_memory_node(r) for r in rows]
 
+    async def get_episode_members_batch(
+        self, episode_ids: list[str],
+    ) -> dict[str, list[MemoryNode]]:
+        """Get fragment nodes for multiple episodes in a single query."""
+        if not episode_ids:
+            return {}
+        placeholders = ",".join("?" for _ in episode_ids)
+        cursor = await self.db.execute(
+            f"SELECT * FROM memory_nodes WHERE parent_id IN ({placeholders}) "  # noqa: S608
+            "ORDER BY created_at ASC",
+            episode_ids,
+        )
+        rows = await cursor.fetchall()
+        result: dict[str, list[MemoryNode]] = {eid: [] for eid in episode_ids}
+        for row in rows:
+            node = self._row_to_memory_node(row)
+            if node.parent_id and node.parent_id in result:
+                result[node.parent_id].append(node)
+        return result
+
+    async def get_episode_member_entities_batch(
+        self, episode_ids: list[str],
+    ) -> dict[str, list[str]]:
+        """Get entity IDs for all members of multiple episodes in a single query.
+
+        Returns {episode_id: [entity_id, ...]} with deduplication per episode.
+        """
+        if not episode_ids:
+            return {}
+        # Step 1: get all member memory_ids grouped by episode
+        placeholders = ",".join("?" for _ in episode_ids)
+        cursor = await self.db.execute(
+            f"SELECT mn.parent_id, me.entity_id "  # noqa: S608
+            f"FROM memory_nodes mn "
+            f"JOIN memory_entities me ON mn.memory_id = me.memory_id "
+            f"WHERE mn.parent_id IN ({placeholders})",
+            episode_ids,
+        )
+        rows = await cursor.fetchall()
+        result: dict[str, list[str]] = {eid: [] for eid in episode_ids}
+        seen: dict[str, set[str]] = {eid: set() for eid in episode_ids}
+        for row in rows:
+            ep_id, entity_id = row[0], row[1]
+            if ep_id in result and entity_id not in seen[ep_id]:
+                result[ep_id].append(entity_id)
+                seen[ep_id].add(entity_id)
+        return result
+
     # ── Phase 5: Consolidation Queries ─────────────────────────────────
 
     async def get_closed_unsummarized_episodes(self) -> list[MemoryNode]:

@@ -1,10 +1,15 @@
 """Integration tests for contradiction detection during store_memory.
 
 Mocks the LLM call but uses real services (SQLite, Tantivy, NetworkX).
+
+Contradiction detection runs as a deferred (fire-and-forget) async task
+after store_memory returns.  Tests yield control to the event loop so
+the deferred task can complete before asserting.
 """
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -69,6 +74,8 @@ class TestContradictionDetection:
                 content="The API uses JWT tokens for authentication",
                 domains=["api"],
             )
+            # Wait for deferred contradiction task to complete
+            await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
 
         # New memory should have contradiction annotation
         updated_new = await store.get_memory(new_mem.id)
@@ -119,6 +126,8 @@ class TestContradictionDetection:
                 content="Database uses MySQL",
                 domains=["database"],
             )
+            # Wait for deferred contradiction task to complete
+            await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
 
         # Old memory should have contradicted_by annotation
         updated_old = await store.get_memory(old_mem.id)
@@ -159,6 +168,8 @@ class TestContradictionDetection:
                 content="Flask supports Werkzeug routing",
                 domains=["api"],
             )
+            # Wait for deferred contradiction task to complete
+            await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
 
         updated = await store.get_memory(new_mem.id)
         assert updated is not None
@@ -223,6 +234,8 @@ class TestContradictionDetection:
             new_mem = await svc.store_memory(
                 content="second memory", domains=["test"],
             )
+            # Wait for deferred contradiction task to complete
+            await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
 
         # Memory should still be stored despite LLM failure
         stored = await store.get_memory(new_mem.id)
@@ -272,6 +285,8 @@ class TestContradictionDetection:
                 content="Server runs on port 8080",
                 domains=["backend"],
             )
+            # Wait for deferred contradiction task to complete
+            await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
 
         # No contradiction should be found due to domain scoping
         updated = await store.get_memory(new_mem.id)

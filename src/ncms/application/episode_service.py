@@ -115,6 +115,10 @@ class EpisodeService:
         self._config = config or NCMSConfig()
         self._event_log = event_log or NullEventLog()
         self._splade = splade  # Optional SPLADE engine
+        # In-memory cache of open episode profiles, batch-loaded at the
+        # start of each assign_or_create() call to replace per-candidate
+        # sequential DB queries.  Keys are episode node IDs.
+        self._profile_cache: dict[str, dict[str, Any]] = {}
 
     # ── Structured Anchor Detection (bonus signal) ────────────────────────
 
@@ -362,6 +366,67 @@ class EpisodeService:
 
         return score, breakdown
 
+    # ── Episode Profile Cache ──────────────────────────────────────────
+
+    async def _ensure_profile_cache(
+        self, open_episodes: list[MemoryNode],
+    ) -> None:
+        """Batch-load profiles for all open episodes into the cache.
+
+        Called at the start of each ``assign_or_create()`` invocation.
+        The cache is populated per-call via batch queries (replacing the
+        old per-candidate sequential queries).  Episodes already present
+        in the cache from a previous call are refreshed to pick up any
+        membership changes.
+        """
+        ep_ids = [ep.id for ep in open_episodes]
+        if not ep_ids:
+            self._profile_cache.clear()
+            return
+
+        # Batch-load members and entities for all open episodes
+        try:
+            members_map = await self._store.get_episode_members_batch(ep_ids)  # type: ignore[attr-defined]
+        except AttributeError:
+            members_map = {}
+            for eid in ep_ids:
+                members_map[eid] = await self._store.get_episode_members(eid)  # type: ignore[attr-defined]
+
+        try:
+            entities_map = await self._store.get_episode_member_entities_batch(ep_ids)  # type: ignore[attr-defined]
+        except AttributeError:
+            entities_map = {}
+            for eid in ep_ids:
+                entities_map[eid] = await self._collect_member_entities(
+                    members_map.get(eid, []),
+                )
+
+        memory_ids = [
+            ep.memory_id for ep in open_episodes if ep.memory_id
+        ]
+        try:
+            memories_map = await self._store.get_memories_batch(memory_ids)  # type: ignore[attr-defined]
+        except AttributeError:
+            memories_map = {}
+            for mid in memory_ids:
+                mem = await self._store.get_memory(mid)  # type: ignore[attr-defined]
+                if mem:
+                    memories_map[mid] = mem
+
+        for ep in open_episodes:
+            members = members_map.get(ep.id, [])
+            self._profile_cache[ep.id] = {
+                "memory": memories_map.get(ep.memory_id) if ep.memory_id else None,
+                "members": members,
+                "member_entities": entities_map.get(ep.id, []),
+                "last_member_time": self._get_last_member_time(members),
+            }
+
+
+    def _invalidate_profile(self, episode_id: str) -> None:
+        """Remove a single episode from the profile cache."""
+        self._profile_cache.pop(episode_id, None)
+
     # ── Main Entry Point ─────────────────────────────────────────────────
 
     async def assign_or_create(
@@ -389,6 +454,10 @@ class EpisodeService:
         """
         open_episodes = await self._store.get_open_episodes()  # type: ignore[attr-defined]
 
+        # Populate profile cache on first call (batch-loads all open
+        # episode data in a few queries instead of per-candidate).
+        await self._ensure_profile_cache(open_episodes)
+
         # Generate candidates via BM25 + SPLADE + entity overlap
         candidates = await self._generate_candidates(
             fragment_memory, entity_ids, open_episodes,
@@ -406,14 +475,11 @@ class EpisodeService:
             if ep_node is None:
                 continue
 
-            ep_memory = await self._store.get_memory(  # type: ignore[attr-defined]
-                ep_node.memory_id,
-            )
-            ep_members = await self._store.get_episode_members(  # type: ignore[attr-defined]
-                ep_node.id,
-            )
-            ep_member_entities = await self._collect_member_entities(ep_members)
-            last_member_time = self._get_last_member_time(ep_members)
+            # Use cached profile data (avoids per-candidate DB queries)
+            profile = self._profile_cache.get(ep_id, {})
+            ep_memory = profile.get("memory")
+            ep_member_entities = profile.get("member_entities", [])
+            last_member_time = profile.get("last_member_time")
 
             score, breakdown = self._compute_match_score(
                 fragment_memory=fragment_memory,
@@ -649,6 +715,15 @@ class EpisodeService:
             agent_id=fragment_memory.source_agent,
         )
 
+        # Seed the profile cache for this new episode so subsequent
+        # assign_or_create calls can score against it without a DB reload.
+        self._profile_cache[episode_node.id] = {
+            "memory": episode_memory,
+            "members": [first_fragment],
+            "member_entities": topic_entity_ids or [],
+            "last_member_time": first_fragment.created_at,
+        }
+
         logger.info("Created episode %s: %s", episode_node.id, title)
         return episode_node
 
@@ -686,6 +761,9 @@ class EpisodeService:
             ep_meta["member_count"] = ep_meta.get("member_count", 0) + 1
             episode_node.metadata = ep_meta
             await self._store.update_memory_node(episode_node)  # type: ignore[attr-defined]
+
+        # Invalidate cached profile so next scoring picks up new member
+        self._invalidate_profile(episode_node.id)
 
         self._event_log.episode_assigned(  # type: ignore[attr-defined]
             episode_id=episode_node.id,
@@ -753,6 +831,9 @@ class EpisodeService:
 
         # Persist updated metadata
         await self._store.update_memory_node(episode_node)  # type: ignore[attr-defined]
+
+        # Invalidate cached profile so next scoring picks up enriched data
+        self._invalidate_profile(episode_node.id)
 
     @staticmethod
     def _build_profile_content(
@@ -825,6 +906,9 @@ class EpisodeService:
         ep_meta["closed_at"] = datetime.now(UTC).isoformat()
         episode_node.metadata = ep_meta
         await self._store.update_memory_node(episode_node)  # type: ignore[attr-defined]
+
+        # Remove from profile cache (no longer open)
+        self._invalidate_profile(episode_node.id)
 
         member_count = ep_meta.get("member_count", 0)
         self._event_log.episode_closed(  # type: ignore[attr-defined]

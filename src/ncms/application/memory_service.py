@@ -195,12 +195,25 @@ class MemoryService:
                 "state_value": m.group(3).strip(),
             }
 
-        # Fallback: use first entity as entity_id, content as value
+        # Fallback: use first entity as entity_id.
+        # Use the first line containing an assignment-like pattern as the
+        # state_value (not a 500-char prefix of full content).
         if entities:
+            # Try to find the most relevant line
+            best_line = ""
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped and any(
+                    c in stripped for c in ("=", ":", "→")
+                ):
+                    best_line = stripped[:200]
+                    break
+            if not best_line:
+                best_line = content.splitlines()[0].strip()[:200] if content else ""
             return {
                 "entity_id": entities[0]["name"],
                 "state_key": "state",
-                "state_value": content[:500].strip(),
+                "state_value": best_line,
             }
 
         return {}
@@ -510,94 +523,19 @@ class MemoryService:
                 > self._config.cooccurrence_max_entities,
             }, memory_id=memory.id)
 
-        # Contradiction detection (uses shared llm_model + llm_api_base)
-        contradiction_count = 0
-        candidates_checked = 0
+        # Contradiction detection — fire-and-forget async task (deferred).
+        # Memory is already stored and indexed; contradiction is metadata
+        # enrichment, not a gate.  This avoids blocking ingestion for the
+        # 500-2000ms LLM round-trip.
         if self._config.contradiction_detection_enabled:
-            t0 = time.perf_counter()
-            try:
-                from ncms.infrastructure.llm.contradiction_detector import (
-                    detect_contradictions,
+            asyncio.create_task(
+                self._deferred_contradiction_check(
+                    memory=memory,
+                    all_entities=all_entities,
+                    pipeline_id=pipeline_id,
+                    source_agent=source_agent,
                 )
-
-                # Find similar existing memories (new memory already indexed)
-                candidates = self._index.search(
-                    content, limit=self._config.contradiction_candidate_limit + 1
-                )
-                candidate_ids = [mid for mid, _ in candidates if mid != memory.id]
-                candidate_ids = candidate_ids[: self._config.contradiction_candidate_limit]
-
-                # Also pull in graph-related memories via shared entities
-                for e_data in all_entities[:5]:
-                    eid = self._graph.find_entity_by_name(e_data["name"])
-                    if eid:
-                        related = self._graph.get_related_memory_ids([eid], depth=1)
-                        for rid in related:
-                            if rid != memory.id and rid not in candidate_ids:
-                                candidate_ids.append(rid)
-                                if len(candidate_ids) >= self._config.contradiction_candidate_limit:
-                                    break
-
-                # Domain-scope: only check overlapping domains
-                candidate_memories: list[Memory] = []
-                for cid in candidate_ids:
-                    cmem = await self._store.get_memory(cid)
-                    if cmem and (
-                        not memory.domains
-                        or not cmem.domains
-                        or set(memory.domains) & set(cmem.domains)
-                    ):
-                        candidate_memories.append(cmem)
-
-                candidates_checked = len(candidate_memories)
-                if candidate_memories:
-                    contradictions = await detect_contradictions(
-                        new_memory=memory,
-                        existing_memories=candidate_memories,
-                        model=self._config.llm_model,
-                        api_base=self._config.llm_api_base,
-                    )
-
-                    contradiction_count = len(contradictions)
-                    if contradictions:
-                        # Annotate the new memory
-                        structured_data = dict(memory.structured or {})
-                        structured_data["contradictions"] = contradictions
-                        memory.structured = structured_data
-                        await self._store.update_memory(memory)
-
-                        # Annotate each contradicted existing memory
-                        for c in contradictions:
-                            existing = await self._store.get_memory(c["existing_memory_id"])
-                            if existing:
-                                ex_structured = dict(existing.structured or {})
-                                ex_contradictions = ex_structured.get("contradicted_by", [])
-                                ex_contradictions.append(
-                                    {
-                                        "newer_memory_id": memory.id,
-                                        "contradiction_type": c["contradiction_type"],
-                                        "explanation": c["explanation"],
-                                        "severity": c["severity"],
-                                    }
-                                )
-                                ex_structured["contradicted_by"] = ex_contradictions
-                                existing.structured = ex_structured
-                                await self._store.update_memory(existing)
-
-                        logger.info(
-                            "Detected %d contradiction(s) for memory %s",
-                            len(contradictions),
-                            memory.id,
-                        )
-            except Exception:
-                logger.warning(
-                    "Contradiction detection failed, continuing without contradictions",
-                    exc_info=True,
-                )
-            _emit_stage("contradiction", (time.perf_counter() - t0) * 1000, {
-                "candidates_checked": candidates_checked,
-                "contradictions_found": contradiction_count,
-            }, memory_id=memory.id)
+            )
 
         # Process relationships if provided
         if relationships:
@@ -665,10 +603,30 @@ class MemoryService:
                         re.MULTILINE,
                     )
                 ) if admission_features is not None else False
+
+                # Tightening (Section 3.4): large documents are not
+                # state declarations — only trigger on short content.
+                _max_state_len = 2000
+                if len(content) > _max_state_len:
+                    _has_state_change = False
+                    _has_state_declaration = False
+
                 if _has_state_change or _has_state_declaration:
                     node_metadata = self._extract_entity_state_meta(
                         content, all_entities,
                     )
+
+                    # Tightening (Section 3.4): validate that the
+                    # detected entity_id exists in the extracted entities
+                    # set (must be a real entity, not a substring match).
+                    _entity_names_lower = {
+                        e["name"].lower() for e in all_entities
+                    }
+                    _detected_entity = node_metadata.get("entity_id", "")
+                    if _detected_entity.lower() not in _entity_names_lower:
+                        node_metadata = {}  # suppress L2 creation
+
+                if (_has_state_change or _has_state_declaration) and node_metadata:
                     l2_node = MemoryNode(
                         memory_id=memory.id,
                         node_type=NodeType.ENTITY_STATE,
@@ -789,6 +747,116 @@ class MemoryService:
             agent_id=source_agent,
         )
         return memory
+
+    # ── Deferred Contradiction Detection ────────────────────────────────
+
+    async def _deferred_contradiction_check(
+        self,
+        memory: Memory,
+        all_entities: list[dict],
+        pipeline_id: str,
+        source_agent: str | None = None,
+    ) -> None:
+        """Run contradiction detection as a post-ingest background task.
+
+        Memory is already stored and indexed.  If contradictions are found,
+        annotates the new memory and existing memories with metadata and
+        emits a pipeline event.  Entirely non-fatal — errors are logged
+        and swallowed.
+        """
+        t0 = time.perf_counter()
+        contradiction_count = 0
+        candidates_checked = 0
+        try:
+            from ncms.infrastructure.llm.contradiction_detector import (
+                detect_contradictions,
+            )
+
+            # Find similar existing memories (new memory already indexed)
+            candidates = self._index.search(
+                memory.content, limit=self._config.contradiction_candidate_limit + 1,
+            )
+            candidate_ids = [mid for mid, _ in candidates if mid != memory.id]
+            candidate_ids = candidate_ids[: self._config.contradiction_candidate_limit]
+
+            # Also pull in graph-related memories via shared entities
+            for e_data in all_entities[:5]:
+                eid = self._graph.find_entity_by_name(e_data["name"])
+                if eid:
+                    related = self._graph.get_related_memory_ids([eid], depth=1)
+                    for rid in related:
+                        if rid != memory.id and rid not in candidate_ids:
+                            candidate_ids.append(rid)
+                            if len(candidate_ids) >= self._config.contradiction_candidate_limit:
+                                break
+
+            # Domain-scope: only check overlapping domains
+            candidate_memories: list[Memory] = []
+            for cid in candidate_ids:
+                cmem = await self._store.get_memory(cid)
+                if cmem and (
+                    not memory.domains
+                    or not cmem.domains
+                    or set(memory.domains) & set(cmem.domains)
+                ):
+                    candidate_memories.append(cmem)
+
+            candidates_checked = len(candidate_memories)
+            if candidate_memories:
+                contradictions = await detect_contradictions(
+                    new_memory=memory,
+                    existing_memories=candidate_memories,
+                    model=self._config.llm_model,
+                    api_base=self._config.llm_api_base,
+                )
+
+                contradiction_count = len(contradictions)
+                if contradictions:
+                    # Annotate the new memory
+                    structured_data = dict(memory.structured or {})
+                    structured_data["contradictions"] = contradictions
+                    memory.structured = structured_data
+                    await self._store.update_memory(memory)
+
+                    # Annotate each contradicted existing memory
+                    for c in contradictions:
+                        existing = await self._store.get_memory(c["existing_memory_id"])
+                        if existing:
+                            ex_structured = dict(existing.structured or {})
+                            ex_contradictions = ex_structured.get("contradicted_by", [])
+                            ex_contradictions.append(
+                                {
+                                    "newer_memory_id": memory.id,
+                                    "contradiction_type": c["contradiction_type"],
+                                    "explanation": c["explanation"],
+                                    "severity": c["severity"],
+                                }
+                            )
+                            ex_structured["contradicted_by"] = ex_contradictions
+                            existing.structured = ex_structured
+                            await self._store.update_memory(existing)
+
+                    logger.info(
+                        "Deferred contradiction check: %d contradiction(s) for memory %s",
+                        len(contradictions),
+                        memory.id,
+                    )
+        except Exception:
+            logger.warning(
+                "Deferred contradiction detection failed for memory %s",
+                memory.id,
+                exc_info=True,
+            )
+        self._event_log.pipeline_stage(
+            pipeline_id=pipeline_id, pipeline_type="store",
+            stage="contradiction_deferred",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+            data={
+                "candidates_checked": candidates_checked,
+                "contradictions_found": contradiction_count,
+            },
+            agent_id=source_agent, memory_id=memory.id,
+        )
 
     # ── Search ───────────────────────────────────────────────────────────
 
