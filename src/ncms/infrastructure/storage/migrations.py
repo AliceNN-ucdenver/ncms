@@ -4,21 +4,15 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 CREATE_SCHEMA_SQL = """
--- ═══════════════════════════════════════════════════════════════════════
 -- Schema version tracking
--- ═══════════════════════════════════════════════════════════════════════
-
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY
 );
 
--- ═══════════════════════════════════════════════════════════════════════
--- Core memory storage (V1)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Core memory storage
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -50,7 +44,8 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
 CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
 
--- Relationships (knowledge graph edges)
+-- Explicit relationships between entities (NOT co-occurrence — those
+-- live in association_strengths, computed by dream cycles)
 CREATE TABLE IF NOT EXISTS relationships (
     id TEXT PRIMARY KEY,
     source_entity_id TEXT NOT NULL REFERENCES entities(id),
@@ -81,7 +76,7 @@ CREATE TABLE IF NOT EXISTS access_log (
 );
 CREATE INDEX IF NOT EXISTS idx_access_memory ON access_log(memory_id, accessed_at);
 
--- Knowledge snapshots
+-- Knowledge snapshots (agent sleep/wake surrogates)
 CREATE TABLE IF NOT EXISTS snapshots (
     snapshot_id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
@@ -102,11 +97,7 @@ CREATE TABLE IF NOT EXISTS consolidation_state (
     updated_at TEXT NOT NULL
 );
 
--- ═══════════════════════════════════════════════════════════════════════
--- HTMG typed nodes + admission routing (V2 + V3 bitemporal columns)
--- ═══════════════════════════════════════════════════════════════════════
-
--- Typed HTMG nodes linked to canonical memories
+-- HTMG typed nodes (atomic, entity_state, episode, abstract)
 CREATE TABLE IF NOT EXISTS memory_nodes (
     id TEXT PRIMARY KEY,
     memory_id TEXT NOT NULL REFERENCES memories(id),
@@ -125,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_mnodes_memory ON memory_nodes(memory_id);
 CREATE INDEX IF NOT EXISTS idx_mnodes_type ON memory_nodes(node_type);
 CREATE INDEX IF NOT EXISTS idx_mnodes_parent ON memory_nodes(parent_id);
 
--- Typed directed edges in the HTMG
+-- HTMG typed directed edges
 CREATE TABLE IF NOT EXISTS graph_edges (
     id TEXT PRIMARY KEY,
     source_id TEXT NOT NULL,
@@ -139,7 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_gedges_source ON graph_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gedges_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gedges_type ON graph_edges(edge_type);
 
--- Ephemeral cache: short-lived entries below atomic threshold
+-- Ephemeral cache (short-lived entries below atomic admission threshold)
 CREATE TABLE IF NOT EXISTS ephemeral_cache (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -152,10 +143,7 @@ CREATE TABLE IF NOT EXISTS ephemeral_cache (
 );
 CREATE INDEX IF NOT EXISTS idx_ephemeral_expires ON ephemeral_cache(expires_at);
 
--- ═══════════════════════════════════════════════════════════════════════
--- Dream cycle search logging + association strengths (V4)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Dream cycle: search logging for PMI computation
 CREATE TABLE IF NOT EXISTS search_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query TEXT NOT NULL,
@@ -166,6 +154,9 @@ CREATE TABLE IF NOT EXISTS search_log (
 );
 CREATE INDEX IF NOT EXISTS idx_search_log_ts ON search_log(timestamp);
 
+-- Dream cycle: learned entity-pair association strengths (PMI-based).
+-- This IS the spreading activation graph — loaded into NetworkX on startup.
+-- Updated by dream cycles, not per-memory ingestion.
 CREATE TABLE IF NOT EXISTS association_strengths (
     entity_id_1 TEXT NOT NULL,
     entity_id_2 TEXT NOT NULL,
@@ -174,10 +165,7 @@ CREATE TABLE IF NOT EXISTS association_strengths (
     PRIMARY KEY (entity_id_1, entity_id_2)
 );
 
--- ═══════════════════════════════════════════════════════════════════════
--- Dashboard event persistence (V5)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Dashboard event persistence
 CREATE TABLE IF NOT EXISTS dashboard_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
@@ -189,10 +177,7 @@ CREATE TABLE IF NOT EXISTS dashboard_events (
 CREATE INDEX IF NOT EXISTS idx_devents_ts ON dashboard_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_devents_type ON dashboard_events(type);
 
--- ═══════════════════════════════════════════════════════════════════════
--- Document Intelligence Persistence (V6)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Projects
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     topic TEXT NOT NULL,
@@ -209,6 +194,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_created ON projects(created_at);
 
+-- Documents (versioned artifacts)
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -231,6 +217,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type);
 CREATE INDEX IF NOT EXISTS idx_documents_agent ON documents(from_agent);
 CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_doc_id);
 
+-- Document derivation links
 CREATE TABLE IF NOT EXISTS document_links (
     id TEXT PRIMARY KEY,
     source_doc_id TEXT NOT NULL,
@@ -245,6 +232,7 @@ CREATE INDEX IF NOT EXISTS idx_doclinks_source ON document_links(source_doc_id);
 CREATE INDEX IF NOT EXISTS idx_doclinks_target ON document_links(target_doc_id);
 CREATE INDEX IF NOT EXISTS idx_doclinks_type ON document_links(link_type);
 
+-- Review scores
 CREATE TABLE IF NOT EXISTS review_scores (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
@@ -265,6 +253,7 @@ CREATE INDEX IF NOT EXISTS idx_reviews_doc ON review_scores(document_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_project ON review_scores(project_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_score ON review_scores(score);
 
+-- Pipeline events (audit trail)
 CREATE TABLE IF NOT EXISTS pipeline_events (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id TEXT NOT NULL,
@@ -280,6 +269,7 @@ CREATE TABLE IF NOT EXISTS pipeline_events (
 CREATE INDEX IF NOT EXISTS idx_pipeline_project ON pipeline_events(project_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_ts ON pipeline_events(timestamp);
 
+-- Approval decisions
 CREATE TABLE IF NOT EXISTS approval_decisions (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -295,6 +285,7 @@ CREATE TABLE IF NOT EXISTS approval_decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_project ON approval_decisions(project_id);
 
+-- Guardrail violations
 CREATE TABLE IF NOT EXISTS guardrail_violations (
     id TEXT PRIMARY KEY,
     document_id TEXT,
@@ -312,6 +303,7 @@ CREATE TABLE IF NOT EXISTS guardrail_violations (
 );
 CREATE INDEX IF NOT EXISTS idx_guardrails_project ON guardrail_violations(project_id);
 
+-- Grounding log (review citations to memories)
 CREATE TABLE IF NOT EXISTS grounding_log (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
@@ -326,6 +318,7 @@ CREATE TABLE IF NOT EXISTS grounding_log (
 );
 CREATE INDEX IF NOT EXISTS idx_grounding_doc ON grounding_log(document_id);
 
+-- LLM call tracking
 CREATE TABLE IF NOT EXISTS llm_calls (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -346,6 +339,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
 CREATE INDEX IF NOT EXISTS idx_llm_project ON llm_calls(project_id);
 CREATE INDEX IF NOT EXISTS idx_llm_agent ON llm_calls(agent);
 
+-- Agent config snapshots
 CREATE TABLE IF NOT EXISTS agent_config_snapshots (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -359,6 +353,7 @@ CREATE TABLE IF NOT EXISTS agent_config_snapshots (
     FOREIGN KEY (project_id) REFERENCES projects(id)
 );
 
+-- Bus conversation audit trail
 CREATE TABLE IF NOT EXISTS bus_conversations (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -376,10 +371,7 @@ CREATE TABLE IF NOT EXISTS bus_conversations (
 CREATE INDEX IF NOT EXISTS idx_bus_project ON bus_conversations(project_id);
 CREATE INDEX IF NOT EXISTS idx_bus_askid ON bus_conversations(ask_id);
 
--- ═══════════════════════════════════════════════════════════════════════
--- Guardrail Approval Gate (V7)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Pending approvals (guardrail gate)
 CREATE TABLE IF NOT EXISTS pending_approvals (
     id TEXT PRIMARY KEY,
     project_id TEXT,
@@ -397,10 +389,7 @@ CREATE TABLE IF NOT EXISTS pending_approvals (
 CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_approvals(status);
 CREATE INDEX IF NOT EXISTS idx_pending_project ON pending_approvals(project_id);
 
--- ═══════════════════════════════════════════════════════════════════════
--- Authentication (V8)
--- ═══════════════════════════════════════════════════════════════════════
-
+-- Users (authentication)
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -417,7 +406,7 @@ CREATE_TABLES = CREATE_SCHEMA_SQL
 
 
 async def create_schema(db: object) -> None:
-    """Create all NCMS tables in their final form (single-pass, no migrations)."""
+    """Create all NCMS tables in their final form."""
     import aiosqlite
 
     assert isinstance(db, aiosqlite.Connection)
@@ -428,7 +417,7 @@ async def create_schema(db: object) -> None:
         (SCHEMA_VERSION,),
     )
 
-    # Seed default admin user: shawn / ncms (bcrypt hashed)
+    # Seed default admin user
     from datetime import UTC, datetime
 
     import bcrypt as _bcrypt
@@ -446,12 +435,7 @@ async def create_schema(db: object) -> None:
 
 
 async def run_migrations(db: object) -> None:
-    """Initialize schema — creates fresh or validates existing.
-
-    For fresh databases, creates all tables in a single pass.
-    For existing databases at the current version, does nothing.
-    For older databases, logs a warning (no incremental migration support).
-    """
+    """Initialize schema — creates fresh or validates existing."""
     import logging
 
     import aiosqlite
@@ -459,31 +443,28 @@ async def run_migrations(db: object) -> None:
     assert isinstance(db, aiosqlite.Connection)
     logger = logging.getLogger("ncms.migrations")
 
-    # Check if schema_version table exists
     cursor = await db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name='schema_version'"
     )
     has_version_table = await cursor.fetchone() is not None
 
     if not has_version_table:
-        # Fresh database — create everything
         await create_schema(db)
         return
 
-    # Existing database — check version
     cursor = await db.execute("SELECT MAX(version) FROM schema_version")
     row = await cursor.fetchone()
     current_version = row[0] if row and row[0] else 0
 
     if current_version == SCHEMA_VERSION:
-        return  # Already up to date
+        return
 
     if current_version < SCHEMA_VERSION:
         logger.warning(
             "Database schema version %d is outdated (current: %d). "
-            "Delete the database file to recreate with the latest schema.",
+            "Delete the database file to recreate.",
             current_version,
             SCHEMA_VERSION,
         )
-        # Attempt to create any missing tables (IF NOT EXISTS makes this safe)
         await create_schema(db)

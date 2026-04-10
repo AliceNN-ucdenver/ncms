@@ -510,9 +510,6 @@ class MemoryService:
                         )
                         self._graph.add_relationship(rel_ab)
                         self._graph.add_relationship(rel_ba)
-                        # Persist to SQLite so edges survive restarts
-                        await self._store.save_relationship(rel_ab)
-                        await self._store.save_relationship(rel_ba)
                         edges_new += 1
                     cooc_count += 1
             _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {
