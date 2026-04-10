@@ -126,6 +126,7 @@ async def replay_ingest(
 
     ingest_timings_ms: list[float] = []
     memory_ids: list[str] = []
+    rejected_count = 0
 
     for i, mem in enumerate(sorted_memories):
         content = mem["content"]
@@ -154,14 +155,22 @@ async def replay_ingest(
             tags = tags_raw or []
 
         t0 = time.perf_counter()
-        memory = await svc.store_memory(
-            content=content,
-            memory_type=memory_type,
-            source_agent=source_agent,
-            importance=importance,
-            domains=domains if domains else None,
-            tags=tags if tags else None,
-        )
+        try:
+            memory = await svc.store_memory(
+                content=content,
+                memory_type=memory_type,
+                source_agent=source_agent,
+                importance=importance,
+                domains=domains if domains else None,
+                tags=tags if tags else None,
+            )
+        except ValueError as exc:
+            # Phase 1 gates (dedup, size) correctly reject bad content
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            rejected_count += 1
+            logger.info("  Rejected memory %d: %s", i + 1, exc)
+            continue
+
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
         ingest_timings_ms.append(elapsed_ms)

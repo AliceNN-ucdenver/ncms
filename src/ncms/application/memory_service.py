@@ -253,22 +253,25 @@ class MemoryService:
             })
             return existing
 
-        # ── Gate 2: Content size gating ──────────────────────────────────
+        # ── Gate 2: Content size check ───────────────────────────────────
+        # Large content is flagged for future document-store routing (Phase 4).
+        # For now, tag it so Phase 4 content classification can process it.
         max_len = self._config.max_content_length
         if len(content) > max_len and importance < 8.0:
-            logger.warning(
-                "Content size gate: %d chars exceeds limit %d (importance=%.1f)",
+            logger.info(
+                "Content size flag: %d chars exceeds %d (importance=%.1f) "
+                "— tagging for document routing",
                 len(content), max_len, importance,
             )
-            _emit_stage("size_reject", (time.perf_counter() - pipeline_start) * 1000, {
+            _emit_stage("size_flag", (time.perf_counter() - pipeline_start) * 1000, {
                 "content_length": len(content),
                 "max_content_length": max_len,
                 "importance": importance,
             })
-            raise ValueError(
-                f"Content length {len(content)} exceeds maximum {max_len} "
-                f"(importance {importance} < 8.0 threshold)"
-            )
+            # Tag for future Phase 4 document classification
+            if tags is None:
+                tags = []
+            tags = list(tags) + ["oversized_content"]
 
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
