@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS memories (
     importance REAL NOT NULL DEFAULT 5.0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    content_hash TEXT,
     source_agent TEXT,
     project TEXT,
     domains TEXT NOT NULL DEFAULT '[]',
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE INDEX IF NOT EXISTS idx_memories_domains ON memories(domains);
 CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(source_agent);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
+CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
 
 -- Entity registry (knowledge graph nodes)
 CREATE TABLE IF NOT EXISTS entities (

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from ncms.domain.models import Entity
 from ncms.domain.protocols import GraphEngine, MemoryStore
+
+logger = logging.getLogger(__name__)
 
 
 class GraphService:
@@ -36,6 +40,24 @@ class GraphService:
             entity_ids = await self._store.get_memory_entities(memory.id)
             for eid in entity_ids:
                 self._graph.link_memory_entity(memory.id, eid)
+
+        # Load PMI-based association strengths and apply as edge weights
+        try:
+            assoc = await self._store.get_association_strengths()
+            if assoc:
+                applied = 0
+                for (e1, e2), strength in assoc.items():
+                    try:
+                        self._graph.set_edge_weight(e1, e2, strength)
+                        applied += 1
+                    except (AttributeError, KeyError):
+                        pass  # Edge doesn't exist in graph or method not available
+                logger.info(
+                    "Loaded %d association strengths (%d applied to graph edges)",
+                    len(assoc), applied,
+                )
+        except Exception:
+            logger.debug("No association strengths to load", exc_info=True)
 
     def get_neighbors(
         self, entity_id: str, relation_type: str | None = None, depth: int = 1

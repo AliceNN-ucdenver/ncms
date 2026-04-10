@@ -76,6 +76,9 @@ class NCMSConfig(BaseSettings):
     # Defaults to ~/.cache/huggingface/hub if not set
     model_cache_dir: str | None = None
 
+    # Content size gating (Phase 1 data integrity)
+    max_content_length: int = 5000
+
     # GLiNER entity extraction (required dependency)
     gliner_model: str = "urchade/gliner_medium-v2.1"
     gliner_threshold: float = 0.3

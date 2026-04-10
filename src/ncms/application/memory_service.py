@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import math
 import re
@@ -235,6 +236,40 @@ class MemoryService:
 
         _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
 
+        # ── Gate 1: Content-hash dedup ───────────────────────────────────
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
+        try:
+            existing = await self._store.get_memory_by_content_hash(content_hash)
+        except AttributeError:
+            existing = None  # Store doesn't support content_hash lookup yet
+        if existing is not None:
+            logger.info(
+                "Dedup: content hash %s already exists as memory %s",
+                content_hash[:12], existing.id,
+            )
+            _emit_stage("dedup_skip", (time.perf_counter() - pipeline_start) * 1000, {
+                "existing_memory_id": existing.id,
+                "content_hash": content_hash[:12],
+            })
+            return existing
+
+        # ── Gate 2: Content size gating ──────────────────────────────────
+        max_len = self._config.max_content_length
+        if len(content) > max_len and importance < 8.0:
+            logger.warning(
+                "Content size gate: %d chars exceeds limit %d (importance=%.1f)",
+                len(content), max_len, importance,
+            )
+            _emit_stage("size_reject", (time.perf_counter() - pipeline_start) * 1000, {
+                "content_length": len(content),
+                "max_content_length": max_len,
+                "importance": importance,
+            })
+            raise ValueError(
+                f"Content length {len(content)} exceeds maximum {max_len} "
+                f"(importance {importance} < 8.0 threshold)"
+            )
+
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
         admission_features: object | None = None  # AdmissionFeatures, preserved for L2 node
@@ -343,6 +378,7 @@ class MemoryService:
             project=project,
             structured=structured,
             importance=importance,
+            content_hash=content_hash,
         )
 
         # Persist to SQLite
@@ -448,14 +484,19 @@ class MemoryService:
                         self._graph.increment_edge_cooccurrence(b, a)
                         edges_incremented += 1
                     else:
-                        self._graph.add_relationship(Relationship(
+                        rel_ab = Relationship(
                             source_entity_id=a, target_entity_id=b,
                             type="co_occurs", source_memory_id=memory.id,
-                        ))
-                        self._graph.add_relationship(Relationship(
+                        )
+                        rel_ba = Relationship(
                             source_entity_id=b, target_entity_id=a,
                             type="co_occurs", source_memory_id=memory.id,
-                        ))
+                        )
+                        self._graph.add_relationship(rel_ab)
+                        self._graph.add_relationship(rel_ba)
+                        # Persist to SQLite so edges survive restarts
+                        await self._store.save_relationship(rel_ab)
+                        await self._store.save_relationship(rel_ba)
                         edges_new += 1
                     cooc_count += 1
             _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {

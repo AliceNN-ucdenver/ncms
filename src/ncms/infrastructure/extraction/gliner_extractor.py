@@ -18,6 +18,7 @@ Recognition using Bidirectional Transformer" (NAACL 2024)
 from __future__ import annotations
 
 import logging
+import re
 import threading
 
 from ncms.domain.entity_extraction import MAX_ENTITIES, UNIVERSAL_LABELS
@@ -35,6 +36,24 @@ _model_lock = threading.Lock()  # Serializes model load + inference (PyTorch not
 # and label encoding.
 _CHUNK_MAX_CHARS: int = 1200
 _CHUNK_OVERLAP: int = 100
+
+# Post-extraction quality filter: reject noise entities from structured content
+_ENTITY_REJECT_PATTERNS = [
+    re.compile(r"^\d+(\.\d+)?%?$"),        # Pure numeric: "85%", "25789"
+    re.compile(r"^\d+ \w+\(s\)$"),          # Count patterns: "1 item(s)"
+    re.compile(r"^\d+ chars$"),             # Size patterns: "2783 chars"
+    re.compile(r"^[a-f0-9]{8,}$"),          # Hex IDs: "6f01603fe96a"
+    re.compile(r"^Document: "),             # Prefixed IDs
+    re.compile(r"^[A-Z]\d+$"),              # Citation labels: "S5", "S6"
+    re.compile(r"^avg \d"),                 # Aggregate labels: "avg 85%"
+]
+
+
+def _is_junk_entity(name: str) -> bool:
+    """Return True if the entity name matches a known noise pattern."""
+    if len(name) <= 1:
+        return True
+    return any(p.search(name) for p in _ENTITY_REJECT_PATTERNS)
 
 
 def _resolve_device() -> str:
@@ -169,6 +188,8 @@ def extract_entities_gliner(
         for ent in chunk_entities:
             name = ent["text"].strip()
             if not name or len(name) < 2:
+                continue
+            if _is_junk_entity(name):
                 continue
             key = name.lower()
             if key not in seen:

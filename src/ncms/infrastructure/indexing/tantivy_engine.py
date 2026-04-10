@@ -22,6 +22,7 @@ class TantivyEngine:
         self._path = path
         self._index: tantivy.Index | None = None
         self._schema: tantivy.Schema | None = None
+        self._index_dir: str | None = None  # Actual directory where index files live
         self._writer_lock = threading.Lock()  # Tantivy allows only one writer at a time
 
     def initialize(self, path: str | None = None) -> None:
@@ -37,10 +38,12 @@ class TantivyEngine:
         if effective_path:
             index_dir = Path(effective_path)
             index_dir.mkdir(parents=True, exist_ok=True)
+            self._index_dir = str(index_dir)
             self._index = tantivy.Index(self._schema, path=str(index_dir))
         else:
             # In-memory index using a temp directory
             tmp_dir = tempfile.mkdtemp(prefix="ncms_index_")
+            self._index_dir = tmp_dir
             self._index = tantivy.Index(self._schema, path=tmp_dir)
 
     @property

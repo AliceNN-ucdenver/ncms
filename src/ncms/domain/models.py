@@ -187,6 +187,7 @@ class Memory(BaseModel):
         "insight",
     ] = "fact"
     importance: float = 5.0
+    content_hash: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
     source_agent: str | None = None

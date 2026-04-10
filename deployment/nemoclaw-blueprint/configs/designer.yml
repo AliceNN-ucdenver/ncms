@@ -45,7 +45,7 @@ workflow:
   llm_name: spark_llm
   description: "Designer with deterministic LangGraph implementation design pipeline"
   retrieve_memory_for_every_response: false
-  save_user_messages_to_memory: true
-  save_ai_messages_to_memory: true
+  save_user_messages_to_memory: false
+  save_ai_messages_to_memory: false
   search_params:
     top_k: 10

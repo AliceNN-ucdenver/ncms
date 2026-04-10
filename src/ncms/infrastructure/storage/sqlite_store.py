@@ -65,15 +65,16 @@ class SQLiteStore:
     async def save_memory(self, memory: Memory) -> None:
         await self.db.execute(
             """INSERT OR REPLACE INTO memories
-               (id, content, structured, type, importance, created_at, updated_at,
-                source_agent, project, domains, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, content, structured, type, importance, content_hash,
+                created_at, updated_at, source_agent, project, domains, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 memory.id,
                 memory.content,
                 json.dumps(memory.structured) if memory.structured else None,
                 memory.type,
                 memory.importance,
+                memory.content_hash,
                 memory.created_at.isoformat(),
                 memory.updated_at.isoformat(),
                 memory.source_agent,
@@ -83,6 +84,17 @@ class SQLiteStore:
             ),
         )
         await self.db.commit()
+
+    async def get_memory_by_content_hash(self, content_hash: str) -> Memory | None:
+        """Look up a memory by its SHA-256 content hash (dedup gate)."""
+        cursor = await self.db.execute(
+            "SELECT * FROM memories WHERE content_hash = ? LIMIT 1",
+            (content_hash,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return self._row_to_memory(row)
 
     async def get_memory(self, memory_id: str) -> Memory | None:
         cursor = await self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,))
@@ -852,6 +864,7 @@ class SQLiteStore:
             structured=json.loads(row["structured"]) if row["structured"] else None,
             type=row["type"],
             importance=row["importance"],
+            content_hash=row["content_hash"] if "content_hash" in row else None,  # noqa: SIM401
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             source_agent=row["source_agent"],
