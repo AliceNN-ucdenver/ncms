@@ -66,8 +66,13 @@ function handleEvent(event) {
     }
   }
 
-  // Route events to agent activity lists (suppress pipeline.node — visible in project progress)
-  if (event.agent_id && event.type !== 'pipeline.node') {
+  // Route events to agent activity lists
+  // Suppress: pipeline.node (visible in project progress),
+  //           agent.status / agent.heartbeat_timeout (updates badge only, not feed)
+  const _activitySuppressed = new Set([
+    'pipeline.node', 'agent.status', 'agent.heartbeat_timeout',
+  ]);
+  if (event.agent_id && !_activitySuppressed.has(event.type)) {
     addAgentActivity(event.agent_id, event);
   }
 

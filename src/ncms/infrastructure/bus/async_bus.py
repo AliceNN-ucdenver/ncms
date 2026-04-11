@@ -122,9 +122,11 @@ class AsyncKnowledgeBus:
 
     async def update_availability(self, agent_id: str, status: str) -> None:
         if agent_id in self._agents:
+            old_status = self._agents[agent_id].status
             self._agents[agent_id].status = status  # type: ignore[assignment]
             self._agents[agent_id].last_seen = datetime.now(UTC)
-            if self._event_log:
+            # Only emit event when status actually changes (not on every heartbeat)
+            if self._event_log and old_status != status:
                 self._event_log.agent_status(agent_id, status)
 
     def is_agent_online(self, agent_id: str) -> bool:
