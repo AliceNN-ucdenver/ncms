@@ -256,7 +256,8 @@ def create_dashboard_app(
 
     async def api_stats(request: Request) -> JSONResponse:
         """Return system statistics and active feature flags."""
-        agents = bus_service.get_all_agents()
+        # Exclude synthetic agents (e.g. 'human') from counts
+        agents = [a for a in bus_service.get_all_agents() if a.agent_id != "human"]
         online = sum(1 for a in agents if a.status == "online")
 
         # Active feature flags for dashboard badges
