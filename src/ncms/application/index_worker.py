@@ -609,8 +609,8 @@ class IndexWorkerPool:
             await self._svc._store.save_memory_node(l2_node)
 
             edge = GraphEdge(
-                source_node_id=l2_node.id,
-                target_node_id=l1_node.id,
+                source_id=l2_node.id,
+                target_id=l1_node.id,
                 edge_type=EdgeType.DERIVED_FROM,
             )
             await self._svc._store.save_graph_edge(edge)
