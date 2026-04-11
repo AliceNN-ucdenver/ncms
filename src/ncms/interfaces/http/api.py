@@ -1972,12 +1972,16 @@ async def run_http_server(
     from ncms.interfaces.mcp.server import create_ncms_services
 
     config = config or NCMSConfig()
-    event_log = EventLog(max_events=5000)
 
-    # Create services — then wrap bus with HTTP transport
+    # Create services first so we can grab the DB connection for event persistence
+    event_log = EventLog(max_events=5000)
     memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = (
         await create_ncms_services(config, event_log=event_log)
     )
+
+    # Wire EventLog to the store's DB for persistent event history (time-travel)
+    event_log._db = memory_svc._store.db
+    asyncio.create_task(event_log.start_persistence())
 
     # Create DocumentService (Phase 2.5) using same DB connection
     from ncms.application.document_service import DocumentService
