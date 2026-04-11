@@ -28,7 +28,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_doc_id, emit_telemetry, fetch_and_cache_document, build_entity_search_query, traced_llm_call
+from .pipeline_utils import extract_project_id, extract_doc_id, emit_telemetry, fetch_and_cache_document, build_entity_search_query, traced_llm_call, ensure_langchain_instrumented
 from .expert_prompts import (
     ARCHITECT_KNOWLEDGE_PROMPT,
     ARCHITECT_REVIEW_PROMPT,
@@ -428,6 +428,7 @@ async def architect_expert_fn(
         knowledge_prompt=ARCHITECT_KNOWLEDGE_PROMPT,
         review_prompt=ARCHITECT_REVIEW_PROMPT,
     )
+    ensure_langchain_instrumented()
     graph = await agent.build_graph()
     logger.info("[expert_agent:architect] LangGraph pipeline ready")
 
@@ -512,6 +513,7 @@ async def security_expert_fn(
         knowledge_prompt=SECURITY_KNOWLEDGE_PROMPT,
         review_prompt=SECURITY_REVIEW_PROMPT,
     )
+    ensure_langchain_instrumented()
     graph = await agent.build_graph()
     logger.info("[expert_agent:security] LangGraph pipeline ready")
 

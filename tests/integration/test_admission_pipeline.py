@@ -222,7 +222,7 @@ class TestAdmissionMetadata:
             admission_data = mem.structured["admission"]
             assert "score" in admission_data
             assert "route" in admission_data
-            # Check some feature keys are present (when not discard/ephemeral)
+            # Check active feature keys are present (when not discard/ephemeral)
             if admission_data["route"] not in ("discard", "ephemeral_cache"):
-                assert "novelty" in admission_data
                 assert "utility" in admission_data
+                assert "persistence" in admission_data

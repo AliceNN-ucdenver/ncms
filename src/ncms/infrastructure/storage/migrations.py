@@ -461,10 +461,7 @@ async def run_migrations(db: object) -> None:
         return
 
     if current_version < SCHEMA_VERSION:
-        logger.warning(
-            "Database schema version %d is outdated (current: %d). "
-            "Delete the database file to recreate.",
-            current_version,
-            SCHEMA_VERSION,
+        raise RuntimeError(
+            f"Database schema version {current_version} is outdated "
+            f"(expected {SCHEMA_VERSION}). Delete the database file and restart."
         )
-        await create_schema(db)

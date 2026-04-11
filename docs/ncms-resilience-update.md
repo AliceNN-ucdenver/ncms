@@ -439,6 +439,95 @@ uv run ncms load --bulk /path/to/files/
 
 **Effort**: Medium (~150 lines)
 
+### 5.7 Implemented: Background Indexing Pipeline
+
+**Problem**: `store_memory()` blocks the caller for the full indexing pipeline (200-600ms warm) even though the memory is safely persisted to SQLite within ~1ms. The caller doesn't need BM25/SPLADE/GLiNER/episodes to complete before receiving the `Memory` object back.
+
+**Design**: Decouple persist from indexing via a bounded async queue and worker pool.
+
+**What stays synchronous** (client blocks for ~2ms):
+1. Content-hash dedup check (must know if duplicate before returning)
+2. Admission scoring — 4 pure text heuristic features (utility, persistence, state_change_signal, temporal_salience), no index dependency
+3. SQLite persist (0.1ms)
+
+**What moves to background** (enqueued, workers process concurrently):
+1. BM25 indexing (Tantivy)
+2. SPLADE indexing (neural model, shares singleton `SpladeEngine`)
+3. GLiNER entity extraction (NER model, shares singleton module-level `_model`)
+4. Entity linking + co-occurrence edge construction
+5. Memory node creation (L1 atomic, L2 entity_state)
+6. State reconciliation
+7. Episode formation (with per-episode `asyncio.Lock` for concurrent safety)
+8. Contradiction detection (fire-and-forget, same as before)
+
+**Architecture**:
+
+```
+store_memory()                  IndexWorkerPool
+  ┌─────────────┐              ┌──────────────────────────────────┐
+  │ dedup check  │              │  Worker 0 ─── [BM25+SPLADE+GLiNER]
+  │ admission    │  enqueue()   │                  ↓
+  │ SQLite save  │────────────→ │              entity linking
+  │ return Memory│              │                  ↓
+  └─────────────┘              │              nodes + episodes
+                               │
+                               │  Worker 1 ─── (same pipeline)
+                               │  Worker 2 ─── (same pipeline)
+                               │
+                               │  Queue: bounded asyncio.Queue(1000)
+                               └──────────────────────────────────┘
+```
+
+**Backpressure**: When the queue is full, `enqueue()` returns `False` and `store_memory()` falls back to inline indexing (same as pre-feature behavior). No data loss, just slower for that one call. The returned Memory has `structured.indexing = "queued"` vs omitted for inline.
+
+**Failure handling**:
+- Memory is in SQLite regardless — indexing failure = not searchable by content, but retrievable by ID
+- Retry: re-enqueue with `attempt += 1`, max 3 attempts, exponential backoff (1s, 5s, 25s)
+- Dead letter: after 3 failures, log error + emit `indexing.failed` event. Memory stays in SQLite with annotation
+- Startup recovery: planned — query for memories with no BM25 index entry, re-enqueue orphans
+
+**Episode concurrent safety**: Multiple workers can process different memories targeting the same episode. A per-episode `asyncio.Lock` (lazily created, keyed by episode ID) serializes episode formation updates. Different episodes can be updated concurrently.
+
+**Model singletons**: GLiNER uses a module-level `_model` with `threading.Lock` — safe for concurrent `to_thread()` calls. SPLADE uses an instance-level `_model` with `_ensure_model()` lazy init — the single `SpladeEngine` instance is shared by all workers via the `MemoryService` reference.
+
+**Observability**:
+- `ncms://indexing/status` MCP resource: queue depth, worker count/busy, processed/failed/retried totals, avg processing time
+- Pipeline events via `EventLog`: `indexing.started`, `indexing.complete` (with per-stage timing), `indexing.retry`, `indexing.failed`
+- `ncms://status` includes indexing summary when pool is active
+
+**Configuration**:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NCMS_ASYNC_INDEXING_ENABLED` | `true` | Feature flag (enabled by default) |
+| `NCMS_INDEX_WORKERS` | `3` | Background worker count |
+| `NCMS_INDEX_QUEUE_SIZE` | `1000` | Max pending tasks before backpressure |
+| `NCMS_INDEX_MAX_RETRIES` | `3` | Retry attempts per failed task |
+| `NCMS_INDEX_DRAIN_TIMEOUT_SECONDS` | `30` | Shutdown drain timeout |
+
+**Performance impact**: Store latency drops from ~330ms (warm, with SPLADE) to ~2ms from the client's perspective. Search latency unchanged. Tradeoff: eventual consistency — a store followed by an immediate search may not find the memory (typically indexed within 300ms).
+
+**Admission scoring cleanup**: The original 8-feature admission pipeline (novelty, utility, reliability, temporal_salience, persistence, redundancy, episode_affinity, state_change_signal) was reduced to 4 pure text heuristic features. Removed features and rationale:
+- `novelty` / `redundancy` — depended on BM25 index search, creating a circular dependency with background indexing. Content-hash dedup (SHA-256 against SQLite) handles exact duplicate detection instead.
+- `reliability` — always returned 0.60 (nobody passes `source_type`), zero discriminative signal.
+- `episode_affinity` — weighted only 4%, and episode formation happens post-admission in background workers, so affinity can't be known at admission time.
+
+Renormalized weights: utility (0.30), persistence (0.25), state_change_signal (0.25), temporal_salience (0.20). Routing thresholds recalibrated: discard < 0.10, ephemeral 0.10–0.25, persist ≥ 0.25. State change signal ≥ 0.35 auto-promotes to persist. All real content (ADRs, incidents, deployments, state changes) correctly routes to persist. The `importance >= 8.0` force-store bypass still works for agents that need guaranteed persistence.
+
+**Lifecycle integration**: `create_ncms_services()` calls `start_index_pool()` automatically — all entry points (MCP server, dashboard, demo, NAT integration) get background indexing. The demo runner calls `stop_index_pool()` at cleanup for graceful drain.
+
+**Files**:
+- `src/ncms/application/index_worker.py` — `IndexTask`, `IndexWorkerPool`, `IndexingStats`
+- `src/ncms/application/memory_service.py` — `start_index_pool()`, `stop_index_pool()`, `index_pool_stats()`, enqueue path in `store_memory()`
+- `src/ncms/application/admission_service.py` — 4 text heuristic extractors (dead methods removed)
+- `src/ncms/domain/scoring.py` — `AdmissionFeatures` (4 fields), `score_admission()`, `route_memory()`
+- `src/ncms/config.py` — 4 `NCMS_` indexing config vars (removed `admission_novelty_search_limit`)
+- `src/ncms/interfaces/mcp/resources.py` — `ncms://indexing/status` resource
+- `src/ncms/interfaces/mcp/server.py` — `start_index_pool()` in `create_ncms_services()`
+- `src/ncms/demo/run_demo.py` — `start_index_pool()` / `stop_index_pool()` lifecycle
+
+**Effort**: Implemented (~400 lines across 8 files)
+
 ---
 
 ## 6. Compilation, Synthesis & Document Integration
@@ -1234,13 +1323,14 @@ The admission scoring tuning achieved **65.9% accuracy** on 44 labeled examples 
 | **atomic_memory** | **41.7%** | Poor — confuses architecture facts with transient updates |
 | **episode_fragment** | **50.0%** | Poor — episode-relevant content misclassified as generic |
 
-The 8-feature heuristic pipeline (novelty, utility, reliability, temporal_salience, persistence, redundancy, episode_affinity, state_change_signal) has reached its ceiling. The features are lexical/statistical — they can't distinguish "ADR-003 establishes JWT with inline RBAC" (should persist as atomic_memory) from "Consulting architecture experts" (should be ephemeral).
+The original 8-feature heuristic pipeline has been simplified to 4 pure text heuristics (utility, persistence, state_change_signal, temporal_salience). The removed features (novelty, redundancy, reliability, episode_affinity) added no discriminative signal — see §5.7 for rationale. Content-hash dedup handles exact duplicates, and the `importance >= 8.0` force-store bypass provides an escape hatch for agents that need guaranteed persistence.
+
+The remaining 4-feature pipeline is lexical/statistical — it still can't distinguish "ADR-003 establishes JWT with inline RBAC" (should persist as atomic_memory) from "Consulting architecture experts" (should be ephemeral). But the simplified pipeline is index-independent, runs in ~1ms, and produces identical results in both sync and async indexing modes.
 
 **Proposed improvements**:
 1. **Larger labeled dataset**: 44 examples is insufficient. Target 200+ labeled examples from the hub workload, balanced across routes.
-2. **LLM-assisted classification** (optional): For borderline cases (score 0.30-0.45), call a fast LLM (Haiku-class) to classify intent. This adds ~100ms latency but could push accuracy above 80%.
+2. **LLM-assisted classification** (optional): For borderline cases (score 0.20-0.35), call a fast LLM (Haiku-class) to classify intent. This adds ~100ms latency but could push accuracy above 80%.
 3. **Content-type awareness**: Announcements (`[Announcement from ...]`), documents (`Document '...'`), and user prompts (`user: ...`) have distinct patterns that a simple prefix classifier could exploit before the full heuristic pipeline runs.
-4. **Feedback from episode assignment**: If a memory gets assigned to an episode with high match_score (>0.7), retroactively boost its admission classification for future similar content.
 
 ### 9.4 Search Quality Feedback Loop
 
@@ -1455,25 +1545,26 @@ The query set should include:
 - Pattern queries: "What patterns emerged in the design review process?" (should hit L4 when available)
 - Cross-agent queries: "What did the security agent flag about authentication?" (should cross agent boundaries)
 
-### Phase 1: Data Integrity (Week 1)
+### Phase 1: Data Integrity (Week 1) — ✅ COMPLETE
 
-| Task | Effort | Files |
+| Task | Status | Files |
 |------|--------|-------|
-| Content-hash dedup gate | 2h | `memory_service.py`, `migrations.py`, `sqlite_store.py` |
-| Content size gating | 1h | `memory_service.py`, `api.py`, `config.py` |
-| Entity quality filter | 2h | `gliner_extractor.py` |
-| NAT wrapper config fix | 30m | `deployment/nemoclaw-blueprint/configs/*.yml` |
-| Persist co-occurrence edges | 2h | `memory_service.py`, `sqlite_store.py` |
-| Load association strengths on rebuild | 1h | `graph_service.py` |
+| Content-hash dedup gate | ✅ Done | `memory_service.py`, `migrations.py`, `sqlite_store.py` |
+| Content size gating | ✅ Done | `gliner_extractor.py` (`max_content_length`), `config.py` |
+| Entity quality filter | ✅ Done | `gliner_extractor.py` (`_is_junk_entity()`) |
+| NAT wrapper config fix | ✅ Done | `deployment/nemoclaw-blueprint/configs/*.yml` (`save_user_messages_to_memory: false`) |
+| Persist co-occurrence edges | ✅ Done | `memory_service.py`, `sqlite_store.py` |
+| Load association strengths on rebuild | ✅ Done | `graph_service.py` (`get_association_strengths()`) |
 
-### Phase 2: Performance (Week 2)
+### Phase 2: Performance (Week 2) — ✅ COMPLETE
 
-| Task | Effort | Files |
+| Task | Status | Files |
 |------|--------|-------|
-| Deferred contradiction detection | 2h | `memory_service.py` |
-| Batch episode candidate queries | 4h | `episode_service.py`, `sqlite_store.py` |
-| Episode profile caching | 3h | `episode_service.py` |
-| Entity state detection tightening | 2h | `admission_service.py`, `scoring.py` |
+| Deferred contradiction detection | ✅ Done | Runs in `index_worker.py` async pipeline |
+| Batch episode candidate queries | ✅ Done | `episode_service.py` |
+| Episode profile caching | ✅ Done | `episode_service.py` (`_profile_cache`) |
+| Entity state detection tightening | ✅ Done | `admission_service.py`, `scoring.py` (4-feature model) |
+| Background indexing (§5.7) | ✅ Done | `index_worker.py` — store returns ~2ms, indexing async |
 
 ### Phase 3: Operational Lifecycle (Week 3)
 

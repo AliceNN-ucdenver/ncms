@@ -330,6 +330,93 @@ async def check_interrupt(hub_url: str, agent_id: str) -> bool:
     return False
 
 
+# ── LangChain/LangGraph Phoenix Instrumentation ────────────────────────────
+# NAT uses its own event-based span system and never calls
+# trace.set_tracer_provider(), so LangChainInstrumentor gets a Noop by default.
+# We create our own TracerProvider with an OTLP exporter pointing at Phoenix.
+# Call once per process BEFORE build_graph() so compiled graph nodes get wrappers.
+
+_langchain_instrumented = False
+
+
+def _build_tracer_provider() -> "TracerProvider | None":  # noqa: F821
+    """Create a TracerProvider exporting to Phoenix via OTLP, or None."""
+    import os
+
+    endpoint = os.environ.get("PHOENIX_COLLECTOR_ENDPOINT", "")
+    if not endpoint:
+        logger.warning("[otel] PHOENIX_COLLECTOR_ENDPOINT not set — cannot create TracerProvider")
+        return None
+
+    try:
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+        from openinference.semconv.resource import ResourceAttributes
+
+        project = os.environ.get("PHOENIX_PROJECT_NAME", "ncms-agent")
+        resource = Resource.create({
+            ResourceAttributes.PROJECT_NAME: project,
+            "service.name": project,
+        })
+        provider = TracerProvider(resource=resource)
+
+        # Phoenix accepts OTLP at /v1/traces
+        traces_endpoint = endpoint.rstrip("/") + "/v1/traces"
+        exporter = OTLPSpanExporter(endpoint=traces_endpoint)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+
+        logger.info("[otel] Created TracerProvider → %s (project=%s)", traces_endpoint, project)
+        return provider
+    except ImportError as e:
+        logger.warning("[otel] Missing OTel SDK packages for TracerProvider: %s", e)
+        return None
+    except Exception as e:
+        logger.warning("[otel] Failed to create TracerProvider: %s", e)
+        return None
+
+
+def ensure_langchain_instrumented() -> None:
+    """Instrument LangChain/LangGraph for Phoenix span capture (idempotent)."""
+    global _langchain_instrumented
+    if _langchain_instrumented:
+        return
+    _langchain_instrumented = True
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+        from opentelemetry import trace
+
+        # Check if someone already set a real global provider
+        provider = trace.get_tracer_provider()
+        provider_cls = type(provider).__name__
+
+        if "Noop" in provider_cls or "Proxy" in provider_cls:
+            # NAT doesn't set a global provider — create our own for LangGraph
+            logger.info("[otel] Global TracerProvider is %s — creating our own", provider_cls)
+            provider = _build_tracer_provider()
+            if provider is None:
+                logger.warning("[otel] No TracerProvider available — LangGraph spans disabled")
+                return
+            # Register globally so other OTel instrumentors also work
+            trace.set_tracer_provider(provider)
+            logger.info("[otel] Registered TracerProvider globally")
+        else:
+            logger.info("[otel] Using existing global TracerProvider: %s", provider_cls)
+
+        instrumentor = LangChainInstrumentor(tracer_provider=provider)
+        if not instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.instrument()
+            logger.info("[otel] LangChain/LangGraph instrumented for Phoenix")
+        else:
+            logger.info("[otel] LangChain/LangGraph already instrumented")
+    except ImportError:
+        logger.debug("[otel] openinference-instrumentation-langchain not installed — skipping")
+    except Exception as e:
+        logger.warning("[otel] LangChain instrumentation failed: %s", e)
+
+
 # ── Traced LLM Call ─────────────────────────────────────────────────────────
 # Wraps ainvoke() with timing + audit record.
 

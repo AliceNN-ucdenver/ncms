@@ -3,6 +3,9 @@
 Creates labeled evaluation examples representing typical NCMS usage, then grid-searches
 over admission parameters to maximize route accuracy.
 
+Features (4 pure text heuristics):
+    utility (0.30), persistence (0.25), state_change_signal (0.25), temporal_salience (0.20)
+
 Results written to:
 - benchmarks/tuning/admission_grid_results.json  (all configs + scores)
 - benchmarks/tuning/admission_grid_report.md      (best config + analysis)
@@ -39,7 +42,7 @@ class LabeledExample:
 
 
 EVALUATION_EXAMPLES: list[LabeledExample] = [
-    # --- atomic_memory: architecture decisions, important facts ---
+    # --- persist: architecture decisions, important facts ---
     LabeledExample(
         "We decided to migrate from REST to gRPC for all internal service communication",
         "persist", "architecture_decision",
@@ -78,11 +81,13 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
         "persist", "policy",
     ),
     LabeledExample(
-        "The payment processing module integrates with Stripe API v2023-10 for all transactions",
+        "The payment processing module integrates with Stripe API v2023-10"
+        " for all transactions",
         "persist", "integration",
     ),
     LabeledExample(
-        "Redis cluster with 6 nodes handles session management and caching across all services",
+        "Redis cluster with 6 nodes handles session management and caching"
+        " across all services",
         "persist", "infrastructure",
     ),
     LabeledExample(
@@ -90,7 +95,7 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
         "persist", "architecture_fact",
     ),
 
-    # --- entity_state_update: status changes, version updates ---
+    # --- persist: state changes, version updates ---
     LabeledExample(
         "The auth service was updated from OAuth 1.0 to OAuth 2.0 as of January 2026",
         "persist", "state_change",
@@ -112,11 +117,13 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
         "persist", "tool_change",
     ),
     LabeledExample(
-        "The user service status changed from degraded to healthy after the fix was deployed",
+        "The user service status changed from degraded to healthy"
+        " after the fix was deployed",
         "persist", "status_change",
     ),
     LabeledExample(
-        "Container runtime migrated from Docker to containerd across all Kubernetes clusters",
+        "Container runtime migrated from Docker to containerd"
+        " across all Kubernetes clusters",
         "persist", "infrastructure_change",
     ),
     LabeledExample(
@@ -142,7 +149,8 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
         "ephemeral_cache", "work_in_progress",
     ),
     LabeledExample(
-        "Meeting notes: discussed roadmap priorities for Q2, need to follow up on auth redesign",
+        "Meeting notes: discussed roadmap priorities for Q2,"
+        " need to follow up on auth redesign",
         "ephemeral_cache", "meeting_note",
     ),
     LabeledExample(
@@ -159,48 +167,18 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
     ),
 
     # --- discard: noise, social, trivial ---
-    LabeledExample(
-        "ok",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "thanks",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "sounds good",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "lgtm",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "sure thing",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "hello team",
-        "discard", "greeting",
-    ),
-    LabeledExample(
-        "have a great weekend everyone",
-        "discard", "social",
-    ),
-    LabeledExample(
-        "brb",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "np",
-        "discard", "noise",
-    ),
-    LabeledExample(
-        "+1",
-        "discard", "noise",
-    ),
+    LabeledExample("ok", "discard", "noise"),
+    LabeledExample("thanks", "discard", "noise"),
+    LabeledExample("sounds good", "discard", "noise"),
+    LabeledExample("lgtm", "discard", "noise"),
+    LabeledExample("sure thing", "discard", "noise"),
+    LabeledExample("hello team", "discard", "greeting"),
+    LabeledExample("have a great weekend everyone", "discard", "social"),
+    LabeledExample("brb", "discard", "noise"),
+    LabeledExample("np", "discard", "noise"),
+    LabeledExample("+1", "discard", "noise"),
 
-    # --- episode_fragment: incident-related, causal chains ---
+    # --- persist: incidents, causal chains ---
     LabeledExample(
         "INCIDENT: Production API latency spiked to 5s at 14:00 UTC"
         " due to database connection pool exhaustion",
@@ -235,26 +213,22 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
 
 
 # ---------------------------------------------------------------------------
-# Feature extraction (simplified — uses heuristic feature extraction inline)
+# Feature extraction
 # ---------------------------------------------------------------------------
 
 def extract_features_for_content(content: str, svc: object) -> AdmissionFeatures:
-    """Extract admission features from content using an AdmissionService instance.
-
-    Uses the service's heuristic methods with no BM25 lookups (assume novel content,
-    no existing memories to compare against).
-    """
+    """Extract admission features using AdmissionService's text heuristics."""
     text_lower = content.lower()
 
     return AdmissionFeatures(
-        novelty=0.7,  # assume novel (no existing memories in grid search)
-        redundancy=0.1,  # assume low redundancy
         utility=svc._compute_utility(text_lower),  # type: ignore[attr-defined]
-        reliability=svc._compute_reliability(text_lower),  # type: ignore[attr-defined]
-        temporal_salience=svc._compute_temporal_salience(text_lower, content),  # type: ignore[attr-defined]
+        temporal_salience=svc._compute_temporal_salience(  # type: ignore[attr-defined]
+            text_lower, content,
+        ),
         persistence=svc._compute_persistence(text_lower),  # type: ignore[attr-defined]
-        episode_affinity=svc._compute_episode_affinity(text_lower, content),  # type: ignore[attr-defined]
-        state_change_signal=svc._compute_state_change_signal(text_lower),  # type: ignore[attr-defined]
+        state_change_signal=svc._compute_state_change_signal(  # type: ignore[attr-defined]
+            text_lower,
+        ),
     )
 
 
@@ -268,7 +242,6 @@ class RoutingConfig:
     discard_threshold: float
     ephemeral_upper: float
     state_change_threshold: float
-    episode_affinity_threshold: float
 
 
 def route_with_config(
@@ -276,40 +249,32 @@ def route_with_config(
     score: float,
     cfg: RoutingConfig,
 ) -> str:
-    """Route memory using custom thresholds (3-way quality gate)."""
-    if (
-        score < cfg.discard_threshold
-        and features.persistence < 0.20
-        and features.state_change_signal < 0.20
-    ):
+    """Route memory using custom thresholds (3-way monotonic quality gate)."""
+    # State change auto-promotes
+    if features.state_change_signal >= cfg.state_change_threshold:
+        return "persist"
+    # Monotonic thresholds
+    if score < cfg.discard_threshold:
         return "discard"
-    if cfg.discard_threshold <= score < cfg.ephemeral_upper:
+    if score < cfg.ephemeral_upper:
         return "ephemeral_cache"
     return "persist"
 
 
 @dataclass
 class WeightConfig:
-    """Feature weight configuration to test."""
-    novelty: float = 0.20
-    utility: float = 0.18
-    reliability: float = 0.12
-    temporal_salience: float = 0.12
-    persistence: float = 0.15
-    redundancy: float = -0.15
-    episode_affinity: float = 0.04
-    state_change_signal: float = 0.14
+    """Feature weight configuration to test (must sum to ~1.0)."""
+    utility: float = 0.30
+    persistence: float = 0.25
+    state_change_signal: float = 0.25
+    temporal_salience: float = 0.20
 
     def score(self, f: AdmissionFeatures) -> float:
         return (
-            self.novelty * f.novelty
-            + self.utility * f.utility
-            + self.reliability * f.reliability
-            + self.temporal_salience * f.temporal_salience
+            self.utility * f.utility
             + self.persistence * f.persistence
-            + self.redundancy * f.redundancy
-            + self.episode_affinity * f.episode_affinity
             + self.state_change_signal * f.state_change_signal
+            + self.temporal_salience * f.temporal_salience
         )
 
 
@@ -342,24 +307,29 @@ def run_grid_search() -> dict:
     for ex in EVALUATION_EXAMPLES:
         features = extract_features_for_content(ex.content, admission_svc)
         examples_with_features.append((ex, features))
-        print(f"  [{ex.expected_route:>20}] score={score_admission(features):.3f} "
-              f"persist={features.persistence:.2f} state_chg={features.state_change_signal:.2f} "
-              f"ep_aff={features.episode_affinity:.2f} {ex.content[:50]}...")
+        print(
+            f"  [{ex.expected_route:>20}] score={score_admission(features):.3f} "
+            f"util={features.utility:.2f} persist={features.persistence:.2f} "
+            f"state_chg={features.state_change_signal:.2f} "
+            f"temporal={features.temporal_salience:.2f} "
+            f"{ex.content[:50]}..."
+        )
 
     # Grid: routing thresholds
-    discard_thresholds = [0.15, 0.20, 0.25]
-    ephemeral_uppers = [0.35, 0.40, 0.45]
-    state_change_thresholds = [0.35, 0.40, 0.50]
-    episode_affinity_thresholds = [0.40, 0.50, 0.55]
+    discard_thresholds = [0.05, 0.08, 0.10, 0.12, 0.15]
+    ephemeral_uppers = [0.20, 0.25, 0.30, 0.35]
+    state_change_thresholds = [0.30, 0.35, 0.40]
 
-    # Grid: weight variations (only vary the most impactful weights)
+    # Grid: weight variations
     weight_configs = [
-        WeightConfig(),  # default
-        WeightConfig(novelty=0.15, utility=0.22),
-        WeightConfig(novelty=0.25, utility=0.15),
-        WeightConfig(persistence=0.20, utility=0.13),
-        WeightConfig(persistence=0.10, state_change_signal=0.19),
-        WeightConfig(novelty=0.15, persistence=0.20, state_change_signal=0.14),
+        WeightConfig(),  # default: 0.30, 0.25, 0.25, 0.20
+        WeightConfig(utility=0.35, persistence=0.20),
+        WeightConfig(utility=0.25, persistence=0.30),
+        WeightConfig(utility=0.25, state_change_signal=0.30),
+        WeightConfig(state_change_signal=0.30, temporal_salience=0.15),
+        WeightConfig(utility=0.35, temporal_salience=0.15),
+        WeightConfig(utility=0.20, persistence=0.30, state_change_signal=0.30,
+                     temporal_salience=0.20),
     ]
 
     all_results = []
@@ -367,21 +337,21 @@ def run_grid_search() -> dict:
     best_config = None
 
     routing_grid = list(itertools.product(
-        discard_thresholds, ephemeral_uppers,
-        state_change_thresholds, episode_affinity_thresholds,
+        discard_thresholds, ephemeral_uppers, state_change_thresholds,
     ))
 
     total_combos = len(routing_grid) * len(weight_configs)
-    print(f"\nGrid search: {total_combos} configurations "
-          f"({len(routing_grid)} routing × {len(weight_configs)} weight variants)")
+    print(
+        f"\nGrid search: {total_combos} configurations "
+        f"({len(routing_grid)} routing × {len(weight_configs)} weight variants)"
+    )
 
     for _wi, wc in enumerate(weight_configs):
-        for dt, eu, sct, eat in routing_grid:
+        for dt, eu, sct in routing_grid:
             rc = RoutingConfig(
                 discard_threshold=dt,
                 ephemeral_upper=eu,
                 state_change_threshold=sct,
-                episode_affinity_threshold=eat,
             )
 
             correct = 0
@@ -404,20 +374,15 @@ def run_grid_search() -> dict:
 
             result_entry = {
                 "weights": {
-                    "novelty": wc.novelty,
                     "utility": wc.utility,
-                    "reliability": wc.reliability,
-                    "temporal_salience": wc.temporal_salience,
                     "persistence": wc.persistence,
-                    "redundancy": wc.redundancy,
-                    "episode_affinity": wc.episode_affinity,
                     "state_change_signal": wc.state_change_signal,
+                    "temporal_salience": wc.temporal_salience,
                 },
                 "routing": {
                     "discard_threshold": dt,
                     "ephemeral_upper": eu,
                     "state_change_threshold": sct,
-                    "episode_affinity_threshold": eat,
                 },
                 "accuracy": accuracy,
                 "correct": correct,
@@ -459,9 +424,8 @@ def _get_git_sha() -> str:
 
 def _write_results(results: dict) -> None:
     """Write grid search results to JSON and markdown report."""
-    # JSON with all results
+    # JSON with summary (no full all_results)
     json_path = TUNING_DIR / "admission_grid_results.json"
-    # Don't include full all_results in the main json to keep it manageable
     summary = {k: v for k, v in results.items() if k != "all_results"}
     summary["total_configs"] = results["num_configs_tested"]
     json_path.write_text(json.dumps(summary, indent=2) + "\n")
@@ -485,10 +449,9 @@ def _write_results(results: dict) -> None:
         "",
         "| Parameter | Default | Tuned |",
         "|-----------|---------|-------|",
-        f"| Discard threshold | 0.25 | {best['routing']['discard_threshold']} |",
-        f"| Ephemeral upper | 0.45 | {best['routing']['ephemeral_upper']} |",
-        f"| State change threshold | 0.50 | {best['routing']['state_change_threshold']} |",
-        f"| Episode affinity threshold | 0.55 | {best['routing']['episode_affinity_threshold']} |",
+        f"| Discard threshold | 0.10 | {best['routing']['discard_threshold']} |",
+        f"| Ephemeral upper | 0.25 | {best['routing']['ephemeral_upper']} |",
+        f"| State change threshold | 0.35 | {best['routing']['state_change_threshold']} |",
         "",
         "### Feature Weights",
         "",
@@ -497,10 +460,10 @@ def _write_results(results: dict) -> None:
     ]
 
     default_weights = {
-        "novelty": 0.20, "utility": 0.18, "reliability": 0.12,
-        "temporal_salience": 0.12, "persistence": 0.15,
-        "redundancy": -0.15, "episode_affinity": 0.04,
-        "state_change_signal": 0.14,
+        "utility": 0.30,
+        "persistence": 0.25,
+        "state_change_signal": 0.25,
+        "temporal_salience": 0.20,
     }
 
     for feat, default_val in default_weights.items():
@@ -524,15 +487,14 @@ def _write_results(results: dict) -> None:
         "",
         "## Top 10 Configurations",
         "",
-        "| # | Accuracy | Discard | Ephemeral | StateChg | EpisodeAff |",
-        "|---|----------|---------|-----------|----------|------------|",
+        "| # | Accuracy | Discard | Ephemeral | StateChg |",
+        "|---|----------|---------|-----------|----------|",
     ])
     for i, cfg in enumerate(results["top_10"], 1):
         r = cfg["routing"]
         report_lines.append(
             f"| {i} | {cfg['accuracy']:.1%} | {r['discard_threshold']} | "
-            f"{r['ephemeral_upper']} | {r['state_change_threshold']} | "
-            f"{r['episode_affinity_threshold']} |"
+            f"{r['ephemeral_upper']} | {r['state_change_threshold']} |"
         )
 
     report_path = TUNING_DIR / "admission_grid_report.md"
@@ -550,10 +512,11 @@ def main() -> None:
     print(f"\n=== Grid search complete in {elapsed:.1f}s ===")
     print(f"Best accuracy: {results['best_accuracy']:.1%}")
     best = results["best_config"]
-    print(f"Best routing: discard<{best['routing']['discard_threshold']} "
-          f"ephemeral<{best['routing']['ephemeral_upper']} "
-          f"state_chg>={best['routing']['state_change_threshold']} "
-          f"ep_aff>={best['routing']['episode_affinity_threshold']}")
+    print(
+        f"Best routing: discard<{best['routing']['discard_threshold']} "
+        f"ephemeral<{best['routing']['ephemeral_upper']} "
+        f"state_chg>={best['routing']['state_change_threshold']}"
+    )
 
     _write_results(results)
 

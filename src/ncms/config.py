@@ -100,7 +100,6 @@ class NCMSConfig(BaseSettings):
 
     # Admission scoring (Phase 1)
     admission_enabled: bool = False
-    admission_novelty_search_limit: int = 3
     admission_ephemeral_ttl_seconds: int = 3600
 
     # State reconciliation (Phase 2)
@@ -187,6 +186,13 @@ class NCMSConfig(BaseSettings):
     reranker_top_k: int = 50       # Rerank this many RRF candidates
     reranker_output_k: int = 20    # Keep this many after reranking
     scoring_weight_ce: float = 0.7  # Cross-encoder weight when reranker active
+
+    # Background indexing (Phase 2 performance)
+    async_indexing_enabled: bool = True
+    index_workers: int = 3
+    index_queue_size: int = 1000
+    index_max_retries: int = 3
+    index_drain_timeout_seconds: int = 30
 
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events

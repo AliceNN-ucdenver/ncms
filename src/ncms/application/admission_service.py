@@ -1,9 +1,8 @@
 """Admission Service — computes features and routes incoming content.
 
 Implements a 3-way quality gate: discard / ephemeral_cache / persist.
-State change signal and episode affinity are classification signals
-consumed by additive node creation in memory_service (not routing
-destinations).  All 8 features are heuristic-based (no LLM required).
+4 pure text heuristic features: utility, temporal_salience, persistence,
+state_change_signal. No index or LLM dependency.
 
 Feature-flagged via ``config.admission_enabled`` (default False).
 """
@@ -78,11 +77,6 @@ _PERSISTENCE_LOW: frozenset[str] = frozenset({
     "quick fix", "placeholder", "experimenting", "trying",
 })
 
-_HEDGING: frozenset[str] = frozenset({
-    "maybe", "might", "possibly", "perhaps", "i think", "not sure",
-    "unclear", "seems like", "could be", "probably",
-})
-
 _STATE_CHANGE_VERBS: frozenset[str] = frozenset({
     "changed", "updated", "now", "switched", "moved", "set to",
     "became", "is now", "transitioned", "upgraded", "downgraded",
@@ -111,8 +105,7 @@ def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
 class AdmissionService:
     """Computes admission features and routes incoming content.
 
-    All feature extractors are synchronous heuristics except novelty/redundancy
-    which use the BM25 index.
+    All feature extractors are synchronous text heuristics — no index dependency.
     """
 
     def __init__(
@@ -129,21 +122,6 @@ class AdmissionService:
 
     # ── Feature Extractors ────────────────────────────────────────────────
 
-    def _compute_novelty(
-        self, bm25_results: list[tuple[str, float]]
-    ) -> float:
-        """Novelty = 1 - max_similarity.  Empty results → full novelty."""
-        if not bm25_results:
-            return 1.0
-        # BM25 scores are unbounded; normalize via sigmoid-like transform.
-        # Tantivy BM25 scores are typically 0.5-3 for partial matches, 1-5 for
-        # good matches. A divisor of 2.0 maps score=1→sim=0.33, 2→0.5, 5→0.71.
-        best_score = max(s for _, s in bm25_results)
-        if best_score <= 0:
-            return 1.0
-        similarity = 1.0 - 1.0 / (1.0 + best_score / 2.0)
-        return _clamp(1.0 - similarity)
-
     def _compute_utility(self, text_lower: str) -> float:
         """Utility = density of actionable/valuable markers."""
         matches = _count_matches(text_lower, _UTILITY_MARKERS)
@@ -151,20 +129,6 @@ class AdmissionService:
             return 0.05
         # Diminishing returns: 1 match → 0.35, 2 → 0.55, 3 → 0.70, 5+ → ~0.90
         return _clamp(0.15 + 0.20 * matches / (1.0 + 0.15 * matches))
-
-    def _compute_reliability(
-        self, text_lower: str, source_type: str | None = None
-    ) -> float:
-        """Reliability based on source type and hedging language."""
-        base = 0.60  # default "observed"
-        if source_type in ("system", "authoritative"):
-            base = 0.90
-        elif source_type == "speculative":
-            base = 0.30
-        # Penalize hedging language
-        hedge_count = _count_matches(text_lower, _HEDGING)
-        penalty = min(0.30, hedge_count * 0.10)
-        return _clamp(base - penalty)
 
     def _compute_temporal_salience(self, text_lower: str, text: str) -> float:
         """Temporal salience from dates, temporal markers, and change verbs."""
@@ -195,19 +159,6 @@ class AdmissionService:
         # Mixed or neither
         return _clamp(0.40 + 0.05 * (high_count - low_count))
 
-    def _compute_redundancy(
-        self, bm25_results: list[tuple[str, float]]
-    ) -> float:
-        """Redundancy = overlap with existing memories (high BM25 = high overlap)."""
-        if not bm25_results:
-            return 0.0
-        best_score = max(s for _, s in bm25_results)
-        if best_score <= 0:
-            return 0.0
-        # Same sigmoid mapping as novelty but not inverted
-        similarity = 1.0 - 1.0 / (1.0 + best_score / 2.0)
-        return _clamp(similarity)
-
     def _compute_state_change_signal(self, text_lower: str) -> float:
         """State change signal from entity state mutation indicators."""
         score = 0.0
@@ -225,51 +176,6 @@ class AdmissionService:
             score += 0.20
         return _clamp(score)
 
-    @staticmethod
-    def _compute_episode_affinity(text_lower: str, text: str) -> float:
-        """Episode affinity from content characteristics (domain-agnostic).
-
-        Uses lightweight heuristics: structured anchors, causal cues,
-        change/incident markers, and entity density proxy.
-        Does NOT hard-gate episode formation — episode matching happens
-        post-admission using extracted entities + BM25/SPLADE search.
-        """
-        score = 0.0
-
-        # Structured anchors (bonus, not required)
-        from ncms.application.episode_service import EpisodeService
-
-        anchor = EpisodeService.detect_anchor(text)
-        if anchor is not None:
-            _anchor_type, anchor_id = anchor
-            score += 0.35 if anchor_id else 0.25
-
-        # Causal cue words (content likely belongs to a narrative arc)
-        for cue in ("because", "therefore", "as a result", "due to",
-                     "caused by", "led to", "in response to", "following up"):
-            if cue in text_lower:
-                score += 0.15
-                break
-
-        # Change/incident markers (content describes evolving situations)
-        _change_incident = {
-            "changed", "updated", "deployed", "fixed", "failed",
-            "migrated", "incident", "outage", "rollback",
-        }
-        for marker in _change_incident:
-            if marker in text_lower:
-                score += 0.15
-                break
-
-        # Entity density proxy: capitalized multi-word sequences
-        named_entities = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b", text)
-        if len(named_entities) >= 2:
-            score += 0.20
-        elif len(named_entities) >= 1:
-            score += 0.10
-
-        return _clamp(score)
-
     # ── Orchestrator ──────────────────────────────────────────────────────
 
     async def compute_features(
@@ -279,31 +185,26 @@ class AdmissionService:
         source_agent: str | None = None,
         source_type: str | None = None,
     ) -> AdmissionFeatures:
-        """Compute all 8 admission features for incoming content.
+        """Compute admission features for incoming content.
+
+        Uses 4 active features — pure text heuristics with no index dependency.
+        Content-hash dedup (in store_memory) handles exact duplicate detection.
 
         Args:
             content: The text content to evaluate.
             domains: Domain tags for the content.
             source_agent: Agent that produced this content.
-            source_type: Trust level indicator ("system", "authoritative", "speculative").
+            source_type: Trust level indicator (reserved for future use).
 
         Returns:
-            AdmissionFeatures with all 8 normalized feature scores.
+            AdmissionFeatures with active feature scores.
         """
-        search_limit = self._config.admission_novelty_search_limit
-        # BM25 search — shared by novelty + redundancy
-        bm25_results = self._index.search(content, limit=search_limit)
-
         text_lower = content.lower()
 
         return AdmissionFeatures(
-            novelty=self._compute_novelty(bm25_results),
             utility=self._compute_utility(text_lower),
-            reliability=self._compute_reliability(text_lower, source_type),
             temporal_salience=self._compute_temporal_salience(text_lower, content),
             persistence=self._compute_persistence(text_lower),
-            redundancy=self._compute_redundancy(bm25_results),
-            episode_affinity=self._compute_episode_affinity(text_lower, content),
             state_change_signal=self._compute_state_change_signal(text_lower),
         )
 

@@ -84,6 +84,8 @@ class MemoryService:
         self._intent_classifier = intent_classifier
         # Optional cross-encoder reranker (Phase 10, duck-typed)
         self._reranker = reranker
+        # Background indexing worker pool (Phase 2 performance)
+        self._index_pool: object | None = None
 
     @property
     def store(self) -> MemoryStore:
@@ -92,6 +94,36 @@ class MemoryService:
     @property
     def graph(self) -> GraphEngine:
         return self._graph
+
+    async def start_index_pool(self) -> None:
+        """Start background indexing workers if async_indexing_enabled."""
+        if not self._config.async_indexing_enabled:
+            return
+        from ncms.application.index_worker import IndexWorkerPool
+        pool = IndexWorkerPool(
+            memory_service=self,
+            num_workers=self._config.index_workers,
+            queue_size=self._config.index_queue_size,
+            max_retries=self._config.index_max_retries,
+            drain_timeout_seconds=self._config.index_drain_timeout_seconds,
+        )
+        await pool.start()
+        self._index_pool = pool
+        logger.info("Background indexing pool started: %d workers", self._config.index_workers)
+
+    async def stop_index_pool(self) -> None:
+        """Drain queue and stop background indexing workers."""
+        if self._index_pool is not None:
+            await self._index_pool.shutdown()  # type: ignore[union-attr]
+            self._index_pool = None
+            logger.info("Background indexing pool stopped")
+
+    def index_pool_stats(self) -> dict | None:
+        """Return indexing pool stats, or None if not running."""
+        if self._index_pool is None:
+            return None
+        from dataclasses import asdict
+        return asdict(self._index_pool.stats())  # type: ignore[union-attr]
 
     async def _get_cached_labels(self, domains: list[str]) -> dict:
         """Load domain-specific entity labels from consolidation_state."""
@@ -402,7 +434,44 @@ class MemoryService:
         await self._store.save_memory(memory)
         _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
-        # ── Concurrent indexing + entity extraction ──────────────────────
+        # ── Background indexing (fast path) ─────────────────────────────
+        # If the async index pool is running, enqueue ALL indexing work
+        # (BM25, SPLADE, GLiNER, entities, episodes) and return immediately.
+        # Admission scoring is pure text heuristics — no index dependency.
+        # Content-hash dedup (above) handles exact duplicates via SQLite.
+        if self._index_pool is not None:
+            from ncms.application.index_worker import IndexTask
+
+            task = IndexTask(
+                memory_id=memory.id,
+                content=content,
+                memory_type=memory_type,
+                domains=domains or [],
+                tags=tags or [],
+                source_agent=source_agent,
+                importance=importance,
+                entities_manual=list(entities or []),
+                relationships=list(relationships or []),
+                admission_features=admission_features,
+                admission_route=admission_route,
+            )
+            enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
+            if enqueued:
+                _emit_stage("enqueued", (time.perf_counter() - pipeline_start) * 1000, {
+                    "task_id": task.task_id,
+                    "queue_depth": self._index_pool.stats().queue_depth,  # type: ignore[union-attr]
+                }, memory_id=memory.id)
+                memory.structured = {**(memory.structured or {}), "indexing": "queued"}
+                logger.info(
+                    "Stored+enqueued memory %s: %s", memory.id, content[:80],
+                )
+                return memory
+            # Queue full — fall through to inline indexing (BM25 already done)
+            logger.warning(
+                "Index queue full, falling back to inline for %s", memory.id,
+            )
+
+        # ── Inline indexing (fallback / async_indexing disabled) ─────────
         # BM25, SPLADE, and GLiNER are independent — run them concurrently.
         # Each sync call is wrapped in asyncio.to_thread to release the
         # event loop while GPU/CPU inference runs.

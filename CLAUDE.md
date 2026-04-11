@@ -76,13 +76,14 @@ src/ncms/
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
 │   ├── memory_service.py        # Store/search/recall pipeline (index + graph + scorer)
-│   ├── admission_service.py     # Admission scoring: 8-feature extraction + routing (Phase 1)
+│   ├── admission_service.py     # Admission scoring: 4-feature text heuristics + routing (Phase 1)
 │   ├── reconciliation_service.py # State reconciliation: classify + apply (supports/refines/supersedes/conflicts)
 │   ├── episode_service.py       # Hybrid episode linker: BM25/SPLADE/entity scoring (Phase 3)
 │   ├── bus_service.py           # Knowledge Bus lifecycle, ask routing, surrogate dispatch
 │   ├── snapshot_service.py      # Sleep/wake/surrogate cycle
 │   ├── graph_service.py         # Entity resolution, subgraph extraction, graph rebuild
 │   ├── consolidation_service.py # Decay pass + knowledge consolidation + hierarchical abstraction (Phase 5)
+│   ├── index_worker.py          # Background indexing queue + worker pool (BM25/SPLADE/GLiNER async)
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 10 tables, WAL mode, parameterized SQL
@@ -133,7 +134,7 @@ src/ncms/
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE v3 (2,000 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 10. **Hybrid episode linker** — Episodes group related fragments via incremental multi-signal matching (no LLM). Each episode maintains a compact profile (entities + domains + anchors) indexed in BM25/SPLADE. New fragments scored against candidates using 7 weighted signals: BM25 lexical match, SPLADE semantic match, entity overlap coefficient, domain overlap, temporal proximity, source agent, and structured anchor bonus. Weights auto-redistribute when SPLADE is disabled.
-10. **Selective admission scoring** (Phase 1) — 8-feature heuristic pipeline (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) implements a 3-way quality gate: discard / ephemeral_cache / persist. State change signal and episode affinity are classification signals consumed by additive node creation (not routing destinations). Every persisted memory gets an L1 atomic node; content with state change signal ≥ 0.35 or structured state declaration (`Entity: key = value`) additionally gets an L2 entity_state node with a DERIVED_FROM edge to L1; episodes link to L1 atomic nodes. Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
+10. **Selective admission scoring** (Phase 1) — 4 pure text heuristic features (utility, persistence, state_change_signal, temporal_salience) implement a 3-way quality gate: discard / ephemeral_cache / persist. No index or LLM dependency — runs identically in sync and async indexing modes. Content-hash dedup (SHA-256) handles exact duplicates. State change signal ≥ 0.35 auto-promotes to persist for entity state capture. Every persisted memory gets an L1 atomic node; content with state change signal ≥ 0.35 or structured state declaration (`Entity: key = value`) additionally gets an L2 entity_state node with a DERIVED_FROM edge to L1; episodes link to L1 atomic nodes. `importance >= 8.0` bypasses admission entirely (force-store for agents). Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
 11. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
 12. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 13. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
@@ -171,7 +172,7 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 
 ## Data Flow
 
-1. **Store**: Content → [admission scoring → 3-way quality gate: discard/ephemeral/persist] → Memory model → SQLite (persist) + Tantivy (index) + NetworkX (graph) → L1 atomic node (always) → [L2 entity_state node if state change/declaration detected, DERIVED_FROM edge to L1] → [reconcile entity states] → [hybrid episode linker: BM25/SPLADE candidate gen → weighted multi-signal scoring → assign or create episode, links to L1]
+1. **Store**: Content → [content-hash dedup] → [admission scoring (4 text heuristics) → 3-way quality gate: discard/ephemeral/persist] → Memory model → SQLite (persist) → return Memory to caller (~2ms). Background indexing queue → workers process: Tantivy (BM25) + SPLADE + GLiNER (parallel) → entity linking → NetworkX (graph) → L1 atomic node → [L2 entity_state node if state change/declaration detected, DERIVED_FROM edge to L1] → [reconcile entity states] → [hybrid episode linker] → [contradiction detection]
 2. **Search**: Query → [intent classification] → BM25 candidates → SPLADE fusion → graph expansion → [batch node preload + intent supplementary candidates] → per-query min-max normalization → weighted scoring (BM25 0.6 + SPLADE 0.3 + Graph 0.3 via BFS traversal with IDF-weighted entity matching and PMI-weighted edges) [+ ACT-R Jaccard spread if enabled + hierarchy bonus − reconciliation penalty on combined score] → [selective cross-encoder reranking for fact/pattern/reflection intents] → ranked results → [search log for dream cycle PMI]
 3. **Recall**: Query → full search pipeline (step 2) → intent classification → entity extraction → wrap results as RecallResults → [state/episode/change bonus results for non-fact intents] → merge (base first, bonus appended) → enrich all results with entity states + episode context + causal chains → RecallResult list
 4. **Ask**: Question → Knowledge Bus → domain routing → live agent handlers → inbox/response
@@ -244,7 +245,6 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_LABEL_DETECTION_MODEL` | `openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | LLM model for `ncms topics detect` |
 | `NCMS_LABEL_DETECTION_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_ADMISSION_ENABLED` | `false` | Enable admission scoring for incoming memories (Phase 1) |
-| `NCMS_ADMISSION_NOVELTY_SEARCH_LIMIT` | `3` | BM25 candidates for novelty/redundancy scoring |
 | `NCMS_ADMISSION_EPHEMERAL_TTL_SECONDS` | `3600` | TTL for ephemeral cache entries (1 hour) |
 | `NCMS_RECONCILIATION_ENABLED` | `false` | Enable state reconciliation (Phase 2, requires admission) |
 | `NCMS_RECONCILIATION_IMPORTANCE_BOOST` | `0.5` | Importance boost for SUPPORTS relations |
@@ -295,6 +295,11 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_RERANKER_TOP_K` | `50` | Number of RRF candidates to rerank |
 | `NCMS_RERANKER_OUTPUT_K` | `20` | Number of results after reranking |
 | `NCMS_SCORING_WEIGHT_CE` | `0.7` | Cross-encoder weight when reranker active |
+| `NCMS_ASYNC_INDEXING_ENABLED` | `true` | Background indexing (store returns in ~2ms, indexing async) |
+| `NCMS_INDEX_WORKERS` | `3` | Background indexing worker count |
+| `NCMS_INDEX_QUEUE_SIZE` | `1000` | Max pending index tasks before backpressure (falls back to inline) |
+| `NCMS_INDEX_MAX_RETRIES` | `3` | Retry attempts per failed index task |
+| `NCMS_INDEX_DRAIN_TIMEOUT_SECONDS` | `30` | Shutdown drain timeout |
 | `NCMS_PIPELINE_DEBUG` | `false` | Emit candidate details in pipeline events |
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 

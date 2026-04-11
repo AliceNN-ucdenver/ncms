@@ -283,8 +283,7 @@ function renderBusStateSection(event) {
 // ── Admission Panel ─────────────────────────────────────────────────
 const MAX_ADMISSION_FEED = 30;
 const ADMISSION_FEATURES = [
-  'novelty', 'utility', 'reliability', 'temporal_salience',
-  'persistence', 'redundancy', 'episode_affinity', 'state_change_signal'
+  'utility', 'temporal_salience', 'persistence', 'state_change_signal'
 ];
 
 let admissionExpanded = {};

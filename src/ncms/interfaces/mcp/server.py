@@ -133,6 +133,9 @@ async def create_ncms_services(
     graph_svc = GraphService(store=store, graph=graph)
     await graph_svc.rebuild_from_store()
 
+    # Start background indexing pool if enabled (default: True)
+    await memory_svc.start_index_pool()
+
     return memory_svc, bus_svc, snapshot_svc, consolidation_svc
 
 

@@ -37,7 +37,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_prd_id, extract_research_id, extract_topic, emit_telemetry, check_interrupt, traced_llm_call, snapshot_agent_config
+from .pipeline_utils import extract_project_id, extract_prd_id, extract_research_id, extract_topic, emit_telemetry, check_interrupt, traced_llm_call, snapshot_agent_config, ensure_langchain_instrumented
 from .design_prompts import (
     SYNTHESIZE_DESIGN_PROMPT,
     REVISE_DESIGN_PROMPT,
@@ -1182,6 +1182,7 @@ async def design_agent_fn(
         quality_threshold=config.quality_threshold,
         max_iterations=config.max_iterations,
     )
+    ensure_langchain_instrumented()
     graph = await agent.build_graph()
     logger.info("[design_agent] LangGraph pipeline ready")
 

@@ -43,6 +43,7 @@ from .pipeline_utils import (
     build_prd_trigger,
     check_interrupt,
     emit_telemetry,
+    ensure_langchain_instrumented,
     extract_goal,
     extract_project_id,
     extract_repo_url,
@@ -1684,6 +1685,7 @@ async def archeologist_agent_fn(
         max_search_results=config.max_search_results,
         trigger_next_agent=config.trigger_next_agent,
     )
+    ensure_langchain_instrumented()
     graph = await agent.build_graph()
     logger.info("[archeologist] LangGraph pipeline ready (research + archaeology)")
 

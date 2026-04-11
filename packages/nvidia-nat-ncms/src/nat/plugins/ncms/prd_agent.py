@@ -26,7 +26,7 @@ from nat.data_models.component_ref import LLMRef
 from nat.data_models.function import FunctionBaseConfig
 
 from .http_client import NCMSHttpClient
-from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger, check_interrupt, traced_llm_call, snapshot_agent_config
+from .pipeline_utils import extract_project_id, extract_research_id, extract_topic, emit_telemetry, build_design_trigger, check_interrupt, traced_llm_call, snapshot_agent_config, ensure_langchain_instrumented
 from .prd_prompts import SYNTHESIZE_PRD_PROMPT, MANIFEST_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -667,6 +667,7 @@ async def prd_agent_fn(
         llm_thinking=llm_thinking,
         trigger_next_agent=config.trigger_next_agent,
     )
+    ensure_langchain_instrumented()
     graph = await agent.build_graph()
     logger.info("[prd_agent] LangGraph pipeline ready")
 

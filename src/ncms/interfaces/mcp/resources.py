@@ -103,11 +103,49 @@ def register_resources(
         online = sum(1 for a in agents if a.status == "online")
         sleeping = sum(1 for a in agents if a.status == "sleeping")
 
-        return "\n".join([
+        lines = [
             "# NCMS System Status\n",
             f"- **Memories**: {mem_count}",
             f"- **Entities**: {entity_count}",
             f"- **Relationships**: {rel_count}",
             f"- **Agents**: {len(agents)} ({online} online, {sleeping} sleeping)",
             f"- **Domains**: {len(domains)}",
+        ]
+
+        # Background indexing stats
+        idx_stats = memory_svc.index_pool_stats()
+        if idx_stats is not None:
+            lines.append(
+                f"- **Index Queue**: {idx_stats['queue_depth']}"
+                f"/{idx_stats['queue_capacity']}"
+                f" ({idx_stats['workers_busy']}/{idx_stats['workers']} workers busy)"
+            )
+            lines.append(
+                f"- **Indexed**: {idx_stats['processed_total']} processed"
+                f", {idx_stats['failed_total']} failed"
+                f", avg {idx_stats['avg_process_ms']:.0f}ms"
+            )
+
+        return "\n".join(lines)
+
+    @mcp.resource("ncms://indexing/status")
+    async def indexing_status() -> str:
+        """Background indexing pipeline health."""
+        stats = memory_svc.index_pool_stats()
+        if stats is None:
+            return (
+                "# Indexing Status\n\n"
+                "Background indexing is **disabled**.\n"
+                "Set `NCMS_ASYNC_INDEXING_ENABLED=true` to enable."
+            )
+
+        return "\n".join([
+            "# Indexing Status\n",
+            f"- **Queue depth**: {stats['queue_depth']}/{stats['queue_capacity']}",
+            f"- **Workers**: {stats['workers_busy']}/{stats['workers']} busy",
+            f"- **Processed**: {stats['processed_total']}",
+            f"- **Failed**: {stats['failed_total']}",
+            f"- **Retried**: {stats['retried_total']}",
+            f"- **Avg processing time**: {stats['avg_process_ms']:.0f}ms",
+            f"- **Est. oldest pending age**: {stats['oldest_pending_age_ms']:.0f}ms",
         ])

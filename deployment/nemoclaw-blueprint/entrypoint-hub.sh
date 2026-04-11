@@ -18,6 +18,12 @@ wait_for_http() {
     echo "ERROR: $url not ready after ${max}s" >&2; return 1
 }
 
+# ── Step 0: Clean slate — remove old DB and index so schema is fresh ────
+echo "[0/3] Cleaning data directory for fresh start..."
+rm -rf /app/data/ncms.db /app/data/index
+mkdir -p /app/data
+echo "  ✓ Data directory clean"
+
 # ── Step 1: Start NCMS HTTP API + Dashboard (single process) ────────────
 HUB_PORT="${NCMS_HUB_PORT:-9080}"
 DASH_PORT="${NCMS_DASHBOARD_PORT:-8420}"

@@ -147,10 +147,15 @@ async def run_demo() -> None:
     snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
     bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
 
+    # Start background indexing if enabled (default: True)
+    await memory_svc.start_index_pool()
+
     step("SQLite (in-memory) initialized")
     step("Tantivy BM25 index created")
     step("NetworkX knowledge graph ready")
     step("AsyncIO Knowledge Bus started")
+    if memory_svc._index_pool is not None:
+        step("Background indexing pool started")
     if splade:
         step("SPLADE sparse neural retrieval enabled")
     if admission:
@@ -557,6 +562,7 @@ Deployment: Vercel with edge functions for SSR.
     ))
 
     # Cleanup
+    await memory_svc.stop_index_pool()
     await api_agent.shutdown()
     await frontend_agent.shutdown()
     await db_agent.shutdown()

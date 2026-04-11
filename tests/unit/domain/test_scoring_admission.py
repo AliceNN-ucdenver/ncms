@@ -1,9 +1,12 @@
-"""Tests for admission scoring functions: AdmissionFeatures, score_admission, route_memory."""
+"""Tests for admission scoring functions: AdmissionFeatures, score_admission, route_memory.
+
+score_admission uses 4 features with weights:
+    utility (0.30), persistence (0.25), state_change_signal (0.25), temporal_salience (0.20)
+"""
 
 import pytest
 
 from ncms.domain.scoring import (
-    ADMISSION_WEIGHTS,
     AdmissionFeatures,
     route_memory,
     score_admission,
@@ -13,34 +16,26 @@ from ncms.domain.scoring import (
 class TestAdmissionFeatures:
     def test_defaults_all_zero(self):
         f = AdmissionFeatures()
-        assert f.novelty == 0.0
         assert f.utility == 0.0
-        assert f.reliability == 0.0
         assert f.temporal_salience == 0.0
         assert f.persistence == 0.0
-        assert f.redundancy == 0.0
-        assert f.episode_affinity == 0.0
         assert f.state_change_signal == 0.0
 
     def test_frozen(self):
         """AdmissionFeatures is immutable."""
-        f = AdmissionFeatures(novelty=0.5)
+        f = AdmissionFeatures(utility=0.5)
         with pytest.raises(AttributeError):
-            f.novelty = 0.9  # type: ignore[misc]
+            f.utility = 0.9  # type: ignore[misc]
 
     def test_all_fields_set(self):
         f = AdmissionFeatures(
-            novelty=0.8,
             utility=0.6,
-            reliability=0.9,
             temporal_salience=0.5,
             persistence=0.7,
-            redundancy=0.2,
-            episode_affinity=0.3,
             state_change_signal=0.1,
         )
-        assert f.novelty == 0.8
-        assert f.redundancy == 0.2
+        assert f.utility == 0.6
+        assert f.persistence == 0.7
 
 
 class TestScoreAdmission:
@@ -48,140 +43,119 @@ class TestScoreAdmission:
         """Zero features → zero score."""
         assert score_admission(AdmissionFeatures()) == 0.0
 
-    def test_all_ones_no_redundancy(self):
-        """All features at 1.0 with zero redundancy → sum of positive weights."""
+    def test_all_features_at_one(self):
+        """All features at 1.0 → weights sum to 1.0."""
         f = AdmissionFeatures(
-            novelty=1.0,
             utility=1.0,
-            reliability=1.0,
             temporal_salience=1.0,
             persistence=1.0,
-            redundancy=0.0,
-            episode_affinity=1.0,
             state_change_signal=1.0,
         )
-        expected = 0.20 + 0.18 + 0.12 + 0.12 + 0.15 + 0.04 + 0.14
+        expected = 0.30 + 0.25 + 0.25 + 0.20  # = 1.0
         assert score_admission(f) == pytest.approx(expected, abs=1e-9)
-
-    def test_full_redundancy_lowers_score(self):
-        """High redundancy should reduce the score."""
-        base = AdmissionFeatures(novelty=0.5, reliability=0.5)
-        redundant = AdmissionFeatures(novelty=0.5, reliability=0.5, redundancy=1.0)
-        assert score_admission(redundant) < score_admission(base)
-
-    def test_redundancy_weight_is_negative(self):
-        """Redundancy is the only negative weight in the formula."""
-        assert ADMISSION_WEIGHTS["redundancy"] < 0
-        positive_weights = {k: v for k, v in ADMISSION_WEIGHTS.items() if k != "redundancy"}
-        assert all(v > 0 for v in positive_weights.values())
 
     def test_known_vector(self):
         """Manual computation of a known feature vector."""
         f = AdmissionFeatures(
-            novelty=0.8,
             utility=0.6,
-            reliability=0.7,
             temporal_salience=0.3,
             persistence=0.5,
-            redundancy=0.1,
-            episode_affinity=0.0,
             state_change_signal=0.4,
         )
         expected = (
-            0.20 * 0.8
-            + 0.18 * 0.6
-            + 0.12 * 0.7
-            + 0.12 * 0.3
-            + 0.15 * 0.5
-            - 0.15 * 0.1
-            + 0.04 * 0.0
-            + 0.14 * 0.4
+            0.30 * 0.6
+            + 0.25 * 0.5
+            + 0.25 * 0.4
+            + 0.20 * 0.3
         )
         assert score_admission(f) == pytest.approx(expected, abs=1e-9)
 
     def test_weights_sum_to_one(self):
-        """Absolute values of weights should sum to ~1.10 (per spec)."""
-        total = sum(abs(v) for v in ADMISSION_WEIGHTS.values())
-        # 0.20+0.18+0.12+0.12+0.15+0.15+0.04+0.14 = 1.10
-        assert total == pytest.approx(1.10, abs=0.01)
+        """Weights sum to 1.0."""
+        active_weights = [0.30, 0.25, 0.25, 0.20]
+        assert sum(active_weights) == pytest.approx(1.0, abs=0.01)
 
 
 class TestRouteMemory:
     def test_discard_low_score(self):
-        """Low score + low persistence + low state_change → discard."""
+        """Low score + low state_change → discard."""
         f = AdmissionFeatures(
-            novelty=0.1,
             persistence=0.10,
             state_change_signal=0.05,
         )
         score = score_admission(f)
-        assert score < 0.25
+        assert score < 0.10
         assert route_memory(f, score) == "discard"
 
     def test_ephemeral_cache(self):
         """Mid-range score → ephemeral_cache."""
         f = AdmissionFeatures(
-            novelty=0.5,
             utility=0.4,
-            reliability=0.5,
             persistence=0.30,
         )
         score = score_admission(f)
-        # Should be in range [0.25, 0.35)
-        assert 0.25 <= score < 0.35
+        # 0.30*0.4 + 0.25*0.3 = 0.12 + 0.075 = 0.195
+        assert 0.10 <= score < 0.25
         assert route_memory(f, score) == "ephemeral_cache"
 
     def test_persist_high_score(self):
         """High score → persist (quality gate passed)."""
         f = AdmissionFeatures(
-            novelty=0.9,
             utility=0.8,
-            reliability=0.8,
             temporal_salience=0.5,
             persistence=0.7,
-            redundancy=0.1,
+            state_change_signal=0.3,
         )
         score = score_admission(f)
-        assert score >= 0.35
+        assert score >= 0.25
         assert route_memory(f, score) == "persist"
 
     def test_high_state_change_persists(self):
-        """High state_change_signal routes to persist (L2 created downstream)."""
+        """High state_change_signal routes to persist regardless of score."""
         f = AdmissionFeatures(
-            novelty=0.3,
             state_change_signal=0.55,
         )
         score = score_admission(f)
-        # State change is a classification signal, not a routing destination
         assert route_memory(f, score) == "persist"
 
-    def test_high_episode_affinity_persists(self):
-        """High episode_affinity routes to persist (episode linking done downstream)."""
+    def test_state_change_threshold(self):
+        """state_change_signal below 0.35 does not auto-promote."""
         f = AdmissionFeatures(
-            novelty=0.8,
-            utility=0.5,
-            reliability=0.6,
-            persistence=0.5,
-            episode_affinity=0.60,
+            state_change_signal=0.30,
         )
         score = score_admission(f)
-        assert score >= 0.35
-        assert route_memory(f, score) == "persist"
+        # 0.25 * 0.30 = 0.075 — below 0.10 threshold → discard
+        assert route_memory(f, score) == "discard"
+
+    def test_monotonic_routing(self):
+        """Higher score always routes to same or better tier.
+
+        discard < ephemeral_cache < persist (monotonic).
+        """
+        tier_rank = {"discard": 0, "ephemeral_cache": 1, "persist": 2}
+        f = AdmissionFeatures()  # state_change_signal=0 so no auto-promote
+
+        prev_rank = -1
+        for score in [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.50, 0.80, 1.0]:
+            route = route_memory(f, score)
+            rank = tier_rank[route]
+            assert rank >= prev_rank, (
+                f"score={score} routed to {route} (rank {rank}) < prev {prev_rank}"
+            )
+            prev_rank = rank
 
     def test_all_routes_reachable(self):
         """Verify all 3 routes can be produced."""
         routes = set()
 
-        # discard
-        f = AdmissionFeatures(novelty=0.05, persistence=0.05, state_change_signal=0.05)
-        routes.add(route_memory(f, 0.10))
+        # discard (score < 0.10)
+        f = AdmissionFeatures()
+        routes.add(route_memory(f, 0.05))
 
-        # ephemeral_cache (range: 0.25 <= score < 0.35)
-        f = AdmissionFeatures(novelty=0.5)
-        routes.add(route_memory(f, 0.30))
+        # ephemeral_cache (0.10 <= score < 0.25)
+        routes.add(route_memory(f, 0.15))
 
-        # persist (score >= 0.35)
-        f = AdmissionFeatures(novelty=0.9)
-        routes.add(route_memory(f, 0.60))
+        # persist (score >= 0.25)
+        routes.add(route_memory(f, 0.50))
 
         assert routes == {"discard", "ephemeral_cache", "persist"}

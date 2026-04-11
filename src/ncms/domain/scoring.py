@@ -8,8 +8,8 @@ ACT-R activation (Anderson 2007):
     S_i = sum_k(W_k * S_ki)             spreading activation
     P_i = 1 / (1 + exp(-A_i / tau))     retrieval probability
 
-Admission scoring (NCMS-Next §8):
-    AdmissionScore = weighted sum of 8 feature dimensions
+Admission scoring:
+    AdmissionScore = weighted sum of 4 text-heuristic features
     Route = threshold-based policy over features + score
 """
 
@@ -382,46 +382,32 @@ class AdmissionFeatures:
     """Feature vector for memory admission scoring.
 
     Each feature is a normalized float in [0, 1].
+    Pure text heuristics — no index or LLM dependency.
     """
 
-    novelty: float = 0.0
     utility: float = 0.0
-    reliability: float = 0.0
     temporal_salience: float = 0.0
     persistence: float = 0.0
-    redundancy: float = 0.0
-    episode_affinity: float = 0.0
     state_change_signal: float = 0.0
 
 
-# Weights from NCMS-Next design spec §8.3
-ADMISSION_WEIGHTS: dict[str, float] = {
-    "novelty": 0.20,
-    "utility": 0.18,
-    "reliability": 0.12,
-    "temporal_salience": 0.12,
-    "persistence": 0.15,
-    "redundancy": -0.15,  # negative — penalizes redundancy
-    "episode_affinity": 0.04,
-    "state_change_signal": 0.14,
-}
-
-
 def score_admission(f: AdmissionFeatures) -> float:
-    """Compute weighted admission score from feature vector.
+    """Compute weighted admission score from 4 active features.
 
     Returns a float in approximately [0, 1].  Higher = more worthy of storage.
-    The formula directly implements NCMS-Next §8.3.
+    Pure text heuristics — no index dependency (BM25/SPLADE not needed).
+
+    Weights sum to ~1.0:
+        utility (0.30)             — actionable content markers
+        persistence (0.25)         — durable vs transient indicators
+        state_change_signal (0.25) — entity state mutation verbs
+        temporal_salience (0.20)   — dates, versions, temporal markers
     """
     return (
-        0.20 * f.novelty
-        + 0.18 * f.utility
-        + 0.12 * f.reliability
-        + 0.12 * f.temporal_salience
-        + 0.15 * f.persistence
-        - 0.15 * f.redundancy
-        + 0.04 * f.episode_affinity
-        + 0.14 * f.state_change_signal
+        0.30 * f.utility
+        + 0.25 * f.persistence
+        + 0.25 * f.state_change_signal
+        + 0.20 * f.temporal_salience
     )
 
 
@@ -433,12 +419,19 @@ def route_memory(f: AdmissionFeatures, score: float) -> str:
         ``"ephemeral_cache"``    — useful but low persistence, TTL-based
         ``"persist"``            — passes quality gate, create L1 atomic node
 
-    State change (``f.state_change_signal``) and episode affinity
-    (``f.episode_affinity``) are classification signals consumed by
-    the node-creation layer, not routing destinations.
+    Routing is monotonic: higher score = more likely to persist.
+    State change signal >= 0.35 promotes to persist regardless of score
+    (entity state transitions must be captured for reconciliation).
     """
-    if score < 0.25 and f.persistence < 0.20 and f.state_change_signal < 0.20:
+    # State change signal promotes to persist regardless of score —
+    # entity state transitions must be captured for reconciliation.
+    # (state_change_signal is a text heuristic, valid at admission time)
+    if f.state_change_signal >= 0.35:
+        return "persist"
+    # Monotonic thresholds: low → discard, mid → ephemeral, high → persist
+    # Calibrated on 4-feature scoring (utility, persistence, temporal, state_change)
+    if score < 0.10:
         return "discard"
-    if 0.25 <= score < 0.35:
+    if score < 0.25:
         return "ephemeral_cache"
     return "persist"
