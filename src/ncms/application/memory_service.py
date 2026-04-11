@@ -56,7 +56,7 @@ from ncms.domain.temporal_parser import (
     compute_temporal_proximity,
     parse_temporal_reference,
 )
-from ncms.infrastructure.observability.event_log import NullEventLog
+from ncms.infrastructure.observability.event_log import DashboardEvent, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -2324,8 +2324,8 @@ class MemoryService:
         await self._store.save_access(access)
 
         # Log for analysis
-        self._event_log.emit(self._event_log._make_event(
-            event_type="search.feedback",
+        self._event_log.emit(DashboardEvent(
+            type="search.feedback",
             agent_id=agent_id,
             data={
                 "query": query[:200],

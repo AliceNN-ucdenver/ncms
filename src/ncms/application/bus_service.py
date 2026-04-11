@@ -20,7 +20,7 @@ from ncms.domain.models import (
     SubscriptionFilter,
 )
 from ncms.domain.protocols import KnowledgeBusTransport
-from ncms.infrastructure.observability.event_log import NullEventLog
+from ncms.infrastructure.observability.event_log import DashboardEvent, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -293,8 +293,8 @@ class BusService:
                         )
 
                         # Emit event before status change
-                        self._event_log.emit(self._event_log._make_event(
-                            event_type="agent.heartbeat_timeout",
+                        self._event_log.emit(DashboardEvent(
+                            type="agent.heartbeat_timeout",
                             agent_id=agent.agent_id,
                             data={
                                 "last_seen_seconds_ago": round(age_seconds),
@@ -316,8 +316,8 @@ class BusService:
                                     "[heartbeat] Auto-snapshot published for %s",
                                     agent.agent_id,
                                 )
-                                self._event_log.emit(self._event_log._make_event(
-                                    event_type="agent.auto_snapshot",
+                                self._event_log.emit(DashboardEvent(
+                                    type="agent.auto_snapshot",
                                     agent_id=agent.agent_id,
                                     data={"reason": "heartbeat_timeout"},
                                 ))
