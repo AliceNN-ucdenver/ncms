@@ -185,14 +185,16 @@ function _fmtMaintenanceError(d, ts) {
 }
 
 function _fmtEpisode(action, d, ts) {
-  const title = d.title || d.episode_id?.slice(0, 8) || '?';
+  let title = d.title || d.episode_id?.slice(0, 8) || '?';
+  if (title.length > 60) title = title.slice(0, 57) + '...';
   const members = d.member_count ? ` (${d.member_count} members)` : '';
   return _activityItem('episode', `${action}: ${title}${members}`, ts);
 }
 
 function _activityItem(type, detail, ts) {
   return `<div class="learning-activity-item">`
-    + `<span class="la-type">${type}</span> ${detail}`
+    + `<span class="la-type">${type}</span>`
+    + `<span class="la-detail">${detail}</span>`
     + `<span class="la-time">${_relTime(ts)}</span>`
     + `</div>`;
 }

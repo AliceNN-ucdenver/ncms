@@ -555,12 +555,18 @@ class IndexWorkerPool:
         await self._svc._store.save_memory_node(l1_node)
 
         # L2: entity_state if state change or declaration detected
+        # Skip document sections/chunks/indexes — they contain structural
+        # content (headings, lists, YAML) that triggers false positives.
+        _is_section_content = memory.type in (
+            "document_section", "document_chunk", "section_index", "document",
+        )
         _has_state_change = (
-            admission_features is not None
+            not _is_section_content
+            and admission_features is not None
             and hasattr(admission_features, "state_change_signal")
             and admission_features.state_change_signal >= 0.35
         )
-        _has_state_declaration = bool(
+        _has_state_declaration = not _is_section_content and bool(
             # "Entity: key = value" structured assignment
             re.search(
                 r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",

@@ -5138,14 +5138,27 @@
   line-height: 1.6;
 }
 .learning-activity-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
   padding: 2px 0;
   border-bottom: 1px solid rgba(100, 116, 139, 0.1);
 }
 .learning-activity-item .la-type {
   color: rgba(167, 139, 250, 0.8); font-weight: 600;
+  flex-shrink: 0;
+}
+.learning-activity-item .la-detail {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .learning-activity-item .la-time {
-  color: rgba(150, 160, 170, 0.5); float: right; font-size: 9px;
+  color: rgba(150, 160, 170, 0.5); font-size: 9px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 @keyframes learning-pulse {
   0%, 100% { border-color: rgba(139, 92, 246, 0.5); }

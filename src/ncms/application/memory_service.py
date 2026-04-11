@@ -1887,6 +1887,7 @@ class MemoryService:
             debug_candidates = [
                 {
                     "id": s.memory.id,
+                    "type": s.memory.type,
                     "content": s.memory.content[:120],
                     "bm25": round(s.bm25_score, 4),
                     "splade": round(s.splade_score, 4),
