@@ -1890,7 +1890,7 @@ class MemoryService:
                     "content": s.memory.content[:120],
                     "bm25": round(s.bm25_score, 4),
                     "splade": round(s.splade_score, 4),
-                    "graph": round(s.graph_spread, 4),
+                    "graph": round(s.spreading, 4),
                     "actr": round(s.total_activation, 4),
                     "hierarchy": round(s.hierarchy_bonus, 4),
                     "superseded": s.is_superseded,
