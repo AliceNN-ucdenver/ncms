@@ -111,7 +111,7 @@ class LLMAgent(KnowledgeAgent):
             entries.append(
                 SnapshotEntry(
                     domain=self.primary_domain,
-                    knowledge=KnowledgePayload(type=m.type, content=m.content),
+                    knowledge=KnowledgePayload(type=m.type, content=m.content),  # type: ignore[arg-type]
                     confidence=0.9,
                     volatility="changing",
                 )

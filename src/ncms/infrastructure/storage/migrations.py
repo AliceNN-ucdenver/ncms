@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS dashboard_events (
 );
 CREATE INDEX IF NOT EXISTS idx_devents_ts ON dashboard_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_devents_type ON dashboard_events(type);
+CREATE INDEX IF NOT EXISTS idx_devents_agent ON dashboard_events(agent_id);
 
 -- Projects
 CREATE TABLE IF NOT EXISTS projects (
@@ -436,12 +437,9 @@ async def create_schema(db: object) -> None:
 
 async def run_migrations(db: object) -> None:
     """Initialize schema — creates fresh or validates existing."""
-    import logging
-
     import aiosqlite
 
     assert isinstance(db, aiosqlite.Connection)
-    logger = logging.getLogger("ncms.migrations")
 
     cursor = await db.execute(
         "SELECT name FROM sqlite_master "

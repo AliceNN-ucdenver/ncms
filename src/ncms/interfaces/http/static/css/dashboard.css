@@ -5167,6 +5167,27 @@
 .forge-card.learning-working {
   animation: learning-pulse 2s ease-in-out infinite;
 }
+.learning-trigger-btn {
+  display: block;
+  margin: 8px auto 4px;
+  padding: 4px 14px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(167, 139, 250, 0.9);
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.learning-trigger-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.learning-trigger-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ── Project View Tabs ──────────────────────────────────────────── */
 .project-view-tabs {

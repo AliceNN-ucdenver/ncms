@@ -222,6 +222,35 @@ async function bootstrapLearning() {
   } catch (_) { /* silently fail — SSE will catch up */ }
 }
 
+// ── Manual Trigger ──────────────────────────────────────────────────
+async function triggerMaintenance() {
+  const btn = document.getElementById('learning-trigger-btn');
+  if (!btn) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  try {
+    const resp = await fetch(HUB_API + '/api/v1/maintenance/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: 'all' }),
+    });
+    const data = await resp.json();
+    if (data.status === 'ok') {
+      btn.textContent = 'Done';
+    } else {
+      btn.textContent = data.error || 'Failed';
+    }
+  } catch (e) {
+    btn.textContent = 'Error';
+    console.error('[maintenance] Trigger failed:', e);
+  }
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }, 3000);
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 function _setText(id, text) {
   const el = document.getElementById(id);

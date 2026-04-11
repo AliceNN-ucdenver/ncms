@@ -86,9 +86,10 @@ class A2AClient:
 
     async def _request(self, payload: dict) -> dict:
         """Send a JSON-RPC 2.0 request."""
+        assert self._session is not None, "_ensure_session() must be called first"
         if hasattr(self._session, 'post'):
             # httpx
-            resp = await self._session.post(
+            resp = await self._session.post(  # type: ignore[union-attr]
                 self.endpoint,
                 json=payload,
                 headers={
@@ -96,10 +97,10 @@ class A2AClient:
                     "X-Agent-ID": self.agent_id,
                 },
             )
-            return resp.json()
+            return resp.json()  # type: ignore[no-any-return]
         else:
             # aiohttp
-            async with self._session.post(
+            async with self._session.post(  # type: ignore[union-attr]
                 self.endpoint,
                 json=payload,
                 headers={
@@ -107,7 +108,7 @@ class A2AClient:
                     "X-Agent-ID": self.agent_id,
                 },
             ) as resp:
-                return await resp.json()
+                return await resp.json()  # type: ignore[no-any-return]
 
     async def close(self) -> None:
         """Close the HTTP session."""

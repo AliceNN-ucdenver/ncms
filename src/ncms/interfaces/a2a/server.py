@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -148,7 +148,7 @@ def create_a2a_routes(
     async def _execute_skill(skill_name: str, params: dict, from_agent: str) -> dict:
         """Execute an NCMS skill and return the result."""
         if skill_name == "memory_store":
-            memory = await memory_svc.store(
+            memory = await memory_svc.store_memory(
                 content=params["content"],
                 memory_type=params.get("type", "fact"),
                 domains=params.get("domains"),
@@ -182,7 +182,7 @@ def create_a2a_routes(
             }
 
         elif skill_name == "memory_search":
-            results = await memory_svc.search(
+            search_results = await memory_svc.search(
                 query=params["query"],
                 domain=params.get("domain"),
                 limit=params.get("limit", 10),
@@ -194,9 +194,9 @@ def create_a2a_routes(
                         "content": r.memory.content[:500],
                         "score": r.total_activation,
                     }
-                    for r in results
+                    for r in search_results
                 ],
-                "count": len(results),
+                "count": len(search_results),
             }
 
         elif skill_name == "knowledge_ask":
@@ -212,7 +212,7 @@ def create_a2a_routes(
                 return {"answered": False}
             return {
                 "answered": True,
-                "content": response.content,
+                "content": response.knowledge.content,
                 "from_agent": response.from_agent,
                 "source_mode": response.source_mode,
                 "confidence": response.confidence,
@@ -220,7 +220,7 @@ def create_a2a_routes(
 
         elif skill_name == "knowledge_announce":
             announcement = KnowledgeAnnounce(
-                payload=KnowledgePayload(content=params["content"]),
+                knowledge=KnowledgePayload(content=params["content"]),
                 domains=params["domains"],
                 from_agent=from_agent,
                 event=params.get("event", "updated"),
@@ -261,7 +261,7 @@ def create_a2a_routes(
             skill_params = params.get("parameters", {})
             task_id = params.get("id", str(uuid.uuid4()))
 
-            valid_skills = {s["name"] for s in AGENT_CARD["skills"]}
+            valid_skills = {s["name"] for s in cast(list[dict[str, Any]], AGENT_CARD["skills"])}
             if skill_name not in valid_skills:
                 return JSONResponse(
                     _jsonrpc_error(req_id, -32602, f"Unknown skill: {skill_name}"),
@@ -286,12 +286,12 @@ def create_a2a_routes(
         # Task status
         elif method == "tasks/get":
             task_id = params.get("id", "")
-            task = _tasks.get(task_id)
-            if task is None:
+            existing_task: dict[str, Any] | None = _tasks.get(task_id)
+            if existing_task is None:
                 return JSONResponse(
                     _jsonrpc_error(req_id, -32602, f"Task not found: {task_id}"),
                 )
-            return JSONResponse(_jsonrpc_result(req_id, task))
+            return JSONResponse(_jsonrpc_result(req_id, existing_task))
 
         else:
             return JSONResponse(

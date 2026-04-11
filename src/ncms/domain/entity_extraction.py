@@ -75,7 +75,8 @@ def resolve_labels(
     # Determine whether to keep universal labels
     if keep_universal is None:
         # Check cache for explicit setting, default to False (replace mode)
-        keep_universal = cached_labels.get("_keep_universal", False)
+        _ku = cached_labels.get("_keep_universal", False)
+        keep_universal = bool(_ku) if not isinstance(_ku, bool) else _ku
 
     if keep_universal:
         # Additive: universal first, then domain labels on top

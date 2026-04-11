@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -35,6 +35,11 @@ from ncms.domain.models import (
 )
 from ncms.infrastructure.observability.event_log import EventLog, NullEventLog
 
+if TYPE_CHECKING:
+    from ncms.application.consolidation_service import ConsolidationService
+    from ncms.application.document_service import DocumentService
+    from ncms.application.maintenance_scheduler import MaintenanceScheduler
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,12 +47,12 @@ def create_api_app(
     memory_svc: MemoryService,
     bus_svc: BusService,
     snapshot_svc: SnapshotService,
-    consolidation_svc: object | None = None,
+    consolidation_svc: ConsolidationService | None = None,
     event_log: EventLog | None = None,
     auth_token: str | None = None,
-    doc_svc: object | None = None,  # DocumentService (Phase 2.5)
+    doc_svc: DocumentService | None = None,
     extra_routes: list[Route] | None = None,
-    maintenance_scheduler: object | None = None,
+    maintenance_scheduler: MaintenanceScheduler | None = None,
 ) -> Starlette:
     """Create the NCMS HTTP REST API application."""
 
@@ -358,7 +363,6 @@ def create_api_app(
             "tags": memory.tags,
             "source_agent": memory.source_agent,
             "importance": memory.importance,
-            "access_count": memory.access_count,
             "created_at": memory.created_at.isoformat() if memory.created_at else None,
             "updated_at": memory.updated_at.isoformat() if memory.updated_at else None,
             "linked_entities": entity_ids,
@@ -670,7 +674,7 @@ def create_api_app(
                 "content": sm.memory.content[:500],
                 "score": round(sm.total_activation, 4),
                 "node_types": sm.node_types,
-                "memory_type": sm.memory.memory_type,
+                "memory_type": sm.memory.type,
             }
             for sm in results
         ])
@@ -1454,14 +1458,17 @@ def create_api_app(
         )
         # Emit SSE event so dashboard knows immediately
         if event_log:
-            event_log.append({
-                "type": "approval_requested",
-                "approval_id": approval.id,
-                "project_id": approval.project_id,
-                "agent": approval.agent,
-                "node": approval.node,
-                "violation_count": len(approval.violations),
-            })
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="approval_requested",
+                data={
+                    "approval_id": approval.id,
+                    "project_id": approval.project_id,
+                    "agent": approval.agent,
+                    "node": approval.node,
+                    "violation_count": len(approval.violations),
+                },
+            ))
         return JSONResponse(approval.model_dump(mode="json"), status_code=201)
 
     async def list_approvals_endpoint(request: Request) -> JSONResponse:
@@ -1511,13 +1518,16 @@ def create_api_app(
             )
         # Emit SSE event so dashboard + agents know
         if event_log:
-            event_log.append({
-                "type": "approval_decided",
-                "approval_id": result.id,
-                "project_id": result.project_id,
-                "decision": decision,
-                "decided_by": decided_by,
-            })
+            from ncms.infrastructure.observability.event_log import DashboardEvent
+            event_log.emit(DashboardEvent(
+                type="approval_decided",
+                data={
+                    "approval_id": result.id,
+                    "project_id": result.project_id,
+                    "decision": decision,
+                    "decided_by": decided_by,
+                },
+            ))
         return JSONResponse(result.model_dump(mode="json"))
 
     # -- Audit Record endpoints ------------------------------------------------
@@ -1676,8 +1686,8 @@ def create_api_app(
                 {"error": "task is required"}, status_code=400,
             )
         try:
-            await maintenance_scheduler.run_task(task_name)
-            return JSONResponse({"status": "started", "task": task_name})
+            result = await maintenance_scheduler.run_now(task_name)
+            return JSONResponse({"status": "ok", "task": task_name, "result": result})
         except Exception as exc:
             logger.error(
                 "Failed to trigger maintenance task %s", task_name,
@@ -1980,14 +1990,17 @@ async def run_http_server(
     )
 
     # Wire EventLog to the store's DB for persistent event history (time-travel)
-    event_log._db = memory_svc._store.db
+    from ncms.infrastructure.storage.sqlite_store import SQLiteStore as _SQLiteStore
+    _sqlite_store = memory_svc.store
+    assert isinstance(_sqlite_store, _SQLiteStore), "Expected SQLiteStore backend"
+    event_log._db = _sqlite_store.db
     asyncio.create_task(event_log.start_persistence())
 
     # Create DocumentService (Phase 2.5) using same DB connection
     from ncms.application.document_service import DocumentService
     from ncms.infrastructure.storage.document_store import SQLiteDocumentStore
 
-    doc_store = SQLiteDocumentStore(memory_svc._store.db)
+    doc_store = SQLiteDocumentStore(_sqlite_store.db)
     doc_svc = DocumentService(store=doc_store, memory_svc=memory_svc)
     logger.info("DocumentService initialized (Phase 2.5)")
 

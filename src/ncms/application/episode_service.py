@@ -34,7 +34,8 @@ from ncms.domain.models import (
     MemoryNode,
     NodeType,
 )
-from ncms.infrastructure.observability.event_log import NullEventLog
+from ncms.domain.protocols import IndexEngine, MemoryStore
+from ncms.infrastructure.observability.event_log import EventLog, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -104,16 +105,16 @@ class EpisodeService:
 
     def __init__(
         self,
-        store: object,
-        index: object | None = None,
+        store: MemoryStore,
+        index: IndexEngine | None = None,
         config: NCMSConfig | None = None,
-        event_log: object | None = None,
+        event_log: EventLog | NullEventLog | None = None,
         splade: object | None = None,
     ) -> None:
         self._store = store
         self._index = index  # Tantivy BM25 engine
         self._config = config or NCMSConfig()
-        self._event_log = event_log or NullEventLog()
+        self._event_log: EventLog | NullEventLog = event_log or NullEventLog()
         self._splade = splade  # Optional SPLADE engine
         # In-memory cache of open episode profiles, batch-loaded at the
         # start of each assign_or_create() call to replace per-candidate
@@ -592,24 +593,26 @@ class EpisodeService:
 
         # Find the highest-confidence valid suggestion
         best_suggestion = None
+        best_confidence = -1.0
         for s in suggestions:
             ep_id = str(s["episode_id"])
-            if ep_id in ep_lookup and (
-                best_suggestion is None or s["confidence"] > best_suggestion["confidence"]
-            ):
+            raw_conf = s["confidence"]
+            confidence = float(raw_conf) if isinstance(raw_conf, (int, float, str)) else 0.0
+            if ep_id in ep_lookup and confidence > best_confidence:
                 best_suggestion = s
+                best_confidence = confidence
 
         if best_suggestion is not None:
             ep_id = str(best_suggestion["episode_id"])
             ep_node = ep_lookup[ep_id]
             logger.info(
                 "LLM fallback linked fragment %s to episode %s (confidence=%.2f)",
-                fragment_node.id, ep_id, best_suggestion["confidence"],
+                fragment_node.id, ep_id, best_confidence,
             )
             await self._assign_to_episode(
                 fragment_node, ep_node,
-                match_score=float(best_suggestion["confidence"]),
-                match_breakdown={"llm_fallback": float(best_suggestion["confidence"])},
+                match_score=best_confidence,
+                match_breakdown={"llm_fallback": best_confidence},
             )
             await self._update_episode_profile(
                 ep_node, entity_names, fragment_memory.domains,
@@ -800,10 +803,12 @@ class EpisodeService:
         episode_node.metadata = ep_meta
 
         # Rebuild profile content
-        all_domains = list(set(new_domains + (
-            (await self._store.get_memory(episode_node.memory_id)).domains  # type: ignore[attr-defined]
-            if episode_node.memory_id else []
-        )))
+        existing_domains: list[str] = []
+        if episode_node.memory_id:
+            ep_mem = await self._store.get_memory(episode_node.memory_id)  # type: ignore[attr-defined]
+            if ep_mem is not None:
+                existing_domains = ep_mem.domains
+        all_domains = list(set(new_domains + existing_domains))
         profile = self._build_profile_content(all_entities, all_domains, ep_meta)
 
         # Update backing memory content

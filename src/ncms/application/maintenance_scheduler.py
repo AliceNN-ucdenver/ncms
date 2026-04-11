@@ -100,6 +100,7 @@ class MaintenanceScheduler:
 
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._status: dict[str, TaskStatus] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self._running = False
 
     # ── Public API ────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ class MaintenanceScheduler:
 
             interval_minutes: int = getattr(self._config, interval_attr)
             self._status[task_name] = TaskStatus()
+            self._locks[task_name] = asyncio.Lock()
             self._tasks[task_name] = asyncio.create_task(
                 self._loop(task_name, interval_minutes, method_name),
                 name=f"maintenance-{task_name}",
@@ -163,13 +165,17 @@ class MaintenanceScheduler:
     async def run_now(self, task_name: str) -> dict[str, Any]:
         """Manually trigger a maintenance task by name.
 
+        Safe to call while the scheduler is running — per-task locks
+        prevent concurrent execution.  If a task is already running,
+        returns immediately with ``{"status": "already_running"}``.
+
         Args:
             task_name: One of "consolidation", "dream", "episode_close",
                 "decay", or "all".
 
         Returns:
             Dict with task results. For "all", a dict mapping each task
-            name to its result.
+            name to its result (or skip status).
         """
         if task_name == "all":
             results: dict[str, Any] = {}
@@ -217,52 +223,70 @@ class MaintenanceScheduler:
         task_name: str,
         method_name: str,
     ) -> Any:
-        """Run a single maintenance task, updating status and emitting events."""
-        if task_name not in self._status:
-            self._status[task_name] = TaskStatus()
-        status = self._status[task_name]
+        """Run a single maintenance task, updating status and emitting events.
 
-        t0 = time.monotonic()
-        result: Any = None
-        try:
-            svc = (
-                self._episode_svc
-                if task_name == "episode_close"
-                else self._consolidation_svc
-            )
-            method = getattr(svc, method_name)
-            result = await method()
+        Uses a per-task lock to prevent concurrent execution of the same
+        task (e.g. manual trigger while scheduled run is in progress).
+        """
+        # Ensure lock exists (run_now may be called before start())
+        if task_name not in self._locks:
+            self._locks[task_name] = asyncio.Lock()
+        lock = self._locks[task_name]
 
-            elapsed_ms = (time.monotonic() - t0) * 1000
-            status.last_run_at = datetime.now(UTC)
-            status.last_duration_ms = elapsed_ms
-            status.run_count += 1
-            status.last_error = None
-
+        if lock.locked():
             logger.info(
-                "Maintenance task '%s' completed in %.0fms: %s",
-                task_name,
-                elapsed_ms,
-                result,
+                "Maintenance task '%s' already running — skipping", task_name,
             )
+            return {"status": "already_running", "task": task_name}
 
-            self._emit_event(task_name, elapsed_ms, result=result)
+        async with lock:
+            if task_name not in self._status:
+                self._status[task_name] = TaskStatus()
+            status = self._status[task_name]
 
-        except Exception as exc:
-            elapsed_ms = (time.monotonic() - t0) * 1000
-            status.last_run_at = datetime.now(UTC)
-            status.last_duration_ms = elapsed_ms
-            status.run_count += 1
-            status.error_count += 1
-            status.last_error = str(exc)
+            t0 = time.monotonic()
+            result: Any = None
+            try:
+                svc = (
+                    self._episode_svc
+                    if task_name == "episode_close"
+                    else self._consolidation_svc
+                )
+                method = getattr(svc, method_name)
+                result = await method()
 
-            logger.exception(
-                "Maintenance task '%s' failed after %.0fms", task_name, elapsed_ms
-            )
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                status.last_run_at = datetime.now(UTC)
+                status.last_duration_ms = elapsed_ms
+                status.run_count += 1
+                status.last_error = None
 
-            self._emit_event(task_name, elapsed_ms, error=str(exc))
+                logger.info(
+                    "Maintenance task '%s' completed in %.0fms: %s",
+                    task_name,
+                    elapsed_ms,
+                    result,
+                )
 
-        return result
+                self._emit_event(task_name, elapsed_ms, result=result)
+
+            except Exception as exc:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                status.last_run_at = datetime.now(UTC)
+                status.last_duration_ms = elapsed_ms
+                status.run_count += 1
+                status.error_count += 1
+                status.last_error = str(exc)
+
+                logger.exception(
+                    "Maintenance task '%s' failed after %.0fms",
+                    task_name,
+                    elapsed_ms,
+                )
+
+                self._emit_event(task_name, elapsed_ms, error=str(exc))
+
+            return result
 
     def _emit_event(
         self,

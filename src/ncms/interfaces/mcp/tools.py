@@ -7,11 +7,12 @@ to interact with the cognitive memory system.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from mcp.server.fastmcp import FastMCP
 
 from ncms.application.bus_service import BusService
+from ncms.application.consolidation_service import ConsolidationService
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.domain.models import (
@@ -21,13 +22,16 @@ from ncms.domain.models import (
     KnowledgePayload,
 )
 
+if TYPE_CHECKING:
+    from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
+
 
 def register_tools(
     mcp: FastMCP,
     memory_svc: MemoryService,
     bus_svc: BusService,
     snapshot_svc: SnapshotService,
-    consolidation_svc: object | None = None,
+    consolidation_svc: ConsolidationService | None = None,
 ) -> None:
     """Register all NCMS MCP tools on the given server."""
 
@@ -627,7 +631,7 @@ def register_tools(
     # ── Filesystem watcher tools ────────────────────────────────────────
 
     # Active watchers registry (shared across tool invocations)
-    _active_watchers: dict[str, object] = {}
+    _active_watchers: dict[str, FilesystemWatcher] = {}
 
     @mcp.tool()
     async def watch_directory(
@@ -712,8 +716,8 @@ def register_tools(
         """
         if watch_id and watch_id in _active_watchers:
             watcher = _active_watchers.pop(watch_id)
-            await watcher.stop()  # type: ignore[union-attr]
-            stats = watcher.get_stats()  # type: ignore[union-attr]
+            await watcher.stop()
+            stats = watcher.get_stats()
             return {
                 "stopped": watch_id,
                 **stats.to_dict(),
@@ -722,8 +726,8 @@ def register_tools(
             # Stop all
             results = {}
             for wid, watcher in list(_active_watchers.items()):
-                await watcher.stop()  # type: ignore[union-attr]
-                stats = watcher.get_stats()  # type: ignore[union-attr]
+                await watcher.stop()
+                stats = watcher.get_stats()
                 results[wid] = stats.to_dict()
             _active_watchers.clear()
             return {"stopped_all": True, "watchers": results}
@@ -766,7 +770,7 @@ def register_tools(
                 "content": sm.memory.content[:500],
                 "score": round(sm.total_activation, 4),
                 "node_types": sm.node_types,
-                "memory_type": sm.memory.memory_type,
+                "memory_type": sm.memory.type,
             }
             for sm in results
         ]
@@ -807,7 +811,7 @@ def register_tools(
                     "memory_id": rr.memory.memory.id,
                     "content": rr.memory.memory.content[:300],
                     "retrieval_path": rr.retrieval_path,
-                    "memory_type": rr.memory.memory.memory_type,
+                    "memory_type": rr.memory.memory.type,
                 }
                 for rr in result.results
             ],
@@ -978,4 +982,4 @@ def register_tools(
                 Counts per subtask (decay, knowledge, episodes,
                 trajectories, patterns, refresh).
             """
-            return await consolidation_svc.run_consolidation_pass()  # type: ignore[union-attr]
+            return await consolidation_svc.run_consolidation_pass()

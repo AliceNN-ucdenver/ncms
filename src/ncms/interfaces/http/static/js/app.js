@@ -374,6 +374,24 @@ async function bootstrapAgents() {
     }
     renderAgents();
     updateChatTargets();
+
+    // Bootstrap each agent's activity feed from persistent store
+    for (const agent of agents) {
+      if (agent.agent_id === 'human') continue;
+      try {
+        const evtResp = await fetch(
+          `/api/events?agent_id=${encodeURIComponent(agent.agent_id)}&limit=${MAX_ACTIVITIES}`
+        );
+        if (!evtResp.ok) continue;
+        const events = await evtResp.json();
+        // Events arrive newest-first; reverse so oldest is processed first
+        // (addAgentActivity unshifts, so newest ends up at front)
+        for (const evt of events.reverse()) {
+          addAgentActivity(agent.agent_id, evt);
+        }
+        renderAgentActivity(agent.agent_id);
+      } catch (_) { /* individual agent bootstrap failure is non-fatal */ }
+    }
   } catch (e) { /* ignore */ }
 }
 

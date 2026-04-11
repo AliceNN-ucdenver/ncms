@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ncms.config import NCMSConfig
 from ncms.domain.models import (
@@ -20,6 +21,9 @@ from ncms.domain.models import (
     EpisodeMeta,
     NodeType,
 )
+
+if TYPE_CHECKING:
+    from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +70,7 @@ async def export_wiki(
             (output_dir / subdir).mkdir(parents=True, exist_ok=True)
 
         # ── Entity pages ───────────────────────────────────────────
-        all_entities = await store.get_all_entities()
+        all_entities = await store.list_entities()
         logger.info("[export] Generating %d entity pages...", len(all_entities))
 
         entity_memory_counts: dict[str, int] = {}
@@ -113,16 +117,17 @@ async def export_wiki(
                 lines.append("")
 
             # Memory backlinks
-            if memory_ids:
+            memory_ids_list = sorted(memory_ids)
+            if memory_ids_list:
                 lines.append("## Linked Memories")
                 lines.append("")
-                for mid in memory_ids[:50]:  # Cap at 50
+                for mid in memory_ids_list[:50]:  # Cap at 50
                     mem = await store.get_memory(mid)
                     if mem:
                         preview = mem.content[:120].replace("\n", " ")
                         lines.append(f"- `{mid[:8]}` — {preview}")
-                if len(memory_ids) > 50:
-                    lines.append(f"- ... and {len(memory_ids) - 50} more")
+                if len(memory_ids_list) > 50:
+                    lines.append(f"- ... and {len(memory_ids_list) - 50} more")
                 lines.append("")
 
             (output_dir / "entities" / f"{slug}.md").write_text(
@@ -135,25 +140,25 @@ async def export_wiki(
         logger.info("[export] Generating %d episode pages...", len(all_episodes))
 
         for ep_node in all_episodes:
-            meta = EpisodeMeta.from_node(ep_node)
-            if not meta:
+            ep_meta = EpisodeMeta.from_node(ep_node)
+            if not ep_meta:
                 continue
 
-            slug = _slugify(meta.episode_title or ep_node.id[:8])
+            slug = _slugify(ep_meta.episode_title or ep_node.id[:8])
             members = await store.get_episode_members(ep_node.id)
 
             lines = [
-                f"# {meta.episode_title or 'Untitled Episode'}",
+                f"# {ep_meta.episode_title or 'Untitled Episode'}",
                 "",
-                f"**Status:** {meta.status}  ",
-                f"**Members:** {meta.member_count}  ",
-                f"**Anchor:** {meta.anchor_type}  ",
+                f"**Status:** {ep_meta.status}  ",
+                f"**Members:** {ep_meta.member_count}  ",
+                f"**Anchor:** {ep_meta.anchor_type}  ",
                 "",
             ]
 
-            if meta.topic_entities:
+            if ep_meta.topic_entities:
                 entity_links = []
-                for ent_name in meta.topic_entities[:10]:
+                for ent_name in ep_meta.topic_entities[:10]:
                     ent_slug = _slugify(ent_name)
                     entity_links.append(f"[{ent_name}](../entities/{ent_slug}.md)")
                 lines.append(
@@ -188,7 +193,7 @@ async def export_wiki(
 
         # ── Agent pages ────────────────────────────────────────────
         # Group memories by source_agent
-        all_memories = await store.search_memories("", limit=10000)
+        all_memories = await store.list_memories(limit=10000)
         agent_memories: dict[str, list] = {}
         for mem in all_memories:
             agent = mem.source_agent or "anonymous"
@@ -208,7 +213,7 @@ async def export_wiki(
             # Memory type breakdown
             type_counts: dict[str, int] = {}
             for mem in memories:
-                t = mem.memory_type or "unknown"
+                t = mem.type or "unknown"
                 type_counts[t] = type_counts.get(t, 0) + 1
 
             lines = [
@@ -252,8 +257,8 @@ async def export_wiki(
             if not mem:
                 continue
 
-            meta = node.metadata or {}
-            abstract_type = meta.get("abstract_type", "insight")
+            node_meta = node.metadata or {}
+            abstract_type = node_meta.get("abstract_type", "insight")
             slug = _slugify(f"{abstract_type}-{node.id[:8]}")
 
             lines = [
@@ -269,7 +274,7 @@ async def export_wiki(
             ]
 
             # Source episodes
-            src_episodes = meta.get("source_episode_ids", [])
+            src_episodes = node_meta.get("source_episode_ids", [])
             if src_episodes:
                 lines.append("## Source Episodes")
                 lines.append("")
@@ -278,7 +283,7 @@ async def export_wiki(
                 lines.append("")
 
             # Key entities
-            key_ents = meta.get("key_entities", meta.get("topic_entities", []))
+            key_ents = node_meta.get("key_entities", node_meta.get("topic_entities", []))
             if key_ents:
                 entity_links = []
                 for ent_name in key_ents[:10]:
@@ -338,17 +343,19 @@ async def export_wiki(
     return counts
 
 
-async def _find_episode_summary(store: object, episode_node_id: str) -> str | None:
+async def _find_episode_summary(
+    store: SQLiteStore, episode_node_id: str,
+) -> str | None:
     """Find abstract summary for an episode."""
     try:
-        edges = await store.get_graph_edges(episode_node_id)  # type: ignore[union-attr]
+        edges = await store.get_graph_edges(episode_node_id)
     except Exception:
         return None
     for edge in edges:
         if edge.edge_type == "summarizes":
-            summary_node = await store.get_memory_node(edge.source_id)  # type: ignore[union-attr]
+            summary_node = await store.get_memory_node(edge.source_id)
             if summary_node:
-                memory = await store.get_memory(summary_node.memory_id)  # type: ignore[union-attr]
+                memory = await store.get_memory(summary_node.memory_id)
                 if memory:
                     return memory.content[:1000]
     return None

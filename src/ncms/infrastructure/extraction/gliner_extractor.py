@@ -118,7 +118,7 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
             _model = GLiNER.from_pretrained(model_name, **kwargs)
             try:
                 import torch
-                _model.model = _model.model.to(torch.device("mps"))
+                _model.model = _model.model.to(torch.device("mps"))  # type: ignore[union-attr,attr-defined]
             except Exception:
                 logger.warning("Failed to move GLiNER to MPS, using CPU")
         else:
@@ -173,7 +173,7 @@ def extract_entities_gliner(
     # model.inference() returns List[List[Dict]] — one entity list per chunk.
     # Lock serializes GPU access (PyTorch models are not thread-safe).
     with _model_lock:
-        all_chunk_entities = model.inference(  # type: ignore[union-attr]
+        all_chunk_entities = model.inference(  # type: ignore[attr-defined]
             chunks,
             extraction_labels,
             threshold=threshold,

@@ -465,12 +465,26 @@ def create_dashboard_app(
         })
 
     async def api_events(request: Request) -> JSONResponse:
-        """Return recent events as JSON (non-streaming)."""
+        """Return recent events as JSON (non-streaming).
+
+        Query params:
+          limit: max events (default 100)
+          agent_id: if set, return events for this agent from persistent
+              store (newest-first, filtered for activity-relevant types)
+        """
+        limit = int(request.query_params.get("limit", "100"))
+        agent_id = request.query_params.get("agent_id")
+
+        if agent_id:
+            # Per-agent query from persistent store (for card bootstrap)
+            events = await event_log.query_agent_events(agent_id, limit=limit)
+            return JSONResponse(events)
+
+        # Default: recent events from ring buffer (newest-first)
         from dataclasses import asdict
 
-        limit = int(request.query_params.get("limit", "100"))
-        events = event_log.recent(limit)
-        return JSONResponse([asdict(e) for e in events])
+        recent_events = event_log.recent(limit)
+        return JSONResponse([asdict(e) for e in recent_events])
 
     async def api_events_history(request: Request) -> JSONResponse:
         """Return persisted events for time-travel replay.

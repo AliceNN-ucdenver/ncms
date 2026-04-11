@@ -20,7 +20,7 @@ from ncms.domain.models import (
     SubscriptionFilter,
 )
 from ncms.domain.protocols import KnowledgeBusTransport
-from ncms.infrastructure.observability.event_log import DashboardEvent, NullEventLog
+from ncms.infrastructure.observability.event_log import DashboardEvent, EventLog, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +33,12 @@ class BusService:
         bus: KnowledgeBusTransport,
         snapshot_service: SnapshotService,
         surrogate_enabled: bool = True,
-        event_log: object | None = None,
+        event_log: EventLog | NullEventLog | None = None,
     ):
         self._bus = bus
         self._snapshot = snapshot_service
         self._surrogate_enabled = surrogate_enabled
-        self._event_log = event_log or NullEventLog()
+        self._event_log: EventLog | NullEventLog = event_log or NullEventLog()
 
     @property
     def bus(self) -> KnowledgeBusTransport:

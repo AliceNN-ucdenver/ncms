@@ -11,13 +11,16 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from ncms.application.bus_service import BusService
+from ncms.application.consolidation_service import ConsolidationService
 from ncms.application.graph_service import GraphService
+from ncms.application.maintenance_scheduler import MaintenanceScheduler
 from ncms.application.memory_service import MemoryService
 from ncms.application.snapshot_service import SnapshotService
 from ncms.config import NCMSConfig
 from ncms.infrastructure.bus.async_bus import AsyncKnowledgeBus
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+from ncms.infrastructure.observability.event_log import EventLog, NullEventLog
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 from ncms.interfaces.mcp.resources import register_resources
 from ncms.interfaces.mcp.tools import register_tools
@@ -27,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 async def create_ncms_services(
     config: NCMSConfig | None = None,
-    event_log: object | None = None,
-) -> tuple[MemoryService, BusService, SnapshotService]:
+    event_log: EventLog | NullEventLog | None = None,
+) -> tuple[MemoryService, BusService, SnapshotService, ConsolidationService, MaintenanceScheduler]:
     """Initialize all NCMS services. Returns (memory_svc, bus_svc, snapshot_svc, ...)."""
     config = config or NCMSConfig()
 
@@ -159,15 +162,14 @@ async def create_ncms_services(
     await scheduler.start()
 
     # Phase 6: Start heartbeat monitor for bus agents
+    async def _auto_snapshot(agent_id: str) -> None:
+        await snapshot_svc.create_snapshot(agent_id, [])
+
     await bus_svc.start_heartbeat_monitor(
         interval_seconds=config.bus_heartbeat_interval_seconds,
         timeout_seconds=config.bus_heartbeat_timeout_seconds,
         auto_snapshot=config.auto_snapshot_on_disconnect,
-        snapshot_callback=(
-            (lambda agent_id: snapshot_svc.publish_snapshot(agent_id, []))
-            if config.auto_snapshot_on_disconnect
-            else None
-        ),
+        snapshot_callback=_auto_snapshot if config.auto_snapshot_on_disconnect else None,
     )
     logger.info(
         "[phase6] Heartbeat monitor started: interval=%ds timeout=%ds auto_snapshot=%s",
@@ -183,7 +185,7 @@ def create_mcp_server(
     memory_svc: MemoryService,
     bus_svc: BusService,
     snapshot_svc: SnapshotService,
-    consolidation_svc: object | None = None,
+    consolidation_svc: ConsolidationService | None = None,
 ) -> FastMCP:
     """Create a FastMCP server with all NCMS tools and resources registered."""
     mcp = FastMCP(

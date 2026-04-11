@@ -76,7 +76,7 @@ def register_resources(
             lines.append("## Current State\n")
             for s in current:
                 key = s.metadata.get("state_key", "state")
-                val = s.metadata.get("state_value", s.content or "")
+                val = s.metadata.get("state_value", "")
                 lines.append(f"- **{key}**: {val}")
         else:
             lines.append("*No current state.*\n")
@@ -85,7 +85,7 @@ def register_resources(
             lines.append("\n## History\n")
             for s in historical:
                 key = s.metadata.get("state_key", "state")
-                val = s.metadata.get("state_value", s.content or "")
+                val = s.metadata.get("state_value", "")
                 ts = s.created_at.isoformat() if s.created_at else "?"
                 lines.append(f"- [{ts}] **{key}**: {val} *(superseded)*")
 

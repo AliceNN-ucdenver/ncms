@@ -257,7 +257,7 @@ def load(
 
     async def _load() -> None:
         from ncms.application.graph_service import GraphService
-        from ncms.application.knowledge_loader import KnowledgeLoader
+        from ncms.application.knowledge_loader import KnowledgeLoader, LoadStats
         from ncms.application.memory_service import MemoryService
         from ncms.config import NCMSConfig
         from ncms.infrastructure.graph.networkx_store import NetworkXGraph
@@ -342,7 +342,7 @@ def load(
             path = Path(p)
             if path.is_dir() and bulk:
                 # Bulk mode: load + index in parallel, flush at end
-                def _progress(fp: Path, fs: object) -> None:
+                def _progress(fp: Path, fs: LoadStats) -> None:
                     console.print(f"  [dim]{fp.name}[/] {fs.memories_created} memories")
 
                 stats = await loader.bulk_load_directory(
@@ -694,11 +694,12 @@ def watch(
         try:
             from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
         except ImportError:
-            console.print(
+            from rich.console import Console as _ErrConsole
+            _err_console = _ErrConsole(stderr=True)
+            _err_console.print(
                 "[red]watchdog not installed. Run:[/]\n"
                 "  pip install ncms[watch]\n"
                 "  # or: pip install watchdog",
-                err=True,
             )
             await store.close()
             raise SystemExit(1) from None
@@ -1050,7 +1051,7 @@ def state_get(entity_id: str, key: str, db: str | None) -> None:
                     f"key '{key}'.[/]"
                 )
                 return
-            val = node.metadata.get("state_value", node.content or "")
+            val = node.metadata.get("state_value", "")
             label = node.metadata.get("state_label", "")
             console.print(f"[bold]Entity:[/] {entity_id}")
             console.print(f"[bold]Key:[/]    {key}")
@@ -1104,7 +1105,7 @@ def state_history(entity_id: str, key: str, db: str | None) -> None:
             table.add_column("Value")
             table.add_column("Current", justify="center")
             for n in nodes:
-                val = n.metadata.get("state_value", n.content or "")
+                val = n.metadata.get("state_value", "")
                 ts = n.created_at.isoformat() if n.created_at else "?"
                 cur = "[green]yes[/]" if n.is_current else "[dim]no[/]"
                 table.add_row(ts, str(val)[:100], cur)
@@ -1584,8 +1585,11 @@ def topic_map(db: str | None) -> None:
         graph = NetworkXGraph()
 
         from ncms.application.memory_service import MemoryService
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 
-        svc = MemoryService(store=store, index=None, graph=graph, config=config)
+        index = TantivyEngine(path=config.index_path)
+        index.initialize()
+        svc = MemoryService(store=store, index=index, graph=graph, config=config)
 
         try:
             clusters = await svc.get_topic_map()

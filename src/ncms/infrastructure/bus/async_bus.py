@@ -11,6 +11,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from ncms.domain.models import (
     AgentInfo,
@@ -19,6 +20,9 @@ from ncms.domain.models import (
     KnowledgeResponse,
     SubscriptionFilter,
 )
+
+if TYPE_CHECKING:
+    from ncms.infrastructure.observability.event_log import EventLog, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +39,10 @@ class AsyncKnowledgeBus:
     def __init__(
         self,
         ask_timeout_ms: int = 5000,
-        event_log: object | None = None,
+        event_log: EventLog | NullEventLog | None = None,
     ):
         self._ask_timeout_ms = ask_timeout_ms
-        # Optional EventLog for dashboard observability (duck-typed to avoid import)
-        self._event_log = event_log
+        self._event_log: EventLog | NullEventLog | None = event_log
 
         # Agent registry
         self._agents: dict[str, AgentInfo] = {}

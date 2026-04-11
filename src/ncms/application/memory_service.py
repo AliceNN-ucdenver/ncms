@@ -14,6 +14,7 @@ import math
 import re
 import time
 import uuid
+from typing import TYPE_CHECKING, Any, cast
 
 from ncms.config import NCMSConfig
 from ncms.domain.entity_extraction import resolve_labels
@@ -37,7 +38,7 @@ from ncms.domain.models import (
     TraversalMode,
     TraversalResult,
 )
-from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
+from ncms.domain.protocols import GraphEngine, IndexEngine, IntentClassifier, MemoryStore
 from ncms.domain.scoring import (
     activation_noise,
     base_level_activation,
@@ -56,7 +57,20 @@ from ncms.domain.temporal_parser import (
     compute_temporal_proximity,
     parse_temporal_reference,
 )
-from ncms.infrastructure.observability.event_log import DashboardEvent, NullEventLog
+from ncms.infrastructure.observability.event_log import (
+    DashboardEvent,
+    EventLog,
+    NullEventLog,
+)
+
+if TYPE_CHECKING:
+    from ncms.application.admission_service import AdmissionService
+    from ncms.application.episode_service import EpisodeService
+    from ncms.application.index_worker import IndexWorkerPool
+    from ncms.application.reconciliation_service import ReconciliationService
+    from ncms.application.section_service import SectionService
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+    from ncms.infrastructure.reranking.cross_encoder_reranker import CrossEncoderReranker
 
 logger = logging.getLogger(__name__)
 
@@ -70,37 +84,37 @@ class MemoryService:
         index: IndexEngine,
         graph: GraphEngine,
         config: NCMSConfig | None = None,
-        event_log: object | None = None,
-        splade: object | None = None,
-        admission: object | None = None,
-        reconciliation: object | None = None,
-        episode: object | None = None,
-        intent_classifier: object | None = None,
-        reranker: object | None = None,
-        section_service: object | None = None,
+        event_log: EventLog | NullEventLog | None = None,
+        splade: SpladeEngine | None = None,
+        admission: AdmissionService | None = None,
+        reconciliation: ReconciliationService | None = None,
+        episode: EpisodeService | None = None,
+        intent_classifier: IntentClassifier | None = None,
+        reranker: CrossEncoderReranker | None = None,
+        section_service: SectionService | None = None,
     ):
         self._store = store
         self._index = index
         self._graph = graph
         self._config = config or NCMSConfig()
         # EventLog for dashboard observability (NullEventLog discards events silently)
-        self._event_log = event_log or NullEventLog()
-        # Optional SPLADE engine for sparse neural retrieval (duck-typed)
+        self._event_log: EventLog | NullEventLog = event_log or NullEventLog()
+        # Optional SPLADE engine for sparse neural retrieval
         self._splade = splade
-        # Optional AdmissionService for Phase 1 admission scoring (duck-typed)
+        # Optional AdmissionService for Phase 1 admission scoring
         self._admission = admission
-        # Optional ReconciliationService for Phase 2 state reconciliation (duck-typed)
+        # Optional ReconciliationService for Phase 2 state reconciliation
         self._reconciliation = reconciliation
-        # Optional EpisodeService for Phase 3 episode formation (duck-typed)
+        # Optional EpisodeService for Phase 3 episode formation
         self._episode = episode
-        # Optional BM25 exemplar intent classifier (Phase 4, duck-typed)
+        # Optional BM25 exemplar intent classifier (Phase 4)
         self._intent_classifier = intent_classifier
-        # Optional cross-encoder reranker (Phase 10, duck-typed)
+        # Optional cross-encoder reranker (Phase 10)
         self._reranker = reranker
-        # Optional SectionService for content-aware ingestion (duck-typed)
+        # Optional SectionService for content-aware ingestion
         self._section_svc = section_service
         # Background indexing worker pool (Phase 2 performance)
-        self._index_pool: object | None = None
+        self._index_pool: IndexWorkerPool | None = None
 
         # Log active feature flags for diagnostics
         features = []
@@ -524,7 +538,7 @@ class MemoryService:
                     })
                     # Return a Memory object but don't persist it
                     return Memory(
-                        content=content, type=memory_type,
+                        content=content, type=cast(Any, memory_type),
                         domains=domains or [], tags=tags or [],
                         source_agent=source_agent, project=project,
                         structured={"admission": {"score": admission_score, "route": "discard"}},
@@ -554,7 +568,7 @@ class MemoryService:
                         "ephemeral_id": entry.id,
                     })
                     return Memory(
-                        content=content, type=memory_type,
+                        content=content, type=cast(Any, memory_type),
                         domains=domains or [], tags=tags or [],
                         source_agent=source_agent, project=project,
                         structured={
@@ -584,7 +598,7 @@ class MemoryService:
 
         memory = Memory(
             content=content,
-            type=memory_type,
+            type=cast(Any, memory_type),
             domains=domains or [],
             tags=tags or [],
             source_agent=source_agent,
@@ -1338,6 +1352,7 @@ class MemoryService:
                 (mid, rerank_memories[mid].content)
                 for mid in rerank_ids if mid in rerank_memories
             ]
+            assert self._reranker is not None  # guarded by _use_ce
             reranked = await asyncio.to_thread(
                 self._reranker.rerank, query, rerank_pairs,
                 self._config.reranker_output_k,
@@ -1999,31 +2014,27 @@ class MemoryService:
         if total_docs < 2:
             return
 
-        # Iterate all edges and compute PMI weights
+        # Iterate all co-occurrence edges and compute PMI weights
         max_pmi = 0.01  # Will be updated
         edge_pmis: list[tuple[str, str, float]] = []
 
-        with self._graph._lock:
-            for source, target, data in self._graph._graph.edges(data=True):
-                if data.get("type") != "co_occurs":
-                    continue
-                cooc_count = data.get("cooc_count", 1)
-                df_a = doc_freq.get(source, 1)
-                df_b = doc_freq.get(target, 1)
+        for source, target, cooc_count in self._graph.get_cooccurrence_edges():
+            df_a = doc_freq.get(source, 1)
+            df_b = doc_freq.get(target, 1)
 
-                p_ab = cooc_count / total_docs
-                p_a = df_a / total_docs
-                p_b = df_b / total_docs
+            p_ab = cooc_count / total_docs
+            p_a = df_a / total_docs
+            p_b = df_b / total_docs
 
-                if p_a > 0 and p_b > 0 and p_ab > 0:
-                    pmi = math.log2(p_ab / (p_a * p_b))
-                    pmi = max(pmi, 0.0)  # Only positive PMI
-                else:
-                    pmi = 0.0
+            if p_a > 0 and p_b > 0 and p_ab > 0:
+                pmi = math.log2(p_ab / (p_a * p_b))
+                pmi = max(pmi, 0.0)  # Only positive PMI
+            else:
+                pmi = 0.0
 
-                edge_pmis.append((source, target, pmi))
-                if pmi > max_pmi:
-                    max_pmi = pmi
+            edge_pmis.append((source, target, pmi))
+            if pmi > max_pmi:
+                max_pmi = pmi
 
         # Normalize to [0.01, 1.0] and set weights
         for source, target, pmi in edge_pmis:
@@ -2320,9 +2331,9 @@ class MemoryService:
         # Record access event (boosts ACT-R base-level activation)
         access = AccessRecord(
             memory_id=selected_memory_id,
-            agent_id=agent_id,
+            accessing_agent=agent_id,
         )
-        await self._store.save_access(access)
+        await self._store.log_access(access)
 
         # Log for analysis
         self._event_log.emit(DashboardEvent(
@@ -2485,14 +2496,12 @@ class MemoryService:
 
         for eid in entity_ids[:5]:
             try:
+                all_states = await self._store.get_entity_states_by_entity(eid)
                 if intent == QueryIntent.CURRENT_STATE_LOOKUP:
-                    all_states = await self._store.get_entity_states_by_entity(eid)
                     state_nodes = [s for s in all_states if s.is_current]
                 else:
                     # HISTORICAL_LOOKUP or CHANGE_DETECTION — full history
-                    state_nodes = await self._store.get_state_history(
-                        eid, state_key=None,
-                    )
+                    state_nodes = all_states
             except Exception:
                 continue
 
@@ -2504,6 +2513,8 @@ class MemoryService:
                     continue
                 seen_memory_ids.add(sn.memory_id)
                 meta = EntityStateMeta.from_node(sn)
+                if meta is None:
+                    continue
                 scored = ScoredMemory(memory=memory, bm25_score=0.0)
                 path = {
                     QueryIntent.CURRENT_STATE_LOOKUP: "state_lookup_bonus",
@@ -2628,6 +2639,8 @@ class MemoryService:
                         continue
                     for sn in state_nodes:
                         meta = EntityStateMeta.from_node(sn)
+                        if meta is None:
+                            continue
                         result.context.entity_states.append(
                             EntityStateSnapshot(
                                 entity_id=eid,
@@ -2653,6 +2666,8 @@ class MemoryService:
                             continue
                         if ep_node and ep_node.node_type == NodeType.EPISODE:
                             ep_meta = EpisodeMeta.from_node(ep_node)
+                            if ep_meta is None:
+                                continue
                             members = await self._store.get_episode_members(
                                 ep_node.id,
                             )
@@ -3182,7 +3197,7 @@ class MemoryService:
             source_ids.append(mem.id)
 
             # Add metadata context
-            parts = [f"[{mem.memory_type}] {content}"]
+            parts = [f"[{mem.type}] {content}"]
             if rr.context.episode:
                 parts.append(f"  Episode: {rr.context.episode.episode_title}")
             if rr.context.entity_states:
@@ -3233,14 +3248,14 @@ class MemoryService:
 
         # Call LLM
         try:
-            from ncms.infrastructure.llm.caller import call_llm
-            response = await call_llm(
+            from ncms.infrastructure.llm.caller import call_llm_text
+            response = await call_llm_text(
                 prompt=prompt,
                 model=self._config.synthesis_model,
                 api_base=self._config.synthesis_api_base,
                 max_tokens=budget,
             )
-            content = response or "Synthesis produced no output."
+            content = response if response else "Synthesis produced no output."
         except Exception as exc:
             logger.warning("[synthesize] LLM call failed: %s", exc)
             # Fallback: return concatenated snippets

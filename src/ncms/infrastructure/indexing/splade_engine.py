@@ -21,6 +21,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass, field
+from typing import Any
 
 from ncms.domain.models import Memory
 from ncms.infrastructure.text.chunking import chunk_text
@@ -130,7 +131,7 @@ class SpladeEngine:
             logger.info(
                 "[SPLADE] Loading model: %s on %s (first call only)", self._model_name, device,
             )
-            kwargs: dict[str, object] = {}
+            kwargs: dict[str, Any] = {}
             if self._cache_dir:
                 kwargs["cache_folder"] = self._cache_dir
             t0 = _time.perf_counter()

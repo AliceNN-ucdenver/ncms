@@ -3872,6 +3872,7 @@ bench = [
     { name = "tabulate" },
 ]
 dev = [
+    { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -3926,6 +3927,7 @@ bench = [
     { name = "tabulate", specifier = ">=0.9" },
 ]
 dev = [
+    { name = "mypy", specifier = ">=1.10" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-asyncio", specifier = ">=0.26.0" },
     { name = "pytest-cov", specifier = ">=5.0.0" },

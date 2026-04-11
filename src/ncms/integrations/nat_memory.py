@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +277,7 @@ class NCMSMemoryEditor:
         *,
         domains: list[str],
         from_agent: str = "nat-client",
-        event: str = "updated",
+        event: Literal["created", "updated", "deprecated", "breaking-change"] = "updated",
     ) -> None:
         """Broadcast an announcement on the NCMS Knowledge Bus."""
         await self._ensure_initialized()

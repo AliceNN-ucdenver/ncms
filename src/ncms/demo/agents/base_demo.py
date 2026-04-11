@@ -7,6 +7,8 @@ Concrete demo agents only need to declare their domain configuration.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from ncms.domain.models import (
     KnowledgeAsk,
     KnowledgePayload,
@@ -33,7 +35,7 @@ class DemoAgent(KnowledgeAgent):
     knowledge_type: str = "fact"
     """Knowledge payload type for ask responses."""
 
-    trust_level: str = "authoritative"
+    trust_level: Literal["authoritative", "observed", "speculative"] = "authoritative"
     """Provenance trust level for ask responses."""
 
     max_confidence: float = 0.95
@@ -42,7 +44,7 @@ class DemoAgent(KnowledgeAgent):
     snapshot_confidence: float = 0.9
     """Confidence value for snapshot entries."""
 
-    snapshot_volatility: str = "changing"
+    snapshot_volatility: Literal["stable", "changing", "volatile"] = "changing"
     """Volatility marker for snapshot entries."""
 
     include_structured_in_snapshot: bool = False

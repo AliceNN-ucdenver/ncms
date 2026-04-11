@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import TYPE_CHECKING
 
 from ncms.config import NCMSConfig
 from ncms.domain.content_classifier import ContentClassification, Section
 from ncms.domain.models import Memory
+
+if TYPE_CHECKING:
+    from ncms.application.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,7 @@ class SectionService:
 
     def __init__(
         self,
-        memory_service: object,  # MemoryService (duck-typed to avoid circular import)
+        memory_service: MemoryService,
         config: NCMSConfig | None = None,
     ):
         self._memory_service = memory_service

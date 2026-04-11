@@ -25,6 +25,10 @@ import json
 import logging
 import signal
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -60,14 +64,21 @@ class BusAgentSidecar:
         self.system_prompt = system_prompt
         self.startup_questions = startup_questions or []
         self._running = True
-        self._client = None
+        self._client: httpx.AsyncClient | None = None
         self._consulted = False
+
+    @property
+    def _http(self) -> httpx.AsyncClient:
+        """Return the active HTTP client (always non-None after run() starts)."""
+        assert self._client is not None, "BusAgentSidecar._http called before run()"
+        return self._client
 
     async def run(self) -> None:
         """Main loop: register → connect SSE → handle events → reconnect on failure."""
         import httpx
 
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None))
+        client = self._client
         backoff = _INITIAL_BACKOFF
 
         try:
@@ -96,11 +107,11 @@ class BusAgentSidecar:
             import contextlib
             with contextlib.suppress(Exception):
                 await self._deregister()
-            await self._client.aclose()
+            await client.aclose()
 
     async def _register(self) -> None:
         """Register with the NCMS Hub."""
-        resp = await self._client.post(f"{self.hub_url}/api/v1/bus/register", json={
+        resp = await self._http.post(f"{self.hub_url}/api/v1/bus/register", json={
             "agent_id": self.agent_id,
             "domains": self.domains,
             "subscribe_to": self.subscribe_to or self.domains,
@@ -114,7 +125,7 @@ class BusAgentSidecar:
 
     async def _deregister(self) -> None:
         """Deregister from the NCMS Hub."""
-        await self._client.post(f"{self.hub_url}/api/v1/bus/deregister", json={
+        await self._http.post(f"{self.hub_url}/api/v1/bus/deregister", json={
             "agent_id": self.agent_id,
         })
         logger.info("Deregistered agent %s", self.agent_id)
@@ -124,7 +135,7 @@ class BusAgentSidecar:
         url = f"{self.hub_url}/api/v1/bus/subscribe?agent_id={self.agent_id}"
         logger.info("Connecting SSE stream: %s", url)
 
-        async with self._client.stream("GET", url) as response:
+        async with self._http.stream("GET", url) as response:
             response.raise_for_status()
             logger.info("SSE stream connected for agent %s", self.agent_id)
 
@@ -178,13 +189,13 @@ class BusAgentSidecar:
 
         try:
             # Search NCMS Hub for relevant knowledge (try recall, fall back to search)
-            resp = await self._client.get(
+            resp = await self._http.get(
                 f"{self.hub_url}/api/v1/memories/recall",
                 params={"q": question, "limit": "5"},
             )
             if resp.status_code != 200:
                 logger.warning("Recall failed (%s), falling back to search", resp.status_code)
-                resp = await self._client.get(
+                resp = await self._http.get(
                     f"{self.hub_url}/api/v1/memories/search",
                     params={"q": question, "limit": "5"},
                 )
@@ -206,7 +217,7 @@ class BusAgentSidecar:
             confidence = min(0.92, 0.6 + 0.05 * len(context_parts))
 
             # POST response back to Hub
-            resp = await self._client.post(f"{self.hub_url}/api/v1/bus/respond", json={
+            resp = await self._http.post(f"{self.hub_url}/api/v1/bus/respond", json={
                 "ask_id": ask_id,
                 "from_agent": self.agent_id,
                 "content": answer,
@@ -231,7 +242,7 @@ class BusAgentSidecar:
         )
 
         try:
-            resp = await self._client.post(f"{self.hub_url}/api/v1/memories", json={
+            resp = await self._http.post(f"{self.hub_url}/api/v1/memories", json={
                 "content": f"[{event} from {from_agent}] {content}",
                 "type": "fact",
                 "domains": domains,
@@ -258,7 +269,7 @@ class BusAgentSidecar:
                 "[startup] Asking: %s (domains=%s)", question[:80], domains,
             )
             try:
-                resp = await self._client.post(
+                resp = await self._http.post(
                     f"{self.hub_url}/api/v1/bus/ask",
                     json={
                         "from_agent": self.agent_id,
@@ -277,7 +288,7 @@ class BusAgentSidecar:
                         answer[:120],
                     )
                     # Store the answer as knowledge
-                    await self._client.post(
+                    await self._http.post(
                         f"{self.hub_url}/api/v1/memories",
                         json={
                             "content": (

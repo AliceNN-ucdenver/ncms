@@ -14,9 +14,13 @@ import json
 import logging
 import uuid
 from collections import deque
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +51,12 @@ class NullEventLog:
     application services — callers can always call methods unconditionally.
     """
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> Callable[..., None]:
         """Return a no-op callable for any method."""
         return _noop
 
 
-def _noop(*args: object, **kwargs: object) -> None:
+def _noop(*args: Any, **kwargs: Any) -> None:
     """Shared no-op function for NullEventLog method calls."""
 
 
@@ -64,11 +68,11 @@ class EventLog:
     Optionally persists events to SQLite for time-travel replay.
     """
 
-    def __init__(self, max_events: int = 2000, db: object | None = None) -> None:
+    def __init__(self, max_events: int = 2000, db: aiosqlite.Connection | None = None) -> None:
         self._events: deque[DashboardEvent] = deque(maxlen=max_events)
         self._subscribers: list[asyncio.Queue[DashboardEvent]] = []
         self._lock = asyncio.Lock()
-        self._db = db  # aiosqlite.Connection or None
+        self._db: aiosqlite.Connection | None = db
         self._write_queue: asyncio.Queue[DashboardEvent] = asyncio.Queue(maxsize=10000)
         self._persist_task: asyncio.Task[None] | None = None
 
@@ -253,6 +257,47 @@ class EventLog:
                 "timestamp": ts,
                 "type": etype,
                 "agent_id": agent_id,
+                "data": data,
+            })
+        return results
+
+    async def query_agent_events(
+        self,
+        agent_id: str,
+        limit: int = 25,
+        exclude_types: tuple[str, ...] = (
+            "agent.status", "agent.heartbeat_timeout", "pipeline.node",
+        ),
+    ) -> list[dict[str, Any]]:
+        """Return recent events for a specific agent from the persistent store.
+
+        Used by the dashboard to bootstrap agent activity feeds on page load.
+        Events are returned newest-first so the client can display directly.
+        """
+        if not self._db:
+            return []
+        placeholders = ",".join("?" for _ in exclude_types)
+        cursor = await self._db.execute(
+            f"SELECT seq, id, timestamp, type, agent_id, data"
+            f" FROM dashboard_events"
+            f" WHERE agent_id = ?"
+            f"   AND type NOT IN ({placeholders})"
+            f" ORDER BY seq DESC LIMIT ?",
+            (agent_id, *exclude_types, limit),
+        )
+        rows = await cursor.fetchall()
+        results = []
+        for seq, eid, ts, etype, aid, data_str in rows:
+            try:
+                data = json.loads(data_str) if data_str else {}
+            except (json.JSONDecodeError, TypeError):
+                data = {}
+            results.append({
+                "seq": seq,
+                "id": eid,
+                "timestamp": ts,
+                "type": etype,
+                "agent_id": aid,
                 "data": data,
             })
         return results

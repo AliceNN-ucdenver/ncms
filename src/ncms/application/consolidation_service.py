@@ -15,7 +15,7 @@ import contextlib
 import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ncms.config import NCMSConfig
 from ncms.domain.models import (
@@ -28,6 +28,10 @@ from ncms.domain.models import (
 )
 from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import base_level_activation
+
+if TYPE_CHECKING:
+    from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+    from ncms.infrastructure.observability.event_log import EventLog, NullEventLog
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +58,8 @@ class ConsolidationService:
         index: IndexEngine | None = None,
         graph: GraphEngine | None = None,
         config: NCMSConfig | None = None,
-        event_log: object | None = None,
-        splade: object | None = None,
+        event_log: EventLog | NullEventLog | None = None,
+        splade: SpladeEngine | None = None,
     ):
         self._store = store
         self._index = index
@@ -933,6 +937,9 @@ class ConsolidationService:
                 pmi_values.append((e1, e2, pmi))
                 if pmi > max_pmi:
                     max_pmi = pmi
+
+        if self._graph is None:
+            return 0
 
         updated = 0
         for e1, e2, pmi in pmi_values:

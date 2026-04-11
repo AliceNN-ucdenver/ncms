@@ -225,6 +225,15 @@ class NetworkXGraph:
             if self._graph.has_edge(source_id, target_id):
                 self._graph[source_id][target_id]["weight"] = weight
 
+    def get_cooccurrence_edges(self) -> list[tuple[str, str, int]]:
+        """Return all co-occurrence edges as (source, target, cooc_count) triples."""
+        result: list[tuple[str, str, int]] = []
+        with self._lock:
+            for source, target, data in self._graph.edges(data=True):
+                if data.get("type") == "co_occurs":
+                    result.append((source, target, data.get("cooc_count", 1)))
+        return result
+
     def get_neighbors_with_weights(
         self, entity_id: str,
     ) -> list[tuple[str, float]]:

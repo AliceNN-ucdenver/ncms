@@ -90,3 +90,8 @@ class TantivyEngine:
             writer = self.index.writer()
             writer.delete_documents("memory_id", memory_id)
             writer.commit()
+
+    def count(self) -> int:
+        """Return the number of indexed documents."""
+        searcher = self.index.searcher()
+        return searcher.num_docs

@@ -139,6 +139,43 @@
           <span class="phase-status coming-soon">Coming Soon</span>
         </div>
         <div class="forge-agents">
+          <div class="forge-card" id="learning-card">
+            <div class="forge-card-header">
+              <span class="forge-card-name" id="learning-card-name">&#x1F512; Learning</span>
+            </div>
+            <div class="forge-card-tags" id="learning-card-tags">
+              <span class="forge-tag">dream-cycles</span>
+              <span class="forge-tag">patterns</span>
+              <span class="forge-tag">consolidation</span>
+            </div>
+            <div class="forge-card-desc" id="learning-card-desc">
+              Dream cycles, pattern recognition, knowledge consolidation
+            </div>
+            <div id="learning-metrics" class="learning-metrics" style="display:none;">
+              <div class="learning-metric-row">
+                <span class="learning-metric-label">Consolidation</span>
+                <span class="learning-metric-value" id="lm-consolidation">—</span>
+              </div>
+              <div class="learning-metric-row">
+                <span class="learning-metric-label">Dream cycles</span>
+                <span class="learning-metric-value" id="lm-dream">—</span>
+              </div>
+              <div class="learning-metric-row">
+                <span class="learning-metric-label">Episodes</span>
+                <span class="learning-metric-value" id="lm-episodes">—</span>
+              </div>
+              <div class="learning-metric-row">
+                <span class="learning-metric-label">Abstracts</span>
+                <span class="learning-metric-value" id="lm-abstracts">—</span>
+              </div>
+              <div id="learning-activity" class="learning-activity"></div>
+              <button class="learning-trigger-btn" id="learning-trigger-btn"
+                      onclick="triggerMaintenance()" title="Run consolidation now">
+                Run Consolidation
+              </button>
+            </div>
+            <div class="forge-card-status" id="learning-card-status">Waiting for connection...</div>
+          </div>
           <div class="forge-card">
             <div class="forge-card-header">
               <span class="forge-card-name">&#x1F512; Code Gen</span>
@@ -178,39 +215,6 @@
               Policy enforcement gates, compliance verification, audit chains
             </div>
             <div class="forge-card-status">Waiting for connection...</div>
-          </div>
-          <div class="forge-card" id="learning-card">
-            <div class="forge-card-header">
-              <span class="forge-card-name" id="learning-card-name">&#x1F512; Learning</span>
-            </div>
-            <div class="forge-card-tags" id="learning-card-tags">
-              <span class="forge-tag">dream-cycles</span>
-              <span class="forge-tag">patterns</span>
-              <span class="forge-tag">consolidation</span>
-            </div>
-            <div class="forge-card-desc" id="learning-card-desc">
-              Dream cycles, pattern recognition, knowledge consolidation
-            </div>
-            <div id="learning-metrics" class="learning-metrics" style="display:none;">
-              <div class="learning-metric-row">
-                <span class="learning-metric-label">Consolidation</span>
-                <span class="learning-metric-value" id="lm-consolidation">—</span>
-              </div>
-              <div class="learning-metric-row">
-                <span class="learning-metric-label">Dream cycles</span>
-                <span class="learning-metric-value" id="lm-dream">—</span>
-              </div>
-              <div class="learning-metric-row">
-                <span class="learning-metric-label">Episodes</span>
-                <span class="learning-metric-value" id="lm-episodes">—</span>
-              </div>
-              <div class="learning-metric-row">
-                <span class="learning-metric-label">Abstracts</span>
-                <span class="learning-metric-value" id="lm-abstracts">—</span>
-              </div>
-              <div id="learning-activity" class="learning-activity"></div>
-            </div>
-            <div class="forge-card-status" id="learning-card-status">Waiting for connection...</div>
           </div>
         </div>
       </div>
