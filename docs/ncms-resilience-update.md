@@ -1566,14 +1566,14 @@ The query set should include:
 | Entity state detection tightening | ✅ Done | `admission_service.py`, `scoring.py` (4-feature model) |
 | Background indexing (§5.7) | ✅ Done | `index_worker.py` — store returns ~2ms, indexing async |
 
-### Phase 3: Operational Lifecycle (Week 3)
+### Phase 3: Operational Lifecycle (Week 3) — ✅ COMPLETE
 
-| Task | Effort | Files |
+| Task | Status | Files |
 |------|--------|-------|
-| Maintenance scheduler | 4h | New: `application/maintenance_scheduler.py`, wire in `mcp/server.py` |
-| `ncms lint` command | 4h | New: `cli/lint.py`, `application/lint_service.py` |
-| `ncms reindex` command | 6h | New: `cli/reindex.py`, `application/reindex_service.py` |
-| Health endpoint enhancement | 2h | `http/api.py` |
+| Maintenance scheduler | ✅ Done | `application/maintenance_scheduler.py`, wired in `mcp/server.py` |
+| `ncms lint` command | ✅ Done | `application/lint_service.py`, CLI in `cli/main.py` |
+| `ncms reindex` command | ✅ Done | `application/reindex_service.py`, fixed broken CLI in `cli/main.py` |
+| Health endpoint enhancement | ✅ Done | `http/api.py` — indexing stats, graph stats, maintenance status |
 
 ### Phase 4: Content-Aware Ingestion & Temporal (Weeks 4-5)
 

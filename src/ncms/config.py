@@ -211,6 +211,13 @@ class NCMSConfig(BaseSettings):
     otel_endpoint: str | None = None  # Uses OTEL_EXPORTER_OTLP_ENDPOINT env var if not set
     otel_protocol: str = "http/protobuf"  # or "grpc"
 
+    # Maintenance scheduler
+    maintenance_enabled: bool = False
+    maintenance_consolidation_interval_minutes: int = 360   # 6 hours
+    maintenance_dream_interval_minutes: int = 1440          # 24 hours
+    maintenance_episode_close_interval_minutes: int = 60    # 1 hour
+    maintenance_decay_interval_minutes: int = 720           # 12 hours
+
     # Filesystem watcher
     watch_enabled: bool = False
     watch_debounce_seconds: float = 2.0

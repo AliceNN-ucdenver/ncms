@@ -47,6 +47,7 @@ def create_api_app(
     auth_token: str | None = None,
     doc_svc: object | None = None,  # DocumentService (Phase 2.5)
     extra_routes: list[Route] | None = None,
+    maintenance_scheduler: object | None = None,
 ) -> Starlette:
     """Create the NCMS HTTP REST API application."""
 
@@ -62,6 +63,7 @@ def create_api_app(
     _public_paths = {
         "/api/v1/health", "/api/v1/auth/login",
         "/api/v1/bus/events", "/api/v1/bus/register",
+        "/api/v1/maintenance/status",
     }
     _public_prefixes = ("/js/", "/css/", "/api/stats", "/api/v1/agents")
 
@@ -164,11 +166,43 @@ def create_api_app(
     async def health(request: Request) -> JSONResponse:
         count = await memory_svc.memory_count()
         agents = bus_svc.get_all_agents()
-        return JSONResponse({
+        online = sum(1 for a in agents if a.status == "online")
+
+        result: dict[str, Any] = {
             "status": "healthy",
             "memory_count": count,
             "agent_count": len(agents),
-        })
+            "agents_online": online,
+        }
+
+        # Indexing stats (from background worker pool)
+        idx_stats = memory_svc.index_pool_stats()
+        if idx_stats is not None:
+            result["indexing"] = {
+                "queue_depth": idx_stats["queue_depth"],
+                "workers": idx_stats["workers"],
+                "workers_busy": idx_stats["workers_busy"],
+                "processed_total": idx_stats["processed_total"],
+                "failed_total": idx_stats["failed_total"],
+            }
+
+        # Graph stats (entity + edge counts from in-memory graph)
+        result["graph"] = {
+            "entity_count": memory_svc.entity_count(),
+            "edge_count": memory_svc.relationship_count(),
+        }
+
+        # Maintenance scheduler status (None until scheduler is wired)
+        if maintenance_scheduler is not None:
+            try:
+                result["maintenance"] = maintenance_scheduler.status()
+            except Exception:
+                logger.debug(
+                    "Failed to get maintenance scheduler status",
+                    exc_info=True,
+                )
+
+        return JSONResponse(result)
 
     # -- Memory operations ---------------------------------------------------
 
@@ -1521,6 +1555,48 @@ def create_api_app(
         result = await doc_svc.compute_compliance_score(project_id)
         return JSONResponse(result)
 
+    # -- Maintenance ---------------------------------------------------------
+
+    async def maintenance_status(request: Request) -> JSONResponse:
+        """Return maintenance scheduler status."""
+        if maintenance_scheduler is None:
+            return JSONResponse(
+                {"error": "maintenance scheduler not configured"},
+                status_code=404,
+            )
+        try:
+            return JSONResponse(maintenance_scheduler.status())
+        except Exception:
+            logger.error("Failed to get maintenance status", exc_info=True)
+            return JSONResponse(
+                {"error": "failed to retrieve status"}, status_code=500,
+            )
+
+    async def maintenance_run(request: Request) -> JSONResponse:
+        """Trigger a maintenance task by name."""
+        if maintenance_scheduler is None:
+            return JSONResponse(
+                {"error": "maintenance scheduler not configured"},
+                status_code=503,
+            )
+        body = await request.json()
+        task_name = body.get("task")
+        if not task_name:
+            return JSONResponse(
+                {"error": "task is required"}, status_code=400,
+            )
+        try:
+            await maintenance_scheduler.run_task(task_name)
+            return JSONResponse({"status": "started", "task": task_name})
+        except Exception as exc:
+            logger.error(
+                "Failed to trigger maintenance task %s", task_name,
+                exc_info=True,
+            )
+            return JSONResponse(
+                {"error": str(exc)}, status_code=500,
+            )
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1561,6 +1637,10 @@ def create_api_app(
 
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),
+
+        # Maintenance
+        Route("/api/v1/maintenance/status", maintenance_status, methods=["GET"]),
+        Route("/api/v1/maintenance/run", maintenance_run, methods=["POST"]),
 
         # Documents (Phase 2.5)
         Route("/api/v1/documents", store_document, methods=["POST"]),
@@ -1693,8 +1773,8 @@ async def run_http_server(
     event_log = EventLog(max_events=5000)
 
     # Create services — then wrap bus with HTTP transport
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc = (
-        await create_ncms_services(config)
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = (
+        await create_ncms_services(config, event_log=event_log)
     )
 
     # Create DocumentService (Phase 2.5) using same DB connection

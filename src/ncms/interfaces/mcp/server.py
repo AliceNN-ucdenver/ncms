@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 async def create_ncms_services(
     config: NCMSConfig | None = None,
+    event_log: object | None = None,
 ) -> tuple[MemoryService, BusService, SnapshotService]:
-    """Initialize all NCMS services. Returns (memory_svc, bus_svc, snapshot_svc)."""
+    """Initialize all NCMS services. Returns (memory_svc, bus_svc, snapshot_svc, ...)."""
     config = config or NCMSConfig()
 
     # Infrastructure
@@ -136,7 +137,18 @@ async def create_ncms_services(
     # Start background indexing pool if enabled (default: True)
     await memory_svc.start_index_pool()
 
-    return memory_svc, bus_svc, snapshot_svc, consolidation_svc
+    # Maintenance scheduler (background periodic tasks)
+    from ncms.application.maintenance_scheduler import MaintenanceScheduler
+
+    scheduler = MaintenanceScheduler(
+        consolidation_svc=consolidation_svc,
+        episode_svc=episode,
+        config=config,
+        event_log=event_log,
+    )
+    await scheduler.start()
+
+    return memory_svc, bus_svc, snapshot_svc, consolidation_svc, scheduler
 
 
 def create_mcp_server(
@@ -158,6 +170,8 @@ def create_mcp_server(
 
 async def run_server(config: NCMSConfig | None = None) -> None:
     """Create and run the NCMS MCP server."""
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc = await create_ncms_services(config)
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = (
+        await create_ncms_services(config)
+    )
     mcp = create_mcp_server(memory_svc, bus_svc, snapshot_svc, consolidation_svc)
     await mcp.run_stdio_async()

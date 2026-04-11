@@ -359,27 +359,49 @@ def load(
 @cli.command()
 @click.option("--db", default=None, help="Database path")
 @click.option("--index-path", default=None, help="Index path")
-@click.option("--batch-size", default=100, type=int, help="Batch size for re-indexing")
-def reindex(db: str | None, index_path: str | None, batch_size: int) -> None:
-    """Re-index existing memories for SPLADE sparse neural retrieval.
+@click.option("--bm25/--no-bm25", default=True, help="Rebuild BM25 index (default: on)")
+@click.option("--splade/--no-splade", default=True, help="Rebuild SPLADE index (default: on)")
+@click.option(
+    "--entities/--no-entities", default=False,
+    help="Re-extract entities via GLiNER (default: off)",
+)
+@click.option(
+    "--graph/--no-graph", default=False,
+    help="Rebuild knowledge graph from SQLite (default: off)",
+)
+def reindex(
+    db: str | None,
+    index_path: str | None,
+    bm25: bool,
+    splade: bool,
+    entities: bool,
+    graph: bool,
+) -> None:
+    """Rebuild search indexes from persisted memories.
 
-    When SPLADE is enabled on an existing NCMS database, old memories
-    lack sparse vectors. This command re-indexes all memories so SPLADE
-    can participate in retrieval for the full corpus.
-
-    Also rebuilds the BM25 index if any documents are missing.
+    By default rebuilds BM25 and SPLADE indexes. Use flags to control
+    which indexes are rebuilt. Entity re-extraction and graph rebuild
+    are off by default since they are more expensive.
 
     Examples:
         ncms reindex
-        ncms reindex --batch-size 50
+        ncms reindex --no-splade
+        ncms reindex --entities --graph
+        ncms reindex --no-bm25 --splade
     """
     from rich.console import Console
     from rich.progress import Progress
 
     console = Console()
 
+    if not any([bm25, splade, entities, graph]):
+        console.print("[yellow]Nothing to do.[/] Enable at least one rebuild target.")
+        return
+
     async def _reindex() -> None:
+        from ncms.application.reindex_service import ReindexService
         from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
         from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
         from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
@@ -387,76 +409,122 @@ def reindex(db: str | None, index_path: str | None, batch_size: int) -> None:
         if db:
             config.db_path = db
 
-        if not config.splade_enabled:
-            console.print(
-                "[yellow]SPLADE is not enabled.[/] Set NCMS_SPLADE_ENABLED=true "
-                "to enable SPLADE retrieval."
-            )
-            console.print("Proceeding with BM25-only reindex...")
-
+        # Initialize store
         store = SQLiteStore(db_path=config.db_path)
         await store.initialize()
-        idx = TantivyEngine(path=index_path or config.index_path)
-        idx.initialize()
 
-        # Load SPLADE if enabled
-        splade = None
-        if config.splade_enabled:
+        # Initialize BM25 index
+        tantivy = TantivyEngine(path=index_path or config.index_path)
+        tantivy.initialize()
+
+        # Initialize SPLADE if enabled and requested
+        splade_engine = None
+        if splade and config.splade_enabled:
             from ncms.infrastructure.indexing.splade_engine import SpladeEngine
 
             console.print("Loading SPLADE model...")
-            splade = SpladeEngine(
+            splade_engine = SpladeEngine(
                 model_name=config.splade_model,
                 cache_dir=config.model_cache_dir,
             )
             console.print(f"[green]SPLADE loaded:[/] {config.splade_model}")
+        elif splade and not config.splade_enabled:
+            console.print(
+                "[yellow]SPLADE is not enabled.[/] Set NCMS_SPLADE_ENABLED=true "
+                "to enable SPLADE retrieval. Skipping SPLADE rebuild."
+            )
 
-        # Get all memories
+        # Initialize graph
+        graph_engine = NetworkXGraph()
+
+        # Create reindex service
+        svc = ReindexService(
+            store=store,
+            tantivy=tantivy,
+            splade=splade_engine,
+            graph=graph_engine,
+            config=config,
+        )
+
+        # Load all memories once
         memories = await store.list_memories(limit=1_000_000)
         total = len(memories)
-        console.print(f"Found {total} memories to re-index.")
+        console.print(f"Found {total} memories in database.")
 
         if total == 0:
             console.print("[yellow]No memories to re-index.[/]")
             await store.close()
             return
 
-        bm25_indexed = 0
-        splade_indexed = 0
-        errors = 0
+        # Build target list for display
+        targets = []
+        if bm25:
+            targets.append("BM25")
+        if splade and splade_engine is not None:
+            targets.append("SPLADE")
+        if entities:
+            targets.append("Entities")
+        if graph:
+            targets.append("Graph")
+        console.print(f"Rebuilding: {', '.join(targets)}")
 
-        with Progress() as progress:
-            task = progress.add_task("Re-indexing...", total=total)
+        # Run each rebuild phase with its own progress bar
+        with Progress(console=console) as progress:
+            if bm25:
+                task_id = progress.add_task("[cyan]BM25 indexing...", total=total)
+                try:
+                    await svc.rebuild_bm25(
+                        memories=memories,
+                        progress_callback=lambda cur, _tot: progress.update(
+                            task_id, completed=cur,
+                        ),
+                    )
+                    progress.update(task_id, completed=total)
+                except Exception as e:
+                    console.print(f"[red]BM25 rebuild failed:[/] {e}")
 
-            for i in range(0, total, batch_size):
-                batch = memories[i:i + batch_size]
-                for mem in batch:
-                    try:
-                        # BM25 re-index
-                        idx.add(
-                            doc_id=mem.id,
-                            content=mem.content,
-                            domains=mem.domains,
-                            tags=mem.tags,
-                        )
-                        bm25_indexed += 1
+            if splade and splade_engine is not None:
+                task_id = progress.add_task(
+                    "[cyan]SPLADE indexing...", total=total,
+                )
+                try:
+                    await svc.rebuild_splade(
+                        memories=memories,
+                        progress_callback=lambda cur, _tot: progress.update(
+                            task_id, completed=cur,
+                        ),
+                    )
+                    progress.update(task_id, completed=total)
+                except Exception as e:
+                    console.print(f"[red]SPLADE rebuild failed:[/] {e}")
 
-                        # SPLADE re-index
-                        if splade is not None:
-                            splade.add(mem.id, mem.content)
-                            splade_indexed += 1
+            if entities:
+                task_id = progress.add_task(
+                    "[cyan]Entity extraction...", total=total,
+                )
+                try:
+                    await svc.rebuild_entities(
+                        memories=memories,
+                        progress_callback=lambda cur, _tot: progress.update(
+                            task_id, completed=cur,
+                        ),
+                    )
+                    progress.update(task_id, completed=total)
+                except Exception as e:
+                    console.print(f"[red]Entity rebuild failed:[/] {e}")
 
-                    except Exception:
-                        errors += 1
+            if graph:
+                task_id = progress.add_task("[cyan]Graph rebuild...", total=1)
+                try:
+                    from ncms.application.graph_service import GraphService
 
-                    progress.update(task, advance=1)
+                    graph_svc = GraphService(store=store, graph=graph_engine)
+                    await graph_svc.rebuild_from_store()
+                    progress.update(task_id, completed=1)
+                except Exception as e:
+                    console.print(f"[red]Graph rebuild failed:[/] {e}")
 
-        console.print(
-            f"\n[green]Re-index complete:[/]\n"
-            f"  BM25: {bm25_indexed} documents\n"
-            f"  SPLADE: {splade_indexed} documents\n"
-            f"  Errors: {errors}"
-        )
+        console.print("\n[green]Re-index complete.[/]")
         await store.close()
 
     asyncio.run(_reindex())
@@ -1191,6 +1259,277 @@ def episodes_show(episode_id: str, db: str | None) -> None:
             await store.close()
 
     asyncio.run(_show())
+
+
+@cli.group()
+def maintenance() -> None:
+    """Maintenance scheduler: status and manual task execution.
+
+    View scheduler status or manually trigger maintenance tasks
+    (consolidation, dream cycles, episode closure, decay).
+    """
+    pass
+
+
+@maintenance.command("status")
+def maintenance_status() -> None:
+    """Show maintenance scheduler status.
+
+    Displays which tasks are registered, last/next run times,
+    run counts, and any errors.
+
+    Examples:
+        ncms maintenance status
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _status() -> None:
+        from ncms.config import NCMSConfig
+
+        config = NCMSConfig()
+
+        if not config.maintenance_enabled:
+            console.print(
+                "[yellow]Maintenance scheduler is disabled.[/]\n"
+                "Set NCMS_MAINTENANCE_ENABLED=true to enable."
+            )
+            return
+
+        # Show configured intervals and feature flags
+        table = Table(title="Maintenance Configuration")
+        table.add_column("Task", style="cyan")
+        table.add_column("Interval")
+        table.add_column("Feature Flag")
+        table.add_column("Enabled", justify="center")
+
+        tasks_info = [
+            (
+                "consolidation",
+                f"{config.maintenance_consolidation_interval_minutes}m",
+                "consolidation_knowledge_enabled",
+                config.consolidation_knowledge_enabled,
+            ),
+            (
+                "dream",
+                f"{config.maintenance_dream_interval_minutes}m",
+                "dream_cycle_enabled",
+                config.dream_cycle_enabled,
+            ),
+            (
+                "episode_close",
+                f"{config.maintenance_episode_close_interval_minutes}m",
+                "episodes_enabled",
+                config.episodes_enabled,
+            ),
+            (
+                "decay",
+                f"{config.maintenance_decay_interval_minutes}m",
+                "(always)",
+                True,
+            ),
+        ]
+
+        for name, interval, flag, enabled in tasks_info:
+            status = "[green]yes[/]" if enabled else "[red]no[/]"
+            table.add_row(name, interval, flag, status)
+
+        console.print(table)
+        console.print(
+            "\n[dim]Note: Tasks only run when both maintenance_enabled=true "
+            "and the task's feature flag is enabled.[/]"
+        )
+
+    asyncio.run(_status())
+
+
+@maintenance.command("run")
+@click.argument(
+    "task",
+    type=click.Choice(
+        ["consolidation", "dream", "episode-close", "decay", "all"],
+    ),
+)
+def maintenance_run(task: str) -> None:
+    """Manually run a maintenance task.
+
+    Executes the task immediately and displays results.
+
+    Examples:
+        ncms maintenance run consolidation
+        ncms maintenance run decay
+        ncms maintenance run all
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _run() -> None:
+        from ncms.application.consolidation_service import ConsolidationService
+        from ncms.application.maintenance_scheduler import MaintenanceScheduler
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+
+        # Stand up minimal services for the task
+        store = SQLiteStore(db_path=config.db_path)
+        await store.initialize()
+        index = TantivyEngine(path=config.index_path)
+        index.initialize()
+        graph = NetworkXGraph()
+
+        # SPLADE (optional)
+        splade = None
+        if config.splade_enabled:
+            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+            splade = SpladeEngine(
+                model_name=config.splade_model,
+                cache_dir=config.model_cache_dir,
+            )
+
+        consolidation_svc = ConsolidationService(
+            store=store, index=index, graph=graph, config=config,
+            splade=splade,
+        )
+
+        # Episode service (optional)
+        episode_svc = None
+        if config.episodes_enabled:
+            from ncms.application.episode_service import EpisodeService
+
+            episode_svc = EpisodeService(
+                store=store, index=index, config=config, splade=splade,
+            )
+
+        # Rebuild graph for consolidation
+        from ncms.application.graph_service import GraphService
+
+        await GraphService(store=store, graph=graph).rebuild_from_store()
+
+        scheduler = MaintenanceScheduler(
+            consolidation_svc=consolidation_svc,
+            episode_svc=episode_svc,
+            config=config,
+        )
+
+        # Normalize task name (CLI uses hyphen, internal uses underscore)
+        task_name = task.replace("-", "_")
+
+        console.print(f"Running maintenance task: [bold]{task}[/]...")
+
+        try:
+            result = await scheduler.run_now(task_name)
+
+            if "error" in result:
+                console.print(f"[red]Error:[/] {result['error']}")
+            else:
+                for name, res in result.items():
+                    console.print(f"  [green]{name}:[/] {res}")
+        finally:
+            await store.close()
+
+    asyncio.run(_run())
+
+
+@cli.command()
+@click.option("--db", default=None, help="Database path")
+def lint(db: str | None) -> None:
+    """Run read-only diagnostics on the memory store.
+
+    Detects orphan nodes, duplicates, junk entities, dangling
+    references, and stale episodes. Returns exit code 1 if any
+    errors are found.
+
+    Examples:
+        ncms lint
+        ncms lint --db /path/to/ncms.db
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _lint() -> None:
+        from ncms.application.graph_service import GraphService
+        from ncms.application.lint_service import LintService
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+
+        store = SQLiteStore(db_path=config.db_path)
+        await store.initialize()
+        graph = NetworkXGraph()
+
+        try:
+            # Rebuild graph from store so entity-memory links are available
+            await GraphService(store=store, graph=graph).rebuild_from_store()
+
+            svc = LintService(store=store, graph=graph)
+            report = await svc.run_full_lint()
+
+            # Summary line
+            n_errors = sum(1 for i in report.issues if i.severity == "error")
+            n_warnings = sum(1 for i in report.issues if i.severity == "warning")
+            n_info = sum(1 for i in report.issues if i.severity == "info")
+
+            if not report.issues:
+                console.print(
+                    f"[green]No issues found.[/] "
+                    f"({report.duration_ms:.0f}ms)"
+                )
+                return
+
+            # Issues table
+            table = Table(title="Lint Results")
+            table.add_column("Severity", style="bold", width=8)
+            table.add_column("Category", style="cyan", width=16)
+            table.add_column("Message")
+
+            severity_style = {
+                "error": "red",
+                "warning": "yellow",
+                "info": "dim",
+            }
+
+            for issue in report.issues:
+                style = severity_style.get(issue.severity, "")
+                table.add_row(
+                    f"[{style}]{issue.severity}[/]",
+                    issue.category,
+                    issue.message,
+                )
+
+            console.print(table)
+
+            # Summary
+            parts = []
+            if n_errors:
+                parts.append(f"[red]{n_errors} error(s)[/]")
+            if n_warnings:
+                parts.append(f"[yellow]{n_warnings} warning(s)[/]")
+            if n_info:
+                parts.append(f"[dim]{n_info} info[/]")
+            console.print(
+                f"\n{', '.join(parts)} "
+                f"| {report.duration_ms:.0f}ms"
+            )
+
+            if n_errors > 0:
+                raise SystemExit(1)
+        finally:
+            await store.close()
+
+    asyncio.run(_lint())
 
 
 if __name__ == "__main__":
