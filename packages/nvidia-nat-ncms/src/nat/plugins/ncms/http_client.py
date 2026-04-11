@@ -113,24 +113,6 @@ class NCMSHttpClient:
         resp.raise_for_status()
         return resp.json()
 
-    async def bulk_import(
-        self,
-        directory_path: str,
-        domains: list[str] | None = None,
-        project: str | None = None,
-    ) -> dict[str, Any]:
-        """Bulk import a directory of knowledge files via async indexing."""
-        body: dict[str, Any] = {"path": directory_path}
-        if domains:
-            body["domains"] = domains
-        if project:
-            body["project"] = project
-        resp = await self._client.post(
-            "/api/v1/knowledge/bulk-import", json=body, timeout=600.0,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
     # ── Knowledge Bus operations ──────────────────────────────────────────
 
     async def bus_register(

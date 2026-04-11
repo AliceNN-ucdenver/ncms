@@ -158,25 +158,7 @@ async def _load_knowledge_files(
 
         file_domains = list(set(agent_domains + extra_domains))
 
-        # Try bulk import first (server-side chunking + async indexing)
-        try:
-            result = await client.bulk_import(
-                directory_path=str(p), domains=file_domains,
-            )
-            loaded += result.get("memories_created", 0)
-            total += result.get("files_processed", 0)
-            logger.info(
-                "[knowledge] Bulk imported %s: %d files -> %d memories",
-                dir_path, result.get("files_processed", 0),
-                result.get("memories_created", 0),
-            )
-            continue  # Success — skip per-file fallback
-        except Exception:
-            logger.info(
-                "[knowledge] Bulk import unavailable, falling back to per-file load",
-            )
-
-        # Fallback: load files individually
+        # Load files individually via HTTP (agent → hub are separate containers)
         for filepath in sorted(p.rglob("*")):
             if not filepath.is_file():
                 continue
