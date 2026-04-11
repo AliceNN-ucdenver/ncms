@@ -76,6 +76,9 @@ class NCMSConfig(BaseSettings):
     # Defaults to ~/.cache/huggingface/hub if not set
     model_cache_dir: str | None = None
 
+    # Content classification (Phase 4 content-aware ingestion)
+    content_classification_enabled: bool = False
+
     # Content size gating (Phase 1 data integrity)
     max_content_length: int = 5000
 
@@ -145,6 +148,10 @@ class NCMSConfig(BaseSettings):
     pattern_stability_threshold: float = 0.7         # Promote to strategic_insight above this
     abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
     consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
+
+    # Temporal query scoring (Phase 4 temporal)
+    temporal_enabled: bool = False
+    scoring_weight_temporal: float = 0.2  # Additive weight when temporal ref detected
 
     # Per-intent signal weights (Phase 9 — RouteRAG-style)
     intent_routing_enabled: bool = False

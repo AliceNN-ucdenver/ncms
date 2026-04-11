@@ -44,6 +44,11 @@ from ncms.domain.scoring import (
     supersession_penalty,
     total_activation,
 )
+from ncms.domain.temporal_parser import (
+    TemporalReference,
+    compute_temporal_proximity,
+    parse_temporal_reference,
+)
 from ncms.infrastructure.observability.event_log import NullEventLog
 
 logger = logging.getLogger(__name__)
@@ -65,6 +70,7 @@ class MemoryService:
         episode: object | None = None,
         intent_classifier: object | None = None,
         reranker: object | None = None,
+        section_service: object | None = None,
     ):
         self._store = store
         self._index = index
@@ -84,6 +90,8 @@ class MemoryService:
         self._intent_classifier = intent_classifier
         # Optional cross-encoder reranker (Phase 10, duck-typed)
         self._reranker = reranker
+        # Optional SectionService for content-aware ingestion (duck-typed)
+        self._section_svc = section_service
         # Background indexing worker pool (Phase 2 performance)
         self._index_pool: object | None = None
 
@@ -317,6 +325,60 @@ class MemoryService:
             if tags is None:
                 tags = []
             tags = list(tags) + ["oversized_content"]
+
+        # ── Gate 3: Content classification (Phase 4, optional) ───────────
+        if self._config.content_classification_enabled and self._section_svc is not None:
+            try:
+                from ncms.domain.content_classifier import (
+                    ContentClass,
+                    classify_content,
+                    extract_sections,
+                )
+
+                t0 = time.perf_counter()
+                classification = classify_content(content, memory_type)
+                if classification.content_class == ContentClass.NAVIGABLE:
+                    sections = extract_sections(content, classification)
+                    if len(sections) >= 2:
+                        _emit_stage(
+                            "content_classification",
+                            (time.perf_counter() - t0) * 1000,
+                            {
+                                "content_class": classification.content_class.value,
+                                "format_hint": classification.format_hint,
+                                "section_count": len(sections),
+                            },
+                        )
+                        return await self._section_svc.ingest_navigable(  # type: ignore[union-attr]
+                            content=content,
+                            classification=classification,
+                            sections=sections,
+                            memory_type=memory_type,
+                            importance=importance,
+                            tags=tags,
+                            structured=structured,
+                            source=source_agent,
+                            agent_id=source_agent,
+                        )
+                _emit_stage(
+                    "content_classification",
+                    (time.perf_counter() - t0) * 1000,
+                    {
+                        "content_class": classification.content_class.value,
+                        "format_hint": classification.format_hint,
+                        "section_count": 0,
+                        "result": "atomic_passthrough",
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "Content classification failed, proceeding as atomic",
+                    exc_info=True,
+                )
+                _emit_stage(
+                    "content_classification_error",
+                    (time.perf_counter() - pipeline_start) * 1000,
+                )
 
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
@@ -1022,6 +1084,25 @@ class MemoryService:
                 "llm_fallback": llm_fallback_used,
             })
 
+        # Phase 4 temporal: parse temporal reference from query
+        temporal_ref: TemporalReference | None = None
+        if self._config.temporal_enabled:
+            t0_temp = time.perf_counter()
+            temporal_ref = parse_temporal_reference(query)
+            if temporal_ref:
+                _emit_stage("temporal_parse", (time.perf_counter() - t0_temp) * 1000, {
+                    "range_start": (
+                        temporal_ref.range_start.isoformat()
+                        if temporal_ref.range_start else None
+                    ),
+                    "range_end": (
+                        temporal_ref.range_end.isoformat()
+                        if temporal_ref.range_end else None
+                    ),
+                    "recency_bias": temporal_ref.recency_bias,
+                    "ordinal": temporal_ref.ordinal,
+                })
+
         # Tier 1: BM25 candidate retrieval via Tantivy
         # ── Parallel candidate retrieval: BM25 + SPLADE + entity extraction ──
         # These three operations are independent CPU/GPU-bound tasks.
@@ -1516,6 +1597,21 @@ class MemoryService:
                     half_life_days=self._config.recency_half_life_days,
                 )
 
+            # Phase 4 temporal: compute temporal proximity score
+            temporal_raw = 0.0
+            if temporal_ref is not None:
+                # Prefer observed_at (bitemporal) over created_at
+                event_time = memory.created_at
+                if nodes:
+                    for mn in nodes:
+                        if mn.observed_at is not None:
+                            event_time = mn.observed_at
+                            break
+                if event_time is not None:
+                    temporal_raw = compute_temporal_proximity(
+                        event_time, temporal_ref,
+                    )
+
             candidates_scored += 1
             raw_candidates.append({
                 "memory": memory,
@@ -1523,6 +1619,7 @@ class MemoryService:
                 "bm25_raw": bm25_score,
                 "splade_raw": splade_score_val,
                 "graph_raw": graph_spread,
+                "temporal_raw": temporal_raw,
                 "act": act,
                 "bl": bl,
                 "spread": spread,
@@ -1545,13 +1642,18 @@ class MemoryService:
             max_bm25 = max(c["bm25_raw"] for c in raw_candidates) or 1.0
             max_splade = max(c["splade_raw"] for c in raw_candidates) or 1.0
             max_graph = max(c["graph_raw"] for c in raw_candidates) or 1.0
+            max_temporal = max(c["temporal_raw"] for c in raw_candidates) or 1.0
         else:
-            max_bm25 = max_splade = max_graph = 1.0
+            max_bm25 = max_splade = max_graph = max_temporal = 1.0
 
         scored: list[ScoredMemory] = []
         filtered_below_threshold = 0
         top_activation = 0.0
         w_hierarchy = self._config.scoring_weight_hierarchy
+        w_temporal = (
+            self._config.scoring_weight_temporal
+            if temporal_ref is not None else 0.0
+        )
         actr_enabled = w_actr > 0
         w_ce = self._config.scoring_weight_ce if ce_scores else 0.0
 
@@ -1570,11 +1672,15 @@ class MemoryService:
             bm25_norm = c["bm25_raw"] / max_bm25
             splade_norm = c["splade_raw"] / max_splade
             graph_norm = c["graph_raw"] / max_graph
+            temporal_norm = c["temporal_raw"] / max_temporal
 
             # Combined score with normalized signals
             # When cross-encoder is active, CE dominates with BM25/SPLADE as tiebreakers.
             # Penalty applied ONLY here (not also inside ACT-R) to avoid
             # double-counting when w_actr > 0.
+            # Temporal score is additive in both paths when a temporal
+            # reference was detected.
+            temporal_contrib = temporal_norm * w_temporal
             if ce_scores:
                 ce_raw = ce_scores.get(c["memory_id"], min_ce)
                 ce_norm = (ce_raw - min_ce) / ce_range
@@ -1582,6 +1688,7 @@ class MemoryService:
                     ce_norm * w_ce
                     + bm25_norm * (1.0 - w_ce) * 0.67  # BM25 tiebreaker
                     + splade_norm * (1.0 - w_ce) * 0.33  # SPLADE tiebreaker
+                    + temporal_contrib
                     - c["penalty"]
                 )
             else:
@@ -1592,6 +1699,7 @@ class MemoryService:
                     + graph_norm * w_graph
                     + c["h_bonus"] * w_hierarchy
                     + c["rec_score"] * w_recency
+                    + temporal_contrib
                     - c["penalty"]
                 )
 
@@ -1629,6 +1737,7 @@ class MemoryService:
                     node_types=c["node_types"],
                     intent=intent_result.intent.value if intent_result else None,
                     hierarchy_bonus=c["h_bonus"],
+                    temporal_score=temporal_contrib,
                 )
             )
 
@@ -1641,6 +1750,7 @@ class MemoryService:
                 "max_bm25": round(max_bm25, 3),
                 "max_splade": round(max_splade, 3),
                 "max_graph": round(max_graph, 3),
+                "max_temporal": round(max_temporal, 3),
             },
         }
         if self._config.pipeline_debug and scored:

@@ -1575,17 +1575,17 @@ The query set should include:
 | `ncms reindex` command | ✅ Done | `application/reindex_service.py`, fixed broken CLI in `cli/main.py` |
 | Health endpoint enhancement | ✅ Done | `http/api.py` — indexing stats, graph stats, maintenance status |
 
-### Phase 4: Content-Aware Ingestion & Temporal (Weeks 4-5)
+### Phase 4: Content-Aware Ingestion & Temporal (Weeks 4-5) — ✅ COMPLETE
 
-| Task | Effort | Files |
+| Task | Status | Files |
 |------|--------|-------|
-| Ingest-time content classifier (heuristic) | 4h | `memory_service.py`, new `domain/content_classifier.py` |
-| Section extraction (reuse + extend knowledge_loader chunking for YAML) | 6h | `memory_service.py`, `knowledge_loader.py` |
-| Section index generation + parent/child memory linking | 5h | `memory_service.py`, `models.py` |
-| Document entity graph linking (per-section GLiNER calls) | 4h | `document_service.py`, `graph_service.py` |
-| Document-aware recall (DocumentContext + section navigation) | 5h | `memory_service.py`, `models.py` |
-| Temporal query parser (Phase 1: regex, 6+ pattern types) | 6h | New: `domain/temporal_parser.py`, `scoring.py` |
-| Temporal scoring integration | 2h | `memory_service.py` |
+| Ingest-time content classifier (heuristic) | ✅ Done | `domain/content_classifier.py` (ContentClass, classify_content, extract_sections) |
+| Section extraction (markdown, JSON, YAML, structured text) | ✅ Done | `domain/content_classifier.py` (reuses knowledge_loader patterns) |
+| Section index generation + parent/child memory linking | ✅ Done | `application/section_service.py` (SectionService.ingest_navigable) |
+| Document entity graph linking (per-section GLiNER calls) | ✅ Done | Sections stored as individual memories → indexed by existing pipeline |
+| Document-aware recall (DocumentContext + section navigation) | ✅ Done | Section children carry parent_index_id for navigation |
+| Temporal query parser (Phase 1: regex, 6+ pattern types) | ✅ Done | `domain/temporal_parser.py` (parse_temporal_reference, compute_temporal_proximity) |
+| Temporal scoring integration | ✅ Done | `application/memory_service.py` search() — additive w_temporal signal |
 
 ### Phase 5: Level-First Retrieval & Synthesis (Weeks 5-6)
 

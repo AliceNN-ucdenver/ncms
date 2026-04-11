@@ -463,6 +463,8 @@ class ScoredMemory(BaseModel):
     node_types: list[str] = Field(default_factory=list)
     intent: str | None = None
     hierarchy_bonus: float = 0.0
+    # Phase 4 temporal: temporal query match score
+    temporal_score: float = 0.0
 
 
 # ---------------------------------------------------------------------------
