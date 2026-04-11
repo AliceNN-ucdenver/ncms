@@ -523,6 +523,67 @@ class RecallResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase 5: Level-First Retrieval & Synthesis
+# ---------------------------------------------------------------------------
+
+
+class TraversalMode(StrEnum):
+    """Traversal strategy for hierarchical memory navigation."""
+
+    TOP_DOWN = "top_down"          # Abstract → episodes → atomic
+    BOTTOM_UP = "bottom_up"        # Atomic → episode → abstract
+    TEMPORAL = "temporal"          # Entity state timeline
+    LATERAL = "lateral"            # Episode siblings + related episodes
+
+
+class SynthesisMode(StrEnum):
+    """Synthesis output mode — controls how retrieved memories are combined."""
+
+    SUMMARY = "summary"            # Brief overview of key points
+    DETAIL = "detail"              # Exhaustive context with evidence
+    TIMELINE = "timeline"          # Chronological narrative
+    COMPARISON = "comparison"      # Before/after or multi-perspective
+    EVIDENCE = "evidence"          # Fact-backed claims with citations
+
+
+class TraversalResult(BaseModel):
+    """Result of hierarchical traversal from a seed node."""
+
+    seed_id: str                   # Starting memory/node ID
+    traversal_mode: TraversalMode
+    results: list[RecallResult] = Field(default_factory=list)
+    levels_traversed: int = 0      # How many hierarchy levels covered
+    path: list[str] = Field(default_factory=list)  # Node IDs in traversal order
+
+
+class TopicCluster(BaseModel):
+    """Emergent topic cluster from L4 abstract grouping."""
+
+    topic_id: str = Field(default_factory=_uuid)
+    label: str = ""                 # Human-readable topic label (from top entities)
+    entity_keys: list[str] = Field(default_factory=list)  # Shared entities
+    abstract_ids: list[str] = Field(default_factory=list)  # Abstract memory IDs
+    episode_ids: list[str] = Field(default_factory=list)   # Contributing episodes
+    confidence: float = 0.0         # Cluster quality score
+    member_count: int = 0
+
+
+class SynthesizedResponse(BaseModel):
+    """Structured synthesis output with provenance and token accounting."""
+
+    query: str
+    mode: SynthesisMode
+    content: str                    # The synthesized text
+    sources: list[str] = Field(default_factory=list)  # Memory IDs used
+    source_count: int = 0
+    token_budget: int = 0           # Configured budget
+    tokens_used: int = 0            # Approximate tokens in content
+    traversal: TraversalMode | None = None  # If traversal was used
+    topic_cluster: TopicCluster | None = None  # If topic-scoped
+    intent: str = "fact_lookup"     # Classified intent
+
+
+# ---------------------------------------------------------------------------
 # Agent Registry
 # ---------------------------------------------------------------------------
 

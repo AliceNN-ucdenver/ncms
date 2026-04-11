@@ -726,6 +726,161 @@ def register_tools(
                 "active_watches": list(_active_watchers.keys()),
             }
 
+    # ── Phase 5: Level-First Retrieval & Synthesis ─────────────────
+
+    @mcp.tool()
+    async def search_level(
+        query: str,
+        node_types: list[str] | None = None,
+        domain: str | None = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Search memories filtered to specific HTMG hierarchy levels.
+
+        Scopes retrieval to particular node types (atomic, entity_state,
+        episode, abstract) — useful for finding only episodes, only
+        abstracts/insights, or only entity states.
+
+        Args:
+            query: Search query.
+            node_types: Filter to these types (e.g. ["abstract", "episode"]).
+            domain: Optional domain scope.
+            limit: Max results.
+
+        Returns:
+            Scored memories filtered to requested level(s).
+        """
+        results = await memory_svc.search_level(
+            query, node_types=node_types, domain=domain, limit=limit,
+        )
+        return [
+            {
+                "memory_id": sm.memory.id,
+                "content": sm.memory.content[:500],
+                "score": round(sm.total_activation, 4),
+                "node_types": sm.node_types,
+                "memory_type": sm.memory.memory_type,
+            }
+            for sm in results
+        ]
+
+    @mcp.tool()
+    async def traverse_memory(
+        seed_memory_id: str,
+        mode: str = "bottom_up",
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Traverse the HTMG hierarchy from a seed memory.
+
+        Navigate the memory hierarchy using different strategies:
+        - top_down: From abstract → episodes → atomic fragments
+        - bottom_up: From atomic → episode → abstracts
+        - temporal: Entity state timeline
+        - lateral: Episode siblings and related episodes
+
+        Args:
+            seed_memory_id: Starting memory ID.
+            mode: Traversal strategy (top_down, bottom_up, temporal, lateral).
+            limit: Max results to collect.
+
+        Returns:
+            Traversal results with path and hierarchy levels.
+        """
+        result = await memory_svc.traverse(
+            seed_memory_id, mode=mode, limit=limit,
+        )
+        return {
+            "seed_id": result.seed_id,
+            "traversal_mode": result.traversal_mode,
+            "levels_traversed": result.levels_traversed,
+            "result_count": len(result.results),
+            "path": result.path[:20],
+            "results": [
+                {
+                    "memory_id": rr.memory.memory.id,
+                    "content": rr.memory.memory.content[:300],
+                    "retrieval_path": rr.retrieval_path,
+                    "memory_type": rr.memory.memory.memory_type,
+                }
+                for rr in result.results
+            ],
+        }
+
+    @mcp.tool()
+    async def get_topic_map() -> list[dict[str, Any]]:
+        """Get emergent topic map from abstract memory clustering.
+
+        Clusters L4 abstract nodes by shared entities to reveal
+        emergent knowledge themes. Requires at least one prior
+        consolidation pass to have generated abstracts.
+
+        Returns:
+            Topic clusters with labels, entities, and member counts.
+        """
+        clusters = await memory_svc.get_topic_map()
+        return [
+            {
+                "topic_id": c.topic_id,
+                "label": c.label,
+                "entity_keys": c.entity_keys,
+                "abstract_count": len(c.abstract_ids),
+                "episode_count": len(c.episode_ids),
+                "confidence": round(c.confidence, 3),
+            }
+            for c in clusters
+        ]
+
+    @mcp.tool()
+    async def synthesize_memory(
+        query: str,
+        mode: str = "summary",
+        domain: str | None = None,
+        limit: int = 10,
+        token_budget: int | None = None,
+        traversal: str | None = None,
+        seed_memory_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Synthesize a structured response from memory retrieval.
+
+        Combines search/recall with LLM synthesis to produce
+        token-budgeted responses with source provenance.
+
+        Modes:
+        - summary: Concise key points
+        - detail: Comprehensive with evidence
+        - timeline: Chronological narrative
+        - comparison: Before/after or multi-perspective
+        - evidence: Fact-backed claims with citations
+
+        Args:
+            query: Question to answer from memory.
+            mode: Synthesis mode.
+            domain: Optional domain scope.
+            limit: Max source memories.
+            token_budget: Max output tokens (default from config).
+            traversal: Optional traversal strategy instead of search.
+            seed_memory_id: Required with traversal.
+
+        Returns:
+            Synthesized response with content, sources, and token stats.
+        """
+        result = await memory_svc.synthesize(
+            query, mode=mode, domain=domain, limit=limit,
+            token_budget=token_budget, traversal=traversal,
+            seed_memory_id=seed_memory_id,
+        )
+        return {
+            "query": result.query,
+            "mode": result.mode,
+            "content": result.content,
+            "sources": result.sources,
+            "source_count": result.source_count,
+            "token_budget": result.token_budget,
+            "tokens_used": result.tokens_used,
+            "traversal": result.traversal,
+            "intent": result.intent,
+        }
+
     if consolidation_svc is not None:
 
         @mcp.tool()

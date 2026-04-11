@@ -1605,17 +1605,21 @@ The query set should include:
 
 Key findings: Async background indexing (3 workers) reduced ingest latency by 99%+. Intent-aware retrieval boosted state/temporal/pattern queries without regressing any standard benchmark. All harnesses now start the index pool and wait for completion before querying.
 
-### Phase 5: Level-First Retrieval & Synthesis (Weeks 5-6)
+### Phase 5: Level-First Retrieval & Synthesis (Weeks 5-6) — ✅ COMPLETE
 
-**Dependency**: Emergent topic map requires L4 abstracts. Before testing topic clustering, run at least one consolidation pass via the maintenance scheduler (Phase 3) or manually via `ncms` CLI / HTTP endpoint. Level-first retrieval and the synthesize() pipeline can be tested independently — they fall back gracefully when L4 content is absent.
-
-| Task | Effort | Files |
+| Task | Status | Files |
 |------|--------|-------|
-| Level-first retrieval: scoped search with over-fetch + node-type filter | 6h | `memory_service.py` |
-| Traversal strategies (top-down/bottom-up/temporal/lateral) | 8h | `memory_service.py`, `intent.py` |
-| Emergent topic map generation (L4 clustering) | 4h | `consolidation_service.py`, `models.py` |
-| `synthesize()` pipeline with 5 modes + token budgeting | 8h | `memory_service.py`, new `SynthesizedResponse` model |
-| MCP + HTTP synthesis endpoints | 2h | `mcp/tools.py`, `http/api.py` |
+| Level-first retrieval: scoped search with over-fetch + node-type filter | ✅ Done | `memory_service.py` (`search_level()`) |
+| Traversal strategies (top-down/bottom-up/temporal/lateral) | ✅ Done | `memory_service.py` (`traverse()`, 4 traversal helpers) |
+| Emergent topic map generation (L4 clustering) | ✅ Done | `memory_service.py` (`get_topic_map()`), `models.py` (`TopicCluster`) |
+| `synthesize()` pipeline with 5 modes + token budgeting | ✅ Done | `memory_service.py` (`synthesize()`), `models.py` (`SynthesizedResponse`, `SynthesisMode`) |
+| MCP tools (search_level, traverse_memory, get_topic_map, synthesize_memory) | ✅ Done | `mcp/tools.py` (4 new tools, total 22+1) |
+| HTTP endpoints (search-level, traverse, synthesize, topics) | ✅ Done | `http/api.py` (4 new routes) |
+| CLI: `ncms topic-map` | ✅ Done | `cli/main.py` |
+| Config: `level_first_enabled`, `synthesis_enabled`, `topic_map_enabled` | ✅ Done | `config.py` (7 new vars) |
+| Domain models: `TraversalMode`, `SynthesisMode`, `TraversalResult`, `TopicCluster`, `SynthesizedResponse` | ✅ Done | `domain/models.py` |
+
+**Dependency note**: Topic map requires L4 abstracts from consolidation. Level-first retrieval and synthesize() degrade gracefully when abstracts are absent. All features feature-flagged off by default.
 
 ### Phase 6: Export & Feedback (Weeks 6-7)
 

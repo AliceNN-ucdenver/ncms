@@ -20,15 +20,22 @@ from ncms.domain.entity_extraction import resolve_labels
 from ncms.domain.intent import IntentResult, QueryIntent, classify_intent
 from ncms.domain.models import (
     AccessRecord,
+    EdgeType,
     Entity,
     EntityStateSnapshot,
     EpisodeContext,
+    EpisodeMeta,
     Memory,
     RecallContext,
     RecallResult,
     Relationship,
     ScoredMemory,
     SearchLogEntry,
+    SynthesisMode,
+    SynthesizedResponse,
+    TopicCluster,
+    TraversalMode,
+    TraversalResult,
 )
 from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
 from ncms.domain.scoring import (
@@ -117,6 +124,12 @@ class MemoryService:
             features.append("reranker")
         if self._config.async_indexing_enabled:
             features.append("async_indexing")
+        if self._config.level_first_enabled:
+            features.append("level_first")
+        if self._config.synthesis_enabled:
+            features.append("synthesis")
+        if self._config.topic_map_enabled:
+            features.append("topic_map")
         logger.info("[memory_service] Active features: %s", ", ".join(features) or "none")
 
     @property
@@ -2491,6 +2504,575 @@ class MemoryService:
                         causal.conflicts_with.append(tid)
 
         return results
+
+    # ── Phase 5: Level-First Retrieval & Synthesis ─────────────────
+
+    async def search_level(
+        self,
+        query: str,
+        node_types: list[str] | None = None,
+        domain: str | None = None,
+        limit: int = 10,
+        agent_id: str | None = None,
+    ) -> list[ScoredMemory]:
+        """Level-first retrieval: search scoped to specific HTMG node types.
+
+        Over-fetches from the full search pipeline, then filters to the
+        requested node types. Falls back to regular search when level_first
+        is disabled or no node_types specified.
+
+        Args:
+            query: Search query.
+            node_types: Filter to these HTMG types (e.g. ["abstract", "episode"]).
+            domain: Optional domain scope.
+            limit: Max results to return.
+            agent_id: Caller agent ID for access logging.
+
+        Returns:
+            Scored memories filtered to requested hierarchy level(s).
+        """
+        if not node_types or not self._config.level_first_enabled:
+            return await self.search(query, domain=domain, limit=limit, agent_id=agent_id)
+
+        # Over-fetch to compensate for post-filter loss
+        overfetch = limit * self._config.level_first_overfetch_factor
+        candidates = await self.search(query, domain=domain, limit=overfetch, agent_id=agent_id)
+
+        # Filter to requested node types
+        filtered: list[ScoredMemory] = []
+        for sm in candidates:
+            if any(nt in node_types for nt in sm.node_types):
+                filtered.append(sm)
+                if len(filtered) >= limit:
+                    break
+
+        logger.info(
+            "[search_level] query=%r node_types=%s overfetch=%d → %d/%d after filter",
+            query[:60], node_types, overfetch, len(filtered), len(candidates),
+        )
+        return filtered
+
+    async def traverse(
+        self,
+        seed_memory_id: str,
+        mode: str = "bottom_up",
+        limit: int = 20,
+    ) -> TraversalResult:
+        """Traverse the HTMG hierarchy from a seed memory.
+
+        Strategies:
+        - top_down: Abstract → episodes → atomic fragments
+        - bottom_up: Atomic → episode membership → abstract summaries
+        - temporal: Entity state timeline for entities in the seed
+        - lateral: Episode siblings + related episodes via shared entities
+
+        Args:
+            seed_memory_id: Starting memory ID.
+            mode: Traversal strategy (top_down, bottom_up, temporal, lateral).
+            limit: Max results to collect.
+
+        Returns:
+            TraversalResult with ordered results and path metadata.
+        """
+        traversal_mode = TraversalMode(mode)
+        path: list[str] = [seed_memory_id]
+        results: list[RecallResult] = []
+        levels = 0
+
+        # Get seed memory and its nodes
+        seed_memory = await self._store.get_memory(seed_memory_id)
+        if seed_memory is None:
+            return TraversalResult(
+                seed_id=seed_memory_id, traversal_mode=traversal_mode,
+            )
+
+        seed_nodes = await self._store.get_memory_nodes_for_memory(seed_memory_id)
+        if traversal_mode == TraversalMode.TOP_DOWN:
+            results, levels, path = await self._traverse_top_down(
+                seed_memory, seed_nodes, limit,
+            )
+        elif traversal_mode == TraversalMode.BOTTOM_UP:
+            results, levels, path = await self._traverse_bottom_up(
+                seed_memory, seed_nodes, limit,
+            )
+        elif traversal_mode == TraversalMode.TEMPORAL:
+            results, levels, path = await self._traverse_temporal(
+                seed_memory, seed_nodes, limit,
+            )
+        elif traversal_mode == TraversalMode.LATERAL:
+            results, levels, path = await self._traverse_lateral(
+                seed_memory, seed_nodes, limit,
+            )
+
+        logger.info(
+            "[traverse] seed=%s mode=%s levels=%d results=%d",
+            seed_memory_id[:8], mode, levels, len(results),
+        )
+        return TraversalResult(
+            seed_id=seed_memory_id,
+            traversal_mode=traversal_mode,
+            results=results,
+            levels_traversed=levels,
+            path=path,
+        )
+
+    async def _traverse_top_down(
+        self, seed_memory: Memory, seed_nodes: list, limit: int,
+    ) -> tuple[list, int, list]:
+        """Abstract → episodes it summarizes → atomic members."""
+        results: list[RecallResult] = []
+        path: list[str] = [seed_memory.id]
+        levels = 0
+        seen: set[str] = {seed_memory.id}
+
+        # Level 1: Find episodes this abstract summarizes
+        episode_node_ids: list[str] = []
+        for node in seed_nodes:
+            edges = await self._store.get_graph_edges(node.id)
+            for edge in edges:
+                if edge.edge_type in (
+                    EdgeType.SUMMARIZES, EdgeType.ABSTRACTS,
+                ) and edge.target_id not in seen:
+                    episode_node_ids.append(edge.target_id)
+                    seen.add(edge.target_id)
+
+        if episode_node_ids:
+            levels += 1
+            for ep_node_id in episode_node_ids[:limit]:
+                ep_node = await self._store.get_memory_node(ep_node_id)
+                if ep_node:
+                    mem = await self._store.get_memory(ep_node.memory_id)
+                    if mem and mem.id not in seen:
+                        seen.add(mem.id)
+                        path.append(mem.id)
+                        results.append(RecallResult(
+                            memory=ScoredMemory(memory=mem),
+                            context=RecallContext(),
+                            retrieval_path="top_down:episode",
+                        ))
+
+        # Level 2: Atomic members of those episodes
+        if episode_node_ids and len(results) < limit:
+            levels += 1
+            for ep_node_id in episode_node_ids:
+                members = await self._store.get_episode_members(ep_node_id)
+                for member in members:
+                    if len(results) >= limit:
+                        break
+                    if member.memory_id not in seen:
+                        seen.add(member.memory_id)
+                        mem = await self._store.get_memory(member.memory_id)
+                        if mem:
+                            path.append(mem.id)
+                            results.append(RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="top_down:atomic",
+                            ))
+
+        return results, levels, path
+
+    async def _traverse_bottom_up(
+        self, seed_memory: Memory, seed_nodes: list, limit: int,
+    ) -> tuple[list, int, list]:
+        """Atomic → episode membership → abstract summaries."""
+        results: list[RecallResult] = []
+        path: list[str] = [seed_memory.id]
+        levels = 0
+        seen: set[str] = {seed_memory.id}
+
+        # Level 1: Find episode(s) this memory belongs to
+        episode_node_ids: list[str] = []
+        for node in seed_nodes:
+            edges = await self._store.get_graph_edges(node.id)
+            for edge in edges:
+                if edge.edge_type == EdgeType.BELONGS_TO_EPISODE:
+                    episode_node_ids.append(edge.target_id)
+
+        if episode_node_ids:
+            levels += 1
+            for ep_node_id in episode_node_ids[:limit]:
+                ep_node = await self._store.get_memory_node(ep_node_id)
+                if ep_node and ep_node.memory_id not in seen:
+                    seen.add(ep_node.memory_id)
+                    mem = await self._store.get_memory(ep_node.memory_id)
+                    if mem:
+                        path.append(mem.id)
+                        results.append(RecallResult(
+                            memory=ScoredMemory(memory=mem),
+                            context=RecallContext(),
+                            retrieval_path="bottom_up:episode",
+                        ))
+
+        # Level 2: Abstracts that summarize those episodes
+        if episode_node_ids and len(results) < limit:
+            levels += 1
+            for ep_node_id in episode_node_ids:
+                # Look for incoming SUMMARIZES edges to this episode
+                ep_edges = await self._store.get_graph_edges(ep_node_id)
+                for edge in ep_edges:
+                    if edge.edge_type == EdgeType.SUMMARIZES:
+                        abs_node = await self._store.get_memory_node(edge.source_id)
+                        if abs_node and abs_node.memory_id not in seen:
+                            seen.add(abs_node.memory_id)
+                            mem = await self._store.get_memory(abs_node.memory_id)
+                            if mem:
+                                path.append(mem.id)
+                                results.append(RecallResult(
+                                    memory=ScoredMemory(memory=mem),
+                                    context=RecallContext(),
+                                    retrieval_path="bottom_up:abstract",
+                                ))
+
+        return results, levels, path
+
+    async def _traverse_temporal(
+        self, seed_memory: Memory, seed_nodes: list, limit: int,
+    ) -> tuple[list, int, list]:
+        """Entity state timeline for entities mentioned in the seed."""
+        results: list[RecallResult] = []
+        path: list[str] = [seed_memory.id]
+        seen: set[str] = {seed_memory.id}
+
+        # Find entities linked to seed memory
+        entity_ids = self._graph.get_entity_ids_for_memory(seed_memory.id)
+
+        for entity_id in entity_ids[:5]:  # Cap entities to avoid explosion
+            states = await self._store.get_entity_states_by_entity(entity_id)
+            # Sort by observed_at for timeline ordering
+            states.sort(key=lambda s: s.observed_at or s.created_at)
+            for state_node in states:
+                if len(results) >= limit:
+                    break
+                if state_node.memory_id not in seen:
+                    seen.add(state_node.memory_id)
+                    mem = await self._store.get_memory(state_node.memory_id)
+                    if mem:
+                        path.append(mem.id)
+                        results.append(RecallResult(
+                            memory=ScoredMemory(memory=mem),
+                            context=RecallContext(),
+                            retrieval_path="temporal:state_timeline",
+                        ))
+
+        levels = 1 if results else 0
+        return results, levels, path
+
+    async def _traverse_lateral(
+        self, seed_memory: Memory, seed_nodes: list, limit: int,
+    ) -> tuple[list, int, list]:
+        """Episode siblings + related episodes via shared entities."""
+        results: list[RecallResult] = []
+        path: list[str] = [seed_memory.id]
+        levels = 0
+        seen: set[str] = {seed_memory.id}
+
+        # Level 1: Sibling memories in the same episode(s)
+        episode_node_ids: list[str] = []
+        for node in seed_nodes:
+            edges = await self._store.get_graph_edges(node.id)
+            for edge in edges:
+                if edge.edge_type == EdgeType.BELONGS_TO_EPISODE:
+                    episode_node_ids.append(edge.target_id)
+
+        if episode_node_ids:
+            levels += 1
+            for ep_node_id in episode_node_ids:
+                members = await self._store.get_episode_members(ep_node_id)
+                for member in members:
+                    if len(results) >= limit:
+                        break
+                    if member.memory_id not in seen:
+                        seen.add(member.memory_id)
+                        mem = await self._store.get_memory(member.memory_id)
+                        if mem:
+                            path.append(mem.id)
+                            results.append(RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="lateral:sibling",
+                            ))
+
+        # Level 2: Related episodes via shared topic entities
+        if episode_node_ids and len(results) < limit:
+            levels += 1
+            seed_entities: set[str] = set()
+            for ep_id in episode_node_ids:
+                ep_node = await self._store.get_memory_node(ep_id)
+                if ep_node:
+                    meta = EpisodeMeta.from_node(ep_node)
+                    if meta:
+                        seed_entities.update(meta.topic_entities)
+
+            if seed_entities:
+                all_episodes = await self._store.get_memory_nodes_by_type("episode")
+                for ep in all_episodes:
+                    if ep.id in episode_node_ids:
+                        continue
+                    meta = EpisodeMeta.from_node(ep)
+                    if not meta:
+                        continue
+                    overlap = seed_entities & set(meta.topic_entities)
+                    if overlap and ep.memory_id not in seen:
+                        seen.add(ep.memory_id)
+                        mem = await self._store.get_memory(ep.memory_id)
+                        if mem:
+                            path.append(mem.id)
+                            results.append(RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="lateral:related_episode",
+                            ))
+                            if len(results) >= limit:
+                                break
+
+        return results, levels, path
+
+    async def get_topic_map(self) -> list[TopicCluster]:
+        """Generate emergent topic map from L4 abstract clustering.
+
+        Clusters abstract nodes by shared topic_entities using Jaccard
+        overlap. Returns topic clusters ordered by size.
+        """
+        if not self._config.topic_map_enabled:
+            return []
+
+        # Gather all abstract nodes
+        abstracts = await self._store.get_memory_nodes_by_type("abstract")
+        if len(abstracts) < self._config.topic_map_min_abstracts:
+            return []
+
+        # Extract entity sets per abstract
+        abstract_entities: dict[str, set[str]] = {}
+        abstract_episodes: dict[str, list[str]] = {}
+        for node in abstracts:
+            meta = node.metadata or {}
+            entities = set(meta.get("topic_entities", [])
+                          or meta.get("key_entities", []))
+            if entities:
+                abstract_entities[node.memory_id] = entities
+                # Track source episodes
+                src_eps = meta.get("source_episode_ids", [])
+                abstract_episodes[node.memory_id] = src_eps if src_eps else []
+
+        if not abstract_entities:
+            return []
+
+        # Greedy clustering by Jaccard overlap
+        threshold = self._config.topic_map_entity_overlap
+        unclustered = set(abstract_entities.keys())
+        clusters: list[TopicCluster] = []
+
+        while unclustered:
+            seed_id = next(iter(unclustered))
+            unclustered.discard(seed_id)
+            cluster_ids = [seed_id]
+            cluster_entities = set(abstract_entities[seed_id])
+
+            # Find all abstracts overlapping with cluster
+            changed = True
+            while changed:
+                changed = False
+                for mid in list(unclustered):
+                    e = abstract_entities[mid]
+                    union = cluster_entities | e
+                    overlap = cluster_entities & e
+                    jaccard = len(overlap) / len(union) if union else 0
+                    if jaccard >= threshold:
+                        cluster_ids.append(mid)
+                        cluster_entities |= e
+                        unclustered.discard(mid)
+                        changed = True
+
+            if len(cluster_ids) < self._config.topic_map_min_abstracts:
+                continue
+
+            # Build label from top entities by frequency
+            entity_freq: dict[str, int] = {}
+            all_episode_ids: list[str] = []
+            for mid in cluster_ids:
+                for ent in abstract_entities.get(mid, set()):
+                    entity_freq[ent] = entity_freq.get(ent, 0) + 1
+                all_episode_ids.extend(abstract_episodes.get(mid, []))
+
+            top_entities = sorted(entity_freq, key=entity_freq.get, reverse=True)[:5]  # type: ignore[arg-type]
+            label = " / ".join(top_entities) if top_entities else "Unnamed Topic"
+
+            clusters.append(TopicCluster(
+                label=label,
+                entity_keys=top_entities,
+                abstract_ids=cluster_ids,
+                episode_ids=list(set(all_episode_ids)),
+                confidence=len(cluster_ids) / len(abstracts),
+                member_count=len(cluster_ids),
+            ))
+
+        # Sort by size descending
+        clusters.sort(key=lambda c: c.member_count, reverse=True)
+        logger.info("[topic_map] Generated %d topic clusters from %d abstracts",
+                    len(clusters), len(abstracts))
+        return clusters
+
+    async def synthesize(
+        self,
+        query: str,
+        mode: str = "summary",
+        domain: str | None = None,
+        limit: int = 10,
+        token_budget: int | None = None,
+        traversal: str | None = None,
+        seed_memory_id: str | None = None,
+    ) -> SynthesizedResponse:
+        """Synthesize a structured response from retrieved memories.
+
+        Combines level-first retrieval (or traversal) with LLM synthesis
+        to produce token-budgeted responses with source provenance.
+
+        Args:
+            query: User query to answer.
+            mode: Synthesis mode (summary, detail, timeline, comparison, evidence).
+            domain: Optional domain scope.
+            limit: Max memories to gather for synthesis.
+            token_budget: Max tokens in output (overrides config default).
+            traversal: If set, use traversal strategy instead of search.
+            seed_memory_id: Required when traversal is set.
+
+        Returns:
+            SynthesizedResponse with content, sources, and token accounting.
+        """
+        if not self._config.synthesis_enabled:
+            return SynthesizedResponse(
+                query=query, mode=SynthesisMode(mode),
+                content="Synthesis is not enabled (NCMS_SYNTHESIS_ENABLED=false).",
+            )
+
+        budget = token_budget or self._config.synthesis_token_budget
+        synthesis_mode = SynthesisMode(mode)
+
+        # Gather source memories — via traversal or search
+        recall_results: list[RecallResult] = []
+        traversal_mode = None
+        intent_str = "fact_lookup"
+
+        if traversal and seed_memory_id:
+            traversal_mode = TraversalMode(traversal)
+            trav_result = await self.traverse(
+                seed_memory_id, mode=traversal, limit=limit,
+            )
+            recall_results = trav_result.results
+        else:
+            # Use recall for enriched context
+            recall_results = await self.recall(
+                query, domain=domain, limit=limit,
+            )
+            if recall_results:
+                intent_str = recall_results[0].retrieval_path
+
+        if not recall_results:
+            return SynthesizedResponse(
+                query=query, mode=synthesis_mode,
+                content="No relevant memories found for synthesis.",
+                token_budget=budget, intent=intent_str,
+            )
+
+        # Build context for LLM — truncate to fit budget
+        source_ids: list[str] = []
+        context_parts: list[str] = []
+        # Reserve ~1/4 budget for prompt overhead, use 3/4 for context
+        context_char_budget = budget * 3  # ~4 chars per token, 3/4 budget
+
+        for rr in recall_results:
+            mem = rr.memory.memory
+            # Truncate individual memories proportionally
+            max_per = context_char_budget // max(len(recall_results), 1)
+            content = mem.content[:max_per]
+            source_ids.append(mem.id)
+
+            # Add metadata context
+            parts = [f"[{mem.memory_type}] {content}"]
+            if rr.context.episode:
+                parts.append(f"  Episode: {rr.context.episode.episode_title}")
+            if rr.context.entity_states:
+                for es in rr.context.entity_states[:3]:
+                    parts.append(f"  State: {es.entity_name} = {es.state_value}")
+            context_parts.append("\n".join(parts))
+
+            # Check budget
+            total_chars = sum(len(p) for p in context_parts)
+            if total_chars >= context_char_budget:
+                break
+
+        context_text = "\n---\n".join(context_parts)
+
+        # Mode-specific prompt
+        mode_instructions = {
+            SynthesisMode.SUMMARY: (
+                "Provide a concise summary of the key points. "
+                "Focus on the most important facts and decisions."
+            ),
+            SynthesisMode.DETAIL: (
+                "Provide a comprehensive, detailed response covering all "
+                "relevant information. Include specific details and evidence."
+            ),
+            SynthesisMode.TIMELINE: (
+                "Organize the information chronologically. Present events "
+                "and changes in time order with dates where available."
+            ),
+            SynthesisMode.COMPARISON: (
+                "Compare and contrast different perspectives, states, or "
+                "time periods. Highlight what changed and why."
+            ),
+            SynthesisMode.EVIDENCE: (
+                "Present fact-backed claims with citations. For each claim, "
+                "reference the specific source memory that supports it."
+            ),
+        }
+        default_instruction = mode_instructions[SynthesisMode.SUMMARY]
+        instruction = mode_instructions.get(synthesis_mode, default_instruction)
+
+        prompt = (
+            f"Based on the following knowledge base memories, answer this query:\n\n"
+            f"Query: {query}\n\n"
+            f"Instructions: {instruction}\n"
+            f"Keep your response under {budget} tokens.\n\n"
+            f"Knowledge base context:\n{context_text}"
+        )
+
+        # Call LLM
+        try:
+            from ncms.infrastructure.llm.caller import call_llm
+            response = await call_llm(
+                prompt=prompt,
+                model=self._config.synthesis_model,
+                api_base=self._config.synthesis_api_base,
+                max_tokens=budget,
+            )
+            content = response or "Synthesis produced no output."
+        except Exception as exc:
+            logger.warning("[synthesize] LLM call failed: %s", exc)
+            # Fallback: return concatenated snippets
+            snippets = []
+            for rr in recall_results[:5]:
+                snippets.append(rr.memory.memory.content[:200])
+            content = (
+                "(LLM synthesis unavailable — raw excerpts)\n\n"
+                + "\n---\n".join(snippets)
+            )
+
+        # Approximate token count (~4 chars per token)
+        tokens_used = len(content) // 4
+
+        return SynthesizedResponse(
+            query=query,
+            mode=synthesis_mode,
+            content=content,
+            sources=source_ids,
+            source_count=len(source_ids),
+            token_budget=budget,
+            tokens_used=tokens_used,
+            traversal=traversal_mode,
+            intent=intent_str,
+        )
 
     async def _find_episode_summary(self, episode_node_id: str) -> str | None:
         """Find an episode summary abstract that SUMMARIZES this episode."""

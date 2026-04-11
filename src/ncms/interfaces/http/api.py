@@ -651,6 +651,96 @@ def create_api_app(
             ],
         })
 
+    # -- Phase 5: Level-First Retrieval & Synthesis -------------------------
+
+    async def search_level_endpoint(request: Request) -> JSONResponse:
+        body = await request.json()
+        query = body.get("query", "")
+        if not query:
+            return JSONResponse({"error": "query is required"}, status_code=400)
+        node_types = body.get("node_types")
+        domain = body.get("domain")
+        limit = int(body.get("limit", 10))
+        results = await memory_svc.search_level(
+            query, node_types=node_types, domain=domain, limit=limit,
+        )
+        return JSONResponse([
+            {
+                "memory_id": sm.memory.id,
+                "content": sm.memory.content[:500],
+                "score": round(sm.total_activation, 4),
+                "node_types": sm.node_types,
+                "memory_type": sm.memory.memory_type,
+            }
+            for sm in results
+        ])
+
+    async def traverse_endpoint(request: Request) -> JSONResponse:
+        body = await request.json()
+        seed_id = body.get("seed_memory_id", "")
+        if not seed_id:
+            return JSONResponse(
+                {"error": "seed_memory_id is required"}, status_code=400,
+            )
+        mode = body.get("mode", "bottom_up")
+        limit = int(body.get("limit", 20))
+        result = await memory_svc.traverse(seed_id, mode=mode, limit=limit)
+        return JSONResponse({
+            "seed_id": result.seed_id,
+            "traversal_mode": result.traversal_mode,
+            "levels_traversed": result.levels_traversed,
+            "result_count": len(result.results),
+            "path": result.path[:20],
+            "results": [
+                {
+                    "memory_id": rr.memory.memory.id,
+                    "content": rr.memory.memory.content[:300],
+                    "retrieval_path": rr.retrieval_path,
+                }
+                for rr in result.results
+            ],
+        })
+
+    async def topic_map_endpoint(request: Request) -> JSONResponse:
+        clusters = await memory_svc.get_topic_map()
+        return JSONResponse([
+            {
+                "topic_id": c.topic_id,
+                "label": c.label,
+                "entity_keys": c.entity_keys,
+                "abstract_count": len(c.abstract_ids),
+                "episode_count": len(c.episode_ids),
+                "confidence": round(c.confidence, 3),
+            }
+            for c in clusters
+        ])
+
+    async def synthesize_endpoint(request: Request) -> JSONResponse:
+        body = await request.json()
+        query = body.get("query", "")
+        if not query:
+            return JSONResponse({"error": "query is required"}, status_code=400)
+        result = await memory_svc.synthesize(
+            query=query,
+            mode=body.get("mode", "summary"),
+            domain=body.get("domain"),
+            limit=int(body.get("limit", 10)),
+            token_budget=body.get("token_budget"),
+            traversal=body.get("traversal"),
+            seed_memory_id=body.get("seed_memory_id"),
+        )
+        return JSONResponse({
+            "query": result.query,
+            "mode": result.mode,
+            "content": result.content,
+            "sources": result.sources,
+            "source_count": result.source_count,
+            "token_budget": result.token_budget,
+            "tokens_used": result.tokens_used,
+            "traversal": result.traversal,
+            "intent": result.intent,
+        })
+
     # -- Consolidation -------------------------------------------------------
 
     async def run_consolidation_endpoint(request: Request) -> JSONResponse:
@@ -1634,6 +1724,12 @@ def create_api_app(
 
         # Agent chat proxy (NAT /generate)
         Route("/api/v1/agent/{agent_id}/chat", agent_chat, methods=["POST"]),
+
+        # Phase 5: Level-first retrieval & synthesis
+        Route("/api/v1/memory/search-level", search_level_endpoint, methods=["POST"]),
+        Route("/api/v1/memory/traverse", traverse_endpoint, methods=["POST"]),
+        Route("/api/v1/memory/synthesize", synthesize_endpoint, methods=["POST"]),
+        Route("/api/v1/topics", topic_map_endpoint, methods=["GET"]),
 
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),

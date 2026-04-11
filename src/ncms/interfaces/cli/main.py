@@ -1532,5 +1532,69 @@ def lint(db: str | None) -> None:
     asyncio.run(_lint())
 
 
+@cli.command("topic-map")
+@click.option("--db", default=None, help="Database path")
+def topic_map(db: str | None) -> None:
+    """Show emergent topic map from abstract memory clustering.
+
+    Clusters L4 abstracts by shared entities to reveal knowledge themes.
+    Requires at least one consolidation pass to have generated abstracts.
+
+    Examples:
+        ncms topic-map
+        ncms topic-map --db /path/to/ncms.db
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _topics() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.graph.networkx_store import NetworkXGraph
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig(topic_map_enabled=True)
+        if db:
+            config.db_path = db
+
+        store = SQLiteStore(db_path=config.db_path)
+        await store.initialize()
+        graph = NetworkXGraph()
+
+        from ncms.application.memory_service import MemoryService
+
+        svc = MemoryService(store=store, index=None, graph=graph, config=config)
+
+        try:
+            clusters = await svc.get_topic_map()
+            if not clusters:
+                console.print("[yellow]No topic clusters found.[/]")
+                console.print("Run consolidation first to generate abstracts.")
+                return
+
+            table = Table(title="Emergent Topic Map")
+            table.add_column("Topic", style="bold")
+            table.add_column("Entities", style="cyan")
+            table.add_column("Abstracts", justify="right")
+            table.add_column("Episodes", justify="right")
+            table.add_column("Confidence", justify="right")
+
+            for c in clusters:
+                table.add_row(
+                    c.label,
+                    ", ".join(c.entity_keys[:3]),
+                    str(len(c.abstract_ids)),
+                    str(len(c.episode_ids)),
+                    f"{c.confidence:.1%}",
+                )
+
+            console.print(table)
+        finally:
+            await store.close()
+
+    asyncio.run(_topics())
+
+
 if __name__ == "__main__":
     cli()

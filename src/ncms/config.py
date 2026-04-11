@@ -153,6 +153,17 @@ class NCMSConfig(BaseSettings):
     temporal_enabled: bool = False
     scoring_weight_temporal: float = 0.2  # Additive weight when temporal ref detected
 
+    # Level-first retrieval & synthesis (Phase 5)
+    level_first_enabled: bool = False
+    level_first_overfetch_factor: int = 3   # Over-fetch multiplier before node-type filter
+    synthesis_enabled: bool = False
+    synthesis_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+    synthesis_api_base: str = "http://spark-ee7d.local:8000/v1"
+    synthesis_token_budget: int = 4000      # Max tokens in synthesized output
+    topic_map_enabled: bool = False
+    topic_map_min_abstracts: int = 3        # Min abstracts to form a topic cluster
+    topic_map_entity_overlap: float = 0.3   # Jaccard threshold for clustering
+
     # Per-intent signal weights (Phase 9 — RouteRAG-style)
     intent_routing_enabled: bool = False
     intent_weights_fact_lookup: str = "0.6,0.3,0.3,0.0"
