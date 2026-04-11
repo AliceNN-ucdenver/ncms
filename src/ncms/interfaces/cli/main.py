@@ -237,9 +237,10 @@ def info(db: str | None) -> None:
 @click.option("--domains", "-d", multiple=True, help="Knowledge domains for imported content.")
 @click.option("--project", "-p", default=None, help="Project context.")
 @click.option("--recursive/--no-recursive", default=True, help="Recurse into directories.")
+@click.option("--bulk/--no-bulk", default=True, help="Bulk import with async indexing (default).")
 def load(
     paths: tuple[str, ...], domains: tuple[str, ...],
-    project: str | None, recursive: bool,
+    project: str | None, recursive: bool, bulk: bool,
 ) -> None:
     """Load knowledge from files into NCMS memory (The Matrix download).
 
@@ -332,14 +333,30 @@ def load(
 
         from pathlib import Path
 
+        # Start index pool for async indexing during load
+        await memory_svc.start_index_pool(
+            queue_size=config.bulk_import_queue_size if bulk else None,
+        )
+
         for p in paths:
             path = Path(p)
-            if path.is_dir():
+            if path.is_dir() and bulk:
+                # Bulk mode: load + index in parallel, flush at end
+                def _progress(fp: Path, fs: object) -> None:
+                    console.print(f"  [dim]{fp.name}[/] {fs.memories_created} memories")
+
+                stats = await loader.bulk_load_directory(
+                    path, domains=domain_list, project=project,
+                    recursive=recursive, progress_callback=_progress,
+                )
+            elif path.is_dir():
                 stats = await loader.load_directory(
-                    path, domains=domain_list, project=project, recursive=recursive
+                    path, domains=domain_list, project=project, recursive=recursive,
                 )
             else:
-                stats = await loader.load_file(path, domains=domain_list, project=project)
+                stats = await loader.load_file(
+                    path, domains=domain_list, project=project,
+                )
 
             total_files += stats.files_processed
             total_memories += stats.memories_created
@@ -347,6 +364,10 @@ def load(
             if stats.errors:
                 for err in stats.errors:
                     console.print(f"  [red]Error:[/] {err}")
+
+        # Ensure all indexing completes before exit
+        await memory_svc.flush_indexing()
+        await memory_svc.stop_index_pool()
 
         console.print(
             f"[green]Loaded {total_files} file(s) -> {total_memories} memories[/]"

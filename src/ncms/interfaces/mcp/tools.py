@@ -438,29 +438,36 @@ def register_tools(
         domains: list[str] | None = None,
         project: str | None = None,
     ) -> dict[str, Any]:
-        """Load knowledge from a file into NCMS memory (Matrix-style download).
+        """Load knowledge from a file or directory into NCMS memory.
 
         Automatically chunks content by headings (markdown), paragraphs (text),
-        or entries (JSON/CSV) for precise retrieval.
+        or entries (JSON/CSV) for precise retrieval.  Directories use bulk
+        import mode (async indexing, larger queue) for throughput.
 
         Supports: .md, .txt, .json, .yaml, .csv, .html, .rst
 
         Args:
-            file_path: Path to the file to import.
+            file_path: Path to the file or directory to import.
             domains: Knowledge domains for the imported content.
             project: Project context.
 
         Returns:
             Import statistics: files processed, memories created.
         """
+        from pathlib import Path
+
         from ncms.application.knowledge_loader import KnowledgeLoader
 
         loader = KnowledgeLoader(memory_svc)
-        stats = await loader.load_file(
-            file_path,
-            domains=domains,
-            project=project,
-        )
+        p = Path(file_path)
+        if p.is_dir():
+            stats = await loader.bulk_load_directory(
+                p, domains=domains, project=project,
+            )
+        else:
+            stats = await loader.load_file(
+                file_path, domains=domains, project=project,
+            )
         return {
             "files_processed": stats.files_processed,
             "memories_created": stats.memories_created,

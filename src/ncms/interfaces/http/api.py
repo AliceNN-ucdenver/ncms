@@ -1757,6 +1757,35 @@ def create_api_app(
             "pages": pages,
         })
 
+    async def bulk_import_endpoint(request: Request) -> JSONResponse:
+        """Bulk import knowledge from a directory path on the server.
+
+        POST /api/v1/knowledge/bulk-import
+        Body: {"path": "/path/to/knowledge", "domains": [...], "project": "..."}
+        """
+        from ncms.application.knowledge_loader import KnowledgeLoader
+
+        body = await request.json()
+        dir_path = body.get("path", "")
+        domains = body.get("domains")
+        project = body.get("project")
+
+        if not dir_path:
+            return JSONResponse({"error": "path is required"}, status_code=400)
+
+        p = Path(dir_path)
+        if not p.is_dir():
+            return JSONResponse({"error": f"Not a directory: {dir_path}"}, status_code=400)
+
+        loader = KnowledgeLoader(memory_svc)
+        stats = await loader.bulk_load_directory(p, domains=domains, project=project)
+        return JSONResponse({
+            "files_processed": stats.files_processed,
+            "memories_created": stats.memories_created,
+            "chunks_total": stats.chunks_total,
+            "errors": stats.errors,
+        })
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1806,6 +1835,7 @@ def create_api_app(
         Route("/api/v1/heartbeat", heartbeat_endpoint, methods=["POST"]),
         Route("/api/v1/scale-flags", scale_flags_endpoint, methods=["GET"]),
         Route("/api/v1/export/wiki", export_wiki_endpoint, methods=["POST"]),
+        Route("/api/v1/knowledge/bulk-import", bulk_import_endpoint, methods=["POST"]),
 
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),

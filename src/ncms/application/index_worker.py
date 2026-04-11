@@ -499,7 +499,7 @@ class IndexWorkerPool:
         from ncms.domain.models import Relationship
 
         config = self._svc._config
-        if not config.cooccurrence_edges_enabled or len(linked_entity_ids) <= 1:
+        if len(linked_entity_ids) <= 1:  # Co-occurrence always on
             return
 
         cooc_ids = linked_entity_ids[:config.cooccurrence_max_entities]
@@ -561,55 +561,75 @@ class IndexWorkerPool:
             and admission_features.state_change_signal >= 0.35
         )
         _has_state_declaration = bool(
+            # "Entity: key = value" structured assignment
             re.search(
                 r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
                 memory.content,
                 re.MULTILINE,
             )
-        ) if admission_features is not None else False
+            # Markdown "## Status\n\nvalue" (ADRs, design docs)
+            or re.search(
+                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
+                memory.content,
+            )
+            # YAML "status: value" (checklists, config)
+            or re.search(
+                r"^\s*status\s*:\s*\w+",
+                memory.content,
+                re.MULTILINE | re.IGNORECASE,
+            )
+        )
 
-        _max_state_len = 2000
-        if len(memory.content) > _max_state_len:
-            _has_state_change = False
-            _has_state_declaration = False
+        # Note: The pre-Phase-4 "Section 3.4" 2000-char hard cutoff was
+        # removed.  With content classification enabled, large structured
+        # documents are split into sections before reaching this point.
+        # The entity-validation check below (detected entity must exist
+        # in GLiNER extraction) is sufficient to prevent false positives.
 
         if _has_state_change or _has_state_declaration:
             node_metadata = self._svc._extract_entity_state_meta(
                 memory.content, all_entities,
             )
+
+            # Tightening (Section 3.4): validate that the
+            # detected entity_id exists in the extracted entities
+            # set (must be a real entity, not a substring match).
             _entity_names_lower = {e["name"].lower() for e in all_entities}
             _detected_entity = node_metadata.get("entity_id", "")
-            if _detected_entity.lower() in _entity_names_lower:
-                l2_node = MemoryNode(
-                    memory_id=memory.id,
-                    node_type=NodeType.ENTITY_STATE,
-                    importance=memory.importance,
-                    metadata=node_metadata,
-                )
-                await self._svc._store.save_memory_node(l2_node)
+            if _detected_entity.lower() not in _entity_names_lower:
+                node_metadata = {}  # suppress L2 creation
 
-                edge = GraphEdge(
-                    source_node_id=l2_node.id,
-                    target_node_id=l1_node.id,
-                    edge_type=EdgeType.DERIVED_FROM,
-                )
-                await self._svc._store.save_graph_edge(edge)
+        if (_has_state_change or _has_state_declaration) and node_metadata:
+            l2_node = MemoryNode(
+                memory_id=memory.id,
+                node_type=NodeType.ENTITY_STATE,
+                importance=memory.importance,
+                metadata=node_metadata,
+            )
+            await self._svc._store.save_memory_node(l2_node)
 
-                # Reconciliation
-                if config.reconciliation_enabled:
-                    try:
-                        from ncms.application.reconciliation_service import (
-                            ReconciliationService,
-                        )
-                        recon = ReconciliationService(
-                            store=self._svc._store, config=config,
-                        )
-                        await recon.reconcile_state(l2_node)
-                    except Exception:
-                        logger.warning(
-                            "Reconciliation failed for %s", l2_node.id,
-                            exc_info=True,
-                        )
+            edge = GraphEdge(
+                source_node_id=l2_node.id,
+                target_node_id=l1_node.id,
+                edge_type=EdgeType.DERIVED_FROM,
+            )
+            await self._svc._store.save_graph_edge(edge)
+
+            # Reconciliation
+            if config.reconciliation_enabled:
+                try:
+                    from ncms.application.reconciliation_service import (
+                        ReconciliationService,
+                    )
+                    recon = ReconciliationService(
+                        store=self._svc._store, config=config,
+                    )
+                    await recon.reconcile_state(l2_node)
+                except Exception:
+                    logger.warning(
+                        "Reconciliation failed for %s", l2_node.id,
+                        exc_info=True,
+                    )
 
         # Episode formation (with per-episode lock for concurrent safety)
         if self._svc._episode is not None and config.episodes_enabled:

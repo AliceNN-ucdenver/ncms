@@ -61,7 +61,12 @@ components:
         NCMS_ADMISSION_ENABLED: "true"
         NCMS_RECONCILIATION_ENABLED: "true"
         NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
+        NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
+        NCMS_TEMPORAL_ENABLED: "true"
+        NCMS_MAINTENANCE_ENABLED: "true"
+        NCMS_SEARCH_FEEDBACK_ENABLED: "true"
         NCMS_BUS_ASK_TIMEOUT_MS: "60000"
+        NCMS_BULK_IMPORT_QUEUE_SIZE: "10000"
 
     # Architect Agent — architecture, CALM models, ADRs, quality attributes
     architect:

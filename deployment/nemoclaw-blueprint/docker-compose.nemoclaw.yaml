@@ -21,7 +21,7 @@ services:
       dockerfile: deployment/nemoclaw-blueprint/hub.Dockerfile
     container_name: ncms-hub
     environment:
-      # Retrieval features
+      # Features — Production bundle (Phases 1-4)
       NCMS_SPLADE_ENABLED: "true"
       NCMS_EPISODES_ENABLED: "true"
       NCMS_INTENT_CLASSIFICATION_ENABLED: "true"
@@ -29,13 +29,16 @@ services:
       NCMS_ADMISSION_ENABLED: "true"
       NCMS_RECONCILIATION_ENABLED: "true"
       NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
+      NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
+      NCMS_TEMPORAL_ENABLED: "true"
+      NCMS_MAINTENANCE_ENABLED: "true"
+      NCMS_SEARCH_FEEDBACK_ENABLED: "true"
       # LLM → DGX Spark (fully local, no Anthropic)
       NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
       NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
       NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED: "true"
       NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
       NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"
-      NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
       # Bus timeout (agents need LLM time to synthesize answers)
       NCMS_BUS_ASK_TIMEOUT_MS: "60000"
     ports:

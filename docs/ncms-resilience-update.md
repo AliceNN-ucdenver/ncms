@@ -1675,7 +1675,7 @@ These issues were discovered during hub integration testing and resolved as cros
 | Extended state declaration patterns | Only matched `Entity: key = value` format, missing markdown `## Status` and YAML `status:` patterns | Added 2 new regex patterns for markdown heading + YAML key-value state declarations. Added patterns 5+6 in `_extract_entity_state_meta()`. | `memory_service.py` |
 | Dashboard Learning card inactive | Learning card showed static padlock icon with no live data from consolidation/dream/maintenance jobs | New `learning.js` module with SSE live events (`consolidation.*`, `dream.*`, `maintenance.*`, `episode.*`) + page-refresh rehydration from `/api/events?limit=500`. Card activates on first learning event (padlock → brain, purple accent). | `learning.js` (new), `app.js`, `agents.js`, `index.html`, `dashboard.css` |
 
-### Phase 7: Evaluation & Housekeeping (Weeks 8-9)
+### Phase 7: Evaluation & Housekeeping (Weeks 8-9) — 🔄 IN PROGRESS
 
 | Task | Status | Effort | Files |
 |------|--------|--------|-------|
@@ -1685,14 +1685,46 @@ These issues were discovered during hub integration testing and resolved as cros
 | Hub replay benchmark harness | ✅ Done | 4h | `benchmarks/hub_replay/` |
 | Agent workload weight tuning (incl. temporal weight) | ✅ Done | 6h | `benchmarks/tuning/` |
 | Phase 0 baseline measurements | ✅ Done | 4h | `benchmarks/results/phase0_baseline/` |
-| Bulk import mode | ⬚ | 6h | `cli/main.py`, `memory_service.py` |
+| Bulk import mode | ✅ Done | 6h | `knowledge_loader.py`, `memory_service.py`, `cli/main.py`, `mcp/tools.py`, `http/api.py` |
+| Feature flag audit & retirement | ✅ Done | 2h | `config.py`, `memory_service.py`, `index_worker.py`, Docker configs |
+| Index worker entity state DRY fix | ✅ Done | 1h | `index_worker.py` (synced with `memory_service.py`) |
+| NAT agent bulk import wiring | ✅ Done | 1h | `packages/nvidia-nat-ncms/` `register.py`, `http_client.py` |
+| Design doc reorganization | ✅ Done | 1h | Completed in prior session |
 | User/assistant retrieval asymmetry | ⬚ | 3h | `memory_service.py` |
 | Admission scoring: content-type prefix classifier | ⬚ | 3h | `admission_service.py` |
 | Expanded admission labeled dataset (200+ examples) | ⬚ | 4h | `benchmarks/tuning/` |
-| Design doc reorganization | ⬚ | 1h | `docs/` directory restructure (Section 10.3) |
 | Remove or archive dormant CLI hooks | ⬚ | 30m | `cli/commit_hook.py`, `cli/context_loader.py` |
-| Hub re-test with all Phase 1-6 fixes | ⬚ | 4h | Manual validation |
+| Hub re-test with all Phase 1-7 fixes | ⬚ | 4h | Manual validation |
 | Update all documentation (Appendix D) | ⬚ | 4h | See Appendix D |
+
+**Feature Flag Audit (2026-04-11):**
+
+Retired 8 flags (always-on behavior, backward-compat aliases preserved in config):
+
+| Retired Flag | Default Was | Reason |
+|--------------|-------------|--------|
+| `async_indexing_enabled` | `True` | Background indexing is strictly better; sync path was only a debug fallback |
+| `graph_expansion_enabled` | `True` | Graph expansion is core retrieval signal; never disabled in production |
+| `cooccurrence_edges_enabled` | `True` | Co-occurrence edges feed graph expansion; never disabled in production |
+| `graph_ppr_enabled` | `True` | PPR is strictly better than BFS; BFS fallback removed |
+| `bus_surrogate_enabled` | `True` | Surrogates are core bus feature; always on |
+| `otel_enabled` | `False` | Config-only, never gated in code |
+| `watch_enabled` | `False` | Config-only, never gated in code |
+| `episode_min_supporting_signals` | `2` | Replaced by weighted scoring in Phase 3 |
+
+New flags added for hub validation:
+
+| Flag | Docker Config | Purpose |
+|------|--------------|---------|
+| `NCMS_TEMPORAL_ENABLED` | `true` | Temporal query scoring (Phase 4) |
+| `NCMS_MAINTENANCE_ENABLED` | `true` | Scheduled consolidation/episodes/decay |
+| `NCMS_SEARCH_FEEDBACK_ENABLED` | `true` | Search→access correlation tracking |
+| `NCMS_PIPELINE_DEBUG` | `true` (hub only) | Per-candidate scoring in events |
+| `NCMS_BULK_IMPORT_QUEUE_SIZE` | `10000` | Larger queue for agent knowledge loads |
+
+**Bulk Import Mode:**
+
+`KnowledgeLoader.bulk_load_directory()` starts the async index pool with a larger queue (10K default), persists all memories (fast), then waits for indexing to drain. Agent sandboxes try `POST /api/v1/knowledge/bulk-import` first, falling back to per-file `store_memory()` for older hubs. CLI `ncms load` uses bulk mode by default for directories (`--no-bulk` to disable).
 
 ---
 

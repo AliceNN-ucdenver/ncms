@@ -80,15 +80,17 @@ class TestCooccurrenceEdges:
             await store.close()
 
     @pytest.mark.asyncio
-    async def test_disabled_creates_no_edges(self):
-        """With cooccurrence_edges_enabled=False, no edges should be created."""
-        svc, store, graph = await _create_service(cooccurrence_edges_enabled=False)
+    async def test_always_creates_edges(self):
+        """Co-occurrence is always on — edges created even with legacy flag False."""
+        # cooccurrence_edges_enabled is a retired backward-compat alias;
+        # co-occurrence edges are always created now.
+        svc, store, graph = await _create_service()
         try:
             await svc.store_memory(
                 content="PostgreSQL connection pooling via PgBouncer for FastAPI backend",
                 domains=["db"],
             )
-            assert graph._graph.number_of_edges() == 0
+            assert graph._graph.number_of_edges() > 0
         finally:
             await store.close()
 
@@ -130,7 +132,6 @@ class TestCooccurrenceEdges:
     async def test_graph_expansion_search_with_cooccurrence(self):
         """Full search pipeline should discover documents via co-occurrence edges."""
         svc, store, graph = await _create_service(
-            graph_expansion_enabled=True,
             graph_expansion_depth=1,
         )
         try:

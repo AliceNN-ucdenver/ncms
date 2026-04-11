@@ -32,7 +32,7 @@ services:
       NCMS_LLM_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
       NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
       NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
-      # Features
+      # Features — Production bundle (Phases 1-4)
       NCMS_SPLADE_ENABLED: "true"
       NCMS_EPISODES_ENABLED: "true"
       NCMS_INTENT_CLASSIFICATION_ENABLED: "true"
@@ -41,7 +41,14 @@ services:
       NCMS_RECONCILIATION_ENABLED: "true"
       NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
       NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
+      NCMS_TEMPORAL_ENABLED: "true"
+      # Maintenance & Learning
+      NCMS_MAINTENANCE_ENABLED: "true"
+      NCMS_SEARCH_FEEDBACK_ENABLED: "true"
+      NCMS_PIPELINE_DEBUG: "true"
       NCMS_DREAM_CYCLE_ENABLED: "false"
+      # Bulk import (larger queue for agent knowledge loading)
+      NCMS_BULK_IMPORT_QUEUE_SIZE: "10000"
       # HuggingFace token for gated models (SPLADE v3)
       HF_TOKEN: "${HF_TOKEN:-}"
     volumes:

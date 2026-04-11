@@ -134,7 +134,12 @@ async def _load_knowledge_files(
     agent_domains: list[str],
     knowledge_paths: list,
 ) -> None:
-    """Read knowledge files from disk and store each as a memory in the hub."""
+    """Load knowledge files into the hub via bulk import or individual store.
+
+    Attempts bulk import via ``POST /api/v1/knowledge/bulk-import`` first
+    (handles chunking and async indexing server-side).  Falls back to
+    per-file ``store_memory()`` if the hub doesn't support bulk import yet.
+    """
     from pathlib import Path
 
     total = 0
@@ -151,6 +156,27 @@ async def _load_knowledge_files(
             logger.warning("[knowledge] Not a directory: %s", dir_path)
             continue
 
+        file_domains = list(set(agent_domains + extra_domains))
+
+        # Try bulk import first (server-side chunking + async indexing)
+        try:
+            result = await client.bulk_import(
+                directory_path=str(p), domains=file_domains,
+            )
+            loaded += result.get("memories_created", 0)
+            total += result.get("files_processed", 0)
+            logger.info(
+                "[knowledge] Bulk imported %s: %d files -> %d memories",
+                dir_path, result.get("files_processed", 0),
+                result.get("memories_created", 0),
+            )
+            continue  # Success — skip per-file fallback
+        except Exception:
+            logger.info(
+                "[knowledge] Bulk import unavailable, falling back to per-file load",
+            )
+
+        # Fallback: load files individually
         for filepath in sorted(p.rglob("*")):
             if not filepath.is_file():
                 continue
@@ -171,18 +197,17 @@ async def _load_knowledge_files(
             if len(content) > _MAX_CONTENT_SIZE:
                 content = content[:_MAX_CONTENT_SIZE]
 
-            # Merge agent domains + per-path domains
-            file_domains = list(set(agent_domains + extra_domains))
+            per_file_domains = list(file_domains)
             rel = str(filepath)
             if "ADR" in rel or "adr" in rel:
-                if "decisions" not in file_domains:
-                    file_domains.append("decisions")
+                if "decisions" not in per_file_domains:
+                    per_file_domains.append("decisions")
 
             try:
                 await client.store_memory(
                     content=content,
                     type="fact",
-                    domains=file_domains,
+                    domains=per_file_domains,
                     source_agent=agent_id,
                     importance=9.0,  # Knowledge files bypass admission discard
                 )

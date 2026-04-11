@@ -122,8 +122,7 @@ class MemoryService:
             features.append("dream")
         if self._config.reranker_enabled:
             features.append("reranker")
-        if self._config.async_indexing_enabled:
-            features.append("async_indexing")
+        features.append("async_indexing")  # Always on
         if self._config.level_first_enabled:
             features.append("level_first")
         if self._config.synthesis_enabled:
@@ -140,15 +139,17 @@ class MemoryService:
     def graph(self) -> GraphEngine:
         return self._graph
 
-    async def start_index_pool(self) -> None:
-        """Start background indexing workers if async_indexing_enabled."""
-        if not self._config.async_indexing_enabled:
-            return
+    async def start_index_pool(self, queue_size: int | None = None) -> None:
+        """Start background indexing workers.
+
+        Args:
+            queue_size: Override queue capacity (e.g., for bulk import).
+        """
         from ncms.application.index_worker import IndexWorkerPool
         pool = IndexWorkerPool(
             memory_service=self,
             num_workers=self._config.index_workers,
-            queue_size=self._config.index_queue_size,
+            queue_size=queue_size or self._config.index_queue_size,
             max_retries=self._config.index_max_retries,
             drain_timeout_seconds=self._config.index_drain_timeout_seconds,
         )
@@ -162,6 +163,21 @@ class MemoryService:
             await self._index_pool.shutdown()  # type: ignore[union-attr]
             self._index_pool = None
             logger.info("Background indexing pool stopped")
+
+    async def flush_indexing(self, poll_interval: float = 0.2) -> None:
+        """Wait for the background index queue to drain completely.
+
+        Use after bulk imports to ensure all memories are indexed before
+        querying.  Returns immediately if no pool is running.
+        """
+        if self._index_pool is None:
+            return
+        while True:
+            stats = self._index_pool.stats()  # type: ignore[union-attr]
+            if stats.queue_depth == 0 and stats.workers_busy == 0:
+                break
+            await asyncio.sleep(poll_interval)
+        logger.info("Index queue flushed — all memories indexed")
 
     def index_pool_stats(self) -> dict | None:
         """Return indexing pool stats, or None if not running."""
@@ -702,7 +718,7 @@ class MemoryService:
         # Fix #6: Cap clique size to avoid hub-node inflation from generic entities.
         # Fix #2: Track co-occurrence counts for PMI weight computation.
         # In-memory only (not persisted to SQLite) — rebuilt each session.
-        if self._config.cooccurrence_edges_enabled and len(linked_entity_ids) > 1:
+        if len(linked_entity_ids) > 1:  # Co-occurrence always on
             t0 = time.perf_counter()
             cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
             cooc_count = 0
@@ -1397,7 +1413,8 @@ class MemoryService:
         fused_ids = {mid for mid, _ in fused_candidates}
         all_candidates: list[tuple[str, float]] = list(fused_candidates)
 
-        if self._config.graph_expansion_enabled:
+        # Graph expansion (always on — Tier 1.5)
+        if True:
             t0 = time.perf_counter()
             candidate_entity_pool: set[str] = set()
             for memory_id, _ in fused_candidates:
@@ -1493,7 +1510,7 @@ class MemoryService:
         # Compute IDF weights for entity-based scoring (Fix #3)
         # IDF = log(N / df) where N = total memories, df = memories containing entity
         entity_idf: dict[str, float] | None = None
-        if context_entity_ids and self._config.graph_expansion_enabled:
+        if context_entity_ids:  # Graph expansion always on
             try:
                 doc_freq = self._graph.get_entity_document_frequency()
                 total_docs = max(self._graph.total_memory_count(), 1)
@@ -1506,24 +1523,12 @@ class MemoryService:
             except Exception:
                 logger.debug("Failed to compute entity IDF", exc_info=True)
 
-        # Compute PMI-based edge weights for co-occurrence graph (Fix #2)
-        # Only needed for BFS fallback path (PPR uses edge weights directly)
-        if (
-            not self._config.graph_ppr_enabled
-            and self._config.cooccurrence_edges_enabled
-            and entity_idf
-        ):
-            try:
-                self._compute_pmi_edge_weights()
-            except Exception:
-                logger.debug("Failed to compute PMI edge weights", exc_info=True)
-
-        # Phase 9: Personalized PageRank — compute ONCE per query (not per candidate)
+        # Personalized PageRank — compute ONCE per query (not per candidate)
         # Skip entirely when graph weight is 0 (saves ~5ms per query)
+        # Note: BFS fallback path removed — PPR is always on (retired graph_ppr_enabled)
         ppr_scores: dict[str, float] = {}
         if (
-            self._config.graph_ppr_enabled
-            and context_entity_ids
+            context_entity_ids
             and self._config.scoring_weight_graph > 0
         ):
             try:

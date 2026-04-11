@@ -136,7 +136,7 @@ async def create_ncms_services(
     bus_svc = BusService(
         bus=bus,
         snapshot_service=snapshot_svc,
-        surrogate_enabled=config.bus_surrogate_enabled,
+        surrogate_enabled=True,  # Always on (retired flag)
     )
 
     # Rebuild in-memory graph from persistent store (rehydrate after restart)

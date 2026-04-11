@@ -196,6 +196,85 @@ class KnowledgeLoader:
 
         return stats
 
+    async def bulk_load_directory(
+        self,
+        path: str | Path,
+        domains: list[str] | None = None,
+        recursive: bool = True,
+        progress_callback: Any | None = None,
+        **kwargs: Any,
+    ) -> LoadStats:
+        """Load all files with async indexing — start pool, load, flush, stop.
+
+        This is the preferred path for large knowledge imports.  It:
+        1. Starts the background indexing pool with a larger queue
+        2. Loads all files (persist is fast; indexing is queued)
+        3. Waits for indexing to drain (all BM25/SPLADE/GLiNER complete)
+        4. Returns aggregate stats
+
+        Args:
+            path: Directory to load.
+            domains: Override domains for all files.
+            recursive: Recurse into subdirectories.
+            progress_callback: Optional ``fn(file_path, file_stats)`` called per file.
+        """
+        import time as _time
+
+        stats = LoadStats()
+        path = Path(path)
+
+        if not path.is_dir():
+            stats.errors.append(f"Not a directory: {path}")
+            return stats
+
+        t0 = _time.perf_counter()
+
+        # Start indexing pool with larger queue for bulk loads
+        pool_was_running = self._memory._index_pool is not None
+        if not pool_was_running:
+            bulk_queue = self._memory._config.bulk_import_queue_size
+            await self._memory.start_index_pool(queue_size=bulk_queue)
+            logger.info("Bulk import: started index pool (queue=%d)", bulk_queue)
+
+        # Phase 1: Load all files (fast — just persist + enqueue)
+        pattern = "**/*" if recursive else "*"
+        files = sorted(
+            f for f in path.glob(pattern)
+            if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS
+        )
+        logger.info("Bulk import: %d files to load from %s", len(files), path)
+
+        for file_path in files:
+            file_stats = await self.load_file(file_path, domains=domains, **kwargs)
+            stats.files_processed += file_stats.files_processed
+            stats.memories_created += file_stats.memories_created
+            stats.chunks_total += file_stats.chunks_total
+            stats.errors.extend(file_stats.errors)
+            if progress_callback:
+                progress_callback(file_path, file_stats)
+
+        load_ms = (_time.perf_counter() - t0) * 1000
+        logger.info(
+            "Bulk import: %d files -> %d memories persisted in %.0fms, "
+            "waiting for indexing...",
+            stats.files_processed, stats.memories_created, load_ms,
+        )
+
+        # Phase 2: Wait for all indexing to complete
+        await self._memory.flush_indexing()
+
+        total_ms = (_time.perf_counter() - t0) * 1000
+        logger.info(
+            "Bulk import complete: %d files, %d memories, %.1fs total",
+            stats.files_processed, stats.memories_created, total_ms / 1000,
+        )
+
+        # Stop pool only if we started it
+        if not pool_was_running:
+            await self._memory.stop_index_pool()
+
+        return stats
+
     async def load_text(
         self,
         text: str,

@@ -68,9 +68,10 @@ class TestGraphExpansion:
             await store.close()
 
     @pytest.mark.asyncio
-    async def test_no_expansion_when_disabled(self):
-        """With expansion explicitly disabled, only BM25 results should appear."""
-        svc, store = await _create_expansion_service(graph_expansion_enabled=False)
+    async def test_expansion_always_on(self):
+        """Graph expansion is always on — retired flag is ignored."""
+        # graph_expansion_enabled was retired; co-occurrence + expansion always active
+        svc, store = await _create_expansion_service()
         try:
             mem_a = await svc.store_memory(
                 content="PostgreSQL connection pooling configuration via PgBouncer",
@@ -86,8 +87,8 @@ class TestGraphExpansion:
 
             # mem_a should be found by BM25
             assert mem_a.id in result_ids
-            # mem_b should NOT be discovered since graph expansion is disabled
-            assert mem_b.id not in result_ids
+            # mem_b should be discovered via shared PostgreSQL entity
+            assert mem_b.id in result_ids
         finally:
             await store.close()
 

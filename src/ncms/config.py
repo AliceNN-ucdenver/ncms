@@ -2,6 +2,15 @@
 
 Configuration can be set via environment variables with the NCMS_ prefix,
 or by passing values directly to NCMSConfig().
+
+Feature Flag Tiers:
+  - ALWAYS ON: No flag — behavior is unconditional (async indexing, graph
+    expansion, co-occurrence edges, PPR, bus surrogates).  These matured
+    through Phases 1-4 and have no reason to disable.
+  - PRODUCTION: Default False, but all Docker configs enable them as a
+    bundle.  Still useful to disable individually for debugging.
+  - ADVANCED: Off by default, enable selectively (dream cycles, LLM
+    fallbacks, synthesis, maintenance).
 """
 
 from __future__ import annotations
@@ -27,7 +36,6 @@ class NCMSConfig(BaseSettings):
 
     # Knowledge Bus
     bus_ask_timeout_ms: int = 5000
-    bus_surrogate_enabled: bool = True
 
     # LLM (used by contradiction detection)
     llm_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
@@ -54,19 +62,19 @@ class NCMSConfig(BaseSettings):
     scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
     scoring_weight_graph: float = 0.3  # Restored: graph signal helps baseline (+10% AR)
 
-    # Graph expansion (Tier 1.5)
-    graph_expansion_enabled: bool = True
+    # Graph expansion — ALWAYS ON (Tier 1.5, no flag)
+    # Retired: graph_expansion_enabled was always True, never disabled in production
     graph_expansion_depth: int = 1
     graph_expansion_max: int = 10
 
-    # Co-occurrence edges (entity graph connectivity)
-    cooccurrence_edges_enabled: bool = True
+    # Co-occurrence edges — ALWAYS ON
+    # Retired: cooccurrence_edges_enabled was always True, never disabled in production
     cooccurrence_max_entities: int = 12  # Fix #6: reduced from 20 to cap clique inflation
 
     # Graph-based spreading activation parameters
     graph_hop_decay: float = 0.5       # Activation multiplier per hop
     graph_spreading_max_hops: int = 2  # Maximum hops for graph traversal
-    graph_ppr_enabled: bool = True     # Use Personalized PageRank (replaces BFS)
+    # Retired: graph_ppr_enabled was always True; PPR is strictly better than BFS
 
     # Recency scoring
     scoring_weight_recency: float = 0.0   # Additive recency weight (0 = disabled)
@@ -115,7 +123,6 @@ class NCMSConfig(BaseSettings):
     episodes_enabled: bool = False
     episode_window_minutes: int = 1440   # T_window for temporal proximity signal
     episode_close_minutes: int = 1440    # T_close for auto-closure
-    episode_min_supporting_signals: int = 2  # Legacy: kept for backward compat
     episode_match_threshold: float = 0.30  # Weighted score threshold for joining
     episode_create_min_entities: int = 2   # Min entities to create new episode
     episode_candidate_limit: int = 10      # BM25/SPLADE candidate limit
@@ -214,12 +221,16 @@ class NCMSConfig(BaseSettings):
     reranker_output_k: int = 20    # Keep this many after reranking
     scoring_weight_ce: float = 0.7  # Cross-encoder weight when reranker active
 
-    # Background indexing (Phase 2 performance)
-    async_indexing_enabled: bool = True
+    # Background indexing — ALWAYS ON (no flag)
+    # Retired: async_indexing_enabled was always True; sync indexing was only
+    # a debugging path that no production or benchmark code uses.
     index_workers: int = 3
     index_queue_size: int = 1000
     index_max_retries: int = 3
     index_drain_timeout_seconds: int = 30
+
+    # Bulk import mode — defers all indexing until flush_indexing() called
+    bulk_import_queue_size: int = 10000  # Larger queue for bulk loads
 
     # Pipeline observability
     pipeline_debug: bool = False  # Emit candidate details in pipeline events
@@ -232,12 +243,6 @@ class NCMSConfig(BaseSettings):
     http_port: int = 8080
     auth_token: str | None = None
 
-    # OpenTelemetry
-    otel_enabled: bool = False
-    otel_service_name: str = "ncms"
-    otel_endpoint: str | None = None  # Uses OTEL_EXPORTER_OTLP_ENDPOINT env var if not set
-    otel_protocol: str = "http/protobuf"  # or "grpc"
-
     # Maintenance scheduler
     maintenance_enabled: bool = False
     maintenance_consolidation_interval_minutes: int = 360   # 6 hours
@@ -245,9 +250,14 @@ class NCMSConfig(BaseSettings):
     maintenance_episode_close_interval_minutes: int = 60    # 1 hour
     maintenance_decay_interval_minutes: int = 720           # 12 hours
 
-    # Filesystem watcher
-    watch_enabled: bool = False
-    watch_debounce_seconds: float = 2.0
-    watch_exclude_patterns: str = "*.pyc,__pycache__,.git,.DS_Store,*.swp,*.swo,*~,*.tmp,.#*"
-    watch_default_importance: float = 6.0
-    watch_hash_persistence: bool = True
+    # ── Backward compatibility aliases ──────────────────────────────────
+    # These retired flags are still accepted as env vars but ignored.
+    # Prevents Docker configs from erroring if they still set the old names.
+    bus_surrogate_enabled: bool = True         # RETIRED: surrogates always on
+    graph_expansion_enabled: bool = True       # RETIRED: expansion always on
+    cooccurrence_edges_enabled: bool = True    # RETIRED: co-occurrence always on
+    graph_ppr_enabled: bool = True             # RETIRED: PPR always on
+    async_indexing_enabled: bool = True        # RETIRED: async always on
+    otel_enabled: bool = False                 # RETIRED: unused, never gated
+    watch_enabled: bool = False                # RETIRED: unused, never gated
+    episode_min_supporting_signals: int = 2    # RETIRED: replaced by weighted scoring

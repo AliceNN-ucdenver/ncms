@@ -65,7 +65,7 @@ RUN chmod +x /app/entrypoint-hub.sh
 # Create data directories
 RUN mkdir -p /app/data
 
-# Environment defaults
+# Environment defaults — Production bundle (Phases 1-4)
 ENV NCMS_DB_PATH=/app/data/ncms.db \
     NCMS_INDEX_PATH=/app/data/index \
     NCMS_SPLADE_ENABLED=true \
@@ -75,7 +75,12 @@ ENV NCMS_DB_PATH=/app/data/ncms.db \
     NCMS_ADMISSION_ENABLED=true \
     NCMS_RECONCILIATION_ENABLED=true \
     NCMS_CONTENT_CLASSIFICATION_ENABLED=true \
+    NCMS_CONTRADICTION_DETECTION_ENABLED=true \
+    NCMS_TEMPORAL_ENABLED=true \
+    NCMS_MAINTENANCE_ENABLED=true \
+    NCMS_SEARCH_FEEDBACK_ENABLED=true \
     NCMS_DREAM_CYCLE_ENABLED=false \
+    NCMS_BULK_IMPORT_QUEUE_SIZE=10000 \
     NCMS_MODEL_CACHE_DIR=/root/.cache/huggingface
 
 EXPOSE 9080 8420
