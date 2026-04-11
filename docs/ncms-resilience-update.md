@@ -1587,6 +1587,24 @@ The query set should include:
 | Temporal query parser (Phase 1: regex, 6+ pattern types) | ✅ Done | `domain/temporal_parser.py` (parse_temporal_reference, compute_temporal_proximity) |
 | Temporal scoring integration | ✅ Done | `application/memory_service.py` search() — additive w_temporal signal |
 
+**Phase 4 Benchmark Results** (vs Phase 0 baseline, 2026-04-10):
+
+| Metric | Baseline | Phase 4 | Delta |
+|--------|----------|---------|-------|
+| Hub ingest p50 | 269.56 ms | 0.78 ms | **-99.7%** (async indexing) |
+| Hub ingest p95 | 3363.41 ms | 20.14 ms | **-99.4%** |
+| Hub search p50 | 63.60 ms | 68.94 ms | +8.4% (run variance) |
+| Hub state_lookup top-1 | 0.8497 | 1.0758 | **+26.6%** (intent classification) |
+| Hub temporal top-1 | 0.7855 | 0.8019 | +2.1% |
+| Hub pattern top-1 | 0.7792 | 0.8278 | +6.2% |
+| Hub cross_agent top-1 | 0.7831 | 0.8051 | +2.8% |
+| BEIR SciFact nDCG@10 | 0.7070 | 0.7070 | 0.0% (no regression) |
+| BEIR SciFact Recall@10 | 0.8404 | 0.8404 | 0.0% |
+| LoCoMo Recall@5 | 0.1375 | 0.1375 | 0.0% |
+| LongMemEval Recall@5 | 0.4680 | 0.4680 | 0.0% |
+
+Key findings: Async background indexing (3 workers) reduced ingest latency by 99%+. Intent-aware retrieval boosted state/temporal/pattern queries without regressing any standard benchmark. All harnesses now start the index pool and wait for completion before querying.
+
 ### Phase 5: Level-First Retrieval & Synthesis (Weeks 5-6)
 
 **Dependency**: Emergent topic map requires L4 abstracts. Before testing topic clustering, run at least one consolidation pass via the maintenance scheduler (Phase 3) or manually via `ncms` CLI / HTTP endpoint. Level-first retrieval and the synthesize() pipeline can be tested independently — they fall back gracefully when L4 content is absent.

@@ -119,6 +119,49 @@ def log_run_header(name: str, run_logger: logging.Logger) -> None:
     run_logger.info("=" * 70)
 
 
+async def wait_for_indexing(svc: Any, run_logger: logging.Logger | None = None) -> None:
+    """Poll the index worker pool until all background tasks complete.
+
+    Logs queue depth and worker stats every ~1s so you can see progress.
+    No-op if async indexing is not active.
+
+    Args:
+        svc: MemoryService instance (checks svc._index_pool).
+        run_logger: Logger to use; falls back to module logger.
+    """
+    log = run_logger or logger
+    pool = getattr(svc, "_index_pool", None)
+    if pool is None:
+        return
+
+    import time as _time
+
+    log.info("Waiting for background indexing to complete...")
+    t_wait = _time.perf_counter()
+    poll_count = 0
+    while True:
+        stats = pool.stats()
+        if stats.queue_depth == 0 and stats.workers_busy == 0:
+            break
+        poll_count += 1
+        if poll_count % 10 == 0:  # ~1s intervals
+            log.info(
+                "  queue=%d busy=%d processed=%d (%.0fms)",
+                stats.queue_depth, stats.workers_busy,
+                stats.processed_total,
+                (_time.perf_counter() - t_wait) * 1000,
+            )
+        await asyncio.sleep(0.1)
+
+    wait_ms = (_time.perf_counter() - t_wait) * 1000
+    final = pool.stats()
+    log.info(
+        "Indexing complete in %.0fms — processed=%d failed=%d retried=%d avg=%.0fms",
+        wait_ms, final.processed_total, final.failed_total,
+        final.retried_total, final.avg_process_ms,
+    )
+
+
 def run_async(coro: Coroutine[Any, Any, Any], name: str) -> None:
     """Run an async coroutine with standard error handling.
 

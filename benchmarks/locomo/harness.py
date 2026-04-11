@@ -292,6 +292,7 @@ async def replay_conversation(
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
+    await svc.start_index_pool()
 
     memory_ids: list[str] = []
     turn_to_memory: dict[int, str] = {}
@@ -319,6 +320,10 @@ async def replay_conversation(
         len(memory_ids),
         elapsed,
     )
+
+    # Wait for background indexing to finish before searching
+    from benchmarks.core.runner import wait_for_indexing
+    await wait_for_indexing(svc, run_logger=logger)
 
     return ConversationState(
         store=store,

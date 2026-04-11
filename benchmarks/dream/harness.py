@@ -154,6 +154,7 @@ async def ingest_with_phases(
         splade=splade, admission=admission, reconciliation=reconciliation,
         episode=episode,
     )
+    await svc.start_index_pool()
 
     # Ingest corpus
     doc_to_mem: dict[str, str] = {}
@@ -214,6 +215,10 @@ async def ingest_with_phases(
         len(doc_to_mem) / elapsed if elapsed > 0 else 0,
         skipped_ephemeral,
     )
+
+    # Wait for background indexing to finish before searching
+    from benchmarks.core.runner import wait_for_indexing
+    await wait_for_indexing(svc, run_logger=logger)
 
     state = DreamState(
         store=store, index=index, graph=graph, splade=splade,

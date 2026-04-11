@@ -241,6 +241,7 @@ async def _create_ncms_instance(
         store=store, index=index, graph=graph, config=config,
         splade=splade,
     )
+    await svc.start_index_pool()
 
     return svc, store, index, graph, splade, config
 
@@ -346,6 +347,10 @@ async def evaluate_sample(
         "Sample %s: ingested %d chunks (%.1fs), context=%d chars",
         sample_id, len(chunks), ingestion_secs, len(context),
     )
+
+    # Wait for background indexing to finish before searching
+    from benchmarks.core.runner import wait_for_indexing
+    await wait_for_indexing(svc, run_logger=logger)
 
     # Search and score each question
     result = SampleResult(

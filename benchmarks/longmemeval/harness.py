@@ -88,6 +88,7 @@ async def _create_ncms_instance(
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
     )
+    await svc.start_index_pool()
 
     return store, index, graph, splade, config, svc
 
@@ -295,6 +296,10 @@ async def run_longmemeval_benchmark(
             mem_ids = await _ingest_sessions(svc, q_sessions)
             total_memories += len(mem_ids)
             total_sessions += len(q_sessions)
+
+            # Wait for background indexing to finish before searching
+            from benchmarks.core.runner import wait_for_indexing
+            await wait_for_indexing(svc, run_logger=logger)
 
             # Evaluate
             scores = await evaluate_question(

@@ -134,6 +134,9 @@ async def replay_ingest(
         from ncms.application.section_service import SectionService
         svc._section_svc = SectionService(memory_service=svc, config=config)
 
+    # Start background indexing pool (matches production behavior)
+    await svc.start_index_pool()
+
     # Sort by created_at to replay in exact order
     sorted_memories = sorted(memories, key=lambda m: m["created_at"])
 
@@ -194,6 +197,10 @@ async def replay_ingest(
                 "  Ingested %d/%d memories (last: %.1f ms)",
                 i + 1, len(sorted_memories), elapsed_ms,
             )
+
+    # Wait for background indexing to finish before searching
+    from benchmarks.core.runner import wait_for_indexing
+    await wait_for_indexing(svc, run_logger=logger)
 
     logger.info(
         "Ingest complete: %d memories, p50=%.1f ms, p95=%.1f ms",

@@ -185,6 +185,7 @@ async def ingest_swebench(
         splade=splade, admission=admission, reconciliation=reconciliation,
         episode=episode, reranker=reranker,
     )
+    await svc.start_index_pool()
 
     # Ingest in chronological order
     doc_to_mem: dict[str, str] = {}
@@ -242,6 +243,10 @@ async def ingest_swebench(
         "Ingestion complete: %d docs in %.1fs (%.1f docs/sec)",
         len(doc_to_mem), elapsed, len(doc_to_mem) / elapsed if elapsed > 0 else 0,
     )
+
+    # Wait for background indexing to finish before searching
+    from benchmarks.core.runner import wait_for_indexing
+    await wait_for_indexing(svc, run_logger=logger)
 
     return SWEState(
         store=store, index=index, graph=graph, splade=splade,
