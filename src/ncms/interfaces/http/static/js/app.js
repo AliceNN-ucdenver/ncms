@@ -76,6 +76,7 @@ function connectSSE() {
 
   const eventTypes = [
     'agent.registered', 'agent.deregistered', 'agent.status',
+    'agent.heartbeat_timeout', 'agent.auto_snapshot',
     'bus.ask', 'bus.response', 'bus.announce', 'bus.surrogate',
     'memory.stored', 'memory.searched',
     'episode.created', 'episode.assigned', 'episode.closed',
@@ -83,6 +84,11 @@ function connectSSE() {
     'document.published',
     'pipeline.node',
     'project.created', 'project.archived',
+    // Learning card events (consolidation, dream, maintenance)
+    'consolidation.pass_complete', 'consolidation.abstract_created',
+    'dream.cycle_complete',
+    'maintenance.task_complete', 'maintenance.task_error',
+    'search.feedback', 'retrieval.debug',
   ];
 
   eventTypes.forEach(type => {
@@ -284,6 +290,7 @@ function replayToPosition(index) {
   }
   renderAdmissionFeed();
   renderPipelines();
+  if (typeof _renderLearning === 'function') _renderLearning();
   updateStatsLocal();
 
   const evt = timeline.allEvents[index];
@@ -340,6 +347,7 @@ function returnToLive() {
   }
   renderAdmissionFeed();
   renderPipelines();
+  if (typeof _renderLearning === 'function') _renderLearning();
   updateStats();
 }
 
@@ -389,6 +397,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (typeof loadDocuments === 'function') {
     loadDocuments();
+  }
+  if (typeof bootstrapLearning === 'function') {
+    bootstrapLearning();
   }
   setInterval(() => {
     if (timeline.mode === 'live') updateStats();

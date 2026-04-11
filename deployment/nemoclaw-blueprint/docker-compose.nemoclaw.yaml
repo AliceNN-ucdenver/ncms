@@ -28,6 +28,7 @@ services:
       NCMS_RERANKER_ENABLED: "true"
       NCMS_ADMISSION_ENABLED: "true"
       NCMS_RECONCILIATION_ENABLED: "true"
+      NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
       # LLM → DGX Spark (fully local, no Anthropic)
       NCMS_LLM_MODEL: "${LLM_MODEL:-openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16}"
       NCMS_LLM_API_BASE: "${LLM_API_BASE:-http://spark-ee7d.local:8000/v1}"

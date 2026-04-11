@@ -1527,7 +1527,7 @@ Each phase has specific metrics that should improve. If they don't, the phase ne
 | **Phase 4: Content-Aware Ingestion** | Hub entity quality ↑ (per-section extraction), section index coverage | Ingest latency (may increase — budget 50% p95 increase) |
 | **Phase 5: Level-First Retrieval** | LoCoMo ↑, LongMemEval R@5 ↑, MAB LRU ↑ | MAB AR (fact_lookup must not regress), ingest latency |
 | **Phase 6: Export & Feedback** ✅ | N/A (infrastructure + tooling) | All benchmark scores |
-| **Phase 7: Evaluation** | All benchmarks: publish final numbers vs. MAGMA/Kumiho/MemPalace | N/A (final measurement phase) |
+| **Phase 7: Evaluation** 🔄 | All benchmarks: publish final numbers vs. MAGMA/Kumiho/MemPalace | N/A (final measurement phase) |
 
 #### 0.5 Hub Replay Workload
 
@@ -1663,22 +1663,36 @@ Key findings: Async background indexing (3 workers) reduced ingest latency by 99
 5. **Auto-snapshot test**: Set `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT=true`, let agent timeout, verify snapshot published and `agent.auto_snapshot` event emitted
 6. **Scale flags test**: Set `NCMS_SCALE_AWARE_FLAGS_ENABLED=true` with low thresholds, verify features auto-disabled with warning logs
 
+**Bug Fixes Identified & Resolved During Phase 6 (2026-04-11):**
+
+These issues were discovered during hub integration testing and resolved as cross-cutting fixes:
+
+| Fix | Root Cause | Resolution | Files |
+|-----|-----------|------------|-------|
+| Entity state detection for high-importance content | `importance >= 8.0` bypassed admission entirely, so `admission_features` was `None` → L2 ENTITY_STATE nodes never created for agent-forced content | Single-path admission: always compute features, only skip routing decision (`_skip_admission_routing`). No duplicate heuristics. | `memory_service.py` |
+| Phase 4 SectionService never wired | `SectionService` was implemented but never instantiated in composition root. `content_classification_enabled` defaulted to `false`, never set in Docker configs. | Wire `SectionService` in `mcp/server.py` after `MemoryService` creation (duck-typed to break circular dep). Enable `NCMS_CONTENT_CLASSIFICATION_ENABLED=true` in all Docker configs. | `mcp/server.py`, 4 Docker config files |
+| Redundant 2000 char entity state cutoff | Pre-Phase-4 hard cutoff (`_max_state_len = 2000`) suppressed L2 creation on long content, which Phase 4 section extraction now handles by splitting documents into sections | Removed `_max_state_len` block entirely. Phase 4 section extraction splits NAVIGABLE content into right-sized sections before they reach entity state detection. | `memory_service.py` |
+| Extended state declaration patterns | Only matched `Entity: key = value` format, missing markdown `## Status` and YAML `status:` patterns | Added 2 new regex patterns for markdown heading + YAML key-value state declarations. Added patterns 5+6 in `_extract_entity_state_meta()`. | `memory_service.py` |
+| Dashboard Learning card inactive | Learning card showed static padlock icon with no live data from consolidation/dream/maintenance jobs | New `learning.js` module with SSE live events (`consolidation.*`, `dream.*`, `maintenance.*`, `episode.*`) + page-refresh rehydration from `/api/events?limit=500`. Card activates on first learning event (padlock → brain, purple accent). | `learning.js` (new), `app.js`, `agents.js`, `index.html`, `dashboard.css` |
+
 ### Phase 7: Evaluation & Housekeeping (Weeks 8-9)
 
-| Task | Effort | Files |
-|------|--------|-------|
-| LoCoMo + LoCoMo-Plus benchmark harness | 8h | `benchmarks/locomo/` |
-| LongMemEval benchmark harness | 6h | `benchmarks/longmemeval/` |
-| MemoryAgentBench harness (AR, TTL, LRU, selective forgetting) | 8h | `benchmarks/memoryagentbench/` |
-| Agent workload weight tuning (incl. temporal weight) | 6h | `benchmarks/tuning/` |
-| Bulk import mode | 6h | `cli/main.py`, `memory_service.py` |
-| User/assistant retrieval asymmetry | 3h | `memory_service.py` |
-| Admission scoring: content-type prefix classifier | 3h | `admission_service.py` |
-| Expanded admission labeled dataset (200+ examples) | 4h | `benchmarks/tuning/` |
-| Design doc reorganization | 1h | `docs/` directory restructure (Section 10.3) |
-| Remove or archive dormant CLI hooks | 30m | `cli/commit_hook.py`, `cli/context_loader.py` |
-| Hub re-test with all fixes | 4h | Manual validation |
-| Update all documentation (Appendix D) | 4h | See Appendix D |
+| Task | Status | Effort | Files |
+|------|--------|--------|-------|
+| LoCoMo + LoCoMo-Plus benchmark harness | ✅ Done | 8h | `benchmarks/locomo/` |
+| LongMemEval benchmark harness | ✅ Done | 6h | `benchmarks/longmemeval/` |
+| MemoryAgentBench harness (AR, TTL, LRU, selective forgetting) | ✅ Done | 8h | `benchmarks/memoryagentbench/` |
+| Hub replay benchmark harness | ✅ Done | 4h | `benchmarks/hub_replay/` |
+| Agent workload weight tuning (incl. temporal weight) | ✅ Done | 6h | `benchmarks/tuning/` |
+| Phase 0 baseline measurements | ✅ Done | 4h | `benchmarks/results/phase0_baseline/` |
+| Bulk import mode | ⬚ | 6h | `cli/main.py`, `memory_service.py` |
+| User/assistant retrieval asymmetry | ⬚ | 3h | `memory_service.py` |
+| Admission scoring: content-type prefix classifier | ⬚ | 3h | `admission_service.py` |
+| Expanded admission labeled dataset (200+ examples) | ⬚ | 4h | `benchmarks/tuning/` |
+| Design doc reorganization | ⬚ | 1h | `docs/` directory restructure (Section 10.3) |
+| Remove or archive dormant CLI hooks | ⬚ | 30m | `cli/commit_hook.py`, `cli/context_loader.py` |
+| Hub re-test with all Phase 1-6 fixes | ⬚ | 4h | Manual validation |
+| Update all documentation (Appendix D) | ⬚ | 4h | See Appendix D |
 
 ---
 

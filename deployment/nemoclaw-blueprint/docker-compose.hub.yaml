@@ -40,6 +40,7 @@ services:
       NCMS_ADMISSION_ENABLED: "true"
       NCMS_RECONCILIATION_ENABLED: "true"
       NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
+      NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
       NCMS_DREAM_CYCLE_ENABLED: "false"
       # HuggingFace token for gated models (SPLADE v3)
       HF_TOKEN: "${HF_TOKEN:-}"

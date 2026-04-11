@@ -119,6 +119,15 @@ async def create_ncms_services(
         intent_classifier=intent_classifier,
         reranker=reranker,
     )
+
+    # Section service (Phase 4 content-aware ingestion)
+    # Created after MemoryService because of circular dependency (duck-typed).
+    if config.content_classification_enabled:
+        from ncms.application.section_service import SectionService
+
+        section_svc = SectionService(memory_service=memory_svc, config=config)
+        memory_svc._section_svc = section_svc
+        logger.info("Content classification + section extraction enabled")
     snapshot_svc = SnapshotService(
         store=store,
         max_entries=config.snapshot_max_entries,

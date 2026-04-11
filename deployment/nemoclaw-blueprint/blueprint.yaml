@@ -60,6 +60,7 @@ components:
         NCMS_RERANKER_ENABLED: "true"
         NCMS_ADMISSION_ENABLED: "true"
         NCMS_RECONCILIATION_ENABLED: "true"
+        NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
         NCMS_BUS_ASK_TIMEOUT_MS: "60000"
 
     # Architect Agent — architecture, CALM models, ADRs, quality attributes

@@ -272,6 +272,42 @@ class MemoryService:
                 "state_value": m.group(3).strip(),
             }
 
+        # Pattern 5: Markdown "## Status\n\nvalue" (e.g. ADR documents)
+        # The heading title (# Title) provides entity context.
+        p_md_status = re.compile(
+            r"^#\s+(.+?)$.*?^##?\s*[Ss]tatus\s*$\s*^(\w[\w\s]*)$",
+            re.MULTILINE | re.DOTALL,
+        )
+        m = p_md_status.search(content)
+        if m and entities:
+            title = m.group(1).strip()
+            status_val = m.group(2).strip()
+            # Find best matching entity from GLiNER extraction
+            entity_id = entities[0]["name"]
+            title_lower = title.lower()
+            for ent in entities:
+                if ent["name"].lower() in title_lower:
+                    entity_id = ent["name"]
+                    break
+            return {
+                "entity_id": entity_id,
+                "state_key": "status",
+                "state_value": status_val,
+            }
+
+        # Pattern 6: YAML "status: value" (e.g. security checklists, config)
+        p_yaml_status = re.compile(
+            r"^\s*status\s*:\s*(\w[\w_\-]*)",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        m = p_yaml_status.search(content)
+        if m and entities:
+            return {
+                "entity_id": entities[0]["name"],
+                "state_key": "status",
+                "state_value": m.group(1).strip(),
+            }
+
         # Fallback: use first entity as entity_id.
         # Use the first line containing an assignment-like pattern as the
         # state_value (not a 500-char prefix of full content).
@@ -343,22 +379,25 @@ class MemoryService:
             })
             return existing
 
-        # ── Gate 2: Content size check ───────────────────────────────────
-        # Large content is flagged for future document-store routing (Phase 4).
-        # For now, tag it so Phase 4 content classification can process it.
+        # ── Gate 2: Content size diagnostic ──────────────────────────────
+        # Large content is tagged for observability.  When content classification
+        # is enabled (Phase 4), oversized content is split into sections in Gate 3.
         max_len = self._config.max_content_length
-        if len(content) > max_len and importance < 8.0:
+        if len(content) > max_len:
             logger.info(
-                "Content size flag: %d chars exceeds %d (importance=%.1f) "
-                "— tagging for document routing",
+                "Content size: %d chars exceeds %d (importance=%.1f) "
+                "— %s",
                 len(content), max_len, importance,
+                "will split via section extraction"
+                if self._config.content_classification_enabled
+                else "proceeding as atomic (classification disabled)",
             )
             _emit_stage("size_flag", (time.perf_counter() - pipeline_start) * 1000, {
                 "content_length": len(content),
                 "max_content_length": max_len,
                 "importance": importance,
+                "classification_enabled": self._config.content_classification_enabled,
             })
-            # Tag for future Phase 4 document classification
             if tags is None:
                 tags = []
             tags = list(tags) + ["oversized_content"]
@@ -420,9 +459,11 @@ class MemoryService:
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
         admission_features: object | None = None  # AdmissionFeatures, preserved for L2 node
-        # High-importance content (e.g. knowledge files at 9.0) skips admission
-        # scoring entirely — always persisted as atomic memories.
-        if self._admission is not None and self._config.admission_enabled and importance < 8.0:
+        # High-importance content (≥ 8.0) always persists (never discard/ephemeral)
+        # but we still compute admission features so entity state detection works
+        # through one unified path.  Only the routing decision is skipped.
+        _skip_admission_routing = importance >= 8.0
+        if self._admission is not None and self._config.admission_enabled:
             t0 = time.perf_counter()
             try:
                 from dataclasses import asdict as _asdict
@@ -448,7 +489,17 @@ class MemoryService:
                     features=feature_dict, agent_id=source_agent,
                 )
 
-                if admission_route == "discard":
+                # Routing decision: only discard/ephemeral for normal-importance
+                # content.  High-importance (≥ 8.0) always persists — we computed
+                # features above solely for entity state detection signals.
+                if _skip_admission_routing:
+                    admission_route = None  # force persist path
+                    logger.debug(
+                        "Admission: features computed (state_change=%.2f) but "
+                        "routing skipped for high-importance content (%.1f)",
+                        features.state_change_signal, importance,
+                    )
+                elif admission_route == "discard":
                     logger.info(
                         "Admission: discarding content (score=%.3f)", admission_score,
                     )
@@ -462,8 +513,7 @@ class MemoryService:
                         source_agent=source_agent, project=project,
                         structured={"admission": {"score": admission_score, "route": "discard"}},
                     )
-
-                if admission_route == "ephemeral_cache":
+                elif admission_route == "ephemeral_cache":
                     from datetime import UTC, datetime, timedelta
 
                     ttl = self._config.admission_ephemeral_ttl_seconds
@@ -751,10 +801,12 @@ class MemoryService:
                 }, memory_id=memory.id)
 
                 # L2: ADDITIONALLY create entity_state if state change or state
-                # declaration detected.  Two triggers:
-                # a) admission scored state_change_signal ≥ 0.35 (explicit change)
-                # b) content matches structured assignment "Entity: key = value"
-                #    (initial state declaration — no change verb required)
+                # declaration detected.  Two triggers (same path for all content):
+                # a) admission state_change_signal ≥ 0.35 (explicit change verbs)
+                # b) content matches a state declaration pattern:
+                #    - "Entity: key = value" structured assignment
+                #    - "## Status\n\nvalue" markdown section
+                #    - "status: value" YAML key
                 l2_node: MemoryNode | None = None
                 _has_state_change = (
                     admission_features is not None
@@ -762,19 +814,30 @@ class MemoryService:
                     and admission_features.state_change_signal >= 0.35
                 )
                 _has_state_declaration = bool(
+                    # "Entity: key = value" structured assignment
                     re.search(
                         r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
                         content,
                         re.MULTILINE,
                     )
-                ) if admission_features is not None else False
+                    # Markdown "## Status\n\nvalue" (ADRs, design docs)
+                    or re.search(
+                        r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
+                        content,
+                    )
+                    # YAML "status: value" (checklists, config)
+                    or re.search(
+                        r"^\s*status\s*:\s*\w+",
+                        content,
+                        re.MULTILINE | re.IGNORECASE,
+                    )
+                )
 
-                # Tightening (Section 3.4): large documents are not
-                # state declarations — only trigger on short content.
-                _max_state_len = 2000
-                if len(content) > _max_state_len:
-                    _has_state_change = False
-                    _has_state_declaration = False
+                # Note: The pre-Phase-4 "Section 3.4" 2000-char hard cutoff was
+                # removed.  With content classification enabled, large structured
+                # documents are split into sections before reaching this point.
+                # The entity-validation check below (detected entity must exist
+                # in GLiNER extraction) is sufficient to prevent false positives.
 
                 if _has_state_change or _has_state_declaration:
                     node_metadata = self._extract_entity_state_meta(

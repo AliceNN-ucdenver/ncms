@@ -5087,6 +5087,52 @@
 .phase-status.coming-soon {
   color: var(--text-muted); font-style: italic;
 }
+/* ── Learning Card (active state) ── */
+.forge-card.learning-active {
+  opacity: 1;
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.05);
+}
+.forge-card.learning-active .forge-card-name {
+  color: rgba(167, 139, 250, 0.95);
+}
+.learning-metrics {
+  padding: 8px 0 4px 0;
+}
+.learning-metric-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; font-size: 11px;
+}
+.learning-metric-label {
+  color: rgba(200, 210, 220, 0.6);
+}
+.learning-metric-value {
+  color: rgba(167, 139, 250, 0.9); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.learning-activity {
+  max-height: 100px; overflow-y: auto;
+  margin-top: 6px; font-size: 10px;
+  color: rgba(200, 210, 220, 0.6);
+  line-height: 1.6;
+}
+.learning-activity-item {
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.1);
+}
+.learning-activity-item .la-type {
+  color: rgba(167, 139, 250, 0.8); font-weight: 600;
+}
+.learning-activity-item .la-time {
+  color: rgba(150, 160, 170, 0.5); float: right; font-size: 9px;
+}
+@keyframes learning-pulse {
+  0%, 100% { border-color: rgba(139, 92, 246, 0.5); }
+  50% { border-color: rgba(139, 92, 246, 0.8); }
+}
+.forge-card.learning-working {
+  animation: learning-pulse 2s ease-in-out infinite;
+}
 
 /* ── Project View Tabs ──────────────────────────────────────────── */
 .project-view-tabs {

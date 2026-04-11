@@ -116,6 +116,15 @@ function handleEvent(event) {
     }
   }
 
+  // Learning card events (consolidation, dream, maintenance, episodes)
+  if (event.type.startsWith('consolidation.') ||
+      event.type.startsWith('dream.') ||
+      event.type.startsWith('maintenance.') ||
+      event.type === 'episode.created' ||
+      event.type === 'episode.closed') {
+    if (typeof handleLearningEvent === 'function') handleLearningEvent(event);
+  }
+
   // Admission scoring events
   if (event.type === 'admission.scored') {
     state.admissionFeed.unshift({
