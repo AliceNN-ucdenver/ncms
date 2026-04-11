@@ -28,6 +28,8 @@ async def _run(args: argparse.Namespace) -> None:
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     output_dir = Path(args.output_dir)
+    if args.features_on:
+        output_dir = output_dir / "features_on"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load dataset
@@ -61,6 +63,51 @@ async def _run(args: argparse.Namespace) -> None:
             len(questions), len(sessions_by_question),
         )
 
+    # Build config (features-on uses production bundle)
+    ncms_config = None
+    if args.features_on:
+        from ncms.config import NCMSConfig
+        ncms_config = NCMSConfig(
+            db_path=":memory:",
+            actr_noise=0.0,
+            # Core retrieval
+            splade_enabled=True,
+            scoring_weight_bm25=0.6,
+            scoring_weight_actr=0.0,
+            scoring_weight_splade=0.3,
+            scoring_weight_graph=0.3,
+            # Phase 1-3: Admission, reconciliation, episodes
+            admission_enabled=True,
+            reconciliation_enabled=True,
+            episodes_enabled=True,
+            # Phase 4: Intent-aware retrieval
+            intent_classification_enabled=True,
+            scoring_weight_hierarchy=0.1,
+            # Phase 5: Hierarchical consolidation + level-first
+            level_first_enabled=True,
+            topic_map_enabled=True,
+            # Phase 8: Dream query expansion
+            dream_query_expansion_enabled=True,
+            # Phase 9: Intent routing
+            intent_routing_enabled=True,
+            # Phase 10: Cross-encoder reranking
+            reranker_enabled=True,
+            # Temporal query scoring
+            temporal_enabled=True,
+            scoring_weight_temporal=0.2,
+            # Recency
+            scoring_weight_recency=0.1,
+            recency_half_life_days=30.0,
+            # No LLM-dependent features (no endpoint needed for benchmark)
+            contradiction_detection_enabled=False,
+            consolidation_knowledge_enabled=False,
+            episode_consolidation_enabled=False,
+            trajectory_consolidation_enabled=False,
+            pattern_consolidation_enabled=False,
+            synthesis_enabled=False,
+        )
+        logger.info("Features ON: production retrieval bundle enabled")
+
     # Run benchmark
     results = await run_longmemeval_benchmark(
         sessions_by_question=sessions_by_question,
@@ -71,6 +118,7 @@ async def _run(args: argparse.Namespace) -> None:
         answer_api_base=args.answer_api_base,
         judge_model=args.judge_model,
         judge_api_base=args.judge_api_base,
+        config=ncms_config,
     )
 
     # Save results
@@ -190,6 +238,11 @@ def main() -> None:
         "--test",
         action="store_true",
         help="Test mode: process first 3 questions only",
+    )
+    parser.add_argument(
+        "--features-on",
+        action="store_true",
+        help="Enable full production retrieval bundle (admission, episodes, intent, etc.)",
     )
     parser.add_argument(
         "--rag",

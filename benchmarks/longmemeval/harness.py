@@ -228,6 +228,7 @@ async def run_longmemeval_benchmark(
     answer_api_base: str = DEFAULT_API_BASE,
     judge_model: str = DEFAULT_MODEL,
     judge_api_base: str = DEFAULT_API_BASE,
+    config: object | None = None,
 ) -> dict:
     """Run the full LongMemEval benchmark.
 
@@ -287,6 +288,7 @@ async def run_longmemeval_benchmark(
         # Clear vectors from previous question so search is clean
         shared_splade._vectors = {}
         store, _index, _graph, _splade, _config, svc = await _create_ncms_instance(
+            config=config,
             shared_splade=shared_splade,
         )
 

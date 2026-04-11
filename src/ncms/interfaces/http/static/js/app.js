@@ -172,6 +172,14 @@ async function updateStats() {
     document.getElementById('stat-entities').textContent = data.entity_count;
     document.getElementById('stat-agents').textContent = `${data.agents_online}/${data.agent_count}`;
     document.getElementById('stat-events').textContent = data.event_count;
+
+    // Feature badges
+    const badgeContainer = document.getElementById('feature-badges');
+    if (badgeContainer && data.features && data.features.length > 0) {
+      badgeContainer.innerHTML = data.features
+        .map(f => `<span class="feature-badge">${f}</span>`)
+        .join('');
+    }
   } catch (e) { /* ignore */ }
 }
 

@@ -255,9 +255,38 @@ def create_dashboard_app(
         ])
 
     async def api_stats(request: Request) -> JSONResponse:
-        """Return system statistics."""
+        """Return system statistics and active feature flags."""
         agents = bus_service.get_all_agents()
         online = sum(1 for a in agents if a.status == "online")
+
+        # Active feature flags for dashboard badges
+        features: list[str] = []
+        cfg = memory_service._config
+        if cfg.splade_enabled:
+            features.append("SPLADE")
+        if cfg.admission_enabled:
+            features.append("Admission")
+        if cfg.reconciliation_enabled:
+            features.append("Reconciliation")
+        if cfg.episodes_enabled:
+            features.append("Episodes")
+        if cfg.intent_classification_enabled:
+            features.append("Intent")
+        if cfg.reranker_enabled:
+            features.append("Reranker")
+        if cfg.temporal_enabled:
+            features.append("Temporal")
+        if cfg.content_classification_enabled:
+            features.append("Sections")
+        if cfg.contradiction_detection_enabled:
+            features.append("Contradictions")
+        if cfg.dream_cycle_enabled:
+            features.append("Dream")
+        if cfg.maintenance_enabled:
+            features.append("Maintenance")
+        if cfg.search_feedback_enabled:
+            features.append("Feedback")
+
         return JSONResponse({
             "memory_count": await memory_service.memory_count(),
             "entity_count": memory_service.entity_count(),
@@ -267,6 +296,7 @@ def create_dashboard_app(
             "agents_sleeping": sum(1 for a in agents if a.status == "sleeping"),
             "domain_count": len(bus_service.list_domains()),
             "event_count": event_log.count(),
+            "features": features,
         })
 
     async def api_topics(request: Request) -> JSONResponse:
