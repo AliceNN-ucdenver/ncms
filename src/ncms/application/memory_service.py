@@ -95,6 +95,30 @@ class MemoryService:
         # Background indexing worker pool (Phase 2 performance)
         self._index_pool: object | None = None
 
+        # Log active feature flags for diagnostics
+        features = []
+        if self._config.splade_enabled:
+            features.append("SPLADE")
+        if self._config.admission_enabled:
+            features.append("admission")
+        if self._config.reconciliation_enabled:
+            features.append("reconciliation")
+        if self._config.episodes_enabled:
+            features.append("episodes")
+        if self._config.intent_classification_enabled:
+            features.append("intent")
+        if self._config.content_classification_enabled:
+            features.append("content_classification")
+        if self._config.temporal_enabled:
+            features.append("temporal")
+        if self._config.dream_cycle_enabled:
+            features.append("dream")
+        if self._config.reranker_enabled:
+            features.append("reranker")
+        if self._config.async_indexing_enabled:
+            features.append("async_indexing")
+        logger.info("[memory_service] Active features: %s", ", ".join(features) or "none")
+
     @property
     def store(self) -> MemoryStore:
         return self._store
