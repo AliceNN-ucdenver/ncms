@@ -349,9 +349,17 @@ class NCMSHttpClient:
         except Exception:
             pass
 
-    # ── Health ────────────────────────────────────────────────────────────
+    # ── Health & Heartbeat ───────────────────────────────────────────────
 
     async def health(self) -> dict[str, Any]:
         resp = await self._client.get("/api/v1/health")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def heartbeat(self, agent_id: str) -> dict[str, Any]:
+        """Send a heartbeat to keep the agent online with the hub."""
+        resp = await self._client.post(
+            "/api/v1/heartbeat", json={"agent_id": agent_id},
+        )
         resp.raise_for_status()
         return resp.json()

@@ -58,40 +58,48 @@ async def sse_listener(
                     backoff = min(backoff * 2, MAX_BACKOFF_S)
                     continue
 
+            # Start heartbeat pinger (keeps agent online with hub)
+            heartbeat_task = asyncio.create_task(
+                _heartbeat_pinger(client, agent_id),
+            )
+
             url = f"{client._base}/api/v1/bus/subscribe?agent_id={agent_id}"
-            async with client._client.stream("GET", url) as resp:
-                if resp.status_code != 200:
-                    logger.warning("SSE stream returned %s", resp.status_code)
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, MAX_BACKOFF_S)
-                    continue
+            try:
+                async with client._client.stream("GET", url) as resp:
+                    if resp.status_code != 200:
+                        logger.warning("SSE stream returned %s", resp.status_code)
+                        await asyncio.sleep(backoff)
+                        backoff = min(backoff * 2, MAX_BACKOFF_S)
+                        continue
 
-                logger.info("SSE stream connected for agent %s", agent_id)
-                backoff = 1  # reset on success
+                    logger.info("SSE stream connected for agent %s", agent_id)
+                    backoff = 1  # reset on success
 
-                event_type = ""
-                data_buf = ""
+                    event_type = ""
+                    data_buf = ""
 
-                async for line in resp.aiter_lines():
-                    if line.startswith("event:"):
-                        event_type = line[6:].strip()
-                    elif line.startswith("data:"):
-                        data_buf += line[5:].strip()
-                    elif line == "":
-                        # End of SSE message
-                        if event_type and data_buf:
-                            try:
-                                data = json.loads(data_buf)
-                                await _handle_event(
-                                    client, agent_id, event_type, data,
-                                    workflow_fn, domains, self_port,
-                                )
-                            except json.JSONDecodeError:
-                                logger.debug("Non-JSON SSE data: %s", data_buf[:100])
-                            except Exception:
-                                logger.exception("Error handling SSE event %s", event_type)
-                        event_type = ""
-                        data_buf = ""
+                    async for line in resp.aiter_lines():
+                        if line.startswith("event:"):
+                            event_type = line[6:].strip()
+                        elif line.startswith("data:"):
+                            data_buf += line[5:].strip()
+                        elif line == "":
+                            # End of SSE message
+                            if event_type and data_buf:
+                                try:
+                                    data = json.loads(data_buf)
+                                    await _handle_event(
+                                        client, agent_id, event_type, data,
+                                        workflow_fn, domains, self_port,
+                                    )
+                                except json.JSONDecodeError:
+                                    logger.debug("Non-JSON SSE data: %s", data_buf[:100])
+                                except Exception:
+                                    logger.exception("Error handling SSE event %s", event_type)
+                            event_type = ""
+                            data_buf = ""
+            finally:
+                heartbeat_task.cancel()
 
         except asyncio.CancelledError:
             logger.info("SSE listener cancelled for agent %s", agent_id)
@@ -330,6 +338,23 @@ async def _handle_question(
         from_agent=agent_id,
         confidence=confidence,
     )
+
+
+async def _heartbeat_pinger(client: NCMSHttpClient, agent_id: str) -> None:
+    """Send periodic heartbeats to the hub so the agent stays online.
+
+    The hub's heartbeat monitor marks agents offline after 90s of silence.
+    We ping every 30s to stay well within that window.
+    """
+    while True:
+        try:
+            await asyncio.sleep(30)
+            await client.heartbeat(agent_id)
+            logger.debug("[heartbeat] Sent for %s", agent_id)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.debug("[heartbeat] Failed for %s", agent_id, exc_info=True)
 
 
 async def _self_generate(agent_id: str, port: int, message: str) -> None:
