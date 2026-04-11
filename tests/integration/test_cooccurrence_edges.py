@@ -20,7 +20,6 @@ async def _create_service(**overrides) -> tuple[MemoryService, SQLiteStore, Netw
     defaults: dict = dict(
         db_path=":memory:",
         actr_noise=0.0,
-        cooccurrence_edges_enabled=True,
     )
     defaults.update(overrides)
     config = NCMSConfig(**defaults)
@@ -81,9 +80,7 @@ class TestCooccurrenceEdges:
 
     @pytest.mark.asyncio
     async def test_always_creates_edges(self):
-        """Co-occurrence is always on — edges created even with legacy flag False."""
-        # cooccurrence_edges_enabled is a retired backward-compat alias;
-        # co-occurrence edges are always created now.
+        """Co-occurrence is always on — edges created for any multi-entity memory."""
         svc, store, graph = await _create_service()
         try:
             await svc.store_memory(

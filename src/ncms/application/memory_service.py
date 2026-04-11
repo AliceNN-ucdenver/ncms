@@ -1525,7 +1525,6 @@ class MemoryService:
 
         # Personalized PageRank — compute ONCE per query (not per candidate)
         # Skip entirely when graph weight is 0 (saves ~5ms per query)
-        # Note: BFS fallback path removed — PPR is always on (retired graph_ppr_enabled)
         ppr_scores: dict[str, float] = {}
         if (
             context_entity_ids

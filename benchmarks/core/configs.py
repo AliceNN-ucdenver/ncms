@@ -24,7 +24,6 @@ class AblationConfig:
     name: str
     display_name: str  # Human-readable name for tables/charts
     use_splade: bool
-    graph_expansion_enabled: bool
     scoring_weight_bm25: float
     scoring_weight_actr: float
     scoring_weight_splade: float
@@ -44,7 +43,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="bm25_only",
         display_name="BM25 Only",
         use_splade=False,
-        graph_expansion_enabled=False,
         scoring_weight_bm25=1.0,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.0,
@@ -55,7 +53,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="bm25_graph",
         display_name="+ Graph",
         use_splade=False,
-        graph_expansion_enabled=True,
         scoring_weight_bm25=1.0,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.0,
@@ -66,7 +63,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="bm25_actr",
         display_name="+ ACT-R",
         use_splade=False,
-        graph_expansion_enabled=False,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.0,
@@ -77,7 +73,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="bm25_splade",
         display_name="+ SPLADE",
         use_splade=True,
-        graph_expansion_enabled=False,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.3,
@@ -88,7 +83,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="bm25_splade_graph",
         display_name="+ SPLADE + Graph",
         use_splade=True,
-        graph_expansion_enabled=True,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_splade=0.3,
@@ -99,7 +93,6 @@ CORE_CONFIGS: list[AblationConfig] = [
         name="full",
         display_name="Full Pipeline",
         use_splade=True,
-        graph_expansion_enabled=True,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
@@ -117,7 +110,6 @@ TUNED_CONFIG = AblationConfig(
     name="tuned",
     display_name="Tuned (Phase 7)",
     use_splade=True,
-    graph_expansion_enabled=True,
     scoring_weight_bm25=0.6,
     scoring_weight_actr=0.0,
     scoring_weight_splade=0.3,

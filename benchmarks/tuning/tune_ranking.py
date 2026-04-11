@@ -89,7 +89,6 @@ async def _run_grid_queries(
         db_path=":memory:",
         actr_noise=0.0,
         splade_enabled=True,
-        graph_expansion_enabled=weights["graph"] > 0,
         scoring_weight_bm25=weights["bm25"],
         scoring_weight_actr=weights["actr"],
         scoring_weight_splade=weights["splade"],

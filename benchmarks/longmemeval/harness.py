@@ -65,7 +65,6 @@ async def _create_ncms_instance(
             db_path=":memory:",
             actr_noise=0.0,
             splade_enabled=True,
-            graph_expansion_enabled=True,
             scoring_weight_bm25=0.6,
             scoring_weight_actr=0.0,
             scoring_weight_splade=0.3,

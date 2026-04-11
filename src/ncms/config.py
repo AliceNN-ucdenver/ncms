@@ -62,19 +62,16 @@ class NCMSConfig(BaseSettings):
     scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
     scoring_weight_graph: float = 0.3  # Restored: graph signal helps baseline (+10% AR)
 
-    # Graph expansion — ALWAYS ON (Tier 1.5, no flag)
-    # Retired: graph_expansion_enabled was always True, never disabled in production
+    # Graph expansion (always on)
     graph_expansion_depth: int = 1
     graph_expansion_max: int = 10
 
-    # Co-occurrence edges — ALWAYS ON
-    # Retired: cooccurrence_edges_enabled was always True, never disabled in production
-    cooccurrence_max_entities: int = 12  # Fix #6: reduced from 20 to cap clique inflation
+    # Co-occurrence edges (always on)
+    cooccurrence_max_entities: int = 12  # Reduced from 20 to cap clique inflation
 
-    # Graph-based spreading activation parameters
+    # Graph spreading activation (PPR, always on)
     graph_hop_decay: float = 0.5       # Activation multiplier per hop
     graph_spreading_max_hops: int = 2  # Maximum hops for graph traversal
-    # Retired: graph_ppr_enabled was always True; PPR is strictly better than BFS
 
     # Recency scoring
     scoring_weight_recency: float = 0.0   # Additive recency weight (0 = disabled)
@@ -221,9 +218,7 @@ class NCMSConfig(BaseSettings):
     reranker_output_k: int = 20    # Keep this many after reranking
     scoring_weight_ce: float = 0.7  # Cross-encoder weight when reranker active
 
-    # Background indexing — ALWAYS ON (no flag)
-    # Retired: async_indexing_enabled was always True; sync indexing was only
-    # a debugging path that no production or benchmark code uses.
+    # Background indexing (always on)
     index_workers: int = 3
     index_queue_size: int = 1000
     index_max_retries: int = 3
@@ -250,14 +245,3 @@ class NCMSConfig(BaseSettings):
     maintenance_episode_close_interval_minutes: int = 60    # 1 hour
     maintenance_decay_interval_minutes: int = 720           # 12 hours
 
-    # ── Backward compatibility aliases ──────────────────────────────────
-    # These retired flags are still accepted as env vars but ignored.
-    # Prevents Docker configs from erroring if they still set the old names.
-    bus_surrogate_enabled: bool = True         # RETIRED: surrogates always on
-    graph_expansion_enabled: bool = True       # RETIRED: expansion always on
-    cooccurrence_edges_enabled: bool = True    # RETIRED: co-occurrence always on
-    graph_ppr_enabled: bool = True             # RETIRED: PPR always on
-    async_indexing_enabled: bool = True        # RETIRED: async always on
-    otel_enabled: bool = False                 # RETIRED: unused, never gated
-    watch_enabled: bool = False                # RETIRED: unused, never gated
-    episode_min_supporting_signals: int = 2    # RETIRED: replaced by weighted scoring

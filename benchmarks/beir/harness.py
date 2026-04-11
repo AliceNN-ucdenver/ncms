@@ -57,7 +57,6 @@ async def ingest_corpus(
         db_path=":memory:",
         actr_noise=0.0,  # Deterministic
         splade_enabled=True,
-        graph_expansion_enabled=True,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.4,
         scoring_weight_splade=0.3,
@@ -181,7 +180,6 @@ async def run_config_queries(
         db_path=":memory:",
         actr_noise=0.0,
         splade_enabled=ablation_config.use_splade,
-        graph_expansion_enabled=ablation_config.graph_expansion_enabled,
         scoring_weight_bm25=ablation_config.scoring_weight_bm25,
         scoring_weight_actr=ablation_config.scoring_weight_actr,
         scoring_weight_splade=ablation_config.scoring_weight_splade,

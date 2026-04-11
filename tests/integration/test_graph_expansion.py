@@ -17,14 +17,13 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 
 async def _create_expansion_service(**overrides) -> tuple[MemoryService, SQLiteStore]:
-    """Create a MemoryService with graph expansion enabled.
+    """Create a MemoryService for graph expansion tests.
 
     Returns (service, store) — caller should ``await store.close()`` when done.
     """
     defaults: dict = dict(
         db_path=":memory:",
         actr_noise=0.0,
-        graph_expansion_enabled=True,
         graph_expansion_depth=1,
         graph_expansion_max=10,
     )
@@ -69,8 +68,7 @@ class TestGraphExpansion:
 
     @pytest.mark.asyncio
     async def test_expansion_always_on(self):
-        """Graph expansion is always on — retired flag is ignored."""
-        # graph_expansion_enabled was retired; co-occurrence + expansion always active
+        """Graph expansion is always on — shared entities connect documents."""
         svc, store = await _create_expansion_service()
         try:
             mem_a = await svc.store_memory(

@@ -213,7 +213,6 @@ async def _create_ncms_instance(
         db_path=":memory:",
         actr_noise=0.0,  # Deterministic for benchmarks
         splade_enabled=True,
-        graph_expansion_enabled=True,
         scoring_weight_bm25=TUNED_WEIGHTS["bm25"],
         scoring_weight_actr=TUNED_WEIGHTS["actr"],
         scoring_weight_splade=TUNED_WEIGHTS["splade"],

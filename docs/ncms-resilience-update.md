@@ -1699,28 +1699,65 @@ These issues were discovered during hub integration testing and resolved as cros
 
 **Feature Flag Audit (2026-04-11):**
 
-Retired 8 flags (always-on behavior, backward-compat aliases preserved in config):
+Deleted 8 flags from config — code paths are now unconditional. All references removed from source, tests, benchmarks, and Docker configs:
 
-| Retired Flag | Default Was | Reason |
-|--------------|-------------|--------|
-| `async_indexing_enabled` | `True` | Background indexing is strictly better; sync path was only a debug fallback |
-| `graph_expansion_enabled` | `True` | Graph expansion is core retrieval signal; never disabled in production |
-| `cooccurrence_edges_enabled` | `True` | Co-occurrence edges feed graph expansion; never disabled in production |
-| `graph_ppr_enabled` | `True` | PPR is strictly better than BFS; BFS fallback removed |
+| Deleted Flag | Was | Reason |
+|--------------|-----|--------|
+| `async_indexing_enabled` | `True` | Background indexing is strictly better; sync path was dead code |
+| `graph_expansion_enabled` | `True` | Graph expansion is core retrieval; never disabled |
+| `cooccurrence_edges_enabled` | `True` | Co-occurrence edges feed graph expansion; never disabled |
+| `graph_ppr_enabled` | `True` | PPR is strictly better than BFS; BFS path removed |
 | `bus_surrogate_enabled` | `True` | Surrogates are core bus feature; always on |
-| `otel_enabled` | `False` | Config-only, never gated in code |
-| `watch_enabled` | `False` | Config-only, never gated in code |
+| `otel_enabled` | `False` | Never gated in code; dead config field |
+| `watch_enabled` | `False` | Never gated in code; dead config field |
 | `episode_min_supporting_signals` | `2` | Replaced by weighted scoring in Phase 3 |
 
-New flags added for hub validation:
+**Minimized Feature Flag Set (25 flags, down from 33):**
 
-| Flag | Docker Config | Purpose |
-|------|--------------|---------|
-| `NCMS_TEMPORAL_ENABLED` | `true` | Temporal query scoring (Phase 4) |
-| `NCMS_MAINTENANCE_ENABLED` | `true` | Scheduled consolidation/episodes/decay |
-| `NCMS_SEARCH_FEEDBACK_ENABLED` | `true` | Search→access correlation tracking |
-| `NCMS_PIPELINE_DEBUG` | `true` (hub only) | Per-candidate scoring in events |
-| `NCMS_BULK_IMPORT_QUEUE_SIZE` | `10000` | Larger queue for agent knowledge loads |
+| Flag | Default | Hub Config | Category |
+|------|---------|------------|----------|
+| `NCMS_SPLADE_ENABLED` | `false` | `true` | Retrieval |
+| `NCMS_RERANKER_ENABLED` | `false` | `true` | Retrieval |
+| `NCMS_ADMISSION_ENABLED` | `false` | `true` | Ingestion (Phase 1) |
+| `NCMS_RECONCILIATION_ENABLED` | `false` | `true` | Ingestion (Phase 2) |
+| `NCMS_EPISODES_ENABLED` | `false` | `true` | Ingestion (Phase 3) |
+| `NCMS_INTENT_CLASSIFICATION_ENABLED` | `false` | `true` | Retrieval (Phase 4) |
+| `NCMS_CONTENT_CLASSIFICATION_ENABLED` | `false` | `true` | Ingestion (Phase 4) |
+| `NCMS_CONTRADICTION_DETECTION_ENABLED` | `false` | `true` | Ingestion (Phase 4) |
+| `NCMS_TEMPORAL_ENABLED` | `false` | `true` | Retrieval (Phase 4) |
+| `NCMS_MAINTENANCE_ENABLED` | `false` | `true` | Operations (Phase 3) |
+| `NCMS_SEARCH_FEEDBACK_ENABLED` | `false` | `true` | Observability (Phase 6) |
+| `NCMS_PIPELINE_DEBUG` | `false` | `true` | Observability (Phase 6) |
+| `NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED` | `false` | `true` | LLM (Phase 4) |
+| `NCMS_EPISODE_CONSOLIDATION_ENABLED` | `false` | — | LLM (Phase 5) |
+| `NCMS_TRAJECTORY_CONSOLIDATION_ENABLED` | `false` | — | LLM (Phase 5) |
+| `NCMS_PATTERN_CONSOLIDATION_ENABLED` | `false` | — | LLM (Phase 5) |
+| `NCMS_LEVEL_FIRST_ENABLED` | `false` | — | Retrieval (Phase 5) |
+| `NCMS_SYNTHESIS_ENABLED` | `false` | — | LLM (Phase 5) |
+| `NCMS_TOPIC_MAP_ENABLED` | `false` | — | Retrieval (Phase 5) |
+| `NCMS_DREAM_CYCLE_ENABLED` | `false` | `false` | Maintenance (Phase 8) |
+| `NCMS_DREAM_QUERY_EXPANSION_ENABLED` | `false` | — | Retrieval (Phase 9) |
+| `NCMS_DREAM_ACTIVE_FORGETTING_ENABLED` | `false` | — | Maintenance (Phase 9) |
+| `NCMS_INTENT_ROUTING_ENABLED` | `false` | — | Retrieval (Phase 9) |
+| `NCMS_INTENT_LLM_FALLBACK_ENABLED` | `false` | — | LLM fallback |
+| `NCMS_EPISODE_LLM_FALLBACK_ENABLED` | `false` | — | LLM fallback |
+
+**Hub Validation Config** (13 flags enabled):
+```
+NCMS_SPLADE_ENABLED=true
+NCMS_RERANKER_ENABLED=true
+NCMS_ADMISSION_ENABLED=true
+NCMS_RECONCILIATION_ENABLED=true
+NCMS_EPISODES_ENABLED=true
+NCMS_INTENT_CLASSIFICATION_ENABLED=true
+NCMS_CONTENT_CLASSIFICATION_ENABLED=true
+NCMS_CONTRADICTION_DETECTION_ENABLED=true
+NCMS_TEMPORAL_ENABLED=true
+NCMS_MAINTENANCE_ENABLED=true
+NCMS_SEARCH_FEEDBACK_ENABLED=true
+NCMS_PIPELINE_DEBUG=true
+NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED=true
+```
 
 **Bulk Import Mode:**
 
