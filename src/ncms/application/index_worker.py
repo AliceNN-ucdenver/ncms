@@ -624,7 +624,7 @@ class IndexWorkerPool:
                     recon = ReconciliationService(
                         store=self._svc._store, config=config,
                     )
-                    await recon.reconcile_state(l2_node)
+                    await recon.reconcile(l2_node)
                 except Exception:
                     logger.warning(
                         "Reconciliation failed for %s", l2_node.id,

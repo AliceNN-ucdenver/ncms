@@ -76,7 +76,8 @@ async def create_ncms_services(
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
-            store=store, index=index, config=config, splade=splade,
+            store=store, index=index, config=config,
+            event_log=event_log, splade=splade,
         )
         logger.info("Episode formation enabled")
 

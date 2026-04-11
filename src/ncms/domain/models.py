@@ -186,6 +186,7 @@ class Memory(BaseModel):
         "pending-work",
         "insight",
         "section_index",
+        "document_section",
         "document_chunk",
         "document",
     ] = "fact"
