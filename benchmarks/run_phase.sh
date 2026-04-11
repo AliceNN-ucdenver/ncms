@@ -66,6 +66,23 @@ LOG_FILE="$PHASE_DIR/${PHASE}_${TIMESTAMP}.log"
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 
+# ── Per-phase feature flags ─────────────────────────────────────────────────
+# Enable features introduced in each phase so benchmarks measure their impact.
+# Env vars are picked up by NCMSConfig (pydantic Settings with NCMS_ prefix).
+
+case "$PHASE" in
+    phase4*)
+        export NCMS_CONTENT_CLASSIFICATION_ENABLED=true
+        export NCMS_TEMPORAL_ENABLED=true
+        ;;
+    phase5*)
+        export NCMS_CONTENT_CLASSIFICATION_ENABLED=true
+        export NCMS_TEMPORAL_ENABLED=true
+        export NCMS_INTENT_CLASSIFICATION_ENABLED=true
+        export NCMS_SCORING_WEIGHT_HIERARCHY=0.5
+        ;;
+esac
+
 # ── Logging ─────────────────────────────────────────────────────────────────
 
 log() {

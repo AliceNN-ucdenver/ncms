@@ -117,9 +117,22 @@ async def replay_ingest(
         )
         logger.info("Seeded hub replay entity labels: %s", hub_labels)
 
+    # Wire section service for content-aware ingestion (Phase 4)
+    section_svc = None
+    if config.content_classification_enabled:
+        from ncms.application.section_service import SectionService
+        # SectionService needs a reference to memory_service — create after
+        section_svc = None  # Will be set after MemoryService init
+
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
+        section_service=section_svc,
     )
+
+    # Deferred wiring: SectionService needs memory_service to store sections
+    if config.content_classification_enabled:
+        from ncms.application.section_service import SectionService
+        svc._section_svc = SectionService(memory_service=svc, config=config)
 
     # Sort by created_at to replay in exact order
     sorted_memories = sorted(memories, key=lambda m: m["created_at"])
