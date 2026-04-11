@@ -148,6 +148,24 @@ async def create_ncms_services(
     )
     await scheduler.start()
 
+    # Phase 6: Start heartbeat monitor for bus agents
+    await bus_svc.start_heartbeat_monitor(
+        interval_seconds=config.bus_heartbeat_interval_seconds,
+        timeout_seconds=config.bus_heartbeat_timeout_seconds,
+        auto_snapshot=config.auto_snapshot_on_disconnect,
+        snapshot_callback=(
+            (lambda agent_id: snapshot_svc.publish_snapshot(agent_id, []))
+            if config.auto_snapshot_on_disconnect
+            else None
+        ),
+    )
+    logger.info(
+        "[phase6] Heartbeat monitor started: interval=%ds timeout=%ds auto_snapshot=%s",
+        config.bus_heartbeat_interval_seconds,
+        config.bus_heartbeat_timeout_seconds,
+        config.auto_snapshot_on_disconnect,
+    )
+
     return memory_svc, bus_svc, snapshot_svc, consolidation_svc, scheduler
 
 

@@ -881,6 +881,82 @@ def register_tools(
             "intent": result.intent,
         }
 
+    # ── Phase 6: Export & Feedback ───────────────────────────────────
+
+    @mcp.tool()
+    async def record_search_feedback(
+        query: str,
+        selected_memory_id: str,
+        result_ids: list[str] | None = None,
+        agent_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record which search result was actually used (implicit feedback).
+
+        Call after a search_memory result is selected by the user/agent.
+        Boosts ACT-R base-level activation for the selected memory and
+        tracks position for retrieval quality metrics.
+
+        Args:
+            query: The original search query.
+            selected_memory_id: Memory ID that was selected/used.
+            result_ids: Full result ID list (for position tracking).
+            agent_id: Agent making the selection.
+
+        Returns:
+            Confirmation with position info.
+        """
+        await memory_svc.record_search_feedback(
+            query=query,
+            selected_memory_id=selected_memory_id,
+            result_ids=result_ids,
+            agent_id=agent_id,
+        )
+        position = (
+            result_ids.index(selected_memory_id) + 1
+            if result_ids and selected_memory_id in result_ids
+            else None
+        )
+        return {
+            "recorded": True,
+            "selected_memory_id": selected_memory_id,
+            "position": position,
+        }
+
+    @mcp.tool()
+    async def heartbeat(agent_id: str) -> dict[str, Any]:
+        """Send a heartbeat from an agent to indicate it is still alive.
+
+        Agents should call this periodically (default: every 30s).
+        If no heartbeat is received within the timeout window (default: 90s),
+        the agent is marked offline and surrogate mode activates.
+
+        Args:
+            agent_id: The agent sending the heartbeat.
+
+        Returns:
+            Acknowledgement with current status.
+        """
+        await bus_svc.heartbeat(agent_id)
+        online = bus_svc.is_agent_online(agent_id)
+        return {
+            "agent_id": agent_id,
+            "status": "online" if online else "offline",
+            "heartbeat_received": True,
+        }
+
+    @mcp.tool()
+    def check_scale_flags() -> dict[str, Any]:
+        """Check which features are auto-disabled based on corpus size.
+
+        When scale_aware_flags is enabled, expensive features like
+        cross-encoder reranking and intent classification are automatically
+        disabled when the corpus exceeds configured thresholds.
+
+        Returns:
+            Feature flags with effective enabled/disabled status.
+        """
+        return memory_svc.check_scale_flags()
+
     if consolidation_svc is not None:
 
         @mcp.tool()

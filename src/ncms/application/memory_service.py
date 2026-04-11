@@ -1812,6 +1812,41 @@ class MemoryService:
             "actr_scoring", (time.perf_counter() - t0) * 1000, actr_data,
         )
 
+        # Phase 6: Emit retrieval debug diagnostics when pipeline_debug is on
+        if self._config.pipeline_debug and scored:
+            intent_label = (
+                intent_result.intent.value if intent_result else "unknown"
+            )
+            debug_candidates = [
+                {
+                    "id": s.memory.id,
+                    "content": s.memory.content[:120],
+                    "bm25": round(s.bm25_score, 4),
+                    "splade": round(s.splade_score, 4),
+                    "graph": round(s.graph_spread, 4),
+                    "actr": round(s.total_activation, 4),
+                    "hierarchy": round(s.hierarchy_bonus, 4),
+                    "superseded": s.is_superseded,
+                    "conflicts": s.has_conflicts,
+                    "node_types": s.node_types,
+                }
+                for s in sorted(
+                    scored, key=lambda x: x.total_activation, reverse=True,
+                )[:20]
+            ]
+            self._event_log.retrieval_debug(
+                query=query,
+                intent=intent_label,
+                candidates=debug_candidates,
+                scores={
+                    "max_bm25": round(max_bm25, 3),
+                    "max_splade": round(max_splade, 3),
+                    "max_graph": round(max_graph, 3),
+                    "max_temporal": round(max_temporal, 3),
+                },
+                agent_id=agent_id,
+            )
+
         # Sort by combined score (descending) — Tier 2 ranking
         scored.sort(key=lambda s: s.total_activation, reverse=True)
 
@@ -2186,6 +2221,96 @@ class MemoryService:
 
     def relationship_count(self) -> int:
         return self._graph.relationship_count()
+
+    # ── Phase 6: Search Feedback & Scale-Aware Flags ───────────────────
+
+    async def record_search_feedback(
+        self,
+        query: str,
+        selected_memory_id: str,
+        result_ids: list[str] | None = None,
+        agent_id: str | None = None,
+    ) -> None:
+        """Record implicit feedback: which search result was actually used.
+
+        Logs the selection for future scoring improvements. Also records
+        an access event for the selected memory to boost ACT-R base-level.
+
+        Args:
+            query: The original search query.
+            selected_memory_id: Memory ID the user/agent selected.
+            result_ids: Full result set (for position tracking).
+            agent_id: Agent that made the selection.
+        """
+        if not self._config.search_feedback_enabled:
+            return
+
+        position = -1
+        if result_ids and selected_memory_id in result_ids:
+            position = result_ids.index(selected_memory_id)
+
+        # Record access event (boosts ACT-R base-level activation)
+        access = AccessRecord(
+            memory_id=selected_memory_id,
+            agent_id=agent_id,
+        )
+        await self._store.save_access(access)
+
+        # Log for analysis
+        self._event_log.emit(self._event_log._make_event(
+            event_type="search.feedback",
+            agent_id=agent_id,
+            data={
+                "query": query[:200],
+                "selected_memory_id": selected_memory_id,
+                "position": position,
+                "result_count": len(result_ids) if result_ids else 0,
+            },
+        ))
+        logger.info(
+            "[feedback] query=%r selected=%s position=%d agent=%s",
+            query[:60], selected_memory_id[:8], position, agent_id,
+        )
+
+    def check_scale_flags(self) -> dict[str, bool]:
+        """Check scale-aware feature flags based on corpus size.
+
+        Returns which features are effectively enabled after scale checks.
+        Logs warnings when features are auto-disabled.
+        """
+        if not self._config.scale_aware_flags_enabled:
+            return {
+                "reranker": self._config.reranker_enabled,
+                "intent": self._config.intent_classification_enabled,
+            }
+
+        # Use index size as proxy for corpus size (faster than SQL count)
+        try:
+            corpus_size = self._index.count() if self._index else 0
+        except Exception:
+            corpus_size = 0
+
+        flags: dict[str, bool] = {}
+
+        # Reranker: cross-encoder is O(n) per query, expensive at scale
+        reranker_ok = corpus_size <= self._config.scale_reranker_max_memories
+        flags["reranker"] = self._config.reranker_enabled and reranker_ok
+        if self._config.reranker_enabled and not reranker_ok:
+            logger.warning(
+                "[scale] Reranker auto-disabled: corpus=%d > threshold=%d",
+                corpus_size, self._config.scale_reranker_max_memories,
+            )
+
+        # Intent classification: exemplar index is fast but scoring adds latency
+        intent_ok = corpus_size <= self._config.scale_intent_max_memories
+        flags["intent"] = self._config.intent_classification_enabled and intent_ok
+        if self._config.intent_classification_enabled and not intent_ok:
+            logger.warning(
+                "[scale] Intent classification auto-disabled: corpus=%d > threshold=%d",
+                corpus_size, self._config.scale_intent_max_memories,
+            )
+
+        return flags
 
     # ── Phase 11: Structured Recall ───────────────────────────────────
 

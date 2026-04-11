@@ -7,6 +7,7 @@ surrogate response fallback, blocking ask, and domain listing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -216,3 +217,127 @@ class BusService:
         if hasattr(self._bus, "get_subscriptions"):
             return self._bus.get_subscriptions()
         return {}
+
+    # ── Phase 6: Heartbeat & Auto-Snapshot ───────────────────────────────
+
+    async def start_heartbeat_monitor(
+        self,
+        interval_seconds: int = 30,
+        timeout_seconds: int = 90,
+        auto_snapshot: bool = False,
+        snapshot_callback: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
+        """Start background heartbeat monitoring for all registered agents.
+
+        Checks agent `last_seen` timestamps periodically. If an agent
+        hasn't been seen within timeout_seconds, marks it offline and
+        optionally triggers a snapshot publish.
+
+        Args:
+            interval_seconds: How often to check heartbeats.
+            timeout_seconds: Mark offline after this silence.
+            auto_snapshot: Auto-publish snapshot on disconnect.
+            snapshot_callback: Async callback(agent_id) for snapshot trigger.
+        """
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat_loop(
+                interval_seconds, timeout_seconds,
+                auto_snapshot, snapshot_callback,
+            ),
+            name="bus-heartbeat-monitor",
+        )
+        logger.info(
+            "[heartbeat] Monitor started: interval=%ds timeout=%ds auto_snapshot=%s",
+            interval_seconds, timeout_seconds, auto_snapshot,
+        )
+
+    async def stop_heartbeat_monitor(self) -> None:
+        """Stop the heartbeat monitor."""
+        task = getattr(self, "_heartbeat_task", None)
+        if task and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            logger.info("[heartbeat] Monitor stopped")
+
+    async def heartbeat(self, agent_id: str) -> None:
+        """Record a heartbeat from an agent (updates last_seen)."""
+        await self._bus.update_availability(agent_id, "online")
+        logger.debug("[heartbeat] Received from %s", agent_id)
+
+    async def _heartbeat_loop(
+        self,
+        interval: int,
+        timeout: int,
+        auto_snapshot: bool,
+        snapshot_callback: Callable[[str], Awaitable[None]] | None,
+    ) -> None:
+        """Background loop checking agent heartbeats."""
+        from datetime import UTC, datetime
+
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                now = datetime.now(UTC)
+
+                for agent in self._bus.get_all_agents():
+                    if agent.status != "online":
+                        continue
+
+                    age_seconds = (now - agent.last_seen).total_seconds()
+                    if age_seconds > timeout:
+                        logger.warning(
+                            "[heartbeat] Agent %s timed out "
+                            "(last_seen %.0fs ago, timeout=%ds) — marking offline",
+                            agent.agent_id, age_seconds, timeout,
+                        )
+
+                        # Emit event before status change
+                        self._event_log.emit(self._event_log._make_event(
+                            event_type="agent.heartbeat_timeout",
+                            agent_id=agent.agent_id,
+                            data={
+                                "last_seen_seconds_ago": round(age_seconds),
+                                "timeout_seconds": timeout,
+                                "auto_snapshot": auto_snapshot,
+                            },
+                        ))
+
+                        # Mark offline
+                        await self._bus.update_availability(
+                            agent.agent_id, "offline",
+                        )
+
+                        # Auto-snapshot
+                        if auto_snapshot and snapshot_callback:
+                            try:
+                                await snapshot_callback(agent.agent_id)
+                                logger.info(
+                                    "[heartbeat] Auto-snapshot published for %s",
+                                    agent.agent_id,
+                                )
+                                self._event_log.emit(self._event_log._make_event(
+                                    event_type="agent.auto_snapshot",
+                                    agent_id=agent.agent_id,
+                                    data={"reason": "heartbeat_timeout"},
+                                ))
+                            except Exception as exc:
+                                logger.error(
+                                    "[heartbeat] Auto-snapshot failed for %s: %s",
+                                    agent.agent_id, exc,
+                                )
+
+                        # Try surrogate mode
+                        if self._surrogate_enabled:
+                            logger.info(
+                                "[heartbeat] Surrogate mode activated for %s",
+                                agent.agent_id,
+                            )
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.error(
+                    "[heartbeat] Unexpected error in monitor",
+                    exc_info=True,
+                )

@@ -1526,7 +1526,7 @@ Each phase has specific metrics that should improve. If they don't, the phase ne
 | **Phase 3: Operational** | N/A (infrastructure, no retrieval change) | All benchmark scores, latency |
 | **Phase 4: Content-Aware Ingestion** | Hub entity quality ↑ (per-section extraction), section index coverage | Ingest latency (may increase — budget 50% p95 increase) |
 | **Phase 5: Level-First Retrieval** | LoCoMo ↑, LongMemEval R@5 ↑, MAB LRU ↑ | MAB AR (fact_lookup must not regress), ingest latency |
-| **Phase 6: Export & Feedback** | N/A (infrastructure + tooling) | All benchmark scores |
+| **Phase 6: Export & Feedback** ✅ | N/A (infrastructure + tooling) | All benchmark scores |
 | **Phase 7: Evaluation** | All benchmarks: publish final numbers vs. MAGMA/Kumiho/MemPalace | N/A (final measurement phase) |
 
 #### 0.5 Hub Replay Workload
@@ -1621,16 +1621,47 @@ Key findings: Async background indexing (3 workers) reduced ingest latency by 99
 
 **Dependency note**: Topic map requires L4 abstracts from consolidation. Level-first retrieval and synthesize() degrade gracefully when abstracts are absent. All features feature-flagged off by default.
 
-### Phase 6: Export & Feedback (Weeks 6-7)
+**Phase 5 Validation Test Plan**:
 
-| Task | Effort | Files |
+1. **Level-first retrieval**: Ingest a mix of memories that produce atomic, entity_state, episode, and abstract nodes (requires admission + reconciliation + episodes + one consolidation pass). Search with `node_types=["abstract"]` and verify only abstracts returned; search with `node_types=["episode"]` and verify only episodes. Confirm over-fetch factor works (request limit=5 with 3x overfetch, verify 15 candidates searched).
+2. **Traversal**: Store 3+ memories that form an episode, run consolidation to generate an episode summary abstract. Then:
+   - `traverse(abstract_id, mode="top_down")` → should return episode + atomic members, `levels_traversed=2`
+   - `traverse(atomic_id, mode="bottom_up")` → should return episode + abstract, `levels_traversed=2`
+   - `traverse(state_memory_id, mode="temporal")` → should return chronological state timeline
+   - `traverse(episode_member_id, mode="lateral")` → should return sibling members + related episodes
+3. **Topic map**: Generate 3+ abstracts with overlapping topic_entities (Jaccard ≥ 0.3). Call `get_topic_map()` and verify clusters form, labels contain top entities, confidence > 0.
+4. **Synthesis**: With LLM endpoint available, call `synthesize(query, mode="summary")` and verify: content is non-empty, sources list is populated, tokens_used ≤ token_budget. Test all 5 modes. Test LLM-unavailable fallback returns raw excerpts with "(LLM synthesis unavailable)" prefix. Test with `traversal="bottom_up"` + `seed_memory_id` to verify traversal-fed synthesis.
+5. **MCP + HTTP**: Verify all 4 new tools appear in `mcp.list_tools()`. Hit each HTTP endpoint and verify 200 responses with expected structure. Verify feature-flag-off returns empty/disabled results gracefully.
+
+### Phase 6: Export & Feedback (Weeks 6-7) ✅ COMPLETE
+
+| Task | Status | Files |
 |------|--------|-------|
-| Wiki export from document store + memory store (entity, episode, agent, project pages with backlinks) | 14h | New: `cli/export.py` |
-| Search-access correlation (implicit feedback) | 4h | `memory_service.py`, `sqlite_store.py` |
-| Retrieval debug diagnostics (`NCMS_PIPELINE_DEBUG`) | 3h | `memory_service.py`, `event_log.py` |
-| Bus heartbeat + offline detection | 4h | `async_bus.py`, `bus_service.py` |
-| Automated snapshot publish on agent disconnect | 3h | `bus_service.py`, `snapshot_service.py` |
-| Scale-aware feature flags (reranker/intent thresholds) | 2h | `config.py`, `memory_service.py` |
+| Wiki export (`ncms export --output ./wiki`) — entity/episode/agent/insight pages with backlinks | ✅ | `cli/export.py`, `cli/main.py` |
+| Search-access correlation (implicit feedback via `record_search_feedback`) | ✅ | `memory_service.py`, `event_log.py` |
+| Retrieval debug diagnostics (`NCMS_PIPELINE_DEBUG` → `retrieval.debug` events with per-candidate scoring) | ✅ | `memory_service.py`, `event_log.py` |
+| Bus heartbeat + offline detection (background monitor, `agent.heartbeat_timeout` events) | ✅ | `bus_service.py`, `mcp/server.py` |
+| Automated snapshot publish on agent disconnect (`auto_snapshot_on_disconnect` flag) | ✅ | `bus_service.py`, `config.py` |
+| Scale-aware feature flags (auto-disable reranker/intent at corpus thresholds) | ✅ | `config.py`, `memory_service.py` |
+| MCP tools: `record_search_feedback`, `heartbeat`, `check_scale_flags` | ✅ | `mcp/tools.py` |
+| HTTP endpoints: `/api/v1/feedback`, `/api/v1/heartbeat`, `/api/v1/scale-flags`, `/api/v1/export/wiki` | ✅ | `http/api.py` |
+
+**Observability hooks:**
+- `retrieval.debug` event emitted when `NCMS_PIPELINE_DEBUG=true` — shows per-candidate BM25/SPLADE/graph/ACT-R breakdown
+- `search.feedback` event on result selection — tracks position and query for retrieval quality analysis
+- `agent.heartbeat_timeout` event on timeout — includes last_seen age and auto_snapshot flag
+- `agent.auto_snapshot` event when snapshot triggered by heartbeat failure
+- `bus.surrogate` event when surrogate response generated for offline agent
+- Log messages: `[heartbeat]` prefix for monitor lifecycle, `[phase6]` for startup
+
+**Phase 6 Validation Test Plan:**
+
+1. **Wiki export test**: Run `ncms export --output /tmp/wiki`, verify index.md + entities/episodes/agents/insights subdirs, check backlinks render correctly
+2. **Search feedback test**: Search, record feedback via MCP/HTTP, verify access_log entry created for selected memory
+3. **Retrieval debug test**: Set `NCMS_PIPELINE_DEBUG=true`, run search, verify `retrieval.debug` event in event log with candidate scoring breakdown
+4. **Heartbeat timeout test**: Register agent, skip heartbeats, verify `agent.heartbeat_timeout` event after timeout_seconds, agent marked offline, surrogate mode logged
+5. **Auto-snapshot test**: Set `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT=true`, let agent timeout, verify snapshot published and `agent.auto_snapshot` event emitted
+6. **Scale flags test**: Set `NCMS_SCALE_AWARE_FLAGS_ENABLED=true` with low thresholds, verify features auto-disabled with warning logs
 
 ### Phase 7: Evaluation & Housekeeping (Weeks 8-9)
 

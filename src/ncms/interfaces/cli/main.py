@@ -1596,5 +1596,33 @@ def topic_map(db: str | None) -> None:
     asyncio.run(_topics())
 
 
+@cli.command()
+@click.option("--output", "-o", required=True, type=click.Path(), help="Output directory for wiki.")
+def export(output: str) -> None:
+    """Export memory store as a linked markdown wiki."""
+    import asyncio
+    from pathlib import Path
+
+    from rich.console import Console
+
+    from ncms.config import NCMSConfig
+    from ncms.interfaces.cli.export import export_wiki
+
+    console = Console()
+    output_path = Path(output)
+    config = NCMSConfig()
+
+    async def _export() -> None:
+        console.print(f"[bold]Exporting wiki to {output_path}...[/]")
+        counts = await export_wiki(config, output_path)
+        total = sum(counts.values())
+        console.print(f"[green]✓ Exported {total} pages:[/]")
+        for category, count in counts.items():
+            console.print(f"  {category}: {count}")
+        console.print(f"\nOpen {output_path / 'index.md'} to browse.")
+
+    asyncio.run(_export())
+
+
 if __name__ == "__main__":
     cli()

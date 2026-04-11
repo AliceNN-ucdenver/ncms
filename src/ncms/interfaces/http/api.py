@@ -1687,6 +1687,76 @@ def create_api_app(
                 {"error": str(exc)}, status_code=500,
             )
 
+    # -- Phase 6: Export & Feedback -------------------------------------------
+
+    async def search_feedback_endpoint(request: Request) -> JSONResponse:
+        """Record implicit feedback: which search result was actually used."""
+        body = await request.json()
+        query = body.get("query", "")
+        selected_memory_id = body.get("selected_memory_id", "")
+        if not query or not selected_memory_id:
+            return JSONResponse(
+                {"error": "query and selected_memory_id are required"},
+                status_code=400,
+            )
+        await memory_svc.record_search_feedback(
+            query=query,
+            selected_memory_id=selected_memory_id,
+            result_ids=body.get("result_ids"),
+            agent_id=body.get("agent_id"),
+        )
+        result_ids = body.get("result_ids") or []
+        position = (
+            result_ids.index(selected_memory_id) + 1
+            if selected_memory_id in result_ids
+            else None
+        )
+        return JSONResponse({
+            "recorded": True,
+            "selected_memory_id": selected_memory_id,
+            "position": position,
+        })
+
+    async def heartbeat_endpoint(request: Request) -> JSONResponse:
+        """Record a heartbeat from an agent."""
+        body = await request.json()
+        agent_id = body.get("agent_id", "")
+        if not agent_id:
+            return JSONResponse({"error": "agent_id is required"}, status_code=400)
+        await bus_svc.heartbeat(agent_id)
+        online = bus_svc.is_agent_online(agent_id)
+        return JSONResponse({
+            "agent_id": agent_id,
+            "status": "online" if online else "offline",
+            "heartbeat_received": True,
+        })
+
+    async def scale_flags_endpoint(request: Request) -> JSONResponse:
+        """Check scale-aware feature flags."""
+        return JSONResponse(memory_svc.check_scale_flags())
+
+    async def export_wiki_endpoint(request: Request) -> JSONResponse:
+        """Export memory store as a linked markdown wiki to a temp directory."""
+        import tempfile
+
+        from ncms.interfaces.cli.export import export_wiki
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "wiki"
+            output_path.mkdir()
+            counts = await export_wiki(memory_svc._config, output_path)
+            # Read all generated files into response
+            pages: dict[str, str] = {}
+            for md_file in sorted(output_path.rglob("*.md")):
+                rel = str(md_file.relative_to(output_path))
+                pages[rel] = md_file.read_text(encoding="utf-8")
+
+        return JSONResponse({
+            "counts": counts,
+            "total_pages": sum(counts.values()),
+            "pages": pages,
+        })
+
     # -- Routes --------------------------------------------------------------
 
     routes = [
@@ -1730,6 +1800,12 @@ def create_api_app(
         Route("/api/v1/memory/traverse", traverse_endpoint, methods=["POST"]),
         Route("/api/v1/memory/synthesize", synthesize_endpoint, methods=["POST"]),
         Route("/api/v1/topics", topic_map_endpoint, methods=["GET"]),
+
+        # Phase 6: Export & Feedback
+        Route("/api/v1/feedback", search_feedback_endpoint, methods=["POST"]),
+        Route("/api/v1/heartbeat", heartbeat_endpoint, methods=["POST"]),
+        Route("/api/v1/scale-flags", scale_flags_endpoint, methods=["GET"]),
+        Route("/api/v1/export/wiki", export_wiki_endpoint, methods=["POST"]),
 
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),

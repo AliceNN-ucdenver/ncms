@@ -164,6 +164,15 @@ class NCMSConfig(BaseSettings):
     topic_map_min_abstracts: int = 3        # Min abstracts to form a topic cluster
     topic_map_entity_overlap: float = 0.3   # Jaccard threshold for clustering
 
+    # Phase 6: Export & Feedback
+    search_feedback_enabled: bool = False    # Track search→access correlation
+    bus_heartbeat_interval_seconds: int = 30  # Heartbeat ping interval
+    bus_heartbeat_timeout_seconds: int = 90   # Mark offline after this silence
+    auto_snapshot_on_disconnect: bool = False  # Publish snapshot when heartbeat fails
+    scale_aware_flags_enabled: bool = False   # Auto-disable expensive features by corpus size
+    scale_reranker_max_memories: int = 10000  # Disable reranker above this corpus size
+    scale_intent_max_memories: int = 50000    # Disable intent classification above this
+
     # Per-intent signal weights (Phase 9 — RouteRAG-style)
     intent_routing_enabled: bool = False
     intent_weights_fact_lookup: str = "0.6,0.3,0.3,0.0"

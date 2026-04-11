@@ -630,6 +630,60 @@ class EventLog:
             },
         ))
 
+    # ── Phase 6: Retrieval Debug Diagnostics ────────────────────────────
+
+    def retrieval_debug(
+        self,
+        query: str,
+        intent: str,
+        candidates: list[dict],
+        scores: dict[str, float],
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit detailed retrieval diagnostics for pipeline debugging.
+
+        Only emitted when NCMS_PIPELINE_DEBUG=true. Shows per-candidate
+        scoring breakdown with all signal components.
+
+        Args:
+            query: Search query.
+            intent: Classified intent.
+            candidates: Top candidates with full score breakdown.
+            scores: Normalization ranges (max_bm25, max_splade, etc).
+            agent_id: Requesting agent.
+        """
+        self.emit(DashboardEvent(
+            type="retrieval.debug",
+            agent_id=agent_id,
+            data={
+                "query": query[:200],
+                "intent": intent,
+                "candidate_count": len(candidates),
+                "normalization": scores,
+                "top_candidates": candidates[:20],
+            },
+        ))
+
+    def search_feedback(
+        self,
+        query: str,
+        selected_memory_id: str,
+        position: int,
+        result_count: int,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit search feedback event (user/agent selected a result)."""
+        self.emit(DashboardEvent(
+            type="search.feedback",
+            agent_id=agent_id,
+            data={
+                "query": query[:200],
+                "selected_memory_id": selected_memory_id,
+                "position": position,
+                "result_count": result_count,
+            },
+        ))
+
     # ── Query ─────────────────────────────────────────────────────────────
 
     def recent(self, limit: int = 100) -> list[DashboardEvent]:
