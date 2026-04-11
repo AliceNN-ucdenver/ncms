@@ -185,6 +185,9 @@ class Memory(BaseModel):
         "dependency",
         "pending-work",
         "insight",
+        "section_index",
+        "document_chunk",
+        "document",
     ] = "fact"
     importance: float = 5.0
     content_hash: str | None = None
