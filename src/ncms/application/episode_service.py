@@ -469,7 +469,6 @@ class EpisodeService:
 
         best_ep: MemoryNode | None = None
         best_score = 0.0
-        best_breakdown: dict[str, float] = {}
 
         for ep_id, candidate_scores in candidates.items():
             ep_node = ep_lookup.get(ep_id)
@@ -495,7 +494,6 @@ class EpisodeService:
             if score > best_score:
                 best_score = score
                 best_ep = ep_node
-                best_breakdown = breakdown
 
         # Assign to best matching episode if above threshold
         if best_ep is not None and best_score >= self._config.episode_match_threshold:
@@ -505,7 +503,6 @@ class EpisodeService:
             await self._assign_to_episode(
                 fragment_node, best_ep,
                 match_score=best_score,
-                match_breakdown=best_breakdown,
             )
 
             # Enrich episode profile with new member's entities
@@ -612,7 +609,6 @@ class EpisodeService:
             await self._assign_to_episode(
                 fragment_node, ep_node,
                 match_score=best_confidence,
-                match_breakdown={"llm_fallback": best_confidence},
             )
             await self._update_episode_profile(
                 ep_node, entity_names, fragment_memory.domains,
@@ -708,7 +704,7 @@ class EpisodeService:
         # Assign the first fragment
         await self._assign_to_episode(
             first_fragment, episode_node, increment=False,
-            match_score=0.0, match_breakdown={},
+            match_score=0.0,
         )
 
         self._event_log.episode_created(  # type: ignore[attr-defined]
@@ -739,7 +735,6 @@ class EpisodeService:
         *,
         increment: bool = True,
         match_score: float = 0.0,
-        match_breakdown: dict[str, float] | None = None,
     ) -> None:
         """Assign a fragment to an episode (set parent_id + create edge)."""
         # Set parent_id on the fragment

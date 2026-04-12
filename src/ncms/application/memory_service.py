@@ -21,6 +21,7 @@ from ncms.domain.entity_extraction import resolve_labels
 from ncms.domain.intent import IntentResult, QueryIntent, classify_intent
 from ncms.domain.models import (
     AccessRecord,
+    DocumentSectionContext,
     EdgeType,
     Entity,
     EntityStateSnapshot,
@@ -65,6 +66,7 @@ from ncms.infrastructure.observability.event_log import (
 
 if TYPE_CHECKING:
     from ncms.application.admission_service import AdmissionService
+    from ncms.application.document_service import DocumentService
     from ncms.application.episode_service import EpisodeService
     from ncms.application.index_worker import IndexWorkerPool
     from ncms.application.reconciliation_service import ReconciliationService
@@ -92,6 +94,7 @@ class MemoryService:
         intent_classifier: IntentClassifier | None = None,
         reranker: CrossEncoderReranker | None = None,
         section_service: SectionService | None = None,
+        document_service: DocumentService | None = None,
     ):
         self._store = store
         self._index = index
@@ -113,6 +116,8 @@ class MemoryService:
         self._reranker = reranker
         # Optional SectionService for content-aware ingestion
         self._section_svc = section_service
+        # Optional DocumentService for document profile expansion
+        self._document_service = document_service
         # Background indexing worker pool (Phase 2 performance)
         self._index_pool: IndexWorkerPool | None = None
 
@@ -1996,51 +2001,6 @@ class MemoryService:
             })
         return result
 
-    # ── PMI Edge Weights ──────────────────────────────────────────────────
-
-    def _compute_pmi_edge_weights(self) -> None:
-        """Compute PMI-based weights for co-occurrence edges (Fix #2).
-
-        PMI(a,b) = log2(P(a,b) / (P(a) * P(b)))
-        where P(a) = df(a)/N, P(a,b) = cooc(a,b)/N
-
-        High PMI = rare co-occurrence (discriminative).
-        Low PMI = common pair (generic, low signal).
-        Edge weight = clamp(PMI / max_pmi, 0.01, 1.0).
-        """
-        doc_freq = self._graph.get_entity_document_frequency()
-        total_docs = max(self._graph.total_memory_count(), 1)
-
-        if total_docs < 2:
-            return
-
-        # Iterate all co-occurrence edges and compute PMI weights
-        max_pmi = 0.01  # Will be updated
-        edge_pmis: list[tuple[str, str, float]] = []
-
-        for source, target, cooc_count in self._graph.get_cooccurrence_edges():
-            df_a = doc_freq.get(source, 1)
-            df_b = doc_freq.get(target, 1)
-
-            p_ab = cooc_count / total_docs
-            p_a = df_a / total_docs
-            p_b = df_b / total_docs
-
-            if p_a > 0 and p_b > 0 and p_ab > 0:
-                pmi = math.log2(p_ab / (p_a * p_b))
-                pmi = max(pmi, 0.0)  # Only positive PMI
-            else:
-                pmi = 0.0
-
-            edge_pmis.append((source, target, pmi))
-            if pmi > max_pmi:
-                max_pmi = pmi
-
-        # Normalize to [0.01, 1.0] and set weights
-        for source, target, pmi in edge_pmis:
-            weight = max(0.01, pmi / max_pmi) if max_pmi > 0 else 0.01
-            self._graph.set_edge_weight(source, target, weight)
-
     # ── Intent Supplementary Candidates ──────────────────────────────────
 
     async def _intent_supplement(
@@ -2474,7 +2434,12 @@ class MemoryService:
         merged = merged[:max(limit, len(base_results))]
 
         # 7. Enrich all results with episode, entity state, and causal context
-        return await self._enrich_existing_results(merged)
+        enriched = await self._enrich_existing_results(merged)
+
+        # 8. Expand document profiles into relevant sections
+        enriched = await self._expand_document_sections(enriched, query)
+
+        return enriched
 
     # ── Recall bonus helpers (layered on top of BM25 base) ──────────
 
@@ -2587,19 +2552,6 @@ class MemoryService:
 
     # ── Context enrichment ────────────────────────────────────────────
 
-    async def _enrich_context(
-        self,
-        scored: list[ScoredMemory],
-        retrieval_path: str,
-        limit: int = 10,
-    ) -> list[RecallResult]:
-        """Wrap ScoredMemory results in RecallResult with context."""
-        recall_results = [
-            RecallResult(memory=sm, retrieval_path=retrieval_path)
-            for sm in scored[:limit]
-        ]
-        return await self._enrich_existing_results(recall_results)
-
     async def _enrich_existing_results(
         self,
         results: list[RecallResult],
@@ -2608,13 +2560,6 @@ class MemoryService:
 
         Operates in batch where possible to minimize DB round-trips.
         """
-        from ncms.domain.models import (
-            EdgeType,
-            EntityStateMeta,
-            EpisodeMeta,
-            NodeType,
-        )
-
         if not results:
             return results
 
@@ -2627,89 +2572,187 @@ class MemoryService:
             nodes = nodes_batch.get(mid, [])
             entity_ids = self._graph.get_entity_ids_for_memory(mid)
 
-            # 1. Entity states (cap at 10 entities, skip if already populated)
-            if not result.context.entity_states and entity_ids:
-                for eid in entity_ids[:10]:
-                    try:
-                        all_st = await self._store.get_entity_states_by_entity(
-                            eid,
-                        )
-                        state_nodes = [s for s in all_st if s.is_current]
-                    except Exception:
-                        continue
-                    for sn in state_nodes:
-                        meta = EntityStateMeta.from_node(sn)
-                        if meta is None:
-                            continue
-                        result.context.entity_states.append(
-                            EntityStateSnapshot(
-                                entity_id=eid,
-                                entity_name=(
-                                    self._graph.get_entity_name(eid) or eid
-                                ),
-                                state_key=meta.state_key or "",
-                                state_value=meta.state_value or "",
-                                is_current=sn.is_current,
-                                observed_at=sn.observed_at,
-                            )
-                        )
+            await self._enrich_entity_states(result, entity_ids)
+            await self._enrich_episode_context(result, mid, nodes)
+            await self._enrich_causal_chain(result, nodes)
 
-            # 2. Episode membership (skip if already populated)
-            if result.context.episode is None:
-                for node in nodes:
-                    if node.parent_id:
-                        try:
-                            ep_node = await self._store.get_memory_node(
-                                node.parent_id,
-                            )
-                        except Exception:
-                            continue
-                        if ep_node and ep_node.node_type == NodeType.EPISODE:
-                            ep_meta = EpisodeMeta.from_node(ep_node)
-                            if ep_meta is None:
-                                continue
-                            members = await self._store.get_episode_members(
-                                ep_node.id,
-                            )
-                            # Look for episode summary
-                            summary_text = await self._find_episode_summary(
-                                ep_node.id,
-                            )
-                            result.context.episode = EpisodeContext(
-                                episode_id=ep_node.id,
-                                episode_title=ep_meta.episode_title or "",
-                                status=ep_meta.status or "open",
-                                member_count=ep_meta.member_count or 0,
-                                topic_entities=ep_meta.topic_entities or [],
-                                sibling_ids=[
-                                    m.memory_id
-                                    for m in members
-                                    if m.memory_id != mid
-                                ],
-                                summary=summary_text,
-                            )
-                            break
+        return results
 
-            # 3. Causal chain from HTMG edges (merge with existing)
-            causal = result.context.causal_chain
-            for node in nodes:
-                try:
-                    edges = await self._store.get_graph_edges(node.id)
-                except Exception:
+    async def _enrich_entity_states(
+        self,
+        result: RecallResult,
+        entity_ids: list[str],
+    ) -> None:
+        """Populate entity state snapshots on a RecallResult (cap at 10 entities)."""
+        from ncms.domain.models import EntityStateMeta
+
+        if result.context.entity_states or not entity_ids:
+            return
+
+        for eid in entity_ids[:10]:
+            try:
+                all_st = await self._store.get_entity_states_by_entity(eid)
+                state_nodes = [s for s in all_st if s.is_current]
+            except Exception:
+                continue
+            for sn in state_nodes:
+                meta = EntityStateMeta.from_node(sn)
+                if meta is None:
                     continue
-                for edge in edges:
-                    et = edge.edge_type
-                    tid = edge.target_id
-                    if et == EdgeType.SUPERSEDES and tid not in causal.supersedes:
-                        causal.supersedes.append(tid)
-                    elif et == EdgeType.SUPERSEDED_BY and tid not in causal.superseded_by:
-                        causal.superseded_by.append(tid)
-                    elif et == EdgeType.DERIVED_FROM and tid not in causal.derived_from:
-                        causal.derived_from.append(tid)
-                    elif et == EdgeType.SUPPORTS and tid not in causal.supports:
-                        causal.supports.append(tid)
-                    elif et == EdgeType.CONFLICTS_WITH and tid not in causal.conflicts_with:
-                        causal.conflicts_with.append(tid)
+                result.context.entity_states.append(
+                    EntityStateSnapshot(
+                        entity_id=eid,
+                        entity_name=(self._graph.get_entity_name(eid) or eid),
+                        state_key=meta.state_key or "",
+                        state_value=meta.state_value or "",
+                        is_current=sn.is_current,
+                        observed_at=sn.observed_at,
+                    )
+                )
+
+    async def _enrich_episode_context(
+        self,
+        result: RecallResult,
+        memory_id: str,
+        nodes: list,
+    ) -> None:
+        """Populate episode membership context on a RecallResult."""
+        from ncms.domain.models import EpisodeMeta, NodeType
+
+        if result.context.episode is not None:
+            return
+
+        for node in nodes:
+            if not node.parent_id:
+                continue
+            try:
+                ep_node = await self._store.get_memory_node(node.parent_id)
+            except Exception:
+                continue
+            if not ep_node or ep_node.node_type != NodeType.EPISODE:
+                continue
+            ep_meta = EpisodeMeta.from_node(ep_node)
+            if ep_meta is None:
+                continue
+            members = await self._store.get_episode_members(ep_node.id)
+            summary_text = await self._find_episode_summary(ep_node.id)
+            result.context.episode = EpisodeContext(
+                episode_id=ep_node.id,
+                episode_title=ep_meta.episode_title or "",
+                status=ep_meta.status or "open",
+                member_count=ep_meta.member_count or 0,
+                topic_entities=ep_meta.topic_entities or [],
+                sibling_ids=[
+                    m.memory_id for m in members if m.memory_id != memory_id
+                ],
+                summary=summary_text,
+            )
+            break
+
+    async def _enrich_causal_chain(
+        self,
+        result: RecallResult,
+        nodes: list,
+    ) -> None:
+        """Populate causal chain edges (supersedes, derived_from, etc.) on a RecallResult."""
+        from ncms.domain.models import EdgeType
+
+        causal = result.context.causal_chain
+        for node in nodes:
+            try:
+                edges = await self._store.get_graph_edges(node.id)
+            except Exception:
+                continue
+            for edge in edges:
+                et = edge.edge_type
+                tid = edge.target_id
+                if et == EdgeType.SUPERSEDES and tid not in causal.supersedes:
+                    causal.supersedes.append(tid)
+                elif et == EdgeType.SUPERSEDED_BY and tid not in causal.superseded_by:
+                    causal.superseded_by.append(tid)
+                elif et == EdgeType.DERIVED_FROM and tid not in causal.derived_from:
+                    causal.derived_from.append(tid)
+                elif et == EdgeType.SUPPORTS and tid not in causal.supports:
+                    causal.supports.append(tid)
+                elif et == EdgeType.CONFLICTS_WITH and tid not in causal.conflicts_with:
+                    causal.conflicts_with.append(tid)
+
+    # ── Document profile expansion ─────────────────────────────────
+
+    async def _expand_document_sections(
+        self,
+        results: list[RecallResult],
+        query: str,
+        max_sections: int = 3,
+    ) -> list[RecallResult]:
+        """Expand document profile memories into relevant child sections.
+
+        When a RecallResult has a memory with structured.doc_id, fetches child
+        sections from the document store, scores them against the query using
+        simple keyword overlap, and adds the top N as DocumentSectionContext
+        entries in the RecallResult context.
+        """
+        if not self._document_service:
+            return results
+
+        query_terms = set(query.lower().split())
+
+        for result in results:
+            memory = result.memory.memory
+            structured = memory.structured
+            if not structured or "doc_id" not in structured:
+                continue
+
+            doc_id = structured["doc_id"]
+            try:
+                # Fetch parent document for metadata
+                parent_doc = await self._document_service.get_document(doc_id)
+                if not parent_doc:
+                    continue
+
+                # Fetch child sections
+                children = await self._document_service.get_children_documents(doc_id)
+                if not children:
+                    continue
+
+                # Score sections against query using keyword overlap
+                scored_sections: list[tuple[float, int, Any]] = []
+                for child in children:
+                    child_terms = set(child.content.lower().split())
+                    if not child_terms:
+                        continue
+                    overlap = len(query_terms & child_terms)
+                    # Normalize by query length for Jaccard-like score
+                    score = overlap / max(len(query_terms), 1)
+                    section_idx = (child.metadata or {}).get("section_index", 0)
+                    scored_sections.append((score, section_idx, child))
+
+                # Sort by relevance score descending, take top N
+                scored_sections.sort(key=lambda x: (-x[0], x[1]))
+                top_sections = scored_sections[:max_sections]
+
+                for score, idx, child in top_sections:
+                    result.context.document_sections.append(
+                        DocumentSectionContext(
+                            doc_id=doc_id,
+                            doc_title=parent_doc.title,
+                            doc_type=parent_doc.doc_type,
+                            from_agent=parent_doc.from_agent,
+                            section_heading=child.title,
+                            section_content=child.content,
+                            section_index=idx,
+                            relevance_score=score,
+                        )
+                    )
+
+                logger.info(
+                    "[recall] Expanding document profile %s: found %d sections, returning top %d",
+                    doc_id, len(children), len(top_sections),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "[recall] Failed to expand document profile %s: %s", doc_id, exc,
+                )
 
         return results
 
