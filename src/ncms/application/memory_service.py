@@ -14,6 +14,7 @@ import math
 import re
 import time
 import uuid
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.config import NCMSConfig
@@ -493,113 +494,18 @@ class MemoryService:
 
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
-        admission_features: object | None = None  # AdmissionFeatures, preserved for L2 node
-        # High-importance content (≥ 8.0) always persists (never discard/ephemeral)
-        # but we still compute admission features so entity state detection works
-        # through one unified path.  Only the routing decision is skipped.
-        _skip_admission_routing = importance >= 8.0
+        admission_features: object | None = None
         if self._admission is not None and self._config.admission_enabled:
-            t0 = time.perf_counter()
-            try:
-                from dataclasses import asdict as _asdict
-
-                from ncms.domain.models import EphemeralEntry, MemoryNode, NodeType
-                from ncms.domain.scoring import route_memory, score_admission
-
-                features = await self._admission.compute_features(
-                    content, domains=domains, source_agent=source_agent,
-                )
-                admission_score = score_admission(features)
-                admission_route = route_memory(features, admission_score)
-                admission_features = features  # preserve for L2 node creation
-
-                feature_dict = _asdict(features)
-                _emit_stage("admission", (time.perf_counter() - t0) * 1000, {
-                    "score": round(admission_score, 3),
-                    "route": admission_route,
-                    "features": {k: round(v, 3) for k, v in feature_dict.items()},
-                })
-                self._event_log.admission_scored(
-                    memory_id=None, score=admission_score, route=admission_route,
-                    features=feature_dict, agent_id=source_agent,
-                )
-
-                # Routing decision: only discard/ephemeral for normal-importance
-                # content.  High-importance (≥ 8.0) always persists — we computed
-                # features above solely for entity state detection signals.
-                if _skip_admission_routing:
-                    admission_route = None  # force persist path
-                    logger.debug(
-                        "Admission: features computed (state_change=%.2f) but "
-                        "routing skipped for high-importance content (%.1f)",
-                        features.state_change_signal, importance,
-                    )
-                elif admission_route == "discard":
-                    logger.info(
-                        "Admission: discarding content (score=%.3f)", admission_score,
-                    )
-                    _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
-                        "result": "discarded", "admission_score": round(admission_score, 3),
-                    })
-                    # Return a Memory object but don't persist it
-                    return Memory(
-                        content=content, type=cast(Any, memory_type),
-                        domains=domains or [], tags=tags or [],
-                        source_agent=source_agent, project=project,
-                        structured={"admission": {"score": admission_score, "route": "discard"}},
-                    )
-                elif admission_route == "ephemeral_cache":
-                    from datetime import UTC, datetime, timedelta
-
-                    ttl = self._config.admission_ephemeral_ttl_seconds
-                    now = datetime.now(UTC)
-                    entry = EphemeralEntry(
-                        content=content,
-                        source_agent=source_agent,
-                        domains=domains or [],
-                        admission_score=admission_score,
-                        ttl_seconds=ttl,
-                        created_at=now,
-                        expires_at=now + timedelta(seconds=ttl),
-                    )
-                    await self._store.save_ephemeral(entry)
-                    logger.info(
-                        "Admission: ephemeral cache (score=%.3f, ttl=%ds)",
-                        admission_score, ttl,
-                    )
-                    _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
-                        "result": "ephemeral",
-                        "admission_score": round(admission_score, 3),
-                        "ephemeral_id": entry.id,
-                    })
-                    return Memory(
-                        content=content, type=cast(Any, memory_type),
-                        domains=domains or [], tags=tags or [],
-                        source_agent=source_agent, project=project,
-                        structured={
-                            "admission": {
-                                "score": admission_score,
-                                "route": "ephemeral_cache",
-                                "ephemeral_id": entry.id,
-                            },
-                        },
-                    )
-
-                # For atomic/entity_state/episode: attach features as structured metadata
-                if structured is None:
-                    structured = {}
-                structured["admission"] = {
-                    "score": round(admission_score, 3),
-                    "route": admission_route,
-                    **{k: round(v, 3) for k, v in feature_dict.items()},
-                }
-
-            except Exception:
-                logger.warning(
-                    "Admission scoring failed, proceeding without admission",
-                    exc_info=True,
-                )
-                _emit_stage("admission_error", (time.perf_counter() - t0) * 1000)
+            result = await self._gate_admission(
+                content=content, domains=domains, tags=tags,
+                source_agent=source_agent, project=project,
+                memory_type=memory_type, importance=importance,
+                structured=structured,
+                _emit_stage=_emit_stage, pipeline_start=pipeline_start,
+            )
+            if isinstance(result, Memory):
+                return result  # discard or ephemeral — early exit
+            admission_route, admission_features, structured = result
 
         memory = Memory(
             content=content,
@@ -656,122 +562,10 @@ class MemoryService:
             )
 
         # ── Inline indexing (fallback / async_indexing disabled) ─────────
-        # BM25, SPLADE, and GLiNER are independent — run them concurrently.
-        # Each sync call is wrapped in asyncio.to_thread to release the
-        # event loop while GPU/CPU inference runs.
-
-        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
-
-        async def _do_bm25() -> float:
-            t = time.perf_counter()
-            await asyncio.to_thread(self._index.index_memory, memory)
-            return (time.perf_counter() - t) * 1000
-
-        async def _do_splade() -> float:
-            if self._splade is None:
-                return 0.0
-            t = time.perf_counter()
-            try:
-                await asyncio.to_thread(self._splade.index_memory, memory)
-            except Exception:
-                logger.warning(
-                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True,
-                )
-            return (time.perf_counter() - t) * 1000
-
-        async def _do_gliner() -> tuple[list[dict[str, str]], float]:
-            t = time.perf_counter()
-            cached = await self._get_cached_labels(domains or [])
-            gliner_labels = resolve_labels(domains or [], cached_labels=cached)
-            result = await asyncio.to_thread(
-                extract_entities_gliner,
-                content,
-                model_name=self._config.gliner_model,
-                threshold=self._config.gliner_threshold,
-                labels=gliner_labels,
-                cache_dir=self._config.model_cache_dir,
-            )
-            return result, (time.perf_counter() - t) * 1000
-
-        logger.info("[store] Starting parallel indexing: BM25 + SPLADE + GLiNER")
-        bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
-            _do_bm25(), _do_splade(), _do_gliner(),
+        all_entities, linked_entity_ids = await self._run_inline_indexing(
+            memory=memory, content=content, domains=domains,
+            entities_manual=entities, _emit_stage=_emit_stage,
         )
-        logger.info(
-            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
-            bm25_ms, splade_ms, extract_ms,
-        )
-
-        _emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
-        if self._splade is not None:
-            _emit_stage("splade_index", splade_ms, memory_id=memory.id)
-
-        manual = list(entities or [])
-        manual_names = {e["name"].lower() for e in manual}
-        all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
-        _emit_stage("entity_extraction", extract_ms, {
-            "extractor": "gliner",
-            "auto_count": len(auto_entities),
-            "manual_count": len(manual),
-            "total_count": len(all_entities),
-            "entity_names": [e["name"] for e in all_entities[:10]],
-        }, memory_id=memory.id)
-
-        t0 = time.perf_counter()
-        linked_entity_ids: list[str] = []  # Collect for episode formation
-        for e_data in all_entities:
-            entity = await self.add_entity(
-                name=e_data["name"],
-                entity_type=e_data.get("type", "concept"),
-                attributes=e_data.get("attributes", {}),
-            )
-            linked_entity_ids.append(entity.id)
-            await self._store.link_memory_entity(memory.id, entity.id)
-            self._graph.link_memory_entity(memory.id, entity.id)
-        _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
-            "entities_linked": len(all_entities),
-        }, memory_id=memory.id)
-
-        # Co-occurrence edges: connect entities appearing in the same document.
-        # This gives the entity graph connectivity for graph expansion traversal.
-        # Fix #6: Cap clique size to avoid hub-node inflation from generic entities.
-        # Fix #2: Track co-occurrence counts for PMI weight computation.
-        # In-memory only (not persisted to SQLite) — rebuilt each session.
-        if len(linked_entity_ids) > 1:  # Co-occurrence always on
-            t0 = time.perf_counter()
-            cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
-            cooc_count = 0
-            edges_new = 0
-            edges_incremented = 0
-            for i, a in enumerate(cooc_ids):
-                for b in cooc_ids[i + 1 :]:
-                    # Check if edge already exists — increment count instead of
-                    # duplicating. This tracks frequency for PMI weighting.
-                    existing_count = self._graph.get_edge_cooccurrence(a, b)
-                    if existing_count > 0:
-                        self._graph.increment_edge_cooccurrence(a, b)
-                        self._graph.increment_edge_cooccurrence(b, a)
-                        edges_incremented += 1
-                    else:
-                        rel_ab = Relationship(
-                            source_entity_id=a, target_entity_id=b,
-                            type="co_occurs", source_memory_id=memory.id,
-                        )
-                        rel_ba = Relationship(
-                            source_entity_id=b, target_entity_id=a,
-                            type="co_occurs", source_memory_id=memory.id,
-                        )
-                        self._graph.add_relationship(rel_ab)
-                        self._graph.add_relationship(rel_ba)
-                        edges_new += 1
-                    cooc_count += 1
-            _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {
-                "edges_new": edges_new,
-                "edges_incremented": edges_incremented,
-                "entities_used": len(cooc_ids),
-                "entities_capped": len(linked_entity_ids)
-                > self._config.cooccurrence_max_entities,
-            }, memory_id=memory.id)
 
         # Contradiction detection — fire-and-forget async task (deferred).
         # Memory is already stored and indexed; contradiction is metadata
@@ -820,180 +614,14 @@ class MemoryService:
         )
         if _should_create_node:
             try:
-                from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
-
-                # L1: ALWAYS create atomic node for persisted content
-                l1_node = MemoryNode(
-                    memory_id=memory.id,
-                    node_type=NodeType.ATOMIC,
-                    importance=memory.importance,
+                await self._create_memory_nodes(
+                    memory=memory,
+                    content=content,
+                    all_entities=all_entities,
+                    linked_entity_ids=linked_entity_ids,
+                    admission_features=admission_features,
+                    _emit_stage=_emit_stage,
                 )
-                await self._store.save_memory_node(l1_node)
-                _emit_stage("memory_node", 0.0, {
-                    "node_id": l1_node.id,
-                    "node_type": "atomic",
-                    "layer": "L1",
-                }, memory_id=memory.id)
-
-                # L2: ADDITIONALLY create entity_state if state change or state
-                # declaration detected.  Two triggers (same path for all content):
-                # a) admission state_change_signal ≥ 0.35 (explicit change verbs)
-                # b) content matches a state declaration pattern:
-                #    - "Entity: key = value" structured assignment
-                #    - "## Status\n\nvalue" markdown section
-                #    - "status: value" YAML key
-                l2_node: MemoryNode | None = None
-                _has_state_change = (
-                    admission_features is not None
-                    and hasattr(admission_features, "state_change_signal")
-                    and admission_features.state_change_signal >= 0.35
-                )
-                _has_state_declaration = bool(
-                    # "Entity: key = value" structured assignment
-                    re.search(
-                        r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                        content,
-                        re.MULTILINE,
-                    )
-                    # Markdown "## Status\n\nvalue" (ADRs, design docs)
-                    or re.search(
-                        r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
-                        content,
-                    )
-                    # YAML "status: value" (checklists, config)
-                    or re.search(
-                        r"^\s*status\s*:\s*\w+",
-                        content,
-                        re.MULTILINE | re.IGNORECASE,
-                    )
-                )
-
-                # Note: The pre-Phase-4 "Section 3.4" 2000-char hard cutoff was
-                # removed.  With content classification enabled, large structured
-                # documents are split into sections before reaching this point.
-                # The entity-validation check below (detected entity must exist
-                # in GLiNER extraction) is sufficient to prevent false positives.
-
-                if _has_state_change or _has_state_declaration:
-                    node_metadata = self._extract_entity_state_meta(
-                        content, all_entities,
-                    )
-
-                    # Tightening (Section 3.4): validate that the
-                    # detected entity_id exists in the extracted entities
-                    # set (must be a real entity, not a substring match).
-                    _entity_names_lower = {
-                        e["name"].lower() for e in all_entities
-                    }
-                    _detected_entity = node_metadata.get("entity_id", "")
-                    if _detected_entity.lower() not in _entity_names_lower:
-                        node_metadata = {}  # suppress L2 creation
-
-                if (_has_state_change or _has_state_declaration) and node_metadata:
-                    l2_node = MemoryNode(
-                        memory_id=memory.id,
-                        node_type=NodeType.ENTITY_STATE,
-                        importance=memory.importance,
-                        metadata=node_metadata,
-                    )
-                    await self._store.save_memory_node(l2_node)
-
-                    # DERIVED_FROM edge: L2 → L1
-                    await self._store.save_graph_edge(GraphEdge(
-                        source_id=l2_node.id,
-                        target_id=l1_node.id,
-                        edge_type=EdgeType.DERIVED_FROM,
-                        metadata={"layer": "L2_from_L1"},
-                    ))
-                    _emit_stage("memory_node", 0.0, {
-                        "node_id": l2_node.id,
-                        "node_type": "entity_state",
-                        "layer": "L2",
-                        "derived_from": l1_node.id,
-                        "has_entity_state": bool(node_metadata.get("entity_id")),
-                    }, memory_id=memory.id)
-
-                # Phase 2A: Reconcile entity state against existing states
-                if (
-                    l2_node is not None
-                    and self._reconciliation is not None
-                    and self._config.reconciliation_enabled
-                    and l2_node.metadata.get("entity_id")
-                ):
-                    t0_recon = time.perf_counter()
-                    try:
-                        results = await self._reconciliation.reconcile(l2_node)  # type: ignore[attr-defined]
-                        recon_data: dict = {
-                            "node_id": l2_node.id,
-                            "results_count": len(results),
-                            "relations": [
-                                {"relation": r.relation, "existing": r.existing_node_id}
-                                for r in results
-                            ],
-                        }
-                        _emit_stage(
-                            "reconciliation",
-                            (time.perf_counter() - t0_recon) * 1000,
-                            recon_data,
-                            memory_id=memory.id,
-                        )
-                    except Exception:
-                        logger.warning(
-                            "Reconciliation failed for node %s, continuing",
-                            l2_node.id,
-                            exc_info=True,
-                        )
-                        _emit_stage(
-                            "reconciliation_error",
-                            (time.perf_counter() - t0_recon) * 1000,
-                            memory_id=memory.id,
-                        )
-
-                # Phase 3: Episode formation (links to L1 atomic node)
-                if (
-                    self._episode is not None
-                    and self._config.episodes_enabled
-                ):
-                    t0_ep = time.perf_counter()
-                    try:
-                        episode_node = await self._episode.assign_or_create(  # type: ignore[attr-defined]
-                            fragment_node=l1_node,
-                            fragment_memory=memory,
-                            entity_ids=linked_entity_ids,
-                        )
-                        ep_data: dict = {
-                            "node_id": l1_node.id,
-                            "episode_id": (
-                                episode_node.id if episode_node else None
-                            ),
-                            "action": (
-                                "created" if episode_node else "none"
-                            ),
-                        }
-                        _emit_stage(
-                            "episode_formation",
-                            (time.perf_counter() - t0_ep) * 1000,
-                            ep_data,
-                            memory_id=memory.id,
-                        )
-
-                        # Check for resolution closure
-                        if episode_node is not None:
-                            await self._episode.check_resolution_closure(  # type: ignore[attr-defined]
-                                content, episode_node,
-                            )
-                    except Exception:
-                        logger.warning(
-                            "Episode formation failed for node %s, continuing",
-                            l1_node.id,
-                            exc_info=True,
-                        )
-                        _emit_stage(
-                            "episode_formation_error",
-                            (time.perf_counter() - t0_ep) * 1000,
-                            memory_id=memory.id,
-                        )
-
             except Exception:
                 logger.warning(
                     "MemoryNode creation failed for %s, continuing", memory.id,
@@ -1010,6 +638,419 @@ class MemoryService:
             agent_id=source_agent,
         )
         return memory
+
+    # ── Inline Indexing (BM25 + SPLADE + GLiNER + Entity Linking) ─────
+
+    async def _run_inline_indexing(
+        self,
+        memory: Memory,
+        content: str,
+        domains: list[str] | None,
+        entities_manual: list[dict] | None,
+        _emit_stage: Callable,
+    ) -> tuple[list[dict], list[str]]:
+        """Run BM25, SPLADE, GLiNER in parallel then link entities + co-occurrence edges.
+
+        Returns (all_entities, linked_entity_ids).
+        """
+        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
+
+        async def _do_bm25() -> float:
+            t = time.perf_counter()
+            await asyncio.to_thread(self._index.index_memory, memory)
+            return (time.perf_counter() - t) * 1000
+
+        async def _do_splade() -> float:
+            if self._splade is None:
+                return 0.0
+            t = time.perf_counter()
+            try:
+                await asyncio.to_thread(self._splade.index_memory, memory)
+            except Exception:
+                logger.warning(
+                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True,
+                )
+            return (time.perf_counter() - t) * 1000
+
+        async def _do_gliner() -> tuple[list[dict[str, str]], float]:
+            t = time.perf_counter()
+            cached = await self._get_cached_labels(domains or [])
+            gliner_labels = resolve_labels(domains or [], cached_labels=cached)
+            result = await asyncio.to_thread(
+                extract_entities_gliner, content,
+                model_name=self._config.gliner_model,
+                threshold=self._config.gliner_threshold,
+                labels=gliner_labels,
+                cache_dir=self._config.model_cache_dir,
+            )
+            return result, (time.perf_counter() - t) * 1000
+
+        logger.info("[store] Starting parallel indexing: BM25 + SPLADE + GLiNER")
+        bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
+            _do_bm25(), _do_splade(), _do_gliner(),
+        )
+        logger.info(
+            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
+            bm25_ms, splade_ms, extract_ms,
+        )
+
+        _emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
+        if self._splade is not None:
+            _emit_stage("splade_index", splade_ms, memory_id=memory.id)
+
+        # Merge manual + auto-extracted entities (dedup by name)
+        manual = list(entities_manual or [])
+        manual_names = {e["name"].lower() for e in manual}
+        all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
+        _emit_stage("entity_extraction", extract_ms, {
+            "extractor": "gliner", "auto_count": len(auto_entities),
+            "manual_count": len(manual), "total_count": len(all_entities),
+            "entity_names": [e["name"] for e in all_entities[:10]],
+        }, memory_id=memory.id)
+
+        # Link entities to memory in graph + store
+        t0 = time.perf_counter()
+        linked_entity_ids: list[str] = []
+        for e_data in all_entities:
+            entity = await self.add_entity(
+                name=e_data["name"],
+                entity_type=e_data.get("type", "concept"),
+                attributes=e_data.get("attributes", {}),
+            )
+            linked_entity_ids.append(entity.id)
+            await self._store.link_memory_entity(memory.id, entity.id)
+            self._graph.link_memory_entity(memory.id, entity.id)
+        _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
+            "entities_linked": len(all_entities),
+        }, memory_id=memory.id)
+
+        # Co-occurrence edges: connect entities in same document for graph traversal
+        if len(linked_entity_ids) > 1:
+            self._build_cooccurrence_edges(
+                memory.id, linked_entity_ids, _emit_stage,
+            )
+
+        return all_entities, linked_entity_ids
+
+    def _build_cooccurrence_edges(
+        self,
+        memory_id: str,
+        linked_entity_ids: list[str],
+        _emit_stage: Callable,
+    ) -> None:
+        """Build co-occurrence edges between entities in the same memory."""
+        t0 = time.perf_counter()
+        cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
+        edges_new = 0
+        edges_incremented = 0
+        for i, a in enumerate(cooc_ids):
+            for b in cooc_ids[i + 1:]:
+                existing_count = self._graph.get_edge_cooccurrence(a, b)
+                if existing_count > 0:
+                    self._graph.increment_edge_cooccurrence(a, b)
+                    self._graph.increment_edge_cooccurrence(b, a)
+                    edges_incremented += 1
+                else:
+                    rel_ab = Relationship(
+                        source_entity_id=a, target_entity_id=b,
+                        type="co_occurs", source_memory_id=memory_id,
+                    )
+                    rel_ba = Relationship(
+                        source_entity_id=b, target_entity_id=a,
+                        type="co_occurs", source_memory_id=memory_id,
+                    )
+                    self._graph.add_relationship(rel_ab)
+                    self._graph.add_relationship(rel_ba)
+                    edges_new += 1
+        _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {
+            "edges_new": edges_new, "edges_incremented": edges_incremented,
+            "entities_used": len(cooc_ids),
+            "entities_capped": len(linked_entity_ids) > self._config.cooccurrence_max_entities,
+        }, memory_id=memory_id)
+
+    # ── Admission Gate ─────────────────────────────────────────────────
+
+    async def _gate_admission(
+        self,
+        content: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        project: str | None,
+        memory_type: str,
+        importance: float,
+        structured: dict | None,
+        _emit_stage: Callable,
+        pipeline_start: float,
+    ) -> Memory | tuple[str | None, object | None, dict | None]:
+        """Run admission scoring. Returns Memory for early exit (discard/ephemeral)
+        or (route, features, structured) tuple to continue the persist path."""
+        from dataclasses import asdict as _asdict
+
+        from ncms.domain.models import EphemeralEntry
+        from ncms.domain.scoring import route_memory, score_admission
+
+        _skip_routing = importance >= 8.0
+
+        t0 = time.perf_counter()
+        try:
+            features = await self._admission.compute_features(
+                content, domains=domains, source_agent=source_agent,
+            )
+            score = score_admission(features)
+            route = route_memory(features, score)
+
+            feature_dict = _asdict(features)
+            _emit_stage("admission", (time.perf_counter() - t0) * 1000, {
+                "score": round(score, 3), "route": route,
+                "features": {k: round(v, 3) for k, v in feature_dict.items()},
+            })
+            self._event_log.admission_scored(
+                memory_id=None, score=score, route=route,
+                features=feature_dict, agent_id=source_agent,
+            )
+
+            if _skip_routing:
+                route = None
+                logger.debug(
+                    "Admission: features computed (state_change=%.2f) but "
+                    "routing skipped for high-importance content (%.1f)",
+                    features.state_change_signal, importance,
+                )
+            elif route == "discard":
+                logger.info("Admission: discarding content (score=%.3f)", score)
+                _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
+                    "result": "discarded", "admission_score": round(score, 3),
+                })
+                return Memory(
+                    content=content, type=cast(Any, memory_type),
+                    domains=domains or [], tags=tags or [],
+                    source_agent=source_agent, project=project,
+                    structured={"admission": {"score": score, "route": "discard"}},
+                )
+            elif route == "ephemeral_cache":
+                from datetime import UTC, datetime, timedelta
+
+                ttl = self._config.admission_ephemeral_ttl_seconds
+                now = datetime.now(UTC)
+                entry = EphemeralEntry(
+                    content=content, source_agent=source_agent,
+                    domains=domains or [], admission_score=score,
+                    ttl_seconds=ttl, created_at=now,
+                    expires_at=now + timedelta(seconds=ttl),
+                )
+                await self._store.save_ephemeral(entry)
+                logger.info("Admission: ephemeral cache (score=%.3f, ttl=%ds)", score, ttl)
+                _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
+                    "result": "ephemeral", "admission_score": round(score, 3),
+                    "ephemeral_id": entry.id,
+                })
+                return Memory(
+                    content=content, type=cast(Any, memory_type),
+                    domains=domains or [], tags=tags or [],
+                    source_agent=source_agent, project=project,
+                    structured={"admission": {
+                        "score": score, "route": "ephemeral_cache",
+                        "ephemeral_id": entry.id,
+                    }},
+                )
+
+            # Persist path: attach features as structured metadata
+            if structured is None:
+                structured = {}
+            structured["admission"] = {
+                "score": round(score, 3), "route": route,
+                **{k: round(v, 3) for k, v in feature_dict.items()},
+            }
+            return route, features, structured
+
+        except Exception:
+            logger.warning(
+                "Admission scoring failed, proceeding without admission",
+                exc_info=True,
+            )
+            _emit_stage("admission_error", (time.perf_counter() - t0) * 1000)
+            return None, None, structured
+
+    # ── Node Creation (L1/L2) + Reconciliation + Episodes ──────────────
+
+    async def _create_memory_nodes(
+        self,
+        memory: Memory,
+        content: str,
+        all_entities: list[dict],
+        linked_entity_ids: list[str],
+        admission_features: object | None,
+        _emit_stage: Callable,
+    ) -> None:
+        """Create HTMG nodes for a persisted memory.
+
+        L1 ATOMIC node is always created. L2 ENTITY_STATE node is additionally
+        created if state change or state declaration is detected. Then reconcile
+        against existing states and assign to an episode.
+        """
+        from ncms.domain.models import MemoryNode, NodeType
+
+        # L1: ALWAYS create atomic node for persisted content
+        l1_node = MemoryNode(
+            memory_id=memory.id,
+            node_type=NodeType.ATOMIC,
+            importance=memory.importance,
+        )
+        await self._store.save_memory_node(l1_node)
+        _emit_stage("memory_node", 0.0, {
+            "node_id": l1_node.id, "node_type": "atomic", "layer": "L1",
+        }, memory_id=memory.id)
+
+        # L2: Detect state change or state declaration
+        l2_node = await self._detect_and_create_l2_node(
+            memory, content, all_entities, l1_node,
+            admission_features, _emit_stage,
+        )
+
+        # Phase 2A: Reconcile entity state against existing states
+        if (
+            l2_node is not None
+            and self._reconciliation is not None
+            and self._config.reconciliation_enabled
+            and l2_node.metadata.get("entity_id")
+        ):
+            await self._reconcile_entity_state(l2_node, memory.id, _emit_stage)
+
+        # Phase 3: Episode formation (links to L1 atomic node)
+        if self._episode is not None and self._config.episodes_enabled:
+            await self._assign_episode(
+                l1_node, memory, content, linked_entity_ids, _emit_stage,
+            )
+
+    async def _detect_and_create_l2_node(
+        self,
+        memory: Memory,
+        content: str,
+        all_entities: list[dict],
+        l1_node: object,
+        admission_features: object | None,
+        _emit_stage: Callable,
+    ) -> object | None:
+        """Detect entity state change and create L2 ENTITY_STATE node if found."""
+        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
+
+        _has_state_change = (
+            admission_features is not None
+            and hasattr(admission_features, "state_change_signal")
+            and admission_features.state_change_signal >= 0.35
+        )
+        _has_state_declaration = bool(
+            re.search(
+                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                content, re.MULTILINE,
+            )
+            or re.search(r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content)
+            or re.search(
+                r"^\s*status\s*:\s*\w+", content, re.MULTILINE | re.IGNORECASE,
+            )
+        )
+
+        if not (_has_state_change or _has_state_declaration):
+            return None
+
+        node_metadata = self._extract_entity_state_meta(content, all_entities)
+
+        # Validate detected entity exists in GLiNER extraction set
+        _entity_names_lower = {e["name"].lower() for e in all_entities}
+        _detected_entity = node_metadata.get("entity_id", "")
+        if _detected_entity.lower() not in _entity_names_lower:
+            return None
+
+        if not node_metadata:
+            return None
+
+        l2_node = MemoryNode(
+            memory_id=memory.id,
+            node_type=NodeType.ENTITY_STATE,
+            importance=memory.importance,
+            metadata=node_metadata,
+        )
+        await self._store.save_memory_node(l2_node)
+
+        # DERIVED_FROM edge: L2 → L1
+        await self._store.save_graph_edge(GraphEdge(
+            source_id=l2_node.id,
+            target_id=l1_node.id,
+            edge_type=EdgeType.DERIVED_FROM,
+            metadata={"layer": "L2_from_L1"},
+        ))
+        _emit_stage("memory_node", 0.0, {
+            "node_id": l2_node.id, "node_type": "entity_state", "layer": "L2",
+            "derived_from": l1_node.id,
+            "has_entity_state": bool(node_metadata.get("entity_id")),
+        }, memory_id=memory.id)
+
+        return l2_node
+
+    async def _reconcile_entity_state(
+        self,
+        l2_node: object,
+        memory_id: str,
+        _emit_stage: Callable,
+    ) -> None:
+        """Reconcile an L2 entity_state node against existing states."""
+        t0 = time.perf_counter()
+        try:
+            results = await self._reconciliation.reconcile(l2_node)  # type: ignore[attr-defined]
+            _emit_stage("reconciliation", (time.perf_counter() - t0) * 1000, {
+                "node_id": l2_node.id,
+                "results_count": len(results),
+                "relations": [
+                    {"relation": r.relation, "existing": r.existing_node_id}
+                    for r in results
+                ],
+            }, memory_id=memory_id)
+        except Exception:
+            logger.warning(
+                "Reconciliation failed for node %s, continuing",
+                l2_node.id, exc_info=True,
+            )
+            _emit_stage(
+                "reconciliation_error", (time.perf_counter() - t0) * 1000,
+                memory_id=memory_id,
+            )
+
+    async def _assign_episode(
+        self,
+        l1_node: object,
+        memory: Memory,
+        content: str,
+        linked_entity_ids: list[str],
+        _emit_stage: Callable,
+    ) -> None:
+        """Assign a memory's L1 node to an episode."""
+        t0 = time.perf_counter()
+        try:
+            episode_node = await self._episode.assign_or_create(  # type: ignore[attr-defined]
+                fragment_node=l1_node,
+                fragment_memory=memory,
+                entity_ids=linked_entity_ids,
+            )
+            _emit_stage("episode_formation", (time.perf_counter() - t0) * 1000, {
+                "node_id": l1_node.id,
+                "episode_id": episode_node.id if episode_node else None,
+                "action": "created" if episode_node else "none",
+            }, memory_id=memory.id)
+
+            if episode_node is not None:
+                await self._episode.check_resolution_closure(  # type: ignore[attr-defined]
+                    content, episode_node,
+                )
+        except Exception:
+            logger.warning(
+                "Episode formation failed for node %s, continuing",
+                l1_node.id, exc_info=True,
+            )
+            _emit_stage(
+                "episode_formation_error", (time.perf_counter() - t0) * 1000,
+                memory_id=memory.id,
+            )
 
     # ── Deferred Contradiction Detection ────────────────────────────────
 
