@@ -256,76 +256,38 @@ class ConsolidationService:
             if not result:
                 continue
 
-            # Create backing Memory(type="insight") for Tantivy/SPLADE indexing
-            abstract_memory = Memory(
+            # Store insight + HTMG abstract node + edges
+            structured_extra = {
+                "source_episode_id": ep_node.id,
+                "episode_title": title,
+                "actors": result.get("actors", []),
+                "artifacts": result.get("artifacts", []),
+                "decisions": result.get("decisions", []),
+                "outcome": result.get("outcome", ""),
+                "topic_entities": meta.get("topic_entities", []),
+            }
+            member_node_ids = [m.id for m in members]
+            _, abstract_node = await self._store_abstract(
                 content=result["summary"],
-                type="insight",
+                abstract_type="episode_summary",
                 domains=list(member_domains),
-                importance=result.get("confidence", 0.5) * 10,
-                structured={
-                    "abstract_type": "episode_summary",
-                    "source_episode_id": ep_node.id,
-                    "actors": result.get("actors", []),
-                    "artifacts": result.get("artifacts", []),
-                    "decisions": result.get("decisions", []),
-                    "outcome": result.get("outcome", ""),
-                    "confidence": result.get("confidence", 0.5),
-                    "synthesis_model": self._config.consolidation_knowledge_model,
-                },
+                confidence=result.get("confidence", 0.5),
+                structured_extra=structured_extra,
+                source_node_ids=member_node_ids,
+                source_memory_ids=[m.memory_id for m in members],
+                edge_type="derived_from",
             )
-            await self._store.save_memory(abstract_memory)
-            await self._store.log_access(
-                AccessRecord(memory_id=abstract_memory.id, accessing_agent="consolidation")
-            )
-            self._index_memory(abstract_memory)
-
-            # Create HTMG abstract node
-            refresh_at = (datetime.now(UTC) + timedelta(
-                days=self._config.abstract_refresh_days
-            )).isoformat()
-            abstract_node = MemoryNode(
-                memory_id=abstract_memory.id,
-                node_type=NodeType.ABSTRACT,
-                importance=abstract_memory.importance,
-                metadata={
-                    "abstract_type": "episode_summary",
-                    "source_episode_id": ep_node.id,
-                    "episode_title": title,
-                    "actors": result.get("actors", []),
-                    "topic_entities": meta.get("topic_entities", []),
-                    "refresh_due_at": refresh_at,
-                },
-            )
-            await self._store.save_memory_node(abstract_node)
-
-            # Create graph edges (SQLite HTMG)
+            # SUMMARIZES edge: abstract → episode (separate from DERIVED_FROM to members)
             await self._store.save_graph_edge(GraphEdge(
                 source_id=abstract_node.id,
                 target_id=ep_node.id,
                 edge_type=EdgeType.SUMMARIZES,
             ))
-            for member in members:
-                await self._store.save_graph_edge(GraphEdge(
-                    source_id=abstract_node.id,
-                    target_id=member.id,
-                    edge_type=EdgeType.DERIVED_FROM,
-                ))
-
-            # Bridge entity links from source members to abstract memory
-            # so graph traversal can discover summaries through shared entities
-            if self._graph:
-                member_mids = [m.memory_id for m in members]
-                source_entities = _collect_entity_ids(self._graph, member_mids)
-                for eid in source_entities:
-                    self._graph.link_memory_entity(abstract_memory.id, eid)
 
             # Mark episode as summarized
             ep_node.metadata["summarized"] = True
             ep_node.metadata["summary_node_id"] = abstract_node.id
             await self._store.update_memory_node(ep_node)
-
-            # Emit event
-            self._emit_abstract_created("episode_summary", abstract_node.id, len(members))
 
             summaries_created += 1
 
@@ -1265,6 +1227,73 @@ class ConsolidationService:
         return results
 
     # ── Private Helpers ──────────────────────────────────────────────────
+
+    async def _store_abstract(
+        self,
+        content: str,
+        abstract_type: str,
+        domains: list[str],
+        confidence: float,
+        structured_extra: dict,
+        source_node_ids: list[str],
+        source_memory_ids: list[str],
+        edge_type: str = "derived_from",
+    ) -> tuple[Memory, MemoryNode]:
+        """Shared tail for all consolidation methods: store insight + node + edges.
+
+        Creates Memory(type=insight), MemoryNode(type=ABSTRACT), graph edges
+        from abstract to source nodes, and bridges entity links from source
+        memories to the abstract. Returns (memory, node).
+        """
+        abstract_memory = Memory(
+            content=content,
+            type="insight",
+            domains=domains,
+            importance=max(confidence * 10, 1.0),
+            structured={
+                "abstract_type": abstract_type,
+                "confidence": confidence,
+                "synthesis_model": self._config.consolidation_knowledge_model,
+                **structured_extra,
+            },
+        )
+        await self._store.save_memory(abstract_memory)
+        await self._store.log_access(
+            AccessRecord(memory_id=abstract_memory.id, accessing_agent="consolidation")
+        )
+        self._index_memory(abstract_memory)
+
+        refresh_at = (datetime.now(UTC) + timedelta(
+            days=self._config.abstract_refresh_days,
+        )).isoformat()
+        abstract_node = MemoryNode(
+            memory_id=abstract_memory.id,
+            node_type=NodeType.ABSTRACT,
+            importance=abstract_memory.importance,
+            metadata={
+                "abstract_type": abstract_type,
+                "refresh_due_at": refresh_at,
+                **structured_extra,
+            },
+        )
+        await self._store.save_memory_node(abstract_node)
+
+        # Graph edges to source nodes
+        for src_id in source_node_ids:
+            await self._store.save_graph_edge(GraphEdge(
+                source_id=abstract_node.id,
+                target_id=src_id,
+                edge_type=EdgeType(edge_type),
+            ))
+
+        # Bridge entity links from source memories to abstract
+        if self._graph and source_memory_ids:
+            source_entities = _collect_entity_ids(self._graph, source_memory_ids)
+            for eid in source_entities:
+                self._graph.link_memory_entity(abstract_memory.id, eid)
+
+        self._emit_abstract_created(abstract_type, abstract_node.id, len(source_node_ids))
+        return abstract_memory, abstract_node
 
     def _index_memory(self, memory: Memory) -> None:
         """Index a memory in Tantivy and optionally SPLADE."""
