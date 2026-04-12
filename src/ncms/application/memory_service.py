@@ -639,6 +639,175 @@ class MemoryService:
         )
         return memory
 
+    # ── Search: Intent Classification ──────────────────────────────────
+
+    async def _classify_search_intent(
+        self,
+        query: str,
+        intent_override: str | None,
+        _emit_stage: Callable,
+    ) -> IntentResult | None:
+        """Classify query intent via exemplar index, keyword fallback, or LLM."""
+        if intent_override is not None:
+            from ncms.domain.intent import INTENT_TARGETS
+
+            try:
+                qi = QueryIntent(intent_override)
+            except ValueError:
+                valid = [e.value for e in QueryIntent]
+                raise ValueError(  # noqa: B904
+                    f"Invalid intent '{intent_override}'. Valid intents: {valid}"
+                )
+            _emit_stage("intent_override", 0.0, {
+                "intent": qi.value, "source": "user_override",
+            })
+            return IntentResult(
+                intent=qi, confidence=1.0,
+                target_node_types=INTENT_TARGETS.get(qi, ("atomic",)),
+            )
+
+        if not self._config.intent_classification_enabled:
+            return None
+
+        t0 = time.perf_counter()
+        if self._intent_classifier is not None:
+            intent_result = self._intent_classifier.classify(query)  # type: ignore[union-attr]
+        else:
+            intent_result = classify_intent(query)
+
+        llm_fallback_used = False
+        if intent_result.confidence < self._config.intent_confidence_threshold:
+            if self._config.intent_llm_fallback_enabled:
+                from ncms.infrastructure.llm.intent_classifier_llm import (
+                    classify_intent_with_llm,
+                )
+                llm_result = await classify_intent_with_llm(
+                    query, model=self._config.llm_model,
+                    api_base=self._config.llm_api_base,
+                )
+                if llm_result is not None:
+                    intent_result = llm_result
+                    llm_fallback_used = True
+                else:
+                    _emit_stage("intent_llm_miss", 0, {
+                        "query": query[:200],
+                        "bm25_intent": intent_result.intent.value,
+                        "bm25_confidence": round(intent_result.confidence, 3),
+                    })
+
+            if intent_result.confidence < self._config.intent_confidence_threshold:
+                _emit_stage("intent_miss", 0, {
+                    "query": query[:200],
+                    "best_intent": intent_result.intent.value,
+                    "best_confidence": round(intent_result.confidence, 3),
+                    "llm_attempted": llm_fallback_used,
+                })
+                intent_result = IntentResult(
+                    intent=QueryIntent.FACT_LOOKUP, confidence=1.0,
+                    target_node_types=("atomic", "entity_state"),
+                )
+
+        _emit_stage("intent_classification", (time.perf_counter() - t0) * 1000, {
+            "intent": intent_result.intent.value,
+            "confidence": round(intent_result.confidence, 3),
+            "target_node_types": list(intent_result.target_node_types),
+            "llm_fallback": llm_fallback_used,
+        })
+        return intent_result
+
+    # ── Search: Parallel Retrieval + RRF Fusion ──────────────────────
+
+    async def _retrieve_candidates(
+        self,
+        query: str,
+        domain: str | None,
+        _emit_stage: Callable,
+    ) -> tuple | None:
+        """Run BM25 + SPLADE + GLiNER in parallel, fuse via RRF.
+
+        Returns None if no candidates found, or a tuple of:
+        (fused_candidates, bm25_results, splade_results,
+         bm25_scores, splade_scores, query_entity_names, parallel_ms)
+        """
+        import asyncio
+
+        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
+
+        search_domains = [domain] if domain else []
+        cached = await self._get_cached_labels(search_domains)
+        labels = resolve_labels(search_domains, cached_labels=cached)
+
+        t0 = time.perf_counter()
+
+        async def _bm25_task() -> list[tuple[str, float]]:
+            t = time.perf_counter()
+            result = await asyncio.to_thread(
+                self._index.search, query, self._config.tier1_candidates,
+            )
+            logger.info("[search] BM25 done: %d results (%.0fms)", len(result),
+                        (time.perf_counter() - t) * 1000)
+            return result
+
+        async def _splade_task() -> list[tuple[str, float]]:
+            if self._splade is None:
+                return []
+            try:
+                t = time.perf_counter()
+                result = await asyncio.to_thread(
+                    self._splade.search, query, self._config.splade_top_k,
+                )
+                logger.info("[search] SPLADE done: %d results (%.0fms)", len(result),
+                            (time.perf_counter() - t) * 1000)
+                return result
+            except Exception:
+                logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
+                return []
+
+        async def _entity_task() -> list[dict]:
+            t = time.perf_counter()
+            result = await asyncio.to_thread(
+                extract_entities_gliner, query,
+                model_name=self._config.gliner_model,
+                threshold=self._config.gliner_threshold,
+                labels=labels, cache_dir=self._config.model_cache_dir,
+            )
+            logger.info("[search] GLiNER done: %d entities (%.0fms)", len(result),
+                        (time.perf_counter() - t) * 1000)
+            return result
+
+        logger.info("[search] Starting parallel retrieval: BM25 + SPLADE + GLiNER")
+        bm25_results, splade_results, query_entity_names = await asyncio.gather(
+            _bm25_task(), _splade_task(), _entity_task(),
+        )
+        parallel_ms = (time.perf_counter() - t0) * 1000
+
+        _emit_stage("bm25", parallel_ms, {
+            "candidate_count": len(bm25_results),
+            "top_score": round(bm25_results[0][1], 3) if bm25_results else None,
+        })
+        if splade_results:
+            _emit_stage("splade", parallel_ms, {"candidate_count": len(splade_results)})
+
+        # Fuse via Reciprocal Rank Fusion
+        if splade_results:
+            t0 = time.perf_counter()
+            fused_candidates = self._rrf_fuse(bm25_results, splade_results)
+            _emit_stage("rrf_fusion", (time.perf_counter() - t0) * 1000,
+                        {"fused_count": len(fused_candidates)})
+        else:
+            fused_candidates = bm25_results
+
+        if not fused_candidates:
+            return None
+
+        bm25_scores = {mid: score for mid, score in bm25_results}
+        splade_scores = {mid: score for mid, score in splade_results}
+
+        return (
+            fused_candidates, bm25_results, splade_results,
+            bm25_scores, splade_scores, query_entity_names, parallel_ms,
+        )
+
     # ── Inline Indexing (BM25 + SPLADE + GLiNER + Entity Linking) ─────
 
     async def _run_inline_indexing(
@@ -1186,79 +1355,10 @@ class MemoryService:
 
         _emit_stage("start", 0.0, {"query": query[:200], "domain": domain, "limit": limit})
 
-        # Phase 4: Intent classification (BM25 exemplar index → keyword fallback)
-        intent_result: IntentResult | None = None
-
-        # Phase 6: Explicit intent override bypasses classifier entirely
-        if intent_override is not None:
-            from ncms.domain.intent import INTENT_TARGETS
-
-            try:
-                qi = QueryIntent(intent_override)
-            except ValueError:
-                valid = [e.value for e in QueryIntent]
-                raise ValueError(  # noqa: B904
-                    f"Invalid intent '{intent_override}'. "
-                    f"Valid intents: {valid}"
-                )
-            intent_result = IntentResult(
-                intent=qi,
-                confidence=1.0,
-                target_node_types=INTENT_TARGETS.get(qi, ("atomic",)),
-            )
-            _emit_stage("intent_override", 0.0, {
-                "intent": qi.value, "source": "user_override",
-            })
-        elif self._config.intent_classification_enabled:
-            t0 = time.perf_counter()
-            if self._intent_classifier is not None:
-                intent_result = self._intent_classifier.classify(query)  # type: ignore[union-attr]
-            else:
-                intent_result = classify_intent(query)
-            # Fall back to fact_lookup if confidence below threshold
-            llm_fallback_used = False
-            if intent_result.confidence < self._config.intent_confidence_threshold:
-                # Optional LLM fallback for low-confidence classifications
-                if self._config.intent_llm_fallback_enabled:
-                    from ncms.infrastructure.llm.intent_classifier_llm import (
-                        classify_intent_with_llm,
-                    )
-
-                    llm_result = await classify_intent_with_llm(
-                        query,
-                        model=self._config.llm_model,
-                        api_base=self._config.llm_api_base,
-                    )
-                    if llm_result is not None:
-                        intent_result = llm_result
-                        llm_fallback_used = True
-                    else:
-                        # LLM failed — log the miss for exemplar tuning
-                        _emit_stage("intent_llm_miss", 0, {
-                            "query": query[:200],
-                            "bm25_intent": intent_result.intent.value,
-                            "bm25_confidence": round(intent_result.confidence, 3),
-                        })
-
-                # Still below threshold after LLM → default to fact_lookup
-                if intent_result.confidence < self._config.intent_confidence_threshold:
-                    _emit_stage("intent_miss", 0, {
-                        "query": query[:200],
-                        "best_intent": intent_result.intent.value,
-                        "best_confidence": round(intent_result.confidence, 3),
-                        "llm_attempted": llm_fallback_used,
-                    })
-                    intent_result = IntentResult(
-                        intent=QueryIntent.FACT_LOOKUP,
-                        confidence=1.0,
-                        target_node_types=("atomic", "entity_state"),
-                    )
-            _emit_stage("intent_classification", (time.perf_counter() - t0) * 1000, {
-                "intent": intent_result.intent.value,
-                "confidence": round(intent_result.confidence, 3),
-                "target_node_types": list(intent_result.target_node_types),
-                "llm_fallback": llm_fallback_used,
-            })
+        # Phase 4: Intent classification
+        intent_result = await self._classify_search_intent(
+            query, intent_override, _emit_stage,
+        )
 
         # Phase 4 temporal: parse temporal reference from query
         temporal_ref: TemporalReference | None = None
@@ -1279,94 +1379,20 @@ class MemoryService:
                     "ordinal": temporal_ref.ordinal,
                 })
 
-        # Tier 1: BM25 candidate retrieval via Tantivy
-        # ── Parallel candidate retrieval: BM25 + SPLADE + entity extraction ──
-        # These three operations are independent CPU/GPU-bound tasks.
-        # Running them concurrently via asyncio.to_thread saves ~30-50% latency.
-        import asyncio
-
-        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
-
-        search_domains = [domain] if domain else []
-        cached = await self._get_cached_labels(search_domains)
-        labels = resolve_labels(search_domains, cached_labels=cached)
-
-        t0 = time.perf_counter()
-
-        async def _bm25_task() -> list[tuple[str, float]]:
-            t = time.perf_counter()
-            result = await asyncio.to_thread(
-                self._index.search, query, self._config.tier1_candidates,
-            )
-            bm25_ms = (time.perf_counter() - t) * 1000
-            logger.info("[search] BM25 done: %d results (%.0fms)", len(result), bm25_ms)
-            return result
-
-        async def _splade_task() -> list[tuple[str, float]]:
-            if self._splade is None:
-                return []
-            try:
-                t = time.perf_counter()
-                result = await asyncio.to_thread(
-                    self._splade.search, query, self._config.splade_top_k,
-                )
-                splade_ms = (time.perf_counter() - t) * 1000
-                logger.info("[search] SPLADE done: %d results (%.0fms)", len(result), splade_ms)
-                return result
-            except Exception:
-                logger.warning("SPLADE search failed, using BM25 only", exc_info=True)
-                return []
-
-        async def _entity_task() -> list[dict]:
-            t = time.perf_counter()
-            result = await asyncio.to_thread(
-                extract_entities_gliner,
-                query,
-                model_name=self._config.gliner_model,
-                threshold=self._config.gliner_threshold,
-                labels=labels,
-                cache_dir=self._config.model_cache_dir,
-            )
-            gliner_ms = (time.perf_counter() - t) * 1000
-            logger.info("[search] GLiNER done: %d entities (%.0fms)", len(result), gliner_ms)
-            return result
-
-        logger.info("[search] Starting parallel retrieval: BM25 + SPLADE + GLiNER")
-        bm25_results, splade_results, query_entity_names = await asyncio.gather(
-            _bm25_task(), _splade_task(), _entity_task(),
-        )
-        parallel_ms = (time.perf_counter() - t0) * 1000
-        logger.info("[search] Parallel retrieval complete (%.0fms total)", parallel_ms)
-
-        # Emit stage events for observability
-        bm25_data: dict[str, object] = {
-            "candidate_count": len(bm25_results),
-            "top_score": round(bm25_results[0][1], 3) if bm25_results else None,
-        }
-        _emit_stage("bm25", parallel_ms, bm25_data)
-        if splade_results:
-            _emit_stage("splade", parallel_ms, {
-                "candidate_count": len(splade_results),
-            })
-
-        # Fuse BM25 + SPLADE via Reciprocal Rank Fusion
-        if splade_results:
-            t0 = time.perf_counter()
-            fused_candidates = self._rrf_fuse(bm25_results, splade_results)
-            _emit_stage(
-                "rrf_fusion", (time.perf_counter() - t0) * 1000,
-                {"fused_count": len(fused_candidates)},
-            )
-        else:
-            fused_candidates = bm25_results
-
-        if not fused_candidates:
+        # Tier 1: Parallel retrieval (BM25 + SPLADE + GLiNER) + RRF fusion
+        retrieval = await self._retrieve_candidates(query, domain, _emit_stage)
+        if retrieval is None:
+            # No candidates found
             total_ms = (time.perf_counter() - pipeline_start) * 1000
             _emit_stage("complete", total_ms, {
                 "result_count": 0, "total_candidates_evaluated": 0,
                 "top_score": None, "total_duration_ms": round(total_ms, 2),
             })
             return []
+        (
+            fused_candidates, bm25_results, splade_results,
+            bm25_scores, splade_scores, query_entity_names, parallel_ms,
+        ) = retrieval
 
         # ── Cross-encoder reranking (Phase 10) ────────────────────────
         # Rerank top RRF candidates using a cross-encoder model.
@@ -1416,10 +1442,6 @@ class MemoryService:
                 "output_count": len(reranked),
                 "top_score": round(reranked[0][1], 4) if reranked else None,
             })
-
-        # Build per-source score lookups
-        bm25_scores: dict[str, float] = {mid: score for mid, score in bm25_results}
-        splade_scores: dict[str, float] = {mid: score for mid, score in splade_results}
 
         # Resolve entity names to IDs
         # Use graph O(1) name index when available, fall back to SQLite
