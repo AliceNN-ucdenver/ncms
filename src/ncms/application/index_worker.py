@@ -532,16 +532,17 @@ class IndexWorkerPool:
         source_agent: str | None,
     ) -> None:
         """Create L1/L2 memory nodes, run reconciliation, form episodes."""
-        import re
-
-        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
+        from ncms.domain.models import MemoryNode, NodeType
 
         config = self._svc._config
 
         _should_create_node = (
             admission_route == "persist"
             or admission_route is None
-            or (config.episodes_enabled and self._svc._episode is not None)
+            or (
+                config.episodes_enabled
+                and self._svc._episode is not None
+            )
         )
         if not _should_create_node:
             return
@@ -554,11 +555,43 @@ class IndexWorkerPool:
         )
         await self._svc._store.save_memory_node(l1_node)
 
-        # L2: entity_state if state change or declaration detected
-        # Skip document sections/chunks/indexes — they contain structural
-        # content (headings, lists, YAML) that triggers false positives.
+        # L2: entity_state if state change detected
+        await self._detect_and_create_l2_node(
+            memory, all_entities, admission_features, l1_node,
+        )
+
+        # Episode formation
+        await self._run_episode_formation(
+            memory, l1_node, linked_entity_ids,
+        )
+
+    async def _detect_and_create_l2_node(
+        self,
+        memory: Any,
+        all_entities: list[dict],
+        admission_features: object | None,
+        l1_node: Any,
+    ) -> None:
+        """Detect state changes and create L2 entity_state node.
+
+        Checks admission signal threshold and regex-based state
+        declaration patterns. Validates detected entity exists in
+        GLiNER extraction set. Runs reconciliation if enabled.
+        """
+        import re
+
+        from ncms.domain.models import (
+            EdgeType,
+            GraphEdge,
+            MemoryNode,
+            NodeType,
+        )
+
+        # Skip document sections — structural content triggers
+        # false positives on state-declaration regexes.
         _is_section_content = memory.type in (
-            "document_section", "document_chunk", "section_index", "document",
+            "document_section", "document_chunk",
+            "section_index", "document",
         )
         _has_state_change = (
             not _is_section_content
@@ -567,18 +600,15 @@ class IndexWorkerPool:
             and admission_features.state_change_signal >= 0.35
         )
         _has_state_declaration = not _is_section_content and bool(
-            # "Entity: key = value" structured assignment
             re.search(
                 r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
                 memory.content,
                 re.MULTILINE,
             )
-            # Markdown "## Status\n\nvalue" (ADRs, design docs)
             or re.search(
                 r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
                 memory.content,
             )
-            # YAML "status: value" (checklists, config)
             or re.search(
                 r"^\s*status\s*:\s*\w+",
                 memory.content,
@@ -586,80 +616,97 @@ class IndexWorkerPool:
             )
         )
 
-        # Note: The pre-Phase-4 "Section 3.4" 2000-char hard cutoff was
-        # removed.  With content classification enabled, large structured
-        # documents are split into sections before reaching this point.
-        # The entity-validation check below (detected entity must exist
-        # in GLiNER extraction) is sufficient to prevent false positives.
+        if not (_has_state_change or _has_state_declaration):
+            return
 
-        if _has_state_change or _has_state_declaration:
-            node_metadata = self._svc._extract_entity_state_meta(
-                memory.content, all_entities,
-            )
+        node_metadata = self._svc._extract_entity_state_meta(
+            memory.content, all_entities,
+        )
 
-            # Tightening (Section 3.4): validate that the
-            # detected entity_id exists in the extracted entities
-            # set (must be a real entity, not a substring match).
-            _entity_names_lower = {e["name"].lower() for e in all_entities}
-            _detected_entity = node_metadata.get("entity_id", "")
-            if _detected_entity.lower() not in _entity_names_lower:
-                node_metadata = {}  # suppress L2 creation
+        # Validate detected entity exists in GLiNER extraction
+        _entity_names_lower = {
+            e["name"].lower() for e in all_entities
+        }
+        _detected_entity = node_metadata.get("entity_id", "")
+        if _detected_entity.lower() not in _entity_names_lower:
+            return  # suppress L2 creation
 
-        if (_has_state_change or _has_state_declaration) and node_metadata:
-            l2_node = MemoryNode(
-                memory_id=memory.id,
-                node_type=NodeType.ENTITY_STATE,
-                importance=memory.importance,
-                metadata=node_metadata,
-            )
-            await self._svc._store.save_memory_node(l2_node)
+        if not node_metadata:
+            return
 
-            edge = GraphEdge(
-                source_id=l2_node.id,
-                target_id=l1_node.id,
-                edge_type=EdgeType.DERIVED_FROM,
-            )
-            await self._svc._store.save_graph_edge(edge)
+        l2_node = MemoryNode(
+            memory_id=memory.id,
+            node_type=NodeType.ENTITY_STATE,
+            importance=memory.importance,
+            metadata=node_metadata,
+        )
+        await self._svc._store.save_memory_node(l2_node)
 
-            # Reconciliation
-            if config.reconciliation_enabled:
-                try:
-                    from ncms.application.reconciliation_service import (
-                        ReconciliationService,
-                    )
-                    recon = ReconciliationService(
-                        store=self._svc._store, config=config,
-                    )
-                    await recon.reconcile(l2_node)
-                except Exception:
-                    logger.warning(
-                        "Reconciliation failed for %s", l2_node.id,
-                        exc_info=True,
-                    )
+        edge = GraphEdge(
+            source_id=l2_node.id,
+            target_id=l1_node.id,
+            edge_type=EdgeType.DERIVED_FROM,
+        )
+        await self._svc._store.save_graph_edge(edge)
 
-        # Episode formation (with per-episode lock for concurrent safety)
-        if self._svc._episode is not None and config.episodes_enabled:
+        # Reconciliation
+        config = self._svc._config
+        if config.reconciliation_enabled:
             try:
-                # Get the pool reference for episode locking
-                pool = self._svc._index_pool
-                episode_node = await self._svc._episode.assign_or_create(
+                from ncms.application.reconciliation_service import (
+                    ReconciliationService,
+                )
+                recon = ReconciliationService(
+                    store=self._svc._store, config=config,
+                )
+                await recon.reconcile(l2_node)
+            except Exception:
+                logger.warning(
+                    "Reconciliation failed for %s", l2_node.id,
+                    exc_info=True,
+                )
+
+    async def _run_episode_formation(
+        self,
+        memory: Any,
+        l1_node: Any,
+        linked_entity_ids: list[str],
+    ) -> None:
+        """Assign memory to an episode and check for closure."""
+        config = self._svc._config
+        if (
+            self._svc._episode is None
+            or not config.episodes_enabled
+        ):
+            return
+
+        try:
+            pool = self._svc._index_pool
+            episode_node = (
+                await self._svc._episode.assign_or_create(
                     fragment_node=l1_node,
                     fragment_memory=memory,
                     entity_ids=linked_entity_ids,
                 )
-                if episode_node is not None:
-                    if pool is not None:
-                        lock = await pool.get_episode_lock(episode_node.id)
-                        async with lock:
-                            await self._svc._episode.check_resolution_closure(
+            )
+            if episode_node is not None:
+                if pool is not None:
+                    lock = await pool.get_episode_lock(
+                        episode_node.id,
+                    )
+                    async with lock:
+                        await self._svc._episode \
+                            .check_resolution_closure(
                                 memory.content, episode_node,
                             )
-                    else:
-                        await self._svc._episode.check_resolution_closure(
+                else:
+                    await self._svc._episode \
+                        .check_resolution_closure(
                             memory.content, episode_node,
                         )
-            except Exception:
-                logger.warning(
-                    "Episode formation failed for node %s", l1_node.id,
-                    exc_info=True,
-                )
+        except Exception:
+            logger.warning(
+                "Episode formation failed for node %s",
+                l1_node.id,
+                exc_info=True,
+            )

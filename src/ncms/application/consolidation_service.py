@@ -387,67 +387,25 @@ class ConsolidationService:
                 if not result:
                     continue
 
-                # Create backing Memory
-                abstract_memory = Memory(
+                await self._store_abstract(
                     content=result["narrative"],
-                    type="insight",
-                    importance=result.get("confidence", 0.5) * 10,
-                    structured={
-                        "abstract_type": "state_trajectory",
+                    abstract_type="state_trajectory",
+                    domains=[],
+                    confidence=result.get("confidence", 0.5),
+                    structured_extra={
                         "entity_id": entity_id,
                         "entity_name": entity_name,
                         "state_key": state_key,
                         "trend": result.get("trend", "unknown"),
-                        "key_transitions": result.get("key_transitions", []),
-                        "confidence": result.get("confidence", 0.5),
-                        "synthesis_model": self._config.consolidation_knowledge_model,
-                    },
-                )
-                await self._store.save_memory(abstract_memory)
-                await self._store.log_access(
-                    AccessRecord(
-                        memory_id=abstract_memory.id, accessing_agent="consolidation"
-                    )
-                )
-                self._index_memory(abstract_memory)
-
-                # Create HTMG abstract node
-                refresh_at = (datetime.now(UTC) + timedelta(
-                    days=self._config.abstract_refresh_days
-                )).isoformat()
-                abstract_node = MemoryNode(
-                    memory_id=abstract_memory.id,
-                    node_type=NodeType.ABSTRACT,
-                    importance=abstract_memory.importance,
-                    metadata={
-                        "abstract_type": "state_trajectory",
-                        "entity_id": entity_id,
-                        "entity_name": entity_name,
-                        "state_key": state_key,
-                        "trend": result.get("trend", "unknown"),
+                        "key_transitions": result.get(
+                            "key_transitions", [],
+                        ),
                         "transition_count": len(key_states),
-                        "refresh_due_at": refresh_at,
                     },
-                )
-                await self._store.save_memory_node(abstract_node)
-
-                # DERIVED_FROM edges to each component state
-                for state_node in key_states:
-                    await self._store.save_graph_edge(GraphEdge(
-                        source_id=abstract_node.id,
-                        target_id=state_node.id,
-                        edge_type=EdgeType.DERIVED_FROM,
-                    ))
-
-                # Bridge entity links from source states to trajectory abstract
-                if self._graph:
-                    state_mids = [s.memory_id for s in key_states]
-                    source_entities = _collect_entity_ids(self._graph, state_mids)
-                    for eid in source_entities:
-                        self._graph.link_memory_entity(abstract_memory.id, eid)
-
-                self._emit_abstract_created(
-                    "state_trajectory", abstract_node.id, len(key_states)
+                    source_node_ids=[s.id for s in key_states],
+                    source_memory_ids=[
+                        s.memory_id for s in key_states
+                    ],
                 )
                 trajectories_created += 1
 
@@ -541,64 +499,23 @@ class ConsolidationService:
             else:
                 abstract_type = "recurring_pattern"
 
-            # Create backing Memory
-            abstract_memory = Memory(
+            await self._store_abstract(
                 content=result["pattern"],
-                type="insight",
+                abstract_type=abstract_type,
                 domains=list(all_domains),
-                importance=confidence * 10,
-                structured={
-                    "abstract_type": abstract_type,
+                confidence=confidence,
+                structured_extra={
                     "pattern_type": result.get("pattern_type", "unknown"),
-                    "recurrence_count": result.get("recurrence_count", len(cluster_nodes)),
-                    "confidence": confidence,
+                    "recurrence_count": result.get(
+                        "recurrence_count", len(cluster_nodes),
+                    ),
                     "stability_score": round(stability, 3),
                     "key_entities": result.get("key_entities", []),
                     "source_episode_ids": list(ep_ids),
-                    "synthesis_model": self._config.consolidation_knowledge_model,
                 },
+                source_node_ids=[n.id for n in cluster_nodes],
+                source_memory_ids=[n.memory_id for n in cluster_nodes],
             )
-            await self._store.save_memory(abstract_memory)
-            await self._store.log_access(
-                AccessRecord(memory_id=abstract_memory.id, accessing_agent="consolidation")
-            )
-            self._index_memory(abstract_memory)
-
-            # Create HTMG abstract node
-            refresh_at = (datetime.now(UTC) + timedelta(
-                days=self._config.abstract_refresh_days
-            )).isoformat()
-            abstract_node = MemoryNode(
-                memory_id=abstract_memory.id,
-                node_type=NodeType.ABSTRACT,
-                importance=abstract_memory.importance,
-                metadata={
-                    "abstract_type": abstract_type,
-                    "pattern_type": result.get("pattern_type", "unknown"),
-                    "stability_score": round(stability, 3),
-                    "source_episode_ids": list(ep_ids),
-                    "key_entities": result.get("key_entities", []),
-                    "refresh_due_at": refresh_at,
-                },
-            )
-            await self._store.save_memory_node(abstract_node)
-
-            # DERIVED_FROM edges to each source episode summary
-            for summary_node in cluster_nodes:
-                await self._store.save_graph_edge(GraphEdge(
-                    source_id=abstract_node.id,
-                    target_id=summary_node.id,
-                    edge_type=EdgeType.DERIVED_FROM,
-                ))
-
-            # Bridge entity links from source summaries to pattern abstract
-            if self._graph:
-                summary_mids = [s.memory_id for s in cluster_nodes]
-                source_entities = _collect_entity_ids(self._graph, summary_mids)
-                for eid in source_entities:
-                    self._graph.link_memory_entity(abstract_memory.id, eid)
-
-            self._emit_abstract_created(abstract_type, abstract_node.id, len(cluster_nodes))
             patterns_created += 1
 
         await self._store.set_consolidation_value(
@@ -658,21 +575,48 @@ class ConsolidationService:
             logger.warning("Graph not available, skipping dream rehearsal")
             return 0
 
-        # 1. Compute PageRank centrality over entity graph
         centrality = self._graph.pagerank()
-
-        # 2. Load all memories
         memories = await self._store.list_memories(limit=100000)
         if not memories:
             return 0
 
-        # 3. For each memory, compute selection signals
+        candidates = await self._compute_dream_signals(memories, centrality)
+        if not candidates:
+            return 0
+
+        self._rank_normalize_and_score(candidates)
+
+        candidates.sort(key=lambda c: c["dream_score"], reverse=True)
+        n_rehearse = max(
+            1,
+            int(len(candidates) * self._config.dream_rehearsal_fraction),
+        )
+        selected = candidates[:n_rehearse]
+
+        rehearsed = await self._inject_dream_accesses(selected)
+
+        logger.info(
+            "Dream rehearsal: rehearsed %d/%d eligible memories "
+            "(from %d total)",
+            rehearsed, len(candidates), len(memories),
+        )
+        return rehearsed
+
+    async def _compute_dream_signals(
+        self,
+        memories: list,
+        centrality: dict[str, float],
+    ) -> list[dict[str, Any]]:
+        """Compute 5 selection signals for each eligible memory.
+
+        Returns candidates with raw signal values. Memories below
+        dream_min_access_count are excluded.
+        """
         candidates: list[dict[str, Any]] = []
         for memory in memories:
             access_ages = await self._store.get_access_times(memory.id)
             access_count = len(access_ages)
 
-            # Skip memories with too few accesses
             if access_count < self._config.dream_min_access_count:
                 continue
 
@@ -680,73 +624,92 @@ class ConsolidationService:
             entity_ids = self._graph.get_entity_ids_for_memory(memory.id)
             mem_centrality = 0.0
             if entity_ids and centrality:
-                scores = [centrality.get(eid, 0.0) for eid in entity_ids]
-                mem_centrality = sum(scores) / len(scores) if scores else 0.0
+                scores = [
+                    centrality.get(eid, 0.0) for eid in entity_ids
+                ]
+                mem_centrality = (
+                    sum(scores) / len(scores) if scores else 0.0
+                )
 
-            # Staleness: days since last access
-            last_access_age = min(access_ages) if access_ages else float("inf")
-            staleness = last_access_age / 86400.0  # Convert seconds to days
-
-            # Importance: memory.importance (already 0-10 scale)
-            importance = memory.importance
-
-            # Recency: invert — recently accessed get lower dream priority
+            # Staleness / recency: days since last access
+            last_access_age = (
+                min(access_ages) if access_ages else float("inf")
+            )
+            staleness = last_access_age / 86400.0
             recency = last_access_age / 86400.0 if access_ages else 0.0
 
             candidates.append({
                 "memory": memory,
                 "centrality": mem_centrality,
                 "staleness": staleness,
-                "importance": importance,
+                "importance": memory.importance,
                 "access_count": float(access_count),
                 "recency": recency,
             })
+        return candidates
 
-        if not candidates:
-            return 0
+    def _rank_normalize_and_score(
+        self, candidates: list[dict[str, Any]],
+    ) -> None:
+        """Rank-normalize signals to [0,1] and compute weighted dream score.
 
-        # 4. Rank-normalize each signal to [0, 1]
-        for signal in ("centrality", "staleness", "importance", "access_count", "recency"):
+        Mutates candidates in-place, adding ``*_norm`` keys and
+        ``dream_score``.
+        """
+        for signal in (
+            "centrality", "staleness", "importance",
+            "access_count", "recency",
+        ):
             values = [c[signal] for c in candidates]
             min_val, max_val = min(values), max(values)
             range_val = max_val - min_val
             for c in candidates:
                 c[f"{signal}_norm"] = (
-                    (c[signal] - min_val) / range_val if range_val > 0 else 0.5
+                    (c[signal] - min_val) / range_val
+                    if range_val > 0
+                    else 0.5
                 )
 
-        # 5. Compute weighted dream score
         cfg = self._config
         for c in candidates:
             c["dream_score"] = (
-                cfg.dream_rehearsal_weight_centrality * c["centrality_norm"]
-                + cfg.dream_rehearsal_weight_staleness * c["staleness_norm"]
-                + cfg.dream_rehearsal_weight_importance * c["importance_norm"]
-                + cfg.dream_rehearsal_weight_access_count * c["access_count_norm"]
-                + cfg.dream_rehearsal_weight_recency * c["recency_norm"]
+                cfg.dream_rehearsal_weight_centrality
+                * c["centrality_norm"]
+                + cfg.dream_rehearsal_weight_staleness
+                * c["staleness_norm"]
+                + cfg.dream_rehearsal_weight_importance
+                * c["importance_norm"]
+                + cfg.dream_rehearsal_weight_access_count
+                * c["access_count_norm"]
+                + cfg.dream_rehearsal_weight_recency
+                * c["recency_norm"]
             )
 
-        # 6. Select top fraction
-        candidates.sort(key=lambda c: c["dream_score"], reverse=True)
-        n_rehearse = max(1, int(len(candidates) * self._config.dream_rehearsal_fraction))
-        selected = candidates[:n_rehearse]
+    async def _inject_dream_accesses(
+        self, selected: list[dict[str, Any]],
+    ) -> int:
+        """Inject differential synthetic access records.
 
-        # 7. Inject differential synthetic access records
-        # Scale accesses proportionally to dream score: top memories get 5 accesses,
-        # lowest get 1. This creates the differential access patterns that ACT-R needs
-        # instead of uniform injection that compresses the activation range.
+        Maps dream_score to 1-5 accesses (top gets 5, lowest gets 1)
+        to create differential access patterns for ACT-R.
+
+        Returns the number of memories rehearsed.
+        """
+        if not selected:
+            return 0
+
+        max_dream = selected[0]["dream_score"]
+        min_dream = selected[-1]["dream_score"]
+        dream_range = max_dream - min_dream
+
         rehearsed = 0
-        if selected:
-            max_dream = selected[0]["dream_score"]  # Already sorted descending
-            min_dream = selected[-1]["dream_score"]
-            dream_range = max_dream - min_dream
-
         for c in selected:
             memory = c["memory"]
-            # Map dream_score to 1-5 accesses (linear interpolation)
             if dream_range > 0:
-                normalized = (c["dream_score"] - min_dream) / dream_range
-                n_accesses = 1 + int(normalized * 4)  # 1 to 5
+                normalized = (
+                    (c["dream_score"] - min_dream) / dream_range
+                )
+                n_accesses = 1 + int(normalized * 4)
             else:
                 n_accesses = 1
 
@@ -756,17 +719,14 @@ class ConsolidationService:
                         memory_id=memory.id,
                         accessing_agent="dream_rehearsal",
                         query_context=(
-                            f"dream_cycle:score={c['dream_score']:.3f}"
+                            f"dream_cycle:score="
+                            f"{c['dream_score']:.3f}"
                             f":accesses={n_accesses}"
                         ),
                     )
                 )
             rehearsed += 1
 
-        logger.info(
-            "Dream rehearsal: rehearsed %d/%d eligible memories (from %d total)",
-            rehearsed, len(candidates), len(memories),
-        )
         return rehearsed
 
     async def learn_association_strengths(self) -> int:

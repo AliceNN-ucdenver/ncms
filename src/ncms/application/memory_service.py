@@ -398,99 +398,16 @@ class MemoryService:
 
         _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
 
-        # ── Gate 1: Content-hash dedup ───────────────────────────────────
-        content_hash = hashlib.sha256(content.encode()).hexdigest()
-        try:
-            existing = await self._store.get_memory_by_content_hash(content_hash)
-        except AttributeError:
-            existing = None  # Store doesn't support content_hash lookup yet
-        if existing is not None:
-            logger.info(
-                "Dedup: content hash %s already exists as memory %s",
-                content_hash[:12], existing.id,
-            )
-            _emit_stage("dedup_skip", (time.perf_counter() - pipeline_start) * 1000, {
-                "existing_memory_id": existing.id,
-                "content_hash": content_hash[:12],
-            })
-            return existing
-
-        # ── Gate 2: Content size diagnostic ──────────────────────────────
-        # Large content is tagged for observability.  When content classification
-        # is enabled (Phase 4), oversized content is split into sections in Gate 3.
-        max_len = self._config.max_content_length
-        if len(content) > max_len:
-            logger.info(
-                "Content size: %d chars exceeds %d (importance=%.1f) "
-                "— %s",
-                len(content), max_len, importance,
-                "will split via section extraction"
-                if self._config.content_classification_enabled
-                else "proceeding as atomic (classification disabled)",
-            )
-            _emit_stage("size_flag", (time.perf_counter() - pipeline_start) * 1000, {
-                "content_length": len(content),
-                "max_content_length": max_len,
-                "importance": importance,
-                "classification_enabled": self._config.content_classification_enabled,
-            })
-            if tags is None:
-                tags = []
-            tags = list(tags) + ["oversized_content"]
-
-        # ── Gate 3: Content classification (Phase 4, optional) ───────────
-        if self._config.content_classification_enabled and self._section_svc is not None:
-            try:
-                from ncms.domain.content_classifier import (
-                    ContentClass,
-                    classify_content,
-                    extract_sections,
-                )
-
-                t0 = time.perf_counter()
-                classification = classify_content(content, memory_type)
-                if classification.content_class == ContentClass.NAVIGABLE:
-                    sections = extract_sections(content, classification)
-                    if len(sections) >= 2:
-                        _emit_stage(
-                            "content_classification",
-                            (time.perf_counter() - t0) * 1000,
-                            {
-                                "content_class": classification.content_class.value,
-                                "format_hint": classification.format_hint,
-                                "section_count": len(sections),
-                            },
-                        )
-                        return await self._section_svc.ingest_navigable(  # type: ignore[union-attr]
-                            content=content,
-                            classification=classification,
-                            sections=sections,
-                            memory_type=memory_type,
-                            importance=importance,
-                            tags=tags,
-                            structured=structured,
-                            source=source_agent,
-                            agent_id=source_agent,
-                        )
-                _emit_stage(
-                    "content_classification",
-                    (time.perf_counter() - t0) * 1000,
-                    {
-                        "content_class": classification.content_class.value,
-                        "format_hint": classification.format_hint,
-                        "section_count": 0,
-                        "result": "atomic_passthrough",
-                    },
-                )
-            except Exception:
-                logger.warning(
-                    "Content classification failed, proceeding as atomic",
-                    exc_info=True,
-                )
-                _emit_stage(
-                    "content_classification_error",
-                    (time.perf_counter() - pipeline_start) * 1000,
-                )
+        # ── Pre-admission gates: dedup, size check, classification ────────
+        gate_result = await self._pre_admission_gates(
+            content=content, memory_type=memory_type,
+            importance=importance, tags=tags, structured=structured,
+            source_agent=source_agent, _emit_stage=_emit_stage,
+            pipeline_start=pipeline_start,
+        )
+        if isinstance(gate_result, Memory):
+            return gate_result  # dedup hit or navigable classification
+        content_hash, tags = gate_result
 
         # ── Admission scoring (Phase 1, optional) ────────────────────────
         admission_route: str | None = None
@@ -1306,6 +1223,150 @@ class MemoryService:
             "entities_capped": len(linked_entity_ids) > self._config.cooccurrence_max_entities,
         }, memory_id=memory_id)
 
+    # ── Pre-Admission Gates ──────────────────────────────────────────────
+
+    async def _pre_admission_gates(
+        self,
+        content: str,
+        memory_type: str,
+        importance: float,
+        tags: list[str] | None,
+        structured: dict | None,
+        source_agent: str | None,
+        _emit_stage: Callable,
+        pipeline_start: float,
+    ) -> Memory | tuple[str, list[str] | None]:
+        """Run pre-admission gates: dedup, size check, classification.
+
+        Returns a Memory for early exit (dedup hit or navigable content),
+        or (content_hash, updated_tags) to continue with the atomic
+        admission pipeline.
+        """
+        # Gate 1: Content-hash dedup
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
+        try:
+            existing = await self._store.get_memory_by_content_hash(
+                content_hash,
+            )
+        except AttributeError:
+            existing = None  # Store doesn't support this yet
+        if existing is not None:
+            logger.info(
+                "Dedup: content hash %s already exists as memory %s",
+                content_hash[:12], existing.id,
+            )
+            _emit_stage(
+                "dedup_skip",
+                (time.perf_counter() - pipeline_start) * 1000,
+                {
+                    "existing_memory_id": existing.id,
+                    "content_hash": content_hash[:12],
+                },
+            )
+            return existing
+
+        # Gate 2: Content size diagnostic
+        max_len = self._config.max_content_length
+        if len(content) > max_len:
+            logger.info(
+                "Content size: %d chars exceeds %d "
+                "(importance=%.1f) — %s",
+                len(content), max_len, importance,
+                "will split via section extraction"
+                if self._config.content_classification_enabled
+                else "proceeding as atomic (classification disabled)",
+            )
+            _emit_stage(
+                "size_flag",
+                (time.perf_counter() - pipeline_start) * 1000,
+                {
+                    "content_length": len(content),
+                    "max_content_length": max_len,
+                    "importance": importance,
+                    "classification_enabled": (
+                        self._config.content_classification_enabled
+                    ),
+                },
+            )
+            if tags is None:
+                tags = []
+            tags = list(tags) + ["oversized_content"]
+
+        # Gate 3: Content classification (ATOMIC vs NAVIGABLE)
+        if (
+            self._config.content_classification_enabled
+            and self._section_svc is not None
+        ):
+            try:
+                from ncms.domain.content_classifier import (
+                    ContentClass,
+                    classify_content,
+                    extract_sections,
+                )
+
+                t0 = time.perf_counter()
+                classification = classify_content(
+                    content, memory_type,
+                )
+                if (
+                    classification.content_class
+                    == ContentClass.NAVIGABLE
+                ):
+                    sections = extract_sections(
+                        content, classification,
+                    )
+                    if len(sections) >= 2:
+                        _emit_stage(
+                            "content_classification",
+                            (time.perf_counter() - t0) * 1000,
+                            {
+                                "content_class": (
+                                    classification
+                                    .content_class.value
+                                ),
+                                "format_hint": (
+                                    classification.format_hint
+                                ),
+                                "section_count": len(sections),
+                            },
+                        )
+                        return await self._section_svc.ingest_navigable(  # type: ignore[union-attr]
+                            content=content,
+                            classification=classification,
+                            sections=sections,
+                            memory_type=memory_type,
+                            importance=importance,
+                            tags=tags,
+                            structured=structured,
+                            source=source_agent,
+                            agent_id=source_agent,
+                        )
+                _emit_stage(
+                    "content_classification",
+                    (time.perf_counter() - t0) * 1000,
+                    {
+                        "content_class": (
+                            classification.content_class.value
+                        ),
+                        "format_hint": classification.format_hint,
+                        "section_count": 0,
+                        "result": "atomic_passthrough",
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "Content classification failed, "
+                    "proceeding as atomic",
+                    exc_info=True,
+                )
+                _emit_stage(
+                    "content_classification_error",
+                    (time.perf_counter() - pipeline_start)
+                    * 1000,
+                )
+
+        return content_hash, tags
+
     # ── Admission Gate ─────────────────────────────────────────────────
 
     async def _gate_admission(
@@ -1763,191 +1824,19 @@ class MemoryService:
             bm25_scores, splade_scores, query_entity_names, parallel_ms,
         ) = retrieval
 
-        # ── Cross-encoder reranking (Phase 10) ────────────────────────
-        # Rerank top RRF candidates using a cross-encoder model.
-        # Phase 11: Only apply CE for intents where it helps (fact-finding,
-        # pattern matching). Skip for temporal/state queries where CE hurts
-        # CR and LRU by ignoring recency and temporal ordering.
-        ce_intents = {
-            QueryIntent.FACT_LOOKUP,
-            QueryIntent.PATTERN_LOOKUP,
-            QueryIntent.STRATEGIC_REFLECTION,
-        }
-        _use_ce = (
-            self._reranker is not None
-            and self._config.reranker_enabled
-            and (intent_result is None or intent_result.intent in ce_intents)
+        # Cross-encoder reranking (selective by intent)
+        fused_candidates, ce_scores = await self._rerank_candidates(
+            query, fused_candidates, intent_result, _emit_stage,
         )
-        ce_scores: dict[str, float] = {}
-        if _use_ce:
-            logger.info(
-                "[search] Starting cross-encoder reranking (%d candidates)",
-                len(fused_candidates),
+
+        # Expand candidates: entity resolution → query expansion →
+        # graph expansion → node preload → intent supplement
+        all_candidates, context_entity_ids, nodes_by_memory = (
+            await self._expand_candidates(
+                query, fused_candidates, query_entity_names,
+                intent_result, bm25_scores, parallel_ms, _emit_stage,
             )
-            t0 = time.perf_counter()
-            rerank_ids = [mid for mid, _ in fused_candidates[
-                :self._config.reranker_top_k
-            ]]
-            rerank_memories = await self._store.get_memories_batch(rerank_ids)
-            rerank_pairs = [
-                (mid, rerank_memories[mid].content)
-                for mid in rerank_ids if mid in rerank_memories
-            ]
-            assert self._reranker is not None  # guarded by _use_ce
-            reranked = await asyncio.to_thread(
-                self._reranker.rerank, query, rerank_pairs,
-                self._config.reranker_output_k,
-            )
-            ce_scores = {mid: score for mid, score in reranked}
-            # Replace fused candidates with reranked order
-            fused_candidates = reranked
-            ce_ms = (time.perf_counter() - t0) * 1000
-            logger.info(
-                "[search] Cross-encoder done: %d\u2192%d results (%.0fms)",
-                len(rerank_pairs), len(reranked), ce_ms,
-            )
-            _emit_stage("cross_encoder_rerank", ce_ms, {
-                "input_count": len(rerank_pairs),
-                "output_count": len(reranked),
-                "top_score": round(reranked[0][1], 4) if reranked else None,
-            })
-
-        # Resolve entity names to IDs
-        # Use graph O(1) name index when available, fall back to SQLite
-        context_entity_ids: list[str] = []
-        for qe in query_entity_names:
-            eid = self._graph.find_entity_by_name(qe["name"])
-            if eid:
-                context_entity_ids.append(eid)
-            else:
-                existing = await self._store.find_entity_by_name(qe["name"])
-                if existing:
-                    context_entity_ids.append(existing.id)
-        _emit_stage("entity_extraction", parallel_ms, {
-            "query_entities": [e["name"] for e in query_entity_names[:10]],
-            "context_entity_count": len(context_entity_ids),
-        })
-
-        # Phase 9: Query expansion — inject PMI-learned terms into BM25
-        if self._config.dream_query_expansion_enabled and context_entity_ids:
-            try:
-                expansion_terms = await self._get_query_expansion_terms(
-                    context_entity_ids
-                )
-                if expansion_terms:
-                    expanded_query = query + " " + " ".join(expansion_terms)
-                    expanded_bm25 = self._index.search(
-                        expanded_query, limit=self._config.tier1_candidates,
-                    )
-                    # Merge expanded results into bm25_scores (take max)
-                    # AND inject novel candidates into fused_candidates so they
-                    # enter the scoring loop (not just update scores for existing)
-                    existing_fused = {mid for mid, _ in fused_candidates}
-                    novel_from_expansion = 0
-                    for mid, score in expanded_bm25:
-                        if mid not in bm25_scores or score > bm25_scores[mid]:
-                            bm25_scores[mid] = score
-                        if mid not in existing_fused:
-                            fused_candidates.append((mid, score))
-                            existing_fused.add(mid)
-                            novel_from_expansion += 1
-                    _emit_stage("query_expansion", 0, {
-                        "terms": expansion_terms,
-                        "expanded_candidates": len(expanded_bm25),
-                        "novel_candidates": novel_from_expansion,
-                    })
-            except Exception:
-                logger.debug("Query expansion failed", exc_info=True)
-
-        # ── Tier 1.5: Graph-expanded candidate discovery ────────────────
-        # Collect entity IDs from fused hits, then discover related memories
-        # via shared graph entities that search missed lexically.
-        fused_ids = {mid for mid, _ in fused_candidates}
-        all_candidates: list[tuple[str, float]] = list(fused_candidates)
-
-        # Graph expansion (always on — Tier 1.5)
-        if True:
-            t0 = time.perf_counter()
-            candidate_entity_pool: set[str] = set()
-            for memory_id, _ in fused_candidates:
-                entity_ids = self._graph.get_entity_ids_for_memory(memory_id)
-                candidate_entity_pool.update(entity_ids)
-
-            novel_count = 0
-            if candidate_entity_pool:
-                related_memory_ids = self._graph.get_related_memory_ids(
-                    list(candidate_entity_pool),
-                    depth=self._config.graph_expansion_depth,
-                )
-                novel_ids = related_memory_ids - fused_ids
-                # Cap the expansion set
-                if len(novel_ids) > self._config.graph_expansion_max:
-                    novel_ids = set(list(novel_ids)[: self._config.graph_expansion_max])
-
-                novel_count = len(novel_ids)
-                for gid in novel_ids:
-                    all_candidates.append((gid, 0.0))
-
-                if novel_ids:
-                    logger.debug(
-                        "Graph expansion: %d novel candidates from %d entities",
-                        len(novel_ids),
-                        len(candidate_entity_pool),
-                    )
-
-            graph_exp_data: dict[str, object] = {
-                "entity_pool_size": len(candidate_entity_pool),
-                "novel_candidates": novel_count,
-                "total_candidates": len(all_candidates),
-            }
-            if self._config.pipeline_debug and novel_count > 0:
-                # novel IDs are the last novel_count entries
-                novel_tuples = all_candidates[-novel_count:]
-                graph_exp_data["candidates"] = (
-                    await self._load_candidate_previews(
-                        novel_tuples[:20]
-                    )
-                )
-            _emit_stage(
-                "graph_expansion",
-                (time.perf_counter() - t0) * 1000,
-                graph_exp_data,
-            )
-
-        # Phase 4: Batch-load memory nodes for intent scoring + reconciliation
-        nodes_by_memory: dict[str, list] = {}
-        if self._config.intent_classification_enabled or self._config.reconciliation_enabled:
-            t0_nodes = time.perf_counter()
-            candidate_memory_ids = [mid for mid, _ in all_candidates]
-            nodes_by_memory = await self._store.get_memory_nodes_for_memories(
-                candidate_memory_ids,
-            )
-            _emit_stage("node_preload", (time.perf_counter() - t0_nodes) * 1000, {
-                "candidate_count": len(candidate_memory_ids),
-                "nodes_loaded": sum(len(v) for v in nodes_by_memory.values()),
-            })
-
-        # Phase 4: Inject supplementary candidates based on intent
-        if intent_result and intent_result.intent != QueryIntent.FACT_LOOKUP:
-            t0_supp = time.perf_counter()
-            supplement_ids = await self._intent_supplement(
-                intent_result, context_entity_ids, fused_ids,
-            )
-            for sid in supplement_ids:
-                if sid not in fused_ids:
-                    all_candidates.append((sid, 0.0))
-                    fused_ids.add(sid)
-            # Preload nodes for supplement candidates too
-            if supplement_ids:
-                supp_nodes = await self._store.get_memory_nodes_for_memories(
-                    list(supplement_ids),
-                )
-                nodes_by_memory.update(supp_nodes)
-            _emit_stage("intent_supplement", (time.perf_counter() - t0_supp) * 1000, {
-                "intent": intent_result.intent.value,
-                "supplement_count": len(supplement_ids),
-                "total_candidates": len(all_candidates),
-            })
+        )
 
         # ── Score, rank, and finalize results ─────────────────────────
         scored = await self._score_and_rank(
@@ -2024,6 +1913,273 @@ class MemoryService:
                 ),
             })
         return result
+
+    # ── Cross-Encoder Reranking ──────────────────────────────────────────
+
+    async def _rerank_candidates(
+        self,
+        query: str,
+        fused_candidates: list[tuple[str, float]],
+        intent_result: IntentResult | None,
+        _emit_stage: Callable,
+    ) -> tuple[list[tuple[str, float]], dict[str, float]]:
+        """Apply cross-encoder reranking when appropriate.
+
+        Only applies for fact-finding, pattern, and reflection intents
+        where textual relevance helps. Skipped for temporal/state
+        queries where CE destroys temporal ordering.
+
+        Returns (possibly reranked candidates, ce_scores dict).
+        """
+        ce_intents = {
+            QueryIntent.FACT_LOOKUP,
+            QueryIntent.PATTERN_LOOKUP,
+            QueryIntent.STRATEGIC_REFLECTION,
+        }
+        _use_ce = (
+            self._reranker is not None
+            and self._config.reranker_enabled
+            and (
+                intent_result is None
+                or intent_result.intent in ce_intents
+            )
+        )
+        ce_scores: dict[str, float] = {}
+        if not _use_ce:
+            return fused_candidates, ce_scores
+
+        logger.info(
+            "[search] Starting cross-encoder reranking "
+            "(%d candidates)",
+            len(fused_candidates),
+        )
+        t0 = time.perf_counter()
+        rerank_ids = [
+            mid for mid, _ in fused_candidates[
+                :self._config.reranker_top_k
+            ]
+        ]
+        rerank_memories = await self._store.get_memories_batch(
+            rerank_ids,
+        )
+        rerank_pairs = [
+            (mid, rerank_memories[mid].content)
+            for mid in rerank_ids if mid in rerank_memories
+        ]
+        assert self._reranker is not None  # guarded by _use_ce
+        reranked = await asyncio.to_thread(
+            self._reranker.rerank, query, rerank_pairs,
+            self._config.reranker_output_k,
+        )
+        ce_scores = {mid: score for mid, score in reranked}
+        ce_ms = (time.perf_counter() - t0) * 1000
+        logger.info(
+            "[search] Cross-encoder done: %d\u2192%d results "
+            "(%.0fms)",
+            len(rerank_pairs), len(reranked), ce_ms,
+        )
+        _emit_stage("cross_encoder_rerank", ce_ms, {
+            "input_count": len(rerank_pairs),
+            "output_count": len(reranked),
+            "top_score": (
+                round(reranked[0][1], 4) if reranked else None
+            ),
+        })
+        return reranked, ce_scores
+
+    # ── Candidate Expansion Pipeline ─────────────────────────────────────
+
+    async def _expand_candidates(
+        self,
+        query: str,
+        fused_candidates: list[tuple[str, float]],
+        query_entity_names: list[dict],
+        intent_result: IntentResult | None,
+        bm25_scores: dict[str, float],
+        parallel_ms: float,
+        _emit_stage: Callable,
+    ) -> tuple[
+        list[tuple[str, float]], list[str], dict[str, list],
+    ]:
+        """Expand candidates via entities, query terms, and graph.
+
+        Pipeline:
+        1. Resolve query entity names to IDs
+        2. PMI query expansion (if enabled)
+        3. Graph expansion (always on)
+        4. Batch node preload
+        5. Intent-specific supplementary candidates
+
+        Returns (all_candidates, context_entity_ids, nodes_by_memory).
+        Side effect: mutates bm25_scores with expansion scores.
+        """
+        # 1. Entity name resolution
+        context_entity_ids: list[str] = []
+        for qe in query_entity_names:
+            eid = self._graph.find_entity_by_name(qe["name"])
+            if eid:
+                context_entity_ids.append(eid)
+            else:
+                existing = await self._store.find_entity_by_name(
+                    qe["name"],
+                )
+                if existing:
+                    context_entity_ids.append(existing.id)
+        _emit_stage("entity_extraction", parallel_ms, {
+            "query_entities": [
+                e["name"] for e in query_entity_names[:10]
+            ],
+            "context_entity_count": len(context_entity_ids),
+        })
+
+        # 2. PMI query expansion
+        if (
+            self._config.dream_query_expansion_enabled
+            and context_entity_ids
+        ):
+            try:
+                expansion_terms = (
+                    await self._get_query_expansion_terms(
+                        context_entity_ids,
+                    )
+                )
+                if expansion_terms:
+                    expanded_query = (
+                        query + " " + " ".join(expansion_terms)
+                    )
+                    expanded_bm25 = self._index.search(
+                        expanded_query,
+                        limit=self._config.tier1_candidates,
+                    )
+                    existing_fused = {
+                        mid for mid, _ in fused_candidates
+                    }
+                    novel_from_expansion = 0
+                    for mid, score in expanded_bm25:
+                        if (
+                            mid not in bm25_scores
+                            or score > bm25_scores[mid]
+                        ):
+                            bm25_scores[mid] = score
+                        if mid not in existing_fused:
+                            fused_candidates.append((mid, score))
+                            existing_fused.add(mid)
+                            novel_from_expansion += 1
+                    _emit_stage("query_expansion", 0, {
+                        "terms": expansion_terms,
+                        "expanded_candidates": len(expanded_bm25),
+                        "novel_candidates": novel_from_expansion,
+                    })
+            except Exception:
+                logger.debug(
+                    "Query expansion failed", exc_info=True,
+                )
+
+        # 3. Graph expansion
+        fused_ids = {mid for mid, _ in fused_candidates}
+        all_candidates: list[tuple[str, float]] = list(
+            fused_candidates,
+        )
+        t0 = time.perf_counter()
+        candidate_entity_pool: set[str] = set()
+        for memory_id, _ in fused_candidates:
+            entity_ids = self._graph.get_entity_ids_for_memory(
+                memory_id,
+            )
+            candidate_entity_pool.update(entity_ids)
+
+        novel_count = 0
+        if candidate_entity_pool:
+            related_memory_ids = self._graph.get_related_memory_ids(
+                list(candidate_entity_pool),
+                depth=self._config.graph_expansion_depth,
+            )
+            novel_ids = related_memory_ids - fused_ids
+            if len(novel_ids) > self._config.graph_expansion_max:
+                novel_ids = set(
+                    list(novel_ids)[
+                        :self._config.graph_expansion_max
+                    ],
+                )
+            novel_count = len(novel_ids)
+            for gid in novel_ids:
+                all_candidates.append((gid, 0.0))
+
+        graph_exp_data: dict[str, object] = {
+            "entity_pool_size": len(candidate_entity_pool),
+            "novel_candidates": novel_count,
+            "total_candidates": len(all_candidates),
+        }
+        if self._config.pipeline_debug and novel_count > 0:
+            novel_tuples = all_candidates[-novel_count:]
+            graph_exp_data["candidates"] = (
+                await self._load_candidate_previews(
+                    novel_tuples[:20],
+                )
+            )
+        _emit_stage(
+            "graph_expansion",
+            (time.perf_counter() - t0) * 1000,
+            graph_exp_data,
+        )
+
+        # 4. Batch node preload
+        nodes_by_memory: dict[str, list] = {}
+        if (
+            self._config.intent_classification_enabled
+            or self._config.reconciliation_enabled
+        ):
+            t0_nodes = time.perf_counter()
+            candidate_memory_ids = [
+                mid for mid, _ in all_candidates
+            ]
+            nodes_by_memory = (
+                await self._store.get_memory_nodes_for_memories(
+                    candidate_memory_ids,
+                )
+            )
+            _emit_stage(
+                "node_preload",
+                (time.perf_counter() - t0_nodes) * 1000,
+                {
+                    "candidate_count": len(candidate_memory_ids),
+                    "nodes_loaded": sum(
+                        len(v) for v in nodes_by_memory.values()
+                    ),
+                },
+            )
+
+        # 5. Intent supplementary candidates
+        if (
+            intent_result
+            and intent_result.intent != QueryIntent.FACT_LOOKUP
+        ):
+            t0_supp = time.perf_counter()
+            supplement_ids = await self._intent_supplement(
+                intent_result, context_entity_ids, fused_ids,
+            )
+            for sid in supplement_ids:
+                if sid not in fused_ids:
+                    all_candidates.append((sid, 0.0))
+                    fused_ids.add(sid)
+            if supplement_ids:
+                supp_nodes = (
+                    await self._store.get_memory_nodes_for_memories(
+                        list(supplement_ids),
+                    )
+                )
+                nodes_by_memory.update(supp_nodes)
+            _emit_stage(
+                "intent_supplement",
+                (time.perf_counter() - t0_supp) * 1000,
+                {
+                    "intent": intent_result.intent.value,
+                    "supplement_count": len(supplement_ids),
+                    "total_candidates": len(all_candidates),
+                },
+            )
+
+        return all_candidates, context_entity_ids, nodes_by_memory
 
     # ── Intent Supplementary Candidates ──────────────────────────────────
 
