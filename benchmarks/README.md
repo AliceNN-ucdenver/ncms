@@ -78,6 +78,27 @@ benchmarks/
 └── results/           # Output directory (gitignored)
 ```
 
+## 4-Competency Evaluation Framework
+
+Multiple benchmarks share a common 4-competency framework for evaluating memory systems:
+
+| Competency | Abbrev | What It Measures | Key Metric |
+|------------|--------|-----------------|------------|
+| Associative Recall | AR | Can the system find relevant memories? | nDCG@10 |
+| Time-To-Live | TTL | Does knowledge expire correctly? | Accuracy |
+| Change Resolution | CR | Are superseded facts demoted? | Temporal MRR |
+| Least Recently Used | LRU | Do access patterns affect retrieval? | nDCG@10 |
+
+SWE-bench and MemoryAgentBench both implement this framework. MemoryAgentBench adds a 5th competency: **Selective Forgetting** (SF) — can the system actively forget irrelevant knowledge?
+
+## Current Baseline Scores
+
+| Benchmark | Key Metric | NCMS Score | Notes |
+|-----------|-----------|------------|-------|
+| SciFact (BEIR) | nDCG@10 | 0.7206 | Exceeds ColBERTv2 (+4.0%), SPLADE++ (+1.5%) |
+| SWE-bench Django | AR nDCG@10 | 0.2032 (recall) | +15.5% over search-only |
+| LongMemEval | Recall@5 | 0.4680 | 500 questions, 6 categories |
+
 ## Results
 
 Benchmark results are written to `benchmarks/results/` with timestamped JSON files and `_latest` symlinks for convenience. Monitor running benchmarks with:

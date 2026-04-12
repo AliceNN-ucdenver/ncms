@@ -464,6 +464,40 @@ exit
 ```
 Then restart the agent or run `./setup_nemoclaw.sh --rebuild`.
 
+### Agent search returns 0 results despite loaded knowledge
+
+**Cause:** Documents were stored without domains. The `search()` pipeline has a domain filter (line ~1613 in `memory_service.py`) that skips memories whose `domains` list doesn't contain the agent's search domain. If knowledge files were loaded without domains, all domain-scoped searches return empty.
+
+**Fix:** Ensure all `publish_document()` calls include a `domains` parameter. Check existing memories:
+```bash
+docker cp ncms-hub:/app/data/ncms.db /tmp/hub.db && docker cp ncms-hub:/app/data/ncms.db-wal /tmp/hub.db-wal 2>/dev/null
+sqlite3 /tmp/hub.db "SELECT id, type, domains, substr(content,1,80) FROM memories WHERE domains IS NULL OR domains = '' OR domains = '[]';"
+```
+If empty-domain memories exist, rebuild the hub with the fixed code and re-run knowledge loading.
+
+### Duplicate memories from NAT auto_memory_wrapper
+
+**Cause:** The NAT `auto_memory_wrapper` stores every conversation turn as a `default_user` memory via `save_user_messages_to_memory` and `save_ai_messages_to_memory`. This duplicates content already stored by the agent's own structured pipeline.
+
+**Fix:** Set both to `false` in the agent's YAML config:
+```yaml
+workflow:
+  save_user_messages_to_memory: false
+  save_ai_messages_to_memory: false
+```
+This is already applied in the archeologist, designer, and product_owner configs. Expert agents (architect, security) use custom LangGraph workflows and don't have this setting.
+
+### Stale data when analyzing hub database
+
+**Cause:** SQLite WAL (Write-Ahead Log) mode stores recent writes in `.db-wal` file. `docker cp` only copies the main `.db` file unless you also copy the WAL.
+
+**Fix:** Always copy both:
+```bash
+docker cp ncms-hub:/app/data/ncms.db /tmp/hub.db
+docker cp ncms-hub:/app/data/ncms.db-wal /tmp/hub.db-wal 2>/dev/null
+docker cp ncms-hub:/app/data/ncms.db-shm /tmp/hub.db-shm 2>/dev/null
+```
+
 ### Known Quirks
 
 1. **Gateway restart wipes approvals.** If you restart the NemoClaw gateway (`openshell gateway restart`), all interactive approvals are lost. The sandboxes will need re-approval on their next connection attempt.

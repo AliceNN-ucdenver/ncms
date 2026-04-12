@@ -218,6 +218,14 @@ For the complete step-by-step setup, configuration reference, testing guide, and
 
 Quick summary: configure your DGX Spark inference provider, deploy vLLM with 512K context and `qwen3_coder` tool-call parser, run `./setup_nemoclaw.sh`, and send your first research prompt. The full pipeline runs autonomously from there.
 
+### Important Configuration Notes
+
+**NAT auto_memory_wrapper**: Agents that use the NAT auto_memory_wrapper (archeologist, designer, product_owner) must set `save_ai_messages_to_memory: false` and `save_user_messages_to_memory: false` in their config. Otherwise the wrapper stores every conversation turn as a `default_user` memory, creating duplicates of content already stored by the agent's own structured pipeline. The expert agents (architect, security) use custom LangGraph workflows and are not affected.
+
+**Document ingestion with domains**: All `publish_document()` calls must include a `domains` parameter. Documents stored without domains are invisible to domain-scoped search (agents search with `domain=security`, `domain=architecture`, etc.). Knowledge files loaded via `register.py` and agent-published documents (PRD, design, research reports) all pass domains. If you add a new agent or document type, ensure domains are included.
+
+**Content-hash deduplication**: NCMS deduplicates at the content level via SHA-256 hash. Storing the same content twice returns the existing memory instead of creating a new one. This is expected behavior, not an error.
+
 ---
 
 ## Document Intelligence (Phase 2.5)

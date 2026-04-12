@@ -70,8 +70,9 @@ dev = [
 
 [project.scripts]
 ncms = "ncms.interfaces.cli.main:cli"
-ncms-commit-hook = "ncms.interfaces.cli.commit_hook:main"
-ncms-context-loader = "ncms.interfaces.cli.context_loader:main"
+# Archived to src/ncms/experimental/ (2026-04-12):
+# ncms-commit-hook = "ncms.interfaces.cli.commit_hook:main"
+# ncms-context-loader = "ncms.interfaces.cli.context_loader:main"
 
 [build-system]
 requires = ["uv_build>=0.10.9,<0.11.0"]

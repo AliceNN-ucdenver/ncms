@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
   <defs>
     <linearGradient id="eeInputGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#8b5cf6"/>
@@ -28,6 +28,18 @@
       <stop offset="0%" stop-color="#f59e0b"/>
       <stop offset="100%" stop-color="#d97706"/>
     </linearGradient>
+    <linearGradient id="eeDedupGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="eeClassGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+    <linearGradient id="eeDocGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
     <filter id="eeShadow" x="-4%" y="-4%" width="108%" height="116%">
       <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.15"/>
     </filter>
@@ -46,237 +58,290 @@
     <marker id="eeArrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#f97316"/>
     </marker>
+    <marker id="eeArrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#06b6d4"/>
+    </marker>
+    <marker id="eeArrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#14b8a6"/>
+    </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="960" height="520" rx="12" fill="#0f172a"/>
+  <rect width="960" height="640" rx="12" fill="#0f172a"/>
 
   <!-- Title -->
-  <text x="480" y="30" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Memory Enrichment Pipeline</text>
-  <text x="480" y="48" text-anchor="middle" fill="#94a3b8" font-size="11">From raw content to structured HTMG nodes with entity extraction, admission, reconciliation, and episode linking</text>
+  <text x="480" y="30" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Memory Ingestion Pipeline</text>
+  <text x="480" y="48" text-anchor="middle" fill="#94a3b8" font-size="11">Content dedup, two-class classification, entity extraction, admission, reconciliation, and episode linking</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- TOP ROW: Topic Resolution → GLiNER NER → Knowledge Graph          -->
+  <!-- ROW 1: Content Input → Dedup → Classification (left to right)     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Content Input -->
+  <g filter="url(#eeShadow)">
+    <rect x="20" y="68" width="160" height="80" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
+    <rect x="20" y="68" width="160" height="26" rx="10" fill="url(#eeInputGrad)"/>
+    <rect x="20" y="84" width="160" height="10" fill="url(#eeInputGrad)"/>
+    <text x="100" y="87" text-anchor="middle" fill="white" font-size="11" font-weight="600">Content Input</text>
+    <text x="100" y="110" text-anchor="middle" fill="#94a3b8" font-size="8">store_memory() or</text>
+    <text x="100" y="123" text-anchor="middle" fill="#94a3b8" font-size="8">publish_document()</text>
+    <text x="100" y="140" text-anchor="middle" fill="#64748b" font-size="7">+ agent, domains, importance</text>
+  </g>
+
+  <!-- Arrow: Input → Dedup -->
+  <line x1="180" y1="108" x2="208" y2="108" stroke="#64748b" stroke-width="2" marker-end="url(#eeArrow)"/>
+
+  <!-- Gate 1: Content-Hash Dedup -->
+  <g filter="url(#eeShadow)">
+    <rect x="213" y="68" width="155" height="80" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2"/>
+    <rect x="213" y="68" width="155" height="26" rx="10" fill="url(#eeDedupGrad)"/>
+    <rect x="213" y="84" width="155" height="10" fill="url(#eeDedupGrad)"/>
+    <text x="290" y="87" text-anchor="middle" fill="white" font-size="11" font-weight="600">Gate 1: Dedup</text>
+    <text x="290" y="110" text-anchor="middle" fill="#94a3b8" font-size="8">SHA-256 content hash</text>
+    <text x="290" y="123" text-anchor="middle" fill="#94a3b8" font-size="8">Duplicate? Return existing</text>
+    <text x="290" y="140" text-anchor="middle" fill="#64748b" font-size="7">content_hash column + unique index</text>
+  </g>
+
+  <!-- Arrow: Dedup → Classification -->
+  <line x1="368" y1="108" x2="396" y2="108" stroke="#06b6d4" stroke-width="2" marker-end="url(#eeArrowCyan)"/>
+
+  <!-- Gate 2: Content Classification -->
+  <g filter="url(#eeShadow)">
+    <rect x="401" y="68" width="180" height="80" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+    <rect x="401" y="68" width="180" height="26" rx="10" fill="url(#eeClassGrad)"/>
+    <rect x="401" y="84" width="180" height="10" fill="url(#eeClassGrad)"/>
+    <text x="491" y="87" text-anchor="middle" fill="white" font-size="11" font-weight="600">Gate 2: Classification</text>
+    <text x="491" y="110" text-anchor="middle" fill="#94a3b8" font-size="8">content_classifier.py</text>
+    <!-- Two output pills -->
+    <rect x="416" y="120" width="65" height="16" rx="8" fill="#164e63" stroke="#06b6d4" stroke-width="0.5"/>
+    <text x="448" y="132" text-anchor="middle" fill="#67e8f9" font-size="7" font-weight="600">ATOMIC</text>
+    <rect x="490" y="120" width="80" height="16" rx="8" fill="#064e3b" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="530" y="132" text-anchor="middle" fill="#5eead4" font-size="7" font-weight="600">NAVIGABLE</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- NAVIGABLE fork (right side) → Document Profile                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow: Classification → NAVIGABLE path (down-right) -->
+  <line x1="540" y1="148" x2="540" y2="162" stroke="#14b8a6" stroke-width="2"/>
+  <line x1="540" y1="162" x2="700" y2="162" stroke="#14b8a6" stroke-width="2" marker-end="url(#eeArrowTeal)"/>
+  <text x="620" y="157" text-anchor="middle" fill="#5eead4" font-size="7">NAVIGABLE</text>
+
+  <!-- Document Profile Path -->
+  <g filter="url(#eeShadow)">
+    <rect x="705" y="68" width="235" height="155" rx="10" fill="#1e293b" stroke="#14b8a6" stroke-width="2"/>
+    <rect x="705" y="68" width="235" height="26" rx="10" fill="url(#eeDocGrad)"/>
+    <rect x="705" y="84" width="235" height="10" fill="url(#eeDocGrad)"/>
+    <text x="822" y="87" text-anchor="middle" fill="white" font-size="11" font-weight="600">Document Profile Model</text>
+    <text x="822" y="108" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="500">section_service.py</text>
+
+    <text x="720" y="128" fill="#94a3b8" font-size="8">1. Parse sections (MD headings / YAML / JSON)</text>
+    <text x="720" y="143" fill="#94a3b8" font-size="8">2. Build vocabulary-dense profile (~500-800 chars)</text>
+    <text x="720" y="158" fill="#94a3b8" font-size="8">3. Store ONE profile memory (importance 8.0+)</text>
+    <text x="720" y="173" fill="#94a3b8" font-size="8">4. Store full doc + sections in document store</text>
+
+    <!-- Output -->
+    <rect x="735" y="185" width="110" height="16" rx="8" fill="#064e3b" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="790" y="196" text-anchor="middle" fill="#5eead4" font-size="7" font-weight="500">document_profile</text>
+    <rect x="855" y="185" width="70" height="16" rx="8" fill="#064e3b" stroke="#14b8a6" stroke-width="0.5"/>
+    <text x="890" y="196" text-anchor="middle" fill="#5eead4" font-size="7" font-weight="500">documents</text>
+    <text x="822" y="215" text-anchor="middle" fill="#64748b" font-size="7">Profile in memory store, sections in document store</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ATOMIC fork (down) → rest of enrichment pipeline                   -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Arrow: Classification ATOMIC → down to enrichment row -->
+  <line x1="448" y1="148" x2="448" y2="162" stroke="#06b6d4" stroke-width="2"/>
+  <line x1="448" y1="162" x2="115" y2="162" stroke="#06b6d4" stroke-width="2"/>
+  <line x1="115" y1="162" x2="115" y2="175" stroke="#06b6d4" stroke-width="2" marker-end="url(#eeArrowCyan)"/>
+  <text x="280" y="172" text-anchor="middle" fill="#67e8f9" font-size="7">ATOMIC</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ROW 2: Topic Resolution + Content → GLiNER → Knowledge Graph      -->
   <!-- ═══════════════════════════════════════════════════════════════════ -->
 
   <!-- Topic Resolution Box -->
   <g filter="url(#eeShadow)">
-    <rect x="20" y="68" width="190" height="150" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
-    <rect x="20" y="68" width="190" height="26" rx="10" fill="url(#eeTopicGrad)"/>
-    <rect x="20" y="84" width="190" height="10" fill="url(#eeTopicGrad)"/>
-    <text x="115" y="87" text-anchor="middle" fill="white" font-size="11" font-weight="600">Topic Resolution</text>
+    <rect x="20" y="180" width="190" height="120" rx="10" fill="#1e293b" stroke="#10b981" stroke-width="2"/>
+    <rect x="20" y="180" width="190" height="26" rx="10" fill="url(#eeTopicGrad)"/>
+    <rect x="20" y="196" width="190" height="10" fill="url(#eeTopicGrad)"/>
+    <text x="115" y="198" text-anchor="middle" fill="white" font-size="11" font-weight="600">Topic Resolution</text>
 
-    <text x="115" y="110" text-anchor="middle" fill="#6ee7b7" font-size="9" font-weight="500">Label resolution chain:</text>
+    <rect x="35" y="216" width="160" height="16" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
+    <text x="43" y="228" fill="#6ee7b7" font-size="8" font-weight="600">1.</text>
+    <text x="55" y="228" fill="#a7f3d0" font-size="8">ncms topics set &lt;domain&gt; &lt;labels&gt;</text>
 
-    <rect x="35" y="120" width="160" height="18" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
-    <text x="43" y="133" fill="#6ee7b7" font-size="8" font-weight="600">1.</text>
-    <text x="55" y="133" fill="#a7f3d0" font-size="8">ncms topics set &lt;domain&gt; &lt;labels&gt;</text>
+    <rect x="35" y="236" width="160" height="16" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
+    <text x="43" y="247" fill="#6ee7b7" font-size="8" font-weight="600">2.</text>
+    <text x="55" y="247" fill="#a7f3d0" font-size="8">ncms topics detect &lt;domain&gt; &lt;files&gt;</text>
 
-    <rect x="35" y="142" width="160" height="18" rx="5" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
-    <text x="43" y="155" fill="#6ee7b7" font-size="8" font-weight="600">2.</text>
-    <text x="55" y="155" fill="#a7f3d0" font-size="8">ncms topics detect &lt;domain&gt; &lt;files&gt;</text>
+    <rect x="35" y="256" width="160" height="16" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="0.5"/>
+    <text x="43" y="267" fill="#6ee7b7" font-size="8" font-weight="600">3.</text>
+    <text x="55" y="267" fill="#94a3b8" font-size="8">Universal fallback (10 labels)</text>
 
-    <rect x="35" y="164" width="160" height="18" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="0.5"/>
-    <text x="43" y="177" fill="#6ee7b7" font-size="8" font-weight="600">3.</text>
-    <text x="55" y="177" fill="#94a3b8" font-size="8">Universal fallback (10 labels)</text>
-
-    <text x="115" y="208" text-anchor="middle" fill="#64748b" font-size="7">Cached in consolidation_state</text>
-  </g>
-
-  <!-- Content Input -->
-  <g filter="url(#eeShadow)">
-    <rect x="20" y="232" width="190" height="90" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
-    <rect x="20" y="232" width="190" height="26" rx="10" fill="url(#eeInputGrad)"/>
-    <rect x="20" y="248" width="190" height="10" fill="url(#eeInputGrad)"/>
-    <text x="115" y="250" text-anchor="middle" fill="white" font-size="11" font-weight="600">Memory Content</text>
-    <text x="115" y="275" text-anchor="middle" fill="#94a3b8" font-size="8">"PostgreSQL connection pooling</text>
-    <text x="115" y="288" text-anchor="middle" fill="#94a3b8" font-size="8">config via PgBouncer for auth"</text>
-    <text x="115" y="310" text-anchor="middle" fill="#64748b" font-size="8">+ query text at search-time</text>
+    <text x="115" y="292" text-anchor="middle" fill="#64748b" font-size="7">Cached in consolidation_state</text>
   </g>
 
   <!-- Arrows: Topics + Content → GLiNER -->
-  <line x1="210" y1="143" x2="235" y2="143" stroke="#10b981" stroke-width="2" marker-end="url(#eeArrowGreen)"/>
-  <text x="222" y="136" text-anchor="middle" fill="#6ee7b7" font-size="7">labels</text>
-  <line x1="210" y1="275" x2="235" y2="195" stroke="#a855f7" stroke-width="2" marker-end="url(#eeArrowPurple)"/>
-  <text x="216" y="230" fill="#c4b5fd" font-size="7" transform="rotate(-55 216 230)">text</text>
+  <line x1="210" y1="240" x2="235" y2="240" stroke="#10b981" stroke-width="2" marker-end="url(#eeArrowGreen)"/>
+  <text x="222" y="233" text-anchor="middle" fill="#6ee7b7" font-size="7">labels</text>
 
   <!-- GLiNER NER -->
   <g filter="url(#eeShadow)">
-    <rect x="240" y="90" width="220" height="140" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
-    <rect x="240" y="90" width="220" height="26" rx="10" fill="url(#eeGlinerGrad)"/>
-    <rect x="240" y="106" width="220" height="10" fill="url(#eeGlinerGrad)"/>
-    <text x="350" y="108" text-anchor="middle" fill="white" font-size="11" font-weight="600">GLiNER Zero-Shot NER</text>
+    <rect x="240" y="190" width="220" height="115" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+    <rect x="240" y="190" width="220" height="26" rx="10" fill="url(#eeGlinerGrad)"/>
+    <rect x="240" y="206" width="220" height="10" fill="url(#eeGlinerGrad)"/>
+    <text x="350" y="208" text-anchor="middle" fill="white" font-size="11" font-weight="600">GLiNER Zero-Shot NER</text>
 
-    <rect x="255" y="125" width="60" height="14" rx="7" fill="#7c3aed"/>
-    <text x="285" y="136" text-anchor="middle" fill="white" font-size="7" font-weight="600">REQUIRED</text>
-    <text x="358" y="136" fill="#c4b5fd" font-size="8">209M DeBERTa model</text>
+    <rect x="255" y="222" width="60" height="14" rx="7" fill="#7c3aed"/>
+    <text x="285" y="233" text-anchor="middle" fill="white" font-size="7" font-weight="600">REQUIRED</text>
+    <text x="358" y="233" fill="#c4b5fd" font-size="8">209M DeBERTa model</text>
 
-    <text x="350" y="155" text-anchor="middle" fill="#94a3b8" font-size="8">Uses resolved labels to extract entities</text>
-    <text x="350" y="169" text-anchor="middle" fill="#94a3b8" font-size="8">from any domain: tech, finance, biomedical...</text>
+    <text x="350" y="252" text-anchor="middle" fill="#94a3b8" font-size="8">Extracts entities using resolved labels</text>
 
     <!-- Example entity pills -->
-    <rect x="255" y="180" width="50" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="280" y="190" text-anchor="middle" fill="#c4b5fd" font-size="7">person</text>
-    <rect x="310" y="180" width="68" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="344" y="190" text-anchor="middle" fill="#c4b5fd" font-size="7">organization</text>
-    <rect x="383" y="180" width="65" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="415" y="190" text-anchor="middle" fill="#c4b5fd" font-size="7">technology</text>
-    <rect x="255" y="197" width="52" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="281" y="207" text-anchor="middle" fill="#c4b5fd" font-size="7">concept</text>
-    <rect x="312" y="197" width="45" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="334" y="207" text-anchor="middle" fill="#c4b5fd" font-size="7">event</text>
-    <rect x="362" y="197" width="50" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="387" y="207" text-anchor="middle" fill="#c4b5fd" font-size="7">product</text>
-    <rect x="417" y="197" width="30" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
-    <text x="432" y="207" text-anchor="middle" fill="#c4b5fd" font-size="7">...</text>
+    <rect x="255" y="262" width="50" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="280" y="272" text-anchor="middle" fill="#c4b5fd" font-size="7">person</text>
+    <rect x="310" y="262" width="68" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="344" y="272" text-anchor="middle" fill="#c4b5fd" font-size="7">organization</text>
+    <rect x="383" y="262" width="65" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="415" y="272" text-anchor="middle" fill="#c4b5fd" font-size="7">technology</text>
+    <rect x="255" y="279" width="52" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="281" y="289" text-anchor="middle" fill="#c4b5fd" font-size="7">concept</text>
+    <rect x="312" y="279" width="45" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="334" y="289" text-anchor="middle" fill="#c4b5fd" font-size="7">event</text>
+    <rect x="362" y="279" width="50" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="387" y="289" text-anchor="middle" fill="#c4b5fd" font-size="7">product</text>
+    <rect x="417" y="279" width="30" height="13" rx="6" fill="#312e81" stroke="#a855f7" stroke-width="0.5"/>
+    <text x="432" y="289" text-anchor="middle" fill="#c4b5fd" font-size="7">...</text>
   </g>
 
   <!-- Arrow: GLiNER → Knowledge Graph -->
-  <line x1="460" y1="160" x2="495" y2="160" stroke="#f59e0b" stroke-width="2" marker-end="url(#eeArrowAmber)"/>
+  <line x1="460" y1="248" x2="495" y2="248" stroke="#f59e0b" stroke-width="2" marker-end="url(#eeArrowAmber)"/>
 
   <!-- Knowledge Graph -->
   <g filter="url(#eeShadow)">
-    <rect x="500" y="68" width="175" height="185" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
-    <rect x="500" y="68" width="175" height="26" rx="10" fill="url(#eeGraphGrad)"/>
-    <rect x="500" y="84" width="175" height="10" fill="url(#eeGraphGrad)"/>
-    <text x="587" y="86" text-anchor="middle" fill="white" font-size="10" font-weight="600">Knowledge Graph</text>
-    <text x="587" y="108" text-anchor="middle" fill="#fcd34d" font-size="9" font-weight="500">NetworkX DiGraph</text>
+    <rect x="500" y="190" width="175" height="115" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="500" y="190" width="175" height="26" rx="10" fill="url(#eeGraphGrad)"/>
+    <rect x="500" y="206" width="175" height="10" fill="url(#eeGraphGrad)"/>
+    <text x="587" y="208" text-anchor="middle" fill="white" font-size="10" font-weight="600">Knowledge Graph</text>
+    <text x="587" y="226" text-anchor="middle" fill="#fcd34d" font-size="9" font-weight="500">NetworkX DiGraph</text>
 
-    <!-- Mini graph (no K nodes) -->
-    <circle cx="535" cy="135" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="535" y="138" text-anchor="middle" fill="white" font-size="5" font-weight="700">P</text>
-    <circle cx="565" cy="125" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="565" y="128" text-anchor="middle" fill="white" font-size="5" font-weight="700">T</text>
-    <circle cx="600" cy="138" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="600" y="141" text-anchor="middle" fill="white" font-size="5" font-weight="700">O</text>
-    <circle cx="640" cy="130" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="640" y="133" text-anchor="middle" fill="white" font-size="5" font-weight="700">E</text>
-    <circle cx="550" cy="160" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="550" y="163" text-anchor="middle" fill="white" font-size="5" font-weight="700">C</text>
-    <circle cx="620" cy="160" r="6" fill="#a855f7" opacity="0.8"/>
-    <text x="620" y="163" text-anchor="middle" fill="white" font-size="5" font-weight="700">L</text>
+    <!-- Mini graph -->
+    <circle cx="535" cy="248" r="5" fill="#a855f7" opacity="0.8"/>
+    <circle cx="560" cy="240" r="5" fill="#a855f7" opacity="0.8"/>
+    <circle cx="590" cy="252" r="5" fill="#a855f7" opacity="0.8"/>
+    <circle cx="625" cy="244" r="5" fill="#a855f7" opacity="0.8"/>
+    <circle cx="550" cy="268" r="5" fill="#a855f7" opacity="0.8"/>
+    <circle cx="610" cy="268" r="5" fill="#a855f7" opacity="0.8"/>
 
-    <line x1="535" y1="135" x2="565" y2="125" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
-    <line x1="565" y1="125" x2="600" y2="138" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
-    <line x1="600" y1="138" x2="640" y2="130" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
-    <line x1="535" y1="135" x2="550" y2="160" stroke="#64748b" stroke-width="0.8" opacity="0.4"/>
-    <line x1="565" y1="125" x2="640" y2="130" stroke="#64748b" stroke-width="0.8" opacity="0.3"/>
-    <line x1="550" y1="160" x2="620" y2="160" stroke="#64748b" stroke-width="0.8" opacity="0.4"/>
+    <line x1="535" y1="248" x2="560" y2="240" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
+    <line x1="560" y1="240" x2="590" y2="252" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
+    <line x1="590" y1="252" x2="625" y2="244" stroke="#64748b" stroke-width="0.8" opacity="0.6"/>
+    <line x1="535" y1="248" x2="550" y2="268" stroke="#64748b" stroke-width="0.8" opacity="0.4"/>
+    <line x1="550" y1="268" x2="610" y2="268" stroke="#64748b" stroke-width="0.8" opacity="0.4"/>
 
-    <text x="587" y="185" text-anchor="middle" fill="#64748b" font-size="7">P=person  T=tech  O=org</text>
-    <text x="587" y="196" text-anchor="middle" fill="#64748b" font-size="7">E=event  C=concept  L=location</text>
-
-    <text x="587" y="216" text-anchor="middle" fill="#94a3b8" font-size="8">Spreading activation</text>
-    <text x="587" y="229" text-anchor="middle" fill="#94a3b8" font-size="8">Graph expansion</text>
-    <text x="587" y="242" text-anchor="middle" fill="#94a3b8" font-size="8">Cross-memory discovery</text>
+    <text x="587" y="292" text-anchor="middle" fill="#94a3b8" font-size="8">Co-occurrence edges persisted</text>
   </g>
 
-  <!-- Contradiction Detection (opt-in, below graph) -->
-  <line x1="587" y1="253" x2="587" y2="270" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>
+  <!-- Contradiction Detection (opt-in, right of graph) -->
   <g filter="url(#eeShadow)">
-    <rect x="500" y="272" width="175" height="45" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6,3"/>
-    <rect x="500" y="272" width="175" height="20" rx="10" fill="#ef4444" opacity="0.25"/>
-    <rect x="500" y="284" width="175" height="8" fill="#ef4444" opacity="0.25"/>
-    <text x="587" y="288" text-anchor="middle" fill="#fca5a5" font-size="10" font-weight="600">Contradiction Detection</text>
-    <text x="587" y="306" text-anchor="middle" fill="#94a3b8" font-size="8">LLM-powered factual checks at ingest</text>
+    <rect x="700" y="240" width="175" height="45" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6,3"/>
+    <rect x="700" y="240" width="175" height="20" rx="10" fill="#ef4444" opacity="0.25"/>
+    <rect x="700" y="252" width="175" height="8" fill="#ef4444" opacity="0.25"/>
+    <text x="787" y="256" text-anchor="middle" fill="#fca5a5" font-size="10" font-weight="600">Contradiction Detection</text>
+    <text x="787" y="275" text-anchor="middle" fill="#94a3b8" font-size="8">LLM-powered (opt-in, deferred)</text>
   </g>
+  <line x1="675" y1="262" x2="695" y2="262" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- BOTTOM ROW: Admission → State Reconciliation → Episode Linker     -->
+  <!-- ROW 3: Admission → State Reconciliation → Episode Linker          -->
   <!-- ═══════════════════════════════════════════════════════════════════ -->
 
-  <!-- Connecting arrow from Content Input down to Admission -->
-  <line x1="115" y1="322" x2="115" y2="350" stroke="#f97316" stroke-width="2" marker-end="url(#eeArrowOrange)"/>
-  <text x="130" y="340" fill="#fb923c" font-size="7">route</text>
+  <!-- Arrow from Row 2 down to Admission -->
+  <line x1="115" y1="300" x2="115" y2="325" stroke="#f97316" stroke-width="2" marker-end="url(#eeArrowOrange)"/>
+  <text x="130" y="316" fill="#fb923c" font-size="7">route</text>
 
   <!-- Admission Scoring -->
   <g filter="url(#eeShadow)">
-    <rect x="20" y="355" width="220" height="145" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
-    <rect x="20" y="355" width="220" height="26" rx="10" fill="url(#eeAdmitGrad)"/>
-    <rect x="20" y="371" width="220" height="10" fill="url(#eeAdmitGrad)"/>
-    <text x="130" y="373" text-anchor="middle" fill="white" font-size="11" font-weight="600">Admission Scoring</text>
-    <text x="130" y="397" text-anchor="middle" fill="#fdba74" font-size="9" font-weight="500">8-Feature Heuristic Gate</text>
+    <rect x="20" y="330" width="220" height="130" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+    <rect x="20" y="330" width="220" height="26" rx="10" fill="url(#eeAdmitGrad)"/>
+    <rect x="20" y="346" width="220" height="10" fill="url(#eeAdmitGrad)"/>
+    <text x="130" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="600">Admission Scoring</text>
+    <text x="130" y="372" text-anchor="middle" fill="#fdba74" font-size="9" font-weight="500">4-Feature Heuristic Gate</text>
 
-    <!-- Feature list (compact 2-column) -->
-    <text x="40" y="415" fill="#94a3b8" font-size="7">novelty</text>
-    <text x="40" y="428" fill="#94a3b8" font-size="7">utility</text>
-    <text x="40" y="441" fill="#94a3b8" font-size="7">reliability</text>
-    <text x="40" y="454" fill="#94a3b8" font-size="7">temporal salience</text>
+    <!-- Feature list (2-column) -->
+    <text x="40" y="392" fill="#94a3b8" font-size="8">utility</text>
+    <text x="40" y="407" fill="#94a3b8" font-size="8">persistence</text>
 
-    <text x="140" y="415" fill="#94a3b8" font-size="7">persistence</text>
-    <text x="140" y="428" fill="#94a3b8" font-size="7">redundancy</text>
-    <text x="140" y="441" fill="#94a3b8" font-size="7">episode affinity</text>
-    <text x="140" y="454" fill="#94a3b8" font-size="7">state change signal</text>
+    <text x="140" y="392" fill="#94a3b8" font-size="8">temporal salience</text>
+    <text x="140" y="407" fill="#94a3b8" font-size="8">state change signal</text>
 
     <!-- Output route pills -->
-    <rect x="35" y="468" width="45" height="14" rx="7" fill="#7f1d1d" stroke="#ef4444" stroke-width="0.5"/>
-    <text x="57" y="478" text-anchor="middle" fill="#fca5a5" font-size="6">discard</text>
-    <rect x="84" y="468" width="55" height="14" rx="7" fill="#78350f" stroke="#f59e0b" stroke-width="0.5"/>
-    <text x="111" y="478" text-anchor="middle" fill="#fcd34d" font-size="6">ephemeral</text>
-    <rect x="143" y="468" width="42" height="14" rx="7" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
-    <text x="164" y="478" text-anchor="middle" fill="#6ee7b7" font-size="6">atomic</text>
-    <rect x="35" y="486" width="60" height="14" rx="7" fill="#164e63" stroke="#0ea5e9" stroke-width="0.5"/>
-    <text x="65" y="496" text-anchor="middle" fill="#7dd3fc" font-size="6">entity_state</text>
-    <rect x="100" y="486" width="50" height="14" rx="7" fill="#312e81" stroke="#6366f1" stroke-width="0.5"/>
-    <text x="125" y="496" text-anchor="middle" fill="#a5b4fc" font-size="6">episode</text>
+    <rect x="35" y="420" width="45" height="14" rx="7" fill="#7f1d1d" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="57" y="430" text-anchor="middle" fill="#fca5a5" font-size="6">discard</text>
+    <rect x="84" y="420" width="55" height="14" rx="7" fill="#78350f" stroke="#f59e0b" stroke-width="0.5"/>
+    <text x="111" y="430" text-anchor="middle" fill="#fcd34d" font-size="6">ephemeral</text>
+    <rect x="143" y="420" width="42" height="14" rx="7" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
+    <text x="164" y="430" text-anchor="middle" fill="#6ee7b7" font-size="6">persist</text>
+
+    <text x="130" y="453" text-anchor="middle" fill="#64748b" font-size="7">importance &gt;= 8.0 bypasses admission</text>
   </g>
 
   <!-- Arrow: Admission → Reconciliation -->
-  <line x1="240" y1="427" x2="268" y2="427" stroke="#64748b" stroke-width="2" marker-end="url(#eeArrow)"/>
+  <line x1="240" y1="395" x2="268" y2="395" stroke="#64748b" stroke-width="2" marker-end="url(#eeArrow)"/>
 
   <!-- State Reconciliation -->
   <g filter="url(#eeShadow)">
-    <rect x="273" y="355" width="210" height="145" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
-    <rect x="273" y="355" width="210" height="26" rx="10" fill="url(#eeReconGrad)"/>
-    <rect x="273" y="371" width="210" height="10" fill="url(#eeReconGrad)"/>
-    <text x="378" y="373" text-anchor="middle" fill="white" font-size="11" font-weight="600">State Reconciliation</text>
-    <text x="378" y="397" text-anchor="middle" fill="#7dd3fc" font-size="9" font-weight="500">Bitemporal Truth Maintenance</text>
+    <rect x="273" y="330" width="210" height="130" rx="10" fill="#1e293b" stroke="#0ea5e9" stroke-width="2"/>
+    <rect x="273" y="330" width="210" height="26" rx="10" fill="url(#eeReconGrad)"/>
+    <rect x="273" y="346" width="210" height="10" fill="url(#eeReconGrad)"/>
+    <text x="378" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="600">State Reconciliation</text>
+    <text x="378" y="372" text-anchor="middle" fill="#7dd3fc" font-size="9" font-weight="500">Bitemporal Truth Maintenance</text>
 
     <!-- Relation types -->
-    <rect x="288" y="410" width="55" height="14" rx="7" fill="#164e63" stroke="#22c55e" stroke-width="0.5"/>
-    <text x="315" y="420" text-anchor="middle" fill="#86efac" font-size="7">supports</text>
-    <rect x="348" y="410" width="48" height="14" rx="7" fill="#164e63" stroke="#38bdf8" stroke-width="0.5"/>
-    <text x="372" y="420" text-anchor="middle" fill="#7dd3fc" font-size="7">refines</text>
-    <rect x="401" y="410" width="65" height="14" rx="7" fill="#164e63" stroke="#f59e0b" stroke-width="0.5"/>
-    <text x="433" y="420" text-anchor="middle" fill="#fcd34d" font-size="7">supersedes</text>
-    <rect x="288" y="430" width="55" height="14" rx="7" fill="#164e63" stroke="#ef4444" stroke-width="0.5"/>
-    <text x="315" y="440" text-anchor="middle" fill="#fca5a5" font-size="7">conflicts</text>
-    <rect x="348" y="430" width="55" height="14" rx="7" fill="#1e293b" stroke="#64748b" stroke-width="0.5"/>
-    <text x="375" y="440" text-anchor="middle" fill="#94a3b8" font-size="7">unrelated</text>
+    <rect x="288" y="385" width="55" height="14" rx="7" fill="#164e63" stroke="#22c55e" stroke-width="0.5"/>
+    <text x="315" y="395" text-anchor="middle" fill="#86efac" font-size="7">supports</text>
+    <rect x="348" y="385" width="48" height="14" rx="7" fill="#164e63" stroke="#38bdf8" stroke-width="0.5"/>
+    <text x="372" y="395" text-anchor="middle" fill="#7dd3fc" font-size="7">refines</text>
+    <rect x="401" y="385" width="65" height="14" rx="7" fill="#164e63" stroke="#f59e0b" stroke-width="0.5"/>
+    <text x="433" y="395" text-anchor="middle" fill="#fcd34d" font-size="7">supersedes</text>
+    <rect x="288" y="405" width="55" height="14" rx="7" fill="#164e63" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="315" y="415" text-anchor="middle" fill="#fca5a5" font-size="7">conflicts</text>
+    <rect x="348" y="405" width="55" height="14" rx="7" fill="#1e293b" stroke="#64748b" stroke-width="0.5"/>
+    <text x="375" y="415" text-anchor="middle" fill="#94a3b8" font-size="7">unrelated</text>
 
-    <text x="378" y="460" text-anchor="middle" fill="#94a3b8" font-size="8">Superseded: is_current=False</text>
-    <text x="378" y="473" text-anchor="middle" fill="#94a3b8" font-size="8">valid_to closure applied</text>
-
-    <!-- Penalty annotation -->
-    <rect x="300" y="482" width="155" height="14" rx="7" fill="#1a1a2e" stroke="#f59e0b" stroke-width="0.5"/>
-    <text x="378" y="492" text-anchor="middle" fill="#fbbf24" font-size="7">Retrieval penalty on stale states</text>
+    <text x="378" y="438" text-anchor="middle" fill="#94a3b8" font-size="8">Superseded: is_current=False</text>
+    <text x="378" y="453" text-anchor="middle" fill="#94a3b8" font-size="8">Retrieval penalty on stale states</text>
   </g>
 
   <!-- Arrow: Reconciliation → Episode Linker -->
-  <line x1="483" y1="427" x2="511" y2="427" stroke="#64748b" stroke-width="2" marker-end="url(#eeArrow)"/>
+  <line x1="483" y1="395" x2="511" y2="395" stroke="#64748b" stroke-width="2" marker-end="url(#eeArrow)"/>
 
   <!-- Episode Linker -->
   <g filter="url(#eeShadow)">
-    <rect x="516" y="355" width="210" height="145" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
-    <rect x="516" y="355" width="210" height="26" rx="10" fill="url(#eeEpisodeGrad)"/>
-    <rect x="516" y="371" width="210" height="10" fill="url(#eeEpisodeGrad)"/>
-    <text x="621" y="373" text-anchor="middle" fill="white" font-size="11" font-weight="600">Episode Linker</text>
-    <text x="621" y="397" text-anchor="middle" fill="#a5b4fc" font-size="9" font-weight="500">7-Signal Hybrid Scoring</text>
+    <rect x="516" y="330" width="210" height="130" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+    <rect x="516" y="330" width="210" height="26" rx="10" fill="url(#eeEpisodeGrad)"/>
+    <rect x="516" y="346" width="210" height="10" fill="url(#eeEpisodeGrad)"/>
+    <text x="621" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="600">Episode Linker</text>
+    <text x="621" y="372" text-anchor="middle" fill="#a5b4fc" font-size="9" font-weight="500">7-Signal Hybrid Scoring</text>
 
-    <!-- Signal list (compact 2-column) -->
-    <text x="535" y="415" fill="#94a3b8" font-size="7">BM25 lexical match</text>
-    <text x="535" y="428" fill="#94a3b8" font-size="7">SPLADE semantic</text>
-    <text x="535" y="441" fill="#94a3b8" font-size="7">Entity overlap</text>
-    <text x="535" y="454" fill="#94a3b8" font-size="7">Domain overlap</text>
+    <!-- Signal list (2-column) -->
+    <text x="535" y="392" fill="#94a3b8" font-size="7">BM25 lexical match</text>
+    <text x="535" y="405" fill="#94a3b8" font-size="7">SPLADE semantic</text>
+    <text x="535" y="418" fill="#94a3b8" font-size="7">Entity overlap</text>
+    <text x="535" y="431" fill="#94a3b8" font-size="7">Domain overlap</text>
 
-    <text x="650" y="415" fill="#94a3b8" font-size="7">Temporal proximity</text>
-    <text x="650" y="428" fill="#94a3b8" font-size="7">Source agent</text>
-    <text x="650" y="441" fill="#94a3b8" font-size="7">Structured anchors</text>
+    <text x="650" y="392" fill="#94a3b8" font-size="7">Temporal proximity</text>
+    <text x="650" y="405" fill="#94a3b8" font-size="7">Source agent</text>
+    <text x="650" y="418" fill="#94a3b8" font-size="7">Structured anchors</text>
 
     <!-- Episode output -->
-    <rect x="555" y="462" width="130" height="20" rx="10" fill="#312e81" stroke="#6366f1" stroke-width="0.8"/>
-    <text x="620" y="476" text-anchor="middle" fill="#a5b4fc" font-size="8" font-weight="500">Episode profile created</text>
-    <text x="621" y="496" text-anchor="middle" fill="#64748b" font-size="7">BM25 + SPLADE indexed for matching</text>
+    <rect x="555" y="438" width="130" height="16" rx="8" fill="#312e81" stroke="#6366f1" stroke-width="0.8"/>
+    <text x="620" y="449" text-anchor="middle" fill="#a5b4fc" font-size="7" font-weight="500">Episode profile created</text>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
@@ -284,33 +349,49 @@
   <!-- ═══════════════════════════════════════════════════════════════════ -->
 
   <g filter="url(#eeShadow)">
-    <rect x="745" y="68" width="195" height="250" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="6,3"/>
-    <rect x="745" y="68" width="195" height="24" rx="10" fill="#a855f7" opacity="0.2"/>
-    <rect x="745" y="84" width="195" height="8" fill="#a855f7" opacity="0.2"/>
+    <rect x="745" y="310" width="195" height="195" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="6,3"/>
+    <rect x="745" y="310" width="195" height="24" rx="10" fill="#a855f7" opacity="0.2"/>
+    <rect x="745" y="326" width="195" height="8" fill="#a855f7" opacity="0.2"/>
 
-    <text x="842" y="86" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Consolidation</text>
-    <text x="842" y="102" text-anchor="middle" fill="#64748b" font-size="7" font-style="italic">opt-in</text>
+    <text x="842" y="328" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600">Consolidation</text>
+    <text x="842" y="344" text-anchor="middle" fill="#64748b" font-size="7" font-style="italic">opt-in, LLM-powered</text>
 
-    <text x="765" y="125" fill="#c4b5fd" font-size="9" font-weight="500">Episode Summaries</text>
-    <text x="765" y="139" fill="#94a3b8" font-size="7">LLM synthesis of closed episodes</text>
+    <text x="765" y="367" fill="#c4b5fd" font-size="9" font-weight="500">Episode Summaries</text>
+    <text x="765" y="381" fill="#94a3b8" font-size="7">LLM synthesis of closed episodes</text>
 
-    <text x="765" y="160" fill="#c4b5fd" font-size="9" font-weight="500">State Trajectories</text>
-    <text x="765" y="174" fill="#94a3b8" font-size="7">Temporal progression narratives</text>
+    <text x="765" y="400" fill="#c4b5fd" font-size="9" font-weight="500">State Trajectories</text>
+    <text x="765" y="414" fill="#94a3b8" font-size="7">Temporal progression narratives</text>
 
-    <text x="765" y="195" fill="#c4b5fd" font-size="9" font-weight="500">Recurring Patterns</text>
-    <text x="765" y="209" fill="#94a3b8" font-size="7">Cluster by entity Jaccard overlap</text>
+    <text x="765" y="433" fill="#c4b5fd" font-size="9" font-weight="500">Recurring Patterns</text>
+    <text x="765" y="447" fill="#94a3b8" font-size="7">Cluster by entity Jaccard overlap</text>
 
-    <line x1="765" y1="225" x2="920" y2="225" stroke="#334155" stroke-width="0.5"/>
+    <line x1="765" y1="458" x2="920" y2="458" stroke="#334155" stroke-width="0.5"/>
 
-    <text x="842" y="245" text-anchor="middle" fill="#a855f7" font-size="9" font-weight="500">L4 ABSTRACT nodes</text>
-    <text x="842" y="260" text-anchor="middle" fill="#94a3b8" font-size="7">Dual: Memory + MemoryNode</text>
-    <text x="842" y="275" text-anchor="middle" fill="#94a3b8" font-size="7">Indexed in BM25 + SPLADE</text>
-    <text x="842" y="295" text-anchor="middle" fill="#64748b" font-size="7">Staleness: refresh_due_at tracking</text>
+    <text x="842" y="476" text-anchor="middle" fill="#a855f7" font-size="9" font-weight="500">L4 ABSTRACT nodes</text>
+    <text x="842" y="491" text-anchor="middle" fill="#94a3b8" font-size="7">Dual: Memory + MemoryNode</text>
   </g>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <!-- BOTTOM: Narrative section                                          -->
+  <!-- ROW 4: Background Indexing (parallel)                              -->
   <!-- ═══════════════════════════════════════════════════════════════════ -->
 
-  <line x1="20" y1="510" x2="940" y2="510" stroke="#334155" stroke-width="0.5"/>
+  <!-- BM25 + SPLADE indexing note -->
+  <g filter="url(#eeShadow)">
+    <rect x="20" y="480" width="706" height="55" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="373" y="502" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="600">Background Indexing (async, 3 workers)</text>
+    <text x="373" y="520" text-anchor="middle" fill="#94a3b8" font-size="9">Tantivy BM25 + SPLADE v3 (110M) + GLiNER NER (209M) run in parallel. Store returns in ~2ms, indexing completes async.</text>
+    <text x="373" y="530" text-anchor="middle" fill="#64748b" font-size="7">Both ATOMIC and NAVIGABLE paths feed into background indexing for BM25/SPLADE/entity extraction.</text>
+  </g>
+
+  <!-- Bottom separator -->
+  <line x1="20" y1="545" x2="940" y2="545" stroke="#334155" stroke-width="0.5"/>
+
+  <!-- Pipeline flow labels at bottom -->
+  <text x="480" y="565" text-anchor="middle" fill="#64748b" font-size="9">store_memory() path: Dedup → Classify → [ATOMIC: Admission → Persist | NAVIGABLE: Document Profile] → Background Index → Entity Link → Episode</text>
+  <text x="480" y="580" text-anchor="middle" fill="#64748b" font-size="9">publish_document() path: Dedup → Classify (forced NAVIGABLE via source_format) → Document Profile → Background Index → Entity Link → Episode</text>
+
+  <!-- Feature flag note -->
+  <text x="480" y="602" text-anchor="middle" fill="#475569" font-size="8">All gates feature-flagged. Content classification: NCMS_CONTENT_CLASSIFICATION_ENABLED. Admission: NCMS_ADMISSION_ENABLED.</text>
+  <text x="480" y="616" text-anchor="middle" fill="#475569" font-size="8">Reconciliation: NCMS_RECONCILIATION_ENABLED. Episodes: NCMS_EPISODES_ENABLED. Contradiction: NCMS_CONTRADICTION_DETECTION_ENABLED.</text>
+
 </svg>

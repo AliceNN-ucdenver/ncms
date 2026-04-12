@@ -694,7 +694,8 @@ class DesignAgent:
                 from_agent=self.from_agent,
                 doc_type="design",
                 parent_doc_id=prev_doc_id,
-                format="markdown",
+                source_format="markdown",
+                domains=["implementation", "architecture", "design"],
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id
@@ -979,7 +980,8 @@ class DesignAgent:
                 title=f"{clean_topic} — Design Review Report",
                 from_agent=self.from_agent,
                 doc_type="review",
-                format="markdown",
+                source_format="markdown",
+                domains=["implementation", "architecture", "design"],
             )
             review_doc_id = review_result.get("document_id")
             logger.info("[design_agent] Review report published: %s (type=review)", review_doc_id)
@@ -1095,7 +1097,8 @@ class DesignAgent:
                     title=f"{clean_topic} — OpenAPI Contract",
                     from_agent=self.from_agent,
                     doc_type="contract",
-                    format="yaml",
+                    source_format="yaml",
+                    domains=["implementation", "architecture", "design"],
                 )
                 contract_doc_id = contract_result.get("document_id")
                 logger.info("[design_agent] Contract published: %s (type=contract)", contract_doc_id)

@@ -495,7 +495,8 @@ class ResearchAgent:
                 title=f"{clean_topic} — Market Research Report",
                 from_agent=self.from_agent,
                 doc_type="research",
-                format="markdown",
+                source_format="markdown",
+                domains=["research", "product"],
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id

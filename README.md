@@ -109,12 +109,14 @@ combined(m)   = bm25 * w_bm25 + splade * w_splade + activation * w_actr + graph 
 Entities are automatically extracted at store-time and search-time, feeding the knowledge graph for spreading activation and graph expansion:
 
 <p align="center">
-  <img src="docs/assets/entity-extraction.svg" alt="Entity Extraction Pipeline" width="100%">
+  <img src="docs/assets/entity-extraction.svg" alt="Memory Ingestion Pipeline" width="100%">
 </p>
+
+**Content Classification** &mdash; Incoming content passes through a dedup gate (SHA-256) then a two-class classifier. **NAVIGABLE** documents (ADRs, PRDs, YAML configs with headings/structure) get section-aware ingestion: one vocabulary-dense profile memory in the memory store, full document + sections in the document store. **ATOMIC** fragments (facts, observations, announcements) proceed through the standard admission pipeline.
 
 **GLiNER NER** &mdash; Zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts entities across any domain with per-domain label customization via `ncms topics` CLI.
 
-**Admission Scoring** &mdash; An 8-feature heuristic gate (novelty, utility, reliability, temporal salience, persistence, redundancy, episode affinity, state change signal) routes incoming memories to the right level of the hierarchy: discard, ephemeral cache, atomic fact, entity state update, or episode fragment. Not everything deserves to be remembered &mdash; like in the Matrix, you want to download kung fu, not every email you've ever read.
+**Admission Scoring** &mdash; A 4-feature heuristic gate (utility, persistence, temporal salience, state change signal) routes incoming atomic memories through a 3-way quality gate: discard, ephemeral cache, or persist. Memories with `importance >= 8.0` bypass admission entirely (agent-forced content). Content-hash dedup handles exact duplicates at the store boundary before admission runs.
 
 **State Reconciliation** &mdash; When a new entity state arrives ("Redis upgraded to v7.4"), NCMS classifies its relationship to existing states (supports, refines, supersedes, conflicts) and applies bitemporal truth maintenance. Superseded states get `is_current=False` with validity closure. Stale knowledge is automatically penalized in retrieval &mdash; you always get the current truth first.
 
@@ -204,6 +206,8 @@ uv run ncms demo                    # See it in action
 uv run ncms serve                   # Start MCP server
 uv run ncms dashboard               # Real-time dashboard
 uv run ncms load file.md --domains arch  # Matrix-style knowledge download
+uv run ncms lint                    # Diagnose memory store health
+uv run ncms export --output-dir wiki  # Export as linked markdown wiki
 ```
 
 **[Quickstart Guide](docs/quickstart.md)** &mdash; MCP server setup, Claude Code hooks, NeMo agent integration, configuration reference, and local LLM inference.
@@ -263,25 +267,40 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 - [x] Dream cycles: rehearsal, PMI association learning, importance drift (Phase 8)
 - [x] ACT-R cognitive scoring with dream-learned association weights
 
+**Content-Aware Ingestion & Document Model**
+- [x] Two-class content gate: ATOMIC fragments vs NAVIGABLE documents
+- [x] Document Profile model (one profile memory + sections in document store)
+- [x] Content-hash deduplication (SHA-256) at store boundary
+- [x] Content size gating with importance-based exemptions
+- [x] Entity quality filtering (rejects junk: numeric %, hex IDs, count patterns)
+
+**Retrieval Enhancements**
+- [x] Level-first retrieval with intent-driven traversal strategies
+- [x] Synthesis pipeline with 5 modes (summary, detail, timeline, comparison, evidence)
+- [x] Emergent topic map from L4 abstract clustering
+- [x] Temporal query parsing with proximity boost
+
 **Tools & Interfaces**
-- [x] 18 MCP tools (+1 optional consolidation) via FastMCP
-- [x] Claude Code hooks (`ncms-commit-hook`, `ncms-context-loader`)
-- [x] GitHub Copilot hooks (same binaries, Copilot event support)
-- [x] HTTP REST API with bearer token auth (22 endpoints)
+- [x] 25 MCP tools via FastMCP
+- [x] HTTP REST API with bearer token auth
 - [x] A2A JSON-RPC 2.0 bridge (agent discovery + task routing)
-- [x] CLI: `ncms serve|demo|dashboard|info|load|watch|reindex|topics|state|episodes`
+- [x] CLI: `ncms serve|demo|dashboard|info|load|lint|reindex|export|maintenance|watch|topics|state|episodes|topic-map`
 - [x] Observability dashboard (SSE + D3 graph + entity/episode/state views)
 
 **Ingestion & Monitoring**
 - [x] Filesystem watcher with auto-domain classification (`ncms watch`)
 - [x] Matrix-style knowledge loader (MD, JSON, YAML, CSV, HTML, DOCX, PPTX, PDF, XLSX)
-- [x] SPLADE reindex utility (`ncms reindex`)
+- [x] Index rebuild utility (`ncms reindex` — BM25, SPLADE, entities, graph)
+- [x] Read-only diagnostics (`ncms lint` — orphans, dupes, junk entities, dangling refs)
+- [x] Wiki export (`ncms export` — linked markdown for human audit or Obsidian)
+- [x] Background maintenance scheduler (consolidation, dream, episode closure, decay)
 - [x] OpenTelemetry tracing integration (`pip install ncms[otel]`)
 - [x] Prometheus metrics endpoint (`/metrics`)
 
 **Deployment & Integration**
 - [x] NemoClaw integration (MCP config, OpenClaw skill, sandbox blueprint)
 - [x] NeMo Agent Toolkit `MemoryEditor` adapter (`ncms.integrations.nat_memory`)
+- [x] Bus heartbeat + offline detection with auto-snapshot
 - [x] Helm chart for Kubernetes (`deployment/helm/`)
 - [x] All-in-one Docker image with pre-baked models
 - [x] docker-compose multi-agent hub (3 agents + shared NCMS)
@@ -290,6 +309,8 @@ The Nemotron 3 Nano (30B total, 3B active MoE) fits entirely in the Spark's 128G
 - [x] SciFact ablation: nDCG@10=0.7206, exceeds ColBERTv2 (+4.0%) and SPLADE++ (+1.5%)
 - [x] SWE-bench Django: Recall AR 0.2032, +15.5% over search; beats Mem0 and Letta on 3/4 metrics
 - [x] Dream cycle benchmark (SciFact, NFCorpus, ArguAna)
+- [x] LongMemEval: Recall@5=0.4680 (500 questions, 6 categories — conversational memory benchmark)
+- [x] MemoryAgentBench harness (AR, TTL, LRU, selective forgetting)
 
 ## Roadmap (Post-v1)
 

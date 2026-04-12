@@ -355,8 +355,9 @@ class ArcheologistAgent:
                 title=title,
                 from_agent=self.from_agent,
                 doc_type="research",
-                format="markdown",
+                source_format="markdown",
                 metadata=doc_metadata,
+                domains=["archaeology", "research", "product"],
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id

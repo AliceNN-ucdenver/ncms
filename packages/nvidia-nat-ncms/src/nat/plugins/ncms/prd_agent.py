@@ -477,7 +477,8 @@ class PRDAgent:
                 title=title,
                 from_agent=self.from_agent,
                 doc_type="prd",
-                format="markdown",
+                source_format="markdown",
+                domains=["product", "requirements"],
             )
             doc_id = result.get("document_id", "unknown")
             state["document_id"] = doc_id
@@ -525,7 +526,8 @@ class PRDAgent:
                     title=f"{clean_topic} — Requirements Manifest",
                     from_agent=self.from_agent,
                     doc_type="manifest",
-                    format="markdown",
+                    source_format="markdown",
+                    domains=["product", "requirements"],
                 )
                 logger.info("[prd_agent] Requirements manifest published")
             except Exception as e:

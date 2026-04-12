@@ -157,6 +157,20 @@ retrieval_probability(m) = 1 / (1 + exp(-activation(m) / tau))
 
 This scoring function naturally implements human-like memory dynamics: frequently and recently accessed memories have higher base-level activation, contextually relevant memories receive spreading activation from the current query, and the noise parameter introduces stochastic variability that prevents the system from always returning the same memories for similar queries.
 
+### Implementation Status (2026-04-12)
+
+The retrieval pipeline as implemented differs from the original design in several ways:
+
+- **Tier 1** is fully implemented: BM25 (Tantivy) + SPLADE v3 (sentence-transformers SparseEncoder, naver/splade-v3, 110M params) + RRF fusion. SPLADE uses asymmetric encoding (`encode_document()` at ingest, `encode_query()` at search) with MPS/CUDA auto-detection.
+- **Tier 2** is fully implemented: NetworkX knowledge graph with GLiNER entity extraction (urchade/gliner_medium-v2.1, 209M params). Graph spreading activation uses BFS traversal with per-hop decay, PMI-weighted co-occurrence edges, and IDF-weighted entity matching. Co-occurrence edges persist to SQLite `relationships` table.
+- **Tier 3** was redesigned: LLM-as-Judge (Section 4 above) was **not implemented**. Instead, a 22M-parameter cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`, not an LLM) provides Tier 3 reranking. It runs selectively based on classified intent — enabled for fact_lookup, pattern_lookup, strategic_reflection; disabled for temporal/state queries where it destroys ordering. No LLM is used at query time.
+- **Scoring** is fully implemented: ACT-R with Jaccard-normalized spreading activation, per-query min-max normalization of all signals, and reconciliation penalties on the combined score. ACT-R weight defaults to 0.0 (activates after dream cycles build differential access patterns).
+- **Additional signals** added post-design: intent classification (7 classes via BM25 exemplar index), hierarchy bonus, temporal scoring, domain-scoped filtering.
+- **Structured recall** wraps the full search pipeline with entity state snapshots, episode context, causal chains, and document section expansion.
+- **Content-aware ingestion**: two-class gate (ATOMIC vs NAVIGABLE) routes content. NAVIGABLE documents produce a single document profile memory + sections in the document store. Content-hash dedup at the store boundary.
+
+See `CLAUDE.md` Key Design Decisions #1-26 and `docs/ncms-resilience-update.md` for full implementation details.
+
 ---
 
 ## 5. Embedded Knowledge Bus
@@ -565,6 +579,17 @@ Unlike Google's fixed 30-minute consolidation timer, NCMS triggers consolidation
 ### Decay and Pruning
 
 Memories with activation below a configurable threshold (default: -2.0) are candidates for pruning. Before deletion, the decay engine checks whether the memory has any exclusive knowledge (facts not captured elsewhere in the graph). If so, the memory's key facts are extracted and merged into a more general semantic node before the original episodic memory is pruned. This ensures no knowledge is lost, only the verbose episodic wrapper.
+
+### Implementation Status (2026-04-12)
+
+Consolidation is fully implemented with three batch passes:
+- **Episode summaries (5A)**: Synthesize closed episodes into searchable narratives via LLM. Feature-flagged: `NCMS_EPISODE_CONSOLIDATION_ENABLED`.
+- **State trajectories (5B)**: Generate temporal progression narratives for entities with ≥N state transitions. Feature-flagged: `NCMS_TRAJECTORY_CONSOLIDATION_ENABLED`.
+- **Recurring patterns (5C)**: Cluster episode summaries by entity Jaccard overlap, promote stable clusters to `strategic_insight`. Feature-flagged: `NCMS_PATTERN_CONSOLIDATION_ENABLED`.
+
+Dream cycles (Phase 8) add three non-LLM passes: rehearsal (synthetic access injection), PMI association learning from search logs, and importance drift. Feature-flagged: `NCMS_DREAM_CYCLE_ENABLED`.
+
+A maintenance scheduler (`application/maintenance_scheduler.py`) runs consolidation, dream cycles, episode closure, and decay passes on configurable background intervals. CLI: `ncms maintenance status|run`. Feature-flagged: `NCMS_MAINTENANCE_ENABLED`.
 
 ---
 
@@ -1169,6 +1194,27 @@ On startup, NCMS rebuilds all derived structures from the durable SQLite store:
 | Start MCP server + Bus | < 100ms | Async server startup |
 | **TOTAL (clean start)** | **3-8s** | **Normal startup** |
 | **TOTAL (crash recovery)** | **5-40s** | **Includes delta re-indexing** |
+
+### Implementation Status (2026-04-12)
+
+The storage schema has grown from the 7-table design above to 27 tables (schema version 9, single-pass creation). Key additions since the original design:
+
+| Table | Purpose |
+|-------|---------|
+| `memory_nodes` | HTMG typed nodes (atomic, entity_state, episode, abstract) + bitemporal fields |
+| `graph_edges` | Typed directed edges in the HTMG |
+| `ephemeral_cache` | Short-lived entries below admission threshold |
+| `search_log` | Query → result associations for PMI computation (dream cycles) |
+| `association_strengths` | Learned entity co-occurrence strengths (PMI-based) |
+| `documents` | Full document content + sections (parent_doc_id links) |
+| `document_links` | Typed links between documents (derived_from, supersedes) |
+| `dashboard_events` | SSE event stream persistence for observability |
+| `projects` | NemoClaw project tracking |
+| + 10 more | Pipeline events, review scores, approvals, guardrails, grounding, LLM calls, agent configs, bus conversations, pending approvals, users |
+
+The `memories` table gained a `content_hash TEXT` column for dedup. Rehydration now also loads co-occurrence edges from the `relationships` table and association strengths from `association_strengths` into the NetworkX graph on startup.
+
+Co-occurrence edges are persisted during `store_memory()` (not just built in-memory), so the graph survives container restarts. The Document Store (`documents` table) stores full document content and sections separately from the memory store, with the Document Profile model providing a single vocabulary-dense profile memory for BM25/SPLADE indexing.
 
 ### Scaled Mode: Persistent Graph
 
