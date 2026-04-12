@@ -265,25 +265,36 @@ class EventLog:
         self,
         agent_id: str,
         limit: int = 25,
-        exclude_types: tuple[str, ...] = (
-            "agent.status", "agent.heartbeat_timeout", "pipeline.node",
+        exclude_prefixes: tuple[str, ...] = (
+            "agent.status", "agent.heartbeat_timeout",
+            "pipeline.",   # all pipeline.* events are internal noise
+            "admission.",  # admission scoring is internal
         ),
     ) -> list[dict[str, Any]]:
         """Return recent events for a specific agent from the persistent store.
 
         Used by the dashboard to bootstrap agent activity feeds on page load.
         Events are returned newest-first so the client can display directly.
+        Filters by exact match and prefix match (e.g. 'pipeline.' excludes
+        pipeline.node, pipeline.index.complete, etc.).
         """
         if not self._db:
             return []
-        placeholders = ",".join("?" for _ in exclude_types)
+        # Build WHERE clause: agent_id match + exclude prefixes via NOT LIKE
+        like_clauses = " AND ".join(
+            "type NOT LIKE ?" for _ in exclude_prefixes
+        )
+        like_params = tuple(
+            f"{p}%" if p.endswith(".") else p
+            for p in exclude_prefixes
+        )
         cursor = await self._db.execute(
             f"SELECT seq, id, timestamp, type, agent_id, data"
             f" FROM dashboard_events"
             f" WHERE agent_id = ?"
-            f"   AND type NOT IN ({placeholders})"
+            f"   AND {like_clauses}"
             f" ORDER BY seq DESC LIMIT ?",
-            (agent_id, *exclude_types, limit),
+            (agent_id, *like_params, limit),
         )
         rows = await cursor.fetchall()
         results = []

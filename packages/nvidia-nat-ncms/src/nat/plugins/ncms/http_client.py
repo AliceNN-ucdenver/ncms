@@ -201,10 +201,13 @@ class NCMSHttpClient:
         plan_id: str | None = None,
         doc_type: str | None = None,
         parent_doc_id: str | None = None,
-        format: str = "markdown",
+        source_format: str = "markdown",
+        domains: list[str] | None = None,
         metadata: dict | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"title": title, "content": content, "format": format}
+        body: dict[str, Any] = {
+            "title": title, "content": content, "source_format": source_format,
+        }
         if from_agent:
             body["from_agent"] = from_agent
         if plan_id:
@@ -213,6 +216,8 @@ class NCMSHttpClient:
             body["doc_type"] = doc_type
         if parent_doc_id:
             body["parent_doc_id"] = parent_doc_id
+        if domains:
+            body["domains"] = domains
         if metadata:
             body["metadata"] = metadata
         resp = await self._client.post("/api/v1/documents", json=body)

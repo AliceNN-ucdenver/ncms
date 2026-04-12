@@ -1,0 +1,99 @@
+{
+  "overall": {
+    "Recall@5": 0.0,
+    "F1": 0.09757156292057301,
+    "Contains": 0.0,
+    "num_questions": 401.0,
+    "num_conversations": 10.0,
+    "Recall@5_cognitive/causal": 0.0,
+    "num_cognitive/causal": 101.0,
+    "Recall@5_cognitive/goal": 0.0,
+    "num_cognitive/goal": 100.0,
+    "Recall@5_cognitive/state": 0.0,
+    "num_cognitive/state": 100.0,
+    "Recall@5_cognitive/value": 0.0,
+    "num_cognitive/value": 100.0,
+    "EM": 0.0,
+    "F1_token": 0.09757156292057301
+  },
+  "per_question_type": {
+    "cognitive/causal": {
+      "Recall@5": 0.0,
+      "num_questions": 101.0
+    },
+    "cognitive/goal": {
+      "Recall@5": 0.0,
+      "num_questions": 100.0
+    },
+    "cognitive/state": {
+      "Recall@5": 0.0,
+      "num_questions": 100.0
+    },
+    "cognitive/value": {
+      "Recall@5": 0.0,
+      "num_questions": 100.0
+    }
+  },
+  "per_conversation": {
+    "conv_0": {
+      "Recall@5": 0.0,
+      "F1": 0.10300906164394241,
+      "Contains": 0.0,
+      "num_questions": 41.0
+    },
+    "conv_1": {
+      "Recall@5": 0.0,
+      "F1": 0.11618095236891815,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_2": {
+      "Recall@5": 0.0,
+      "F1": 0.09793225707775492,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_3": {
+      "Recall@5": 0.0,
+      "F1": 0.10096047418251006,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_4": {
+      "Recall@5": 0.0,
+      "F1": 0.09044665577497146,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_5": {
+      "Recall@5": 0.0,
+      "F1": 0.08400572450671752,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_6": {
+      "Recall@5": 0.0,
+      "F1": 0.08454425612447058,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_7": {
+      "Recall@5": 0.0,
+      "F1": 0.08310221784126814,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_8": {
+      "Recall@5": 0.0,
+      "F1": 0.1010115678480589,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    },
+    "conv_9": {
+      "Recall@5": 0.0,
+      "F1": 0.11438652436903367,
+      "Contains": 0.0,
+      "num_questions": 40.0
+    }
+  }
+}

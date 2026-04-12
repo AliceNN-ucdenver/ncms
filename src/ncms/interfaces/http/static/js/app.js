@@ -292,7 +292,6 @@ function replayToPosition(index) {
   _replaying = false;
 
   renderAgents();
-  updateChatTargets();
   for (const agentId of Object.keys(state.agents)) {
     renderAgentActivity(agentId);
   }
@@ -363,8 +362,13 @@ function returnToLive() {
 async function bootstrapAgents() {
   try {
     const resp = await fetch('/api/agents');
-    if (!resp.ok) return;
+    if (!resp.ok) {
+      console.warn('[bootstrap] /api/agents returned', resp.status);
+      return;
+    }
     const agents = await resp.json();
+    console.log('[bootstrap] %d agents from hub', agents.length);
+
     for (const agent of agents) {
       state.agents[agent.agent_id] = {
         agent_id: agent.agent_id,
@@ -373,26 +377,34 @@ async function bootstrapAgents() {
       };
     }
     renderAgents();
-    updateChatTargets();
+  } catch (e) {
+    console.error('[bootstrap] Failed to fetch agents:', e);
+    return;
+  }
 
-    // Bootstrap each agent's activity feed from persistent store
-    for (const agent of agents) {
-      if (agent.agent_id === 'human') continue;
-      try {
-        const evtResp = await fetch(
-          `/api/events?agent_id=${encodeURIComponent(agent.agent_id)}&limit=${MAX_ACTIVITIES}`
-        );
-        if (!evtResp.ok) continue;
-        const events = await evtResp.json();
-        // Events arrive newest-first; reverse so oldest is processed first
-        // (addAgentActivity unshifts, so newest ends up at front)
-        for (const evt of events.reverse()) {
-          addAgentActivity(agent.agent_id, evt);
-        }
-        renderAgentActivity(agent.agent_id);
-      } catch (_) { /* individual agent bootstrap failure is non-fatal */ }
+  // Bootstrap each agent's activity feed from persistent store
+  const agentIds = Object.keys(state.agents).filter(id => id !== 'human');
+  for (const agentId of agentIds) {
+    try {
+      const evtResp = await fetch(
+        `/api/events?agent_id=${encodeURIComponent(agentId)}&limit=${MAX_ACTIVITIES}`
+      );
+      if (!evtResp.ok) {
+        console.warn('[bootstrap] %s events returned %d', agentId, evtResp.status);
+        continue;
+      }
+      const events = await evtResp.json();
+      // Events arrive newest-first; reverse so oldest is processed first
+      // (addAgentActivity unshifts, so newest ends up at front)
+      for (const evt of events.reverse()) {
+        addAgentActivity(agentId, evt);
+      }
+      renderAgentActivity(agentId);
+      console.log('[bootstrap] %s: loaded %d events', agentId, events.length);
+    } catch (err) {
+      console.error('[bootstrap] %s activity fetch failed:', agentId, err);
     }
-  } catch (e) { /* ignore */ }
+  }
 }
 
 // Register the human agent with the hub for approval routing

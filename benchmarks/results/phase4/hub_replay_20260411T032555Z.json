@@ -1,0 +1,120 @@
+{
+  "total_memories": 67,
+  "ingested_count": 67,
+  "duplicate_count": 18,
+  "total_entities": 273,
+  "junk_entity_count": 0,
+  "junk_entity_rate": 0.0,
+  "junk_entity_samples": [],
+  "ingest_latency_p50": 0.78,
+  "ingest_latency_p95": 20.14,
+  "ingest_latency_p99": 60.01,
+  "search_latency_p50": 68.94,
+  "queries": {
+    "fact_lookup": {
+      "query": "What database does the IMDB Lite app use?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "e743e9e7-7008-4938-a953-af3ad6caa960",
+          "score": 0.9,
+          "content_preview": "{\n  \"$schema\": \"https://calm.finos.org/release/1.2/meta/core.json\",\n  \"nodes\": [\n    {\n      \"unique-id\": \"movie-fan\",\n      \"node-type\": \"actor\",\n      \"name\": \"Movie Fan\",\n      \"description\": \"End "
+        },
+        {
+          "memory_id": "1526efb9-56bb-4421-a032-108961a3e36b",
+          "score": 0.7497,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "8a4514c5-43e2-4d5e-8beb-4aec8eb8776e",
+          "score": 0.7485,
+          "content_preview": "# ADR-004: mongodb-memory-server for Unit Testing\n\n## Status\n\nAccepted\n\n## Date\n\n2026-02-15\n\n## Deciders\n\nIMDB Lite Engineering Lead, QA Lead\n\n## Context\n\nThe IMDB Lite API uses MongoDB as its primary"
+        }
+      ]
+    },
+    "state_lookup": {
+      "query": "What is the current status of ADR-003?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "1526efb9-56bb-4421-a032-108961a3e36b",
+          "score": 1.0758,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "8a4514c5-43e2-4d5e-8beb-4aec8eb8776e",
+          "score": 0.9197,
+          "content_preview": "# ADR-004: mongodb-memory-server for Unit Testing\n\n## Status\n\nAccepted\n\n## Date\n\n2026-02-15\n\n## Deciders\n\nIMDB Lite Engineering Lead, QA Lead\n\n## Context\n\nThe IMDB Lite API uses MongoDB as its primary"
+        },
+        {
+          "memory_id": "acd587b3-8bbc-4151-a596-9c13b6dfb6e6",
+          "score": 0.8466,
+          "content_preview": "assistant: # Create implementation design for: Authentication patterns for identity services (prd_id: 9dfee0413326) (research_id: acaaba712dfa) (project_id: PRJ-45050f76) \u2014 Implementation Design  \n\n--"
+        }
+      ]
+    },
+    "temporal": {
+      "query": "What was decided after the security review?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "1526efb9-56bb-4421-a032-108961a3e36b",
+          "score": 0.8019,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "12e67a93-6388-481b-90d8-fdbbbb631490",
+          "score": 0.7526,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "acd587b3-8bbc-4151-a596-9c13b6dfb6e6",
+          "score": 0.6402,
+          "content_preview": "assistant: # Create implementation design for: Authentication patterns for identity services (prd_id: 9dfee0413326) (research_id: acaaba712dfa) (project_id: PRJ-45050f76) \u2014 Implementation Design  \n\n--"
+        }
+      ]
+    },
+    "pattern": {
+      "query": "What patterns emerged in the design review process?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "acd587b3-8bbc-4151-a596-9c13b6dfb6e6",
+          "score": 0.8278,
+          "content_preview": "assistant: # Create implementation design for: Authentication patterns for identity services (prd_id: 9dfee0413326) (research_id: acaaba712dfa) (project_id: PRJ-45050f76) \u2014 Implementation Design  \n\n--"
+        },
+        {
+          "memory_id": "12e67a93-6388-481b-90d8-fdbbbb631490",
+          "score": 0.7728,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "db35b7c6-76f9-4d0e-b7ca-0a25c8e50884",
+          "score": 0.6365,
+          "content_preview": "assistant: \n# Research Research authentication patterns for identity services for Market research document suitable for a product owner to develop a PRD from (project_id: PRJ-45050f76) \u2014 Market Resear"
+        }
+      ]
+    },
+    "cross_agent": {
+      "query": "What did the security agent flag about authentication?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "db35b7c6-76f9-4d0e-b7ca-0a25c8e50884",
+          "score": 0.8051,
+          "content_preview": "assistant: \n# Research Research authentication patterns for identity services for Market research document suitable for a product owner to develop a PRD from (project_id: PRJ-45050f76) \u2014 Market Resear"
+        },
+        {
+          "memory_id": "12e67a93-6388-481b-90d8-fdbbbb631490",
+          "score": 0.7119,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "ff2a9234-958e-4b5d-914d-2130cd5e90e9",
+          "score": 0.7043,
+          "content_preview": "# Security Compliance Checklist\n\nchecklist:\n  authentication:\n    - item: \"Passwords hashed with bcrypt (cost >= 12)\"\n      status: not_started\n    - item: \"Session tokens use secure random generation"
+        }
+      ]
+    }
+  }
+}

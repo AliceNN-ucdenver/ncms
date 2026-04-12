@@ -1,0 +1,24 @@
+{
+  "overall": {
+    "Recall@5": 0.468,
+    "Contains": 0.468,
+    "F1": 0.01303431316718544,
+    "num_questions": 500.0,
+    "Recall@5_knowledge-update": 0.7435897435897436,
+    "num_knowledge-update": 78.0,
+    "Recall@5_multi-session": 0.3308270676691729,
+    "num_multi-session": 133.0,
+    "Recall@5_single-session-assistant": 0.6428571428571429,
+    "num_single-session-assistant": 56.0,
+    "Recall@5_single-session-preference": 0.0,
+    "num_single-session-preference": 30.0,
+    "Recall@5_single-session-user": 0.8428571428571429,
+    "num_single-session-user": 70.0,
+    "Recall@5_temporal-reasoning": 0.2781954887218045,
+    "num_temporal-reasoning": 133.0
+  },
+  "questions_count": 500,
+  "total_sessions": 948,
+  "total_memories": 10960,
+  "elapsed_seconds": 8412.5
+}

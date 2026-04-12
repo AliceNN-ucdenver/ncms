@@ -1,0 +1,120 @@
+{
+  "total_memories": 67,
+  "ingested_count": 64,
+  "duplicate_count": 18,
+  "total_entities": 247,
+  "junk_entity_count": 0,
+  "junk_entity_rate": 0.0,
+  "junk_entity_samples": [],
+  "ingest_latency_p50": 265.58,
+  "ingest_latency_p95": 633.9,
+  "ingest_latency_p99": 3973.59,
+  "search_latency_p50": 53.81,
+  "queries": {
+    "fact_lookup": {
+      "query": "What database does the IMDB Lite app use?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "83fa80fd-b4ee-4169-a193-9f22d4827448",
+          "score": 0.9,
+          "content_preview": "{\n  \"$schema\": \"https://calm.finos.org/release/1.2/meta/core.json\",\n  \"nodes\": [\n    {\n      \"unique-id\": \"movie-fan\",\n      \"node-type\": \"actor\",\n      \"name\": \"Movie Fan\",\n      \"description\": \"End "
+        },
+        {
+          "memory_id": "cb3109df-51bc-436b-a370-073184147697",
+          "score": 0.7678,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "2b03997e-c2d1-4c54-8b3e-751e8a7e233d",
+          "score": 0.7634,
+          "content_preview": "# ADR-002: MongoDB Document Store for Movie Data\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Data Architect\n\n## Context\n\nThe IMDB Lite application needs a data "
+        }
+      ]
+    },
+    "state_lookup": {
+      "query": "What is the current status of ADR-003?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "cb3109df-51bc-436b-a370-073184147697",
+          "score": 0.754,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "e9381fc4-c9e4-459e-9bb9-9b548c863646",
+          "score": 0.6191,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "885c601a-ae30-42ea-aff2-06a44102ef1b",
+          "score": 0.5981,
+          "content_preview": "Document 'Authentication patterns for identity services \u2014 Design Review Report' by designer: <!-- project_id: PRJ-45050f76 -->\n# Design Review Report \u2014 Authentication patterns for identity services\n\n*"
+        }
+      ]
+    },
+    "temporal": {
+      "query": "What was decided after the security review?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "e9381fc4-c9e4-459e-9bb9-9b548c863646",
+          "score": 0.7689,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "cb3109df-51bc-436b-a370-073184147697",
+          "score": 0.7242,
+          "content_preview": "# ADR-003: JWT with Inline RBAC for Authentication and Authorization\n\n## Status\n\naccepted\n\n## Date\n\n2026-02-23\n\n## Deciders\n\nIMDB Lite Engineering Lead, Security Architect\n\n## Context\n\nThe application"
+        },
+        {
+          "memory_id": "885c601a-ae30-42ea-aff2-06a44102ef1b",
+          "score": 0.6028,
+          "content_preview": "Document 'Authentication patterns for identity services \u2014 Design Review Report' by designer: <!-- project_id: PRJ-45050f76 -->\n# Design Review Report \u2014 Authentication patterns for identity services\n\n*"
+        }
+      ]
+    },
+    "pattern": {
+      "query": "What patterns emerged in the design review process?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "e9381fc4-c9e4-459e-9bb9-9b548c863646",
+          "score": 0.7843,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "885c601a-ae30-42ea-aff2-06a44102ef1b",
+          "score": 0.6654,
+          "content_preview": "Document 'Authentication patterns for identity services \u2014 Design Review Report' by designer: <!-- project_id: PRJ-45050f76 -->\n# Design Review Report \u2014 Authentication patterns for identity services\n\n*"
+        },
+        {
+          "memory_id": "2eca7415-d454-4bdd-9bdc-fab9b995fc8b",
+          "score": 0.6215,
+          "content_preview": "Designer, Create implementation design, authentication patterns, identity services, Announcement, Output guardrails, 1 item(s), human review, api, auth, JWT, Express, Passport strategy, movie, Mongoos"
+        }
+      ]
+    },
+    "cross_agent": {
+      "query": "What did the security agent flag about authentication?",
+      "result_count": 10,
+      "top_3": [
+        {
+          "memory_id": "29a4ccc3-3693-4296-95d0-9d4b940d2dae",
+          "score": 0.8115,
+          "content_preview": "# Security Compliance Checklist\n\nchecklist:\n  authentication:\n    - item: \"Passwords hashed with bcrypt (cost >= 12)\"\n      status: not_started\n    - item: \"Session tokens use secure random generation"
+        },
+        {
+          "memory_id": "e9381fc4-c9e4-459e-9bb9-9b548c863646",
+          "score": 0.7569,
+          "content_preview": "# Product Research Methodology\n\n## Research Process\n\n1. **Define the scope:** What specific aspect of the product needs research?\n2. **Search broadly first:** Use general queries to understand the lan"
+        },
+        {
+          "memory_id": "6821dee0-9ed8-4fbf-9f05-3c0cb405954f",
+          "score": 0.7556,
+          "content_preview": "# Security Controls\n# OWASP / NIST control mapping\n\ncontrols: []\n# Example:\n#   - id: CTL-001\n#     category: authentication\n#     owasp: A07\n#     description: \"bcrypt password hashing with cost fact"
+        }
+      ]
+    }
+  }
+}

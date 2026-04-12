@@ -200,7 +200,21 @@ def create_api_app(
         # Maintenance scheduler status (None until scheduler is wired)
         if maintenance_scheduler is not None:
             try:
-                result["maintenance"] = maintenance_scheduler.status()
+                sched_status = maintenance_scheduler.status()
+                result["maintenance"] = {
+                    "running": sched_status.running,
+                    "tasks": {
+                        name: {
+                            "last_run_at": t.last_run_at.isoformat() if t.last_run_at else None,
+                            "next_run_at": t.next_run_at.isoformat() if t.next_run_at else None,
+                            "last_duration_ms": t.last_duration_ms,
+                            "run_count": t.run_count,
+                            "error_count": t.error_count,
+                            "last_error": t.last_error,
+                        }
+                        for name, t in sched_status.tasks.items()
+                    },
+                }
             except Exception:
                 logger.debug(
                     "Failed to get maintenance scheduler status",
@@ -271,6 +285,43 @@ def create_api_app(
                 query=query, domain=domain_param, limit=limit, intent_override=intent,
             )
 
+        # Expand document profiles: fetch relevant sections from document store
+        expanded: dict[str, list[dict[str, Any]]] = {}
+        if doc_svc:
+            query_terms = set(query.lower().split())
+            for r in results:
+                structured = r.memory.structured
+                if not structured or "doc_id" not in structured:
+                    continue
+                doc_id = structured["doc_id"]
+                try:
+                    children = await doc_svc.get_children_documents(doc_id)
+                    if not children:
+                        continue
+                    scored = []
+                    for child in children:
+                        child_terms = set(child.content.lower().split())
+                        overlap = len(query_terms & child_terms)
+                        score = overlap / max(len(query_terms), 1)
+                        idx = (child.metadata or {}).get("section_index", 0)
+                        scored.append((score, idx, child))
+                    scored.sort(key=lambda x: (-x[0], x[1]))
+                    expanded[r.memory.id] = [
+                        {
+                            "section_heading": s[2].title,
+                            "section_content": s[2].content,
+                            "section_index": s[1],
+                            "relevance_score": round(s[0], 3),
+                        }
+                        for s in scored[:3]
+                    ]
+                    logger.info(
+                        "[search] Expanded document profile %s: %d sections, returning top %d",
+                        doc_id, len(children), min(len(scored), 3),
+                    )
+                except Exception as exc:
+                    logger.warning("[search] Failed to expand profile %s: %s", doc_id, exc)
+
         return JSONResponse({
             "results": [
                 {
@@ -283,6 +334,8 @@ def create_api_app(
                     "created_at": (
                         r.memory.created_at.isoformat() if r.memory.created_at else None
                     ),
+                    **({"document_sections": expanded[r.memory.id]}
+                       if r.memory.id in expanded else {}),
                 }
                 for r in results
             ],
@@ -335,6 +388,18 @@ def create_api_app(
                         "supports": r.context.causal_chain.supports,
                         "conflicts_with": r.context.causal_chain.conflicts_with,
                     },
+                    "document_sections": [
+                        {
+                            "doc_id": ds.doc_id,
+                            "doc_title": ds.doc_title,
+                            "doc_type": ds.doc_type,
+                            "section_heading": ds.section_heading,
+                            "section_content": ds.section_content,
+                            "section_index": ds.section_index,
+                            "relevance_score": ds.relevance_score,
+                        }
+                        for ds in r.context.document_sections
+                    ] if r.context.document_sections else [],
                 }
                 for r in results
             ],
@@ -1245,21 +1310,117 @@ def create_api_app(
             filepath = _documents_dir / filename
             filepath.write_text(content, encoding="utf-8")
 
-            # Create NCMS memory for document (non-blocking)
+            # Create NCMS memory for document
             try:
-                entity_names = [e["name"] for e in doc.entities[:5]]
-                summary = f"Document '{title}' by {from_agent}: {content[:300]}"
-                if entity_names:
-                    summary += f"\nKey entities: {', '.join(entity_names)}"
-                await memory_svc.store_memory(
-                    content=summary,
-                    memory_type="fact",
-                    domains=["documents"],
-                    tags=["document", doc.id] + [e["name"].lower() for e in doc.entities[:5]],
-                    importance=6.0,
-                    source_agent=from_agent,
-                    entities=doc.entities,
-                )
+                # The agent explicitly called publish_document — this IS a document.
+                # Classification only decides whether to split into sections,
+                # NOT whether it's a document.  Always create a document profile.
+                _used_section_path = False
+                if (
+                    memory_svc._config.content_classification_enabled
+                    and memory_svc._section_svc is not None
+                ):
+                    try:
+                        from ncms.domain.content_classifier import (
+                            ContentClass,
+                            classify_content,
+                            extract_sections,
+                        )
+
+                        _src_fmt = body.get("source_format")
+                        classification = classify_content(
+                            content, "document", source_format=_src_fmt,
+                        )
+                        doc_domains = body.get("domains") or []
+                        if classification.content_class == ContentClass.NAVIGABLE:
+                            sections = extract_sections(content, classification)
+                            if len(sections) >= 2:
+                                await memory_svc._section_svc.ingest_navigable(
+                                    content=content,
+                                    classification=classification,
+                                    sections=sections,
+                                    memory_type="document_profile",
+                                    importance=7.0,
+                                    tags=["document", doc.id],
+                                    structured={"source_doc_id": doc.id},
+                                    source=from_agent,
+                                    agent_id=from_agent,
+                                    domains=doc_domains,
+                                )
+                                _used_section_path = True
+                                logger.info(
+                                    "[api] Document %s: NAVIGABLE, section service "
+                                    "path (%d sections, format=%s)",
+                                    doc.id, len(sections), classification.format_hint,
+                                )
+                        if not _used_section_path:
+                            # Document is ATOMIC or has <2 sections — still a document.
+                            # Store the full content as a document_profile memory
+                            # so agents can find it.  No child sections needed.
+                            await memory_svc._section_svc._store_bypassing_classification(
+                                content=content,
+                                memory_type="document_profile",
+                                importance=max(8.0, body.get("importance", 5.0)),
+                                tags=["document", "document_profile", f"doc:{doc.id}"],
+                                structured={
+                                    "source_doc_id": doc.id,
+                                    "content_classification": {
+                                        "content_class": classification.content_class.value,
+                                        "format_hint": classification.format_hint,
+                                        "section_count": 0,
+                                    },
+                                },
+                                source=from_agent,
+                                agent_id=from_agent,
+                                domains=doc_domains,
+                            )
+                            _used_section_path = True
+                            logger.info(
+                                "[api] Document %s: ATOMIC (%s, %d chars), stored as "
+                                "unsplit document_profile",
+                                doc.id, classification.format_hint, len(content),
+                            )
+                    except Exception as cls_err:
+                        logger.warning(
+                            "[api] Document %s: classification failed, "
+                            "falling back to rich summary: %s",
+                            doc.id, cls_err,
+                        )
+
+                if not _used_section_path:
+                    # Fallback: section service not available or classification failed
+                    entity_names = [e["name"] for e in doc.entities[:10]]
+                    summary_parts = [f"Document: {title}"]
+                    if from_agent:
+                        summary_parts.append(f"Author: {from_agent}")
+                    if doc_type:
+                        summary_parts.append(f"Type: {doc_type}")
+                    if entity_names:
+                        summary_parts.append(
+                            f"Key entities: {', '.join(entity_names)}"
+                        )
+                    # Include more content than before (up to 600 chars)
+                    preview = content[:600].strip()
+                    if len(content) > 600:
+                        preview += "..."
+                    summary_parts.append(f"\n{preview}")
+                    summary = "\n".join(summary_parts)
+
+                    fallback_domains = body.get("domains") or ["documents"]
+                    await memory_svc.store_memory(
+                        content=summary,
+                        memory_type="fact",
+                        domains=fallback_domains,
+                        tags=["document", doc.id]
+                        + [e["name"].lower() for e in doc.entities[:5]],
+                        importance=6.0,
+                        source_agent=from_agent,
+                        entities=doc.entities,
+                    )
+                    logger.info(
+                        "[api] Document %s: classified as ATOMIC, using rich summary path",
+                        doc.id,
+                    )
             except Exception as e:
                 logger.warning("Failed to store document memory for %s: %s", doc.id, e)
 
@@ -1985,7 +2146,7 @@ async def run_http_server(
 
     # Create services first so we can grab the DB connection for event persistence
     event_log = EventLog(max_events=5000)
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = (
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc, scheduler = (
         await create_ncms_services(config, event_log=event_log)
     )
 
@@ -2004,11 +2165,19 @@ async def run_http_server(
     doc_svc = DocumentService(store=doc_store, memory_svc=memory_svc)
     logger.info("DocumentService initialized (Phase 2.5)")
 
+    # Wire document_service into memory_service and section_service
+    memory_svc._document_service = doc_svc
+    if memory_svc._section_svc is not None:
+        memory_svc._section_svc._document_service = doc_svc
+        logger.info("DocumentService wired into SectionService for document profile ingestion")
+
     # Wire event log into services for dashboard visibility
     if hasattr(memory_svc, "_event_log"):
         memory_svc._event_log = event_log
     if hasattr(bus_svc, "_event_log"):
         bus_svc._event_log = event_log
+    if hasattr(consolidation_svc, "_event_log"):
+        consolidation_svc._event_log = event_log
 
     # Wrap the inner bus with HttpBusTransport for remote agent support
     inner_bus = bus_svc.bus
@@ -2028,6 +2197,7 @@ async def run_http_server(
         auth_token=auth_token,
         doc_svc=doc_svc,
         extra_routes=transport.starlette_routes() if transport else None,
+        maintenance_scheduler=scheduler,
     )
 
     config_uvicorn = uvicorn.Config(

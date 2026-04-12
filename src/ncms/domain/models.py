@@ -189,6 +189,7 @@ class Memory(BaseModel):
         "document_section",
         "document_chunk",
         "document",
+        "document_profile",
     ] = "fact"
     importance: float = 5.0
     content_hash: str | None = None
@@ -509,6 +510,19 @@ class CausalChain(BaseModel):
     conflicts_with: list[str] = Field(default_factory=list)
 
 
+class DocumentSectionContext(BaseModel):
+    """Section context returned when a document profile is expanded."""
+
+    doc_id: str
+    doc_title: str
+    doc_type: str | None = None
+    from_agent: str | None = None
+    section_heading: str
+    section_content: str
+    section_index: int
+    relevance_score: float = 0.0
+
+
 class RecallContext(BaseModel):
     """Structured context enriching a single recalled memory."""
 
@@ -516,6 +530,7 @@ class RecallContext(BaseModel):
     episode: EpisodeContext | None = None
     causal_chain: CausalChain = Field(default_factory=CausalChain)
     temporal_neighbors: list[str] = Field(default_factory=list)
+    document_sections: list[DocumentSectionContext] = Field(default_factory=list)
 
 
 class RecallResult(BaseModel):

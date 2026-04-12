@@ -186,15 +186,15 @@ async def _load_knowledge_files(
                     per_file_domains.append("decisions")
 
             try:
-                await client.store_memory(
+                await client.publish_document(
                     content=content,
-                    type="fact",
+                    title=filepath.name,
+                    from_agent=agent_id,
+                    source_format=filepath.suffix,  # e.g. ".md", ".yaml", ".json"
                     domains=per_file_domains,
-                    source_agent=agent_id,
-                    importance=9.0,  # Knowledge files bypass admission discard
                 )
                 loaded += 1
-                logger.info("[knowledge] Loaded: %s", filepath.name)
+                logger.info("[knowledge] Published: %s", filepath.name)
             except Exception:
                 logger.warning("[knowledge] Failed: %s", filepath.name, exc_info=True)
 

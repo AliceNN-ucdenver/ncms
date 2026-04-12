@@ -142,6 +142,19 @@ class SQLiteDocumentStore:
         rows = await cursor.fetchall()
         return [self._row_to_document(r, cursor.description) for r in rows]
 
+    async def get_children_documents(
+        self,
+        parent_doc_id: str,
+        limit: int = 200,
+    ) -> list[Document]:
+        """Return all child documents for a given parent_doc_id."""
+        cursor = await self.db.execute(
+            "SELECT * FROM documents WHERE parent_doc_id = ? ORDER BY created_at ASC LIMIT ?",
+            (parent_doc_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_document(r, cursor.description) for r in rows]
+
     async def search_documents(
         self,
         entity: str | None = None,

@@ -99,6 +99,7 @@ async def create_ncms_services(
 
     consolidation_svc = ConsolidationService(
         store=store, index=index, graph=graph, config=config,
+        event_log=event_log,
         splade=splade,
     )
 
@@ -126,10 +127,14 @@ async def create_ncms_services(
 
     # Section service (Phase 4 content-aware ingestion)
     # Created after MemoryService because of circular dependency (duck-typed).
+    # document_service is not available in the MCP path — section_service falls
+    # back to legacy ingestion (section_index + section children in memory store).
     if config.content_classification_enabled:
         from ncms.application.section_service import SectionService
 
-        section_svc = SectionService(memory_service=memory_svc, config=config)
+        section_svc = SectionService(
+            memory_service=memory_svc, config=config, document_service=None,
+        )
         memory_svc._section_svc = section_svc
         logger.info("Content classification + section extraction enabled")
     snapshot_svc = SnapshotService(

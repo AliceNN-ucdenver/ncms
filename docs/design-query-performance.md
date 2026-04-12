@@ -845,6 +845,7 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 
 | Priority | Feature | Target Category | Questions | Expected Delta | Effort |
 |----------|---------|----------------|-----------|----------------|--------|
+| P0 | Code Quality Refactoring | all | — | enabler | **Done** |
 | P1 | Temporal Query Parsing | temporal-reasoning | 133 | +0.42 to +0.57 | 3-4 days |
 | P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days |
 | P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days |
@@ -868,6 +869,13 @@ Admission scoring achieves 65.9% accuracy on 44 labeled examples. Per-category b
 MemPalace's two-pass approach: search user turns → find sessions → search assistant responses. Valuable for multi-agent queries like "what did the architect recommend?" where the answer is in an assistant turn but the query vocabulary matches user turns better. Implementation in `memory_service.py` — optionally tag memories with `role` metadata and boost role-matching candidates.
 
 ### 9.3 Phase Plan
+
+**Phase 0: Code Quality (Complete)**
+- Refactored `search()` from F(56) to C(15) — extracted `_classify_search_intent`, `_retrieve_candidates`, `_rerank_candidates`, `_expand_candidates`, `_score_and_rank` as independent pipeline stages
+- Refactored `store_memory()` from E(31) to D(22) — extracted `_pre_admission_gates`, `_gate_admission`, `_run_inline_indexing`, `_create_memory_nodes`
+- DRY consolidation via `_store_abstract()` shared helper
+- Eliminated all F-grade methods from production code
+- Prerequisite: the search and store pipelines were too complex (F/E grade) to safely add new scoring signals and retrieval features. Each new signal (temporal boost, preference scoring, dense embeddings) adds branching to the scoring loop. Without extraction, this would push already-F methods deeper into unmaintainable territory. Now each pipeline stage is isolated and testable.
 
 **Phase A: Quick Wins (Week 1)**
 - P1: Temporal Query Parsing & Proximity Boost

@@ -46,7 +46,13 @@ services:
       NCMS_MAINTENANCE_ENABLED: "true"
       NCMS_SEARCH_FEEDBACK_ENABLED: "true"
       NCMS_PIPELINE_DEBUG: "true"
-      NCMS_DREAM_CYCLE_ENABLED: "false"
+      # Consolidation (Phase 5) — requires LLM endpoint
+      NCMS_CONSOLIDATION_KNOWLEDGE_ENABLED: "true"
+      NCMS_EPISODE_CONSOLIDATION_ENABLED: "true"
+      NCMS_TRAJECTORY_CONSOLIDATION_ENABLED: "true"
+      NCMS_PATTERN_CONSOLIDATION_ENABLED: "true"
+      # Dream cycles (Phase 8) — rehearsal + PMI associations + importance drift
+      NCMS_DREAM_CYCLE_ENABLED: "true"
       # Bulk import (larger queue for agent knowledge loading)
       NCMS_BULK_IMPORT_QUEUE_SIZE: "10000"
       # HuggingFace token for gated models (SPLADE v3)
