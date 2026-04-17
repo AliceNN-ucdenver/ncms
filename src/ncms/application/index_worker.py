@@ -455,11 +455,12 @@ class IndexWorkerPool:
     async def _do_gliner(
         self, memory: Any, domains: list[str],
     ) -> tuple[list[dict[str, str]], float]:
+        from ncms.application.label_cache import load_cached_labels
         from ncms.domain.entity_extraction import resolve_labels
         from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
 
         t = time.perf_counter()
-        cached = await self._svc._get_cached_labels(domains)
+        cached = await load_cached_labels(self._svc._store, domains)
         gliner_labels = resolve_labels(domains, cached_labels=cached)
         result = await asyncio.to_thread(
             extract_entities_gliner,

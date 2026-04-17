@@ -144,10 +144,13 @@ class DocumentService:
         # Auto-extract entities if not provided
         if entities is None and self._memory_svc is not None:
             try:
+                from ncms.application.label_cache import load_cached_labels
                 from ncms.domain.entity_extraction import resolve_labels
 
                 doc_domains = [d for d in [from_agent, "software"] if d]
-                cached = await self._memory_svc._get_cached_labels(doc_domains)
+                cached = await load_cached_labels(
+                    self._memory_svc._store, doc_domains,
+                )
                 labels = resolve_labels(doc_domains, cached_labels=cached)
 
                 import asyncio

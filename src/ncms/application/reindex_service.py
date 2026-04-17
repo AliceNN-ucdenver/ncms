@@ -174,10 +174,14 @@ class ReindexService:
         total_entities = 0
         total = len(memories)
 
+        from ncms.application.label_cache import load_cached_labels
+
         for i, memory in enumerate(memories):
             try:
                 # Resolve labels for this memory's domains
-                cached = await self._get_cached_labels(memory.domains)
+                cached = await load_cached_labels(
+                    self._store, memory.domains,
+                )
                 labels = resolve_labels(memory.domains, cached_labels=cached)
 
                 # Extract entities
@@ -308,24 +312,6 @@ class ReindexService:
         return result
 
     # ── Helpers ─────────────────────────────────────────────────────
-
-    async def _get_cached_labels(self, domains: list[str]) -> dict:
-        """Load domain-specific entity labels from consolidation_state."""
-        import json as _json
-
-        cached: dict = {}
-        for domain in domains:
-            raw = await self._store.get_consolidation_value(
-                f"entity_labels:{domain}",
-            )
-            if raw:
-                try:
-                    labels = _json.loads(raw)
-                    if isinstance(labels, list):
-                        cached[domain] = labels
-                except Exception:
-                    pass
-        return cached
 
     async def _find_or_create_entity(
         self, name: str, entity_type: str,
