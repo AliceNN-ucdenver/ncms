@@ -437,16 +437,18 @@ class TestReconcilePipeline:
         assert all(r.relation == RelationType.REFINES for r in results)
 
 
-# ── _extract_entity_state_meta ────────────────────────────────────────
+# ── extract_entity_state_meta ─────────────────────────────────────────
 
 
 class TestExtractEntityStateMeta:
-    """Test the static helper on MemoryService for extracting entity state metadata."""
+    """Test the static helper for extracting entity state metadata."""
 
     @staticmethod
     def _extract(content: str, entities: list[dict] | None = None) -> dict:
-        from ncms.application.memory_service import MemoryService
-        return MemoryService._extract_entity_state_meta(content, entities or [])
+        from ncms.application.ingestion import IngestionPipeline
+        return IngestionPipeline.extract_entity_state_meta(
+            content, entities or [],
+        )
 
     def test_colon_equals_pattern(self) -> None:
         result = self._extract("auth-service: status = deployed")

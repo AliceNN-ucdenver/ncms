@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import logging
-import re
 import time
 import uuid
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.enrichment import EnrichmentPipeline
+from ncms.application.ingestion import IngestionPipeline
 from ncms.application.retrieval import RetrievalPipeline
 from ncms.application.scoring import ScoringPipeline
 from ncms.config import NCMSConfig
@@ -133,6 +132,22 @@ class MemoryService:
             document_service=self._document_service,
         )
 
+        # Ingestion pipeline (gates, indexing, node creation)
+        self._ingestion = IngestionPipeline(
+            store=self._store,
+            index=self._index,
+            graph=self._graph,
+            event_log=self._event_log,
+            config=self._config,
+            splade=self._splade,
+            admission=self._admission,
+            reconciliation=self._reconciliation,
+            episode=self._episode,
+            section_service=self._section_svc,
+            get_cached_labels=self._get_cached_labels,
+            add_entity=self.add_entity,
+        )
+
         # Log active feature flags for diagnostics
         features = []
         if self._config.splade_enabled:
@@ -238,146 +253,6 @@ class MemoryService:
                 cached["_keep_universal"] = _json.loads(raw_ku)
         return cached
 
-    # ── Entity State Extraction (Phase 2A) ───────────────────────────────
-
-    @staticmethod
-    def _extract_entity_state_meta(
-        content: str, entities: list[dict],
-    ) -> dict:
-        """Extract entity state metadata from content and extracted entities.
-
-        Heuristic patterns (tried in order):
-        1. "EntityName: key = value" — structured assignment
-        2. "EntityName key changed/updated from X to Y" — state transition
-        3. "EntityName: key changed/updated from X to Y" — colon + transition
-        4. "EntityName key is/was/set to value" — state declaration
-        5. Fallback: first GLiNER entity as entity_id, content as value
-
-        Returns a dict suitable for MemoryNode.metadata with entity_id, state_key,
-        state_value, and optionally state_scope.
-        """
-        import re
-
-        # Pattern 1: "EntityName: key = value"
-        # e.g. "auth-service: status = deployed"
-        p_assign = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
-            re.MULTILINE,
-        )
-        m = p_assign.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(3).strip(),
-            }
-
-        # Pattern 2: "EntityName key changed/updated from X to Y"
-        # e.g. "auth-service status changed from healthy to degraded ..."
-        p_transition = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+(?:due|for|after|because)\b.*)?$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_transition.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(4).strip(),
-                "state_previous": m.group(3).strip(),
-            }
-
-        # Pattern 3: "EntityName: key changed/updated from X to Y"
-        # e.g. "rate-limiter: state changed from 100 req/min to 200 req/min ..."
-        p_colon_transition = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s+"
-            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+(?:due|for|after|because|per)\b.*)?$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_colon_transition.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(4).strip(),
-                "state_previous": m.group(3).strip(),
-            }
-
-        # Pattern 4: "EntityName key is/are/was/were/changed to/set to value"
-        # e.g. "auth-service status is deployed"
-        p_declaration = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-            r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_declaration.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(3).strip(),
-            }
-
-        # Pattern 5: Markdown "## Status\n\nvalue" (e.g. ADR documents)
-        # The heading title (# Title) provides entity context.
-        p_md_status = re.compile(
-            r"^#\s+(.+?)$.*?^##?\s*[Ss]tatus\s*$\s*^(\w[\w\s]*)$",
-            re.MULTILINE | re.DOTALL,
-        )
-        m = p_md_status.search(content)
-        if m and entities:
-            title = m.group(1).strip()
-            status_val = m.group(2).strip()
-            # Find best matching entity from GLiNER extraction
-            entity_id = entities[0]["name"]
-            title_lower = title.lower()
-            for ent in entities:
-                if ent["name"].lower() in title_lower:
-                    entity_id = ent["name"]
-                    break
-            return {
-                "entity_id": entity_id,
-                "state_key": "status",
-                "state_value": status_val,
-            }
-
-        # Pattern 6: YAML "status: value" (e.g. security checklists, config)
-        p_yaml_status = re.compile(
-            r"^\s*status\s*:\s*(\w[\w_\-]*)",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_yaml_status.search(content)
-        if m and entities:
-            return {
-                "entity_id": entities[0]["name"],
-                "state_key": "status",
-                "state_value": m.group(1).strip(),
-            }
-
-        # Fallback: use first entity as entity_id.
-        # Use the first line containing an assignment-like pattern as the
-        # state_value (not a 500-char prefix of full content).
-        if entities:
-            # Try to find the most relevant line
-            best_line = ""
-            for line in content.splitlines():
-                stripped = line.strip()
-                if stripped and any(
-                    c in stripped for c in ("=", ":", "→")
-                ):
-                    best_line = stripped[:200]
-                    break
-            if not best_line:
-                best_line = content.splitlines()[0].strip()[:200] if content else ""
-            return {
-                "entity_id": entities[0]["name"],
-                "state_key": "state",
-                "state_value": best_line,
-            }
-
-        return {}
-
     # ── Store ────────────────────────────────────────────────────────────
 
     async def store_memory(
@@ -410,10 +285,10 @@ class MemoryService:
         _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
 
         # ── Pre-admission gates: dedup, size check, classification ────────
-        gate_result = await self._pre_admission_gates(
+        gate_result = await self._ingestion.pre_admission_gates(
             content=content, memory_type=memory_type,
             importance=importance, tags=tags, structured=structured,
-            source_agent=source_agent, _emit_stage=_emit_stage,
+            source_agent=source_agent, emit_stage=_emit_stage,
             pipeline_start=pipeline_start,
         )
         if isinstance(gate_result, Memory):
@@ -424,12 +299,12 @@ class MemoryService:
         admission_route: str | None = None
         admission_features: object | None = None
         if self._admission is not None and self._config.admission_enabled:
-            result = await self._gate_admission(
+            result = await self._ingestion.gate_admission(
                 content=content, domains=domains, tags=tags,
                 source_agent=source_agent, project=project,
                 memory_type=memory_type, importance=importance,
                 structured=structured,
-                _emit_stage=_emit_stage, pipeline_start=pipeline_start,
+                emit_stage=_emit_stage, pipeline_start=pipeline_start,
             )
             if isinstance(result, Memory):
                 return result  # discard or ephemeral — early exit
@@ -490,9 +365,11 @@ class MemoryService:
             )
 
         # ── Inline indexing (fallback / async_indexing disabled) ─────────
-        all_entities, linked_entity_ids = await self._run_inline_indexing(
-            memory=memory, content=content, domains=domains,
-            entities_manual=entities, _emit_stage=_emit_stage,
+        all_entities, linked_entity_ids = (
+            await self._ingestion.run_inline_indexing(
+                memory=memory, content=content, domains=domains,
+                entities_manual=entities, emit_stage=_emit_stage,
+            )
         )
 
         # Contradiction detection — fire-and-forget async task (deferred).
@@ -501,7 +378,7 @@ class MemoryService:
         # 500-2000ms LLM round-trip.
         if self._config.contradiction_detection_enabled:
             asyncio.create_task(
-                self._deferred_contradiction_check(
+                self._ingestion.deferred_contradiction_check(
                     memory=memory,
                     all_entities=all_entities,
                     pipeline_id=pipeline_id,
@@ -542,13 +419,13 @@ class MemoryService:
         )
         if _should_create_node:
             try:
-                await self._create_memory_nodes(
+                await self._ingestion.create_memory_nodes(
                     memory=memory,
                     content=content,
                     all_entities=all_entities,
                     linked_entity_ids=linked_entity_ids,
                     admission_features=admission_features,
-                    _emit_stage=_emit_stage,
+                    emit_stage=_emit_stage,
                 )
             except Exception:
                 logger.warning(
@@ -643,670 +520,6 @@ class MemoryService:
         })
         return intent_result
 
-    async def _run_inline_indexing(
-        self,
-        memory: Memory,
-        content: str,
-        domains: list[str] | None,
-        entities_manual: list[dict] | None,
-        _emit_stage: Callable,
-    ) -> tuple[list[dict], list[str]]:
-        """Run BM25, SPLADE, GLiNER in parallel then link entities + co-occurrence edges.
-
-        Returns (all_entities, linked_entity_ids).
-        """
-        from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
-
-        async def _do_bm25() -> float:
-            t = time.perf_counter()
-            await asyncio.to_thread(self._index.index_memory, memory)
-            return (time.perf_counter() - t) * 1000
-
-        async def _do_splade() -> float:
-            if self._splade is None:
-                return 0.0
-            t = time.perf_counter()
-            try:
-                await asyncio.to_thread(self._splade.index_memory, memory)
-            except Exception:
-                logger.warning(
-                    "SPLADE indexing failed for %s, continuing", memory.id, exc_info=True,
-                )
-            return (time.perf_counter() - t) * 1000
-
-        async def _do_gliner() -> tuple[list[dict[str, str]], float]:
-            t = time.perf_counter()
-            cached = await self._get_cached_labels(domains or [])
-            gliner_labels = resolve_labels(domains or [], cached_labels=cached)
-            result = await asyncio.to_thread(
-                extract_entities_gliner, content,
-                model_name=self._config.gliner_model,
-                threshold=self._config.gliner_threshold,
-                labels=gliner_labels,
-                cache_dir=self._config.model_cache_dir,
-            )
-            return result, (time.perf_counter() - t) * 1000
-
-        logger.info("[store] Starting parallel indexing: BM25 + SPLADE + GLiNER")
-        bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
-            _do_bm25(), _do_splade(), _do_gliner(),
-        )
-        logger.info(
-            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
-            bm25_ms, splade_ms, extract_ms,
-        )
-
-        _emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
-        if self._splade is not None:
-            _emit_stage("splade_index", splade_ms, memory_id=memory.id)
-
-        # Merge manual + auto-extracted entities (dedup by name)
-        manual = list(entities_manual or [])
-        manual_names = {e["name"].lower() for e in manual}
-        all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
-        _emit_stage("entity_extraction", extract_ms, {
-            "extractor": "gliner", "auto_count": len(auto_entities),
-            "manual_count": len(manual), "total_count": len(all_entities),
-            "entity_names": [e["name"] for e in all_entities[:10]],
-        }, memory_id=memory.id)
-
-        # Link entities to memory in graph + store
-        t0 = time.perf_counter()
-        linked_entity_ids: list[str] = []
-        for e_data in all_entities:
-            entity = await self.add_entity(
-                name=e_data["name"],
-                entity_type=e_data.get("type", "concept"),
-                attributes=e_data.get("attributes", {}),
-            )
-            linked_entity_ids.append(entity.id)
-            await self._store.link_memory_entity(memory.id, entity.id)
-            self._graph.link_memory_entity(memory.id, entity.id)
-        _emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
-            "entities_linked": len(all_entities),
-        }, memory_id=memory.id)
-
-        # Co-occurrence edges: connect entities in same document for graph traversal
-        if len(linked_entity_ids) > 1:
-            self._build_cooccurrence_edges(
-                memory.id, linked_entity_ids, _emit_stage,
-            )
-
-        return all_entities, linked_entity_ids
-
-    def _build_cooccurrence_edges(
-        self,
-        memory_id: str,
-        linked_entity_ids: list[str],
-        _emit_stage: Callable,
-    ) -> None:
-        """Build co-occurrence edges between entities in the same memory."""
-        t0 = time.perf_counter()
-        cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
-        edges_new = 0
-        edges_incremented = 0
-        for i, a in enumerate(cooc_ids):
-            for b in cooc_ids[i + 1:]:
-                existing_count = self._graph.get_edge_cooccurrence(a, b)
-                if existing_count > 0:
-                    self._graph.increment_edge_cooccurrence(a, b)
-                    self._graph.increment_edge_cooccurrence(b, a)
-                    edges_incremented += 1
-                else:
-                    rel_ab = Relationship(
-                        source_entity_id=a, target_entity_id=b,
-                        type="co_occurs", source_memory_id=memory_id,
-                    )
-                    rel_ba = Relationship(
-                        source_entity_id=b, target_entity_id=a,
-                        type="co_occurs", source_memory_id=memory_id,
-                    )
-                    self._graph.add_relationship(rel_ab)
-                    self._graph.add_relationship(rel_ba)
-                    edges_new += 1
-        _emit_stage("cooccurrence_edges", (time.perf_counter() - t0) * 1000, {
-            "edges_new": edges_new, "edges_incremented": edges_incremented,
-            "entities_used": len(cooc_ids),
-            "entities_capped": len(linked_entity_ids) > self._config.cooccurrence_max_entities,
-        }, memory_id=memory_id)
-
-    # ── Pre-Admission Gates ──────────────────────────────────────────────
-
-    async def _pre_admission_gates(
-        self,
-        content: str,
-        memory_type: str,
-        importance: float,
-        tags: list[str] | None,
-        structured: dict | None,
-        source_agent: str | None,
-        _emit_stage: Callable,
-        pipeline_start: float,
-    ) -> Memory | tuple[str, list[str] | None]:
-        """Run pre-admission gates: dedup, size check, classification.
-
-        Returns a Memory for early exit (dedup hit or navigable content),
-        or (content_hash, updated_tags) to continue with the atomic
-        admission pipeline.
-        """
-        # Gate 1: Content-hash dedup
-        content_hash = hashlib.sha256(content.encode()).hexdigest()
-        try:
-            existing = await self._store.get_memory_by_content_hash(
-                content_hash,
-            )
-        except AttributeError:
-            existing = None  # Store doesn't support this yet
-        if existing is not None:
-            logger.info(
-                "Dedup: content hash %s already exists as memory %s",
-                content_hash[:12], existing.id,
-            )
-            _emit_stage(
-                "dedup_skip",
-                (time.perf_counter() - pipeline_start) * 1000,
-                {
-                    "existing_memory_id": existing.id,
-                    "content_hash": content_hash[:12],
-                },
-            )
-            return existing
-
-        # Gate 2: Content size diagnostic
-        max_len = self._config.max_content_length
-        if len(content) > max_len:
-            logger.info(
-                "Content size: %d chars exceeds %d "
-                "(importance=%.1f) — %s",
-                len(content), max_len, importance,
-                "will split via section extraction"
-                if self._config.content_classification_enabled
-                else "proceeding as atomic (classification disabled)",
-            )
-            _emit_stage(
-                "size_flag",
-                (time.perf_counter() - pipeline_start) * 1000,
-                {
-                    "content_length": len(content),
-                    "max_content_length": max_len,
-                    "importance": importance,
-                    "classification_enabled": (
-                        self._config.content_classification_enabled
-                    ),
-                },
-            )
-            if tags is None:
-                tags = []
-            tags = list(tags) + ["oversized_content"]
-
-        # Gate 3: Content classification (ATOMIC vs NAVIGABLE)
-        if (
-            self._config.content_classification_enabled
-            and self._section_svc is not None
-        ):
-            try:
-                from ncms.domain.content_classifier import (
-                    ContentClass,
-                    classify_content,
-                    extract_sections,
-                )
-
-                t0 = time.perf_counter()
-                classification = classify_content(
-                    content, memory_type,
-                )
-                if (
-                    classification.content_class
-                    == ContentClass.NAVIGABLE
-                ):
-                    sections = extract_sections(
-                        content, classification,
-                    )
-                    if len(sections) >= 2:
-                        _emit_stage(
-                            "content_classification",
-                            (time.perf_counter() - t0) * 1000,
-                            {
-                                "content_class": (
-                                    classification
-                                    .content_class.value
-                                ),
-                                "format_hint": (
-                                    classification.format_hint
-                                ),
-                                "section_count": len(sections),
-                            },
-                        )
-                        return await self._section_svc.ingest_navigable(  # type: ignore[union-attr]
-                            content=content,
-                            classification=classification,
-                            sections=sections,
-                            memory_type=memory_type,
-                            importance=importance,
-                            tags=tags,
-                            structured=structured,
-                            source=source_agent,
-                            agent_id=source_agent,
-                        )
-                _emit_stage(
-                    "content_classification",
-                    (time.perf_counter() - t0) * 1000,
-                    {
-                        "content_class": (
-                            classification.content_class.value
-                        ),
-                        "format_hint": classification.format_hint,
-                        "section_count": 0,
-                        "result": "atomic_passthrough",
-                    },
-                )
-            except Exception:
-                logger.warning(
-                    "Content classification failed, "
-                    "proceeding as atomic",
-                    exc_info=True,
-                )
-                _emit_stage(
-                    "content_classification_error",
-                    (time.perf_counter() - pipeline_start)
-                    * 1000,
-                )
-
-        return content_hash, tags
-
-    # ── Admission Gate ─────────────────────────────────────────────────
-
-    async def _gate_admission(
-        self,
-        content: str,
-        domains: list[str] | None,
-        tags: list[str] | None,
-        source_agent: str | None,
-        project: str | None,
-        memory_type: str,
-        importance: float,
-        structured: dict | None,
-        _emit_stage: Callable,
-        pipeline_start: float,
-    ) -> Memory | tuple[str | None, object | None, dict | None]:
-        """Run admission scoring. Returns Memory for early exit (discard/ephemeral)
-        or (route, features, structured) tuple to continue the persist path."""
-        from dataclasses import asdict as _asdict
-
-        from ncms.domain.models import EphemeralEntry
-        from ncms.domain.scoring import route_memory, score_admission
-
-        _skip_routing = importance >= 8.0
-
-        t0 = time.perf_counter()
-        try:
-            features = await self._admission.compute_features(
-                content, domains=domains, source_agent=source_agent,
-            )
-            score = score_admission(features)
-            route = route_memory(features, score)
-
-            feature_dict = _asdict(features)
-            _emit_stage("admission", (time.perf_counter() - t0) * 1000, {
-                "score": round(score, 3), "route": route,
-                "features": {k: round(v, 3) for k, v in feature_dict.items()},
-            })
-            self._event_log.admission_scored(
-                memory_id=None, score=score, route=route,
-                features=feature_dict, agent_id=source_agent,
-            )
-
-            if _skip_routing:
-                route = None
-                logger.debug(
-                    "Admission: features computed (state_change=%.2f) but "
-                    "routing skipped for high-importance content (%.1f)",
-                    features.state_change_signal, importance,
-                )
-            elif route == "discard":
-                logger.info("Admission: discarding content (score=%.3f)", score)
-                _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
-                    "result": "discarded", "admission_score": round(score, 3),
-                })
-                return Memory(
-                    content=content, type=cast(Any, memory_type),
-                    domains=domains or [], tags=tags or [],
-                    source_agent=source_agent, project=project,
-                    structured={"admission": {"score": score, "route": "discard"}},
-                )
-            elif route == "ephemeral_cache":
-                from datetime import UTC, datetime, timedelta
-
-                ttl = self._config.admission_ephemeral_ttl_seconds
-                now = datetime.now(UTC)
-                entry = EphemeralEntry(
-                    content=content, source_agent=source_agent,
-                    domains=domains or [], admission_score=score,
-                    ttl_seconds=ttl, created_at=now,
-                    expires_at=now + timedelta(seconds=ttl),
-                )
-                await self._store.save_ephemeral(entry)
-                logger.info("Admission: ephemeral cache (score=%.3f, ttl=%ds)", score, ttl)
-                _emit_stage("complete", (time.perf_counter() - pipeline_start) * 1000, {
-                    "result": "ephemeral", "admission_score": round(score, 3),
-                    "ephemeral_id": entry.id,
-                })
-                return Memory(
-                    content=content, type=cast(Any, memory_type),
-                    domains=domains or [], tags=tags or [],
-                    source_agent=source_agent, project=project,
-                    structured={"admission": {
-                        "score": score, "route": "ephemeral_cache",
-                        "ephemeral_id": entry.id,
-                    }},
-                )
-
-            # Persist path: attach features as structured metadata
-            if structured is None:
-                structured = {}
-            structured["admission"] = {
-                "score": round(score, 3), "route": route,
-                **{k: round(v, 3) for k, v in feature_dict.items()},
-            }
-            return route, features, structured
-
-        except Exception:
-            logger.warning(
-                "Admission scoring failed, proceeding without admission",
-                exc_info=True,
-            )
-            _emit_stage("admission_error", (time.perf_counter() - t0) * 1000)
-            return None, None, structured
-
-    # ── Node Creation (L1/L2) + Reconciliation + Episodes ──────────────
-
-    async def _create_memory_nodes(
-        self,
-        memory: Memory,
-        content: str,
-        all_entities: list[dict],
-        linked_entity_ids: list[str],
-        admission_features: object | None,
-        _emit_stage: Callable,
-    ) -> None:
-        """Create HTMG nodes for a persisted memory.
-
-        L1 ATOMIC node is always created. L2 ENTITY_STATE node is additionally
-        created if state change or state declaration is detected. Then reconcile
-        against existing states and assign to an episode.
-        """
-        from ncms.domain.models import MemoryNode, NodeType
-
-        # L1: ALWAYS create atomic node for persisted content
-        l1_node = MemoryNode(
-            memory_id=memory.id,
-            node_type=NodeType.ATOMIC,
-            importance=memory.importance,
-        )
-        await self._store.save_memory_node(l1_node)
-        _emit_stage("memory_node", 0.0, {
-            "node_id": l1_node.id, "node_type": "atomic", "layer": "L1",
-        }, memory_id=memory.id)
-
-        # L2: Detect state change or state declaration
-        l2_node = await self._detect_and_create_l2_node(
-            memory, content, all_entities, l1_node,
-            admission_features, _emit_stage,
-        )
-
-        # Phase 2A: Reconcile entity state against existing states
-        if (
-            l2_node is not None
-            and self._reconciliation is not None
-            and self._config.reconciliation_enabled
-            and l2_node.metadata.get("entity_id")
-        ):
-            await self._reconcile_entity_state(l2_node, memory.id, _emit_stage)
-
-        # Phase 3: Episode formation (links to L1 atomic node)
-        if self._episode is not None and self._config.episodes_enabled:
-            await self._assign_episode(
-                l1_node, memory, content, linked_entity_ids, _emit_stage,
-            )
-
-    async def _detect_and_create_l2_node(
-        self,
-        memory: Memory,
-        content: str,
-        all_entities: list[dict],
-        l1_node: object,
-        admission_features: object | None,
-        _emit_stage: Callable,
-    ) -> object | None:
-        """Detect entity state change and create L2 ENTITY_STATE node if found."""
-        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
-
-        _has_state_change = (
-            admission_features is not None
-            and hasattr(admission_features, "state_change_signal")
-            and admission_features.state_change_signal >= 0.35
-        )
-        _has_state_declaration = bool(
-            re.search(
-                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                content, re.MULTILINE,
-            )
-            or re.search(r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content)
-            or re.search(
-                r"^\s*status\s*:\s*\w+", content, re.MULTILINE | re.IGNORECASE,
-            )
-        )
-
-        if not (_has_state_change or _has_state_declaration):
-            return None
-
-        node_metadata = self._extract_entity_state_meta(content, all_entities)
-
-        # Validate detected entity exists in GLiNER extraction set
-        _entity_names_lower = {e["name"].lower() for e in all_entities}
-        _detected_entity = node_metadata.get("entity_id", "")
-        if _detected_entity.lower() not in _entity_names_lower:
-            return None
-
-        if not node_metadata:
-            return None
-
-        l2_node = MemoryNode(
-            memory_id=memory.id,
-            node_type=NodeType.ENTITY_STATE,
-            importance=memory.importance,
-            metadata=node_metadata,
-        )
-        await self._store.save_memory_node(l2_node)
-
-        # DERIVED_FROM edge: L2 → L1
-        await self._store.save_graph_edge(GraphEdge(
-            source_id=l2_node.id,
-            target_id=l1_node.id,
-            edge_type=EdgeType.DERIVED_FROM,
-            metadata={"layer": "L2_from_L1"},
-        ))
-        _emit_stage("memory_node", 0.0, {
-            "node_id": l2_node.id, "node_type": "entity_state", "layer": "L2",
-            "derived_from": l1_node.id,
-            "has_entity_state": bool(node_metadata.get("entity_id")),
-        }, memory_id=memory.id)
-
-        return l2_node
-
-    async def _reconcile_entity_state(
-        self,
-        l2_node: object,
-        memory_id: str,
-        _emit_stage: Callable,
-    ) -> None:
-        """Reconcile an L2 entity_state node against existing states."""
-        t0 = time.perf_counter()
-        try:
-            results = await self._reconciliation.reconcile(l2_node)  # type: ignore[attr-defined]
-            _emit_stage("reconciliation", (time.perf_counter() - t0) * 1000, {
-                "node_id": l2_node.id,
-                "results_count": len(results),
-                "relations": [
-                    {"relation": r.relation, "existing": r.existing_node_id}
-                    for r in results
-                ],
-            }, memory_id=memory_id)
-        except Exception:
-            logger.warning(
-                "Reconciliation failed for node %s, continuing",
-                l2_node.id, exc_info=True,
-            )
-            _emit_stage(
-                "reconciliation_error", (time.perf_counter() - t0) * 1000,
-                memory_id=memory_id,
-            )
-
-    async def _assign_episode(
-        self,
-        l1_node: object,
-        memory: Memory,
-        content: str,
-        linked_entity_ids: list[str],
-        _emit_stage: Callable,
-    ) -> None:
-        """Assign a memory's L1 node to an episode."""
-        t0 = time.perf_counter()
-        try:
-            episode_node = await self._episode.assign_or_create(  # type: ignore[attr-defined]
-                fragment_node=l1_node,
-                fragment_memory=memory,
-                entity_ids=linked_entity_ids,
-            )
-            _emit_stage("episode_formation", (time.perf_counter() - t0) * 1000, {
-                "node_id": l1_node.id,
-                "episode_id": episode_node.id if episode_node else None,
-                "action": "created" if episode_node else "none",
-            }, memory_id=memory.id)
-
-            if episode_node is not None:
-                await self._episode.check_resolution_closure(  # type: ignore[attr-defined]
-                    content, episode_node,
-                )
-        except Exception:
-            logger.warning(
-                "Episode formation failed for node %s, continuing",
-                l1_node.id, exc_info=True,
-            )
-            _emit_stage(
-                "episode_formation_error", (time.perf_counter() - t0) * 1000,
-                memory_id=memory.id,
-            )
-
-    # ── Deferred Contradiction Detection ────────────────────────────────
-
-    async def _deferred_contradiction_check(
-        self,
-        memory: Memory,
-        all_entities: list[dict],
-        pipeline_id: str,
-        source_agent: str | None = None,
-    ) -> None:
-        """Run contradiction detection as a post-ingest background task.
-
-        Memory is already stored and indexed.  If contradictions are found,
-        annotates the new memory and existing memories with metadata and
-        emits a pipeline event.  Entirely non-fatal — errors are logged
-        and swallowed.
-        """
-        t0 = time.perf_counter()
-        contradiction_count = 0
-        candidates_checked = 0
-        try:
-            from ncms.infrastructure.llm.contradiction_detector import (
-                detect_contradictions,
-            )
-
-            # Find similar existing memories (new memory already indexed)
-            candidates = self._index.search(
-                memory.content, limit=self._config.contradiction_candidate_limit + 1,
-            )
-            candidate_ids = [mid for mid, _ in candidates if mid != memory.id]
-            candidate_ids = candidate_ids[: self._config.contradiction_candidate_limit]
-
-            # Also pull in graph-related memories via shared entities
-            for e_data in all_entities[:5]:
-                eid = self._graph.find_entity_by_name(e_data["name"])
-                if eid:
-                    related = self._graph.get_related_memory_ids([eid], depth=1)
-                    for rid in related:
-                        if rid != memory.id and rid not in candidate_ids:
-                            candidate_ids.append(rid)
-                            if len(candidate_ids) >= self._config.contradiction_candidate_limit:
-                                break
-
-            # Domain-scope: only check overlapping domains
-            candidate_memories: list[Memory] = []
-            for cid in candidate_ids:
-                cmem = await self._store.get_memory(cid)
-                if cmem and (
-                    not memory.domains
-                    or not cmem.domains
-                    or set(memory.domains) & set(cmem.domains)
-                ):
-                    candidate_memories.append(cmem)
-
-            candidates_checked = len(candidate_memories)
-            if candidate_memories:
-                contradictions = await detect_contradictions(
-                    new_memory=memory,
-                    existing_memories=candidate_memories,
-                    model=self._config.llm_model,
-                    api_base=self._config.llm_api_base,
-                )
-
-                contradiction_count = len(contradictions)
-                if contradictions:
-                    # Annotate the new memory
-                    structured_data = dict(memory.structured or {})
-                    structured_data["contradictions"] = contradictions
-                    memory.structured = structured_data
-                    await self._store.update_memory(memory)
-
-                    # Annotate each contradicted existing memory
-                    for c in contradictions:
-                        existing = await self._store.get_memory(c["existing_memory_id"])
-                        if existing:
-                            ex_structured = dict(existing.structured or {})
-                            ex_contradictions = ex_structured.get("contradicted_by", [])
-                            ex_contradictions.append(
-                                {
-                                    "newer_memory_id": memory.id,
-                                    "contradiction_type": c["contradiction_type"],
-                                    "explanation": c["explanation"],
-                                    "severity": c["severity"],
-                                }
-                            )
-                            ex_structured["contradicted_by"] = ex_contradictions
-                            existing.structured = ex_structured
-                            await self._store.update_memory(existing)
-
-                    logger.info(
-                        "Deferred contradiction check: %d contradiction(s) for memory %s",
-                        len(contradictions),
-                        memory.id,
-                    )
-        except Exception:
-            logger.warning(
-                "Deferred contradiction detection failed for memory %s",
-                memory.id,
-                exc_info=True,
-            )
-        self._event_log.pipeline_stage(
-            pipeline_id=pipeline_id, pipeline_type="store",
-            stage="contradiction_deferred",
-            duration_ms=(time.perf_counter() - t0) * 1000,
-            data={
-                "candidates_checked": candidates_checked,
-                "contradictions_found": contradiction_count,
-            },
-            agent_id=source_agent, memory_id=memory.id,
-        )
 
     # ── Search ───────────────────────────────────────────────────────────
 

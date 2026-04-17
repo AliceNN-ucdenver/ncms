@@ -619,7 +619,7 @@ class IndexWorkerPool:
         if not (_has_state_change or _has_state_declaration):
             return
 
-        node_metadata = self._svc._extract_entity_state_meta(
+        node_metadata = self._svc._ingestion.extract_entity_state_meta(
             memory.content, all_entities,
         )
 
