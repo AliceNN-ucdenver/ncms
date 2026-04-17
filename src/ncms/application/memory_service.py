@@ -333,41 +333,19 @@ class MemoryService:
         _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
 
         # ── Background indexing (fast path) ─────────────────────────────
-        # If the async index pool is running, enqueue ALL indexing work
-        # (BM25, SPLADE, GLiNER, entities, episodes) and return immediately.
-        # Admission scoring is pure text heuristics — no index dependency.
-        # Content-hash dedup (above) handles exact duplicates via SQLite.
-        if self._index_pool is not None:
-            from ncms.application.index_worker import IndexTask
-
-            task = IndexTask(
-                memory_id=memory.id,
-                content=content,
-                memory_type=memory_type,
-                domains=domains or [],
-                tags=tags or [],
-                source_agent=source_agent,
-                importance=importance,
-                entities_manual=list(entities or []),
-                relationships=list(relationships or []),
-                admission_features=admission_features,
-                admission_route=admission_route,
-            )
-            enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
-            if enqueued:
-                _emit_stage("enqueued", (time.perf_counter() - pipeline_start) * 1000, {
-                    "task_id": task.task_id,
-                    "queue_depth": self._index_pool.stats().queue_depth,  # type: ignore[union-attr]
-                }, memory_id=memory.id)
-                memory.structured = {**(memory.structured or {}), "indexing": "queued"}
-                logger.info(
-                    "Stored+enqueued memory %s: %s", memory.id, content[:80],
-                )
-                return memory
-            # Queue full — fall through to inline indexing (BM25 already done)
-            logger.warning(
-                "Index queue full, falling back to inline for %s", memory.id,
-            )
+        # If the async index pool accepts the task, return immediately.
+        # Otherwise fall through to inline indexing.
+        enqueued = self._try_enqueue_indexing(
+            memory=memory, content=content, memory_type=memory_type,
+            domains=domains, tags=tags, source_agent=source_agent,
+            importance=importance, entities=entities,
+            relationships=relationships,
+            admission_features=admission_features,
+            admission_route=admission_route,
+            pipeline_start=pipeline_start, emit_stage=_emit_stage,
+        )
+        if enqueued:
+            return memory
 
         # ── Inline indexing (fallback / async_indexing disabled) ─────────
         all_entities, linked_entity_ids = (
@@ -448,6 +426,74 @@ class MemoryService:
             agent_id=source_agent,
         )
         return memory
+
+    def _try_enqueue_indexing(
+        self,
+        *,
+        memory: Memory,
+        content: str,
+        memory_type: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        importance: float,
+        entities: list[dict] | None,
+        relationships: list[dict] | None,
+        admission_features: object | None,
+        admission_route: str | None,
+        pipeline_start: float,
+        emit_stage: Callable,
+    ) -> bool:
+        """Try to hand indexing off to the background worker pool.
+
+        Returns ``True`` if the task was accepted and the caller
+        should return immediately; ``False`` if the caller should
+        fall through to inline indexing (pool absent or queue full).
+        """
+        if self._index_pool is None:
+            return False
+
+        from ncms.application.index_worker import IndexTask
+
+        task = IndexTask(
+            memory_id=memory.id,
+            content=content,
+            memory_type=memory_type,
+            domains=domains or [],
+            tags=tags or [],
+            source_agent=source_agent,
+            importance=importance,
+            entities_manual=list(entities or []),
+            relationships=list(relationships or []),
+            admission_features=admission_features,
+            admission_route=admission_route,
+        )
+        enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
+        if not enqueued:
+            logger.warning(
+                "Index queue full, falling back to inline for %s",
+                memory.id,
+            )
+            return False
+
+        emit_stage(
+            "enqueued",
+            (time.perf_counter() - pipeline_start) * 1000,
+            {
+                "task_id": task.task_id,
+                "queue_depth": (
+                    self._index_pool.stats().queue_depth  # type: ignore[union-attr]
+                ),
+            },
+            memory_id=memory.id,
+        )
+        memory.structured = {
+            **(memory.structured or {}), "indexing": "queued",
+        }
+        logger.info(
+            "Stored+enqueued memory %s: %s", memory.id, content[:80],
+        )
+        return True
 
     # ── Search: Intent Classification ──────────────────────────────────
 

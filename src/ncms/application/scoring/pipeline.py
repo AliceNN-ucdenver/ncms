@@ -87,63 +87,15 @@ class ScoringPipeline:
         emit_stage: Callable,
     ) -> list[ScoredMemory]:
         """Score all candidates using multi-signal weighted combination."""
-        # Load association strengths for spreading activation
-        assoc_strengths: dict[tuple[str, str], float] | None = None
-        if self._config.dream_cycle_enabled:
-            try:
-                assoc_strengths = (
-                    await self._store.get_association_strengths()
-                )
-                if not assoc_strengths:
-                    assoc_strengths = None
-            except Exception:
-                logger.debug(
-                    "Failed to load association strengths",
-                    exc_info=True,
-                )
+        # Load graph-derived context (association strengths, IDF, PPR)
+        assoc_strengths, entity_idf, ppr_scores = (
+            await self._load_graph_context(context_entity_ids)
+        )
 
-        # Compute IDF weights for entity-based scoring
-        entity_idf: dict[str, float] | None = None
-        if context_entity_ids:
-            try:
-                doc_freq = self._graph.get_entity_document_frequency()
-                total_docs = max(self._graph.total_memory_count(), 1)
-                entity_idf = {
-                    eid: math.log(total_docs / df) if df > 0 else 0.0
-                    for eid, df in doc_freq.items()
-                }
-            except Exception:
-                logger.debug(
-                    "Failed to compute entity IDF", exc_info=True,
-                )
-
-        # Personalized PageRank (once per query)
-        ppr_scores: dict[str, float] = {}
-        if context_entity_ids and self._config.scoring_weight_graph > 0:
-            try:
-                seed = {eid: 1.0 for eid in context_entity_ids}
-                ppr_scores = self._graph.personalized_pagerank(seed)
-                max_ppr = max(ppr_scores.values()) if ppr_scores else 0.0
-                if max_ppr > 0:
-                    ppr_scores = {
-                        k: v / max_ppr for k, v in ppr_scores.items()
-                    }
-            except Exception:
-                logger.debug(
-                    "PPR failed, falling back to BFS", exc_info=True,
-                )
-
-        # Resolve signal weights
-        w_bm25 = self._config.scoring_weight_bm25
-        w_actr = self._config.scoring_weight_actr
-        w_splade = self._config.scoring_weight_splade
-        w_graph = self._config.scoring_weight_graph
-        w_recency = self._config.scoring_weight_recency
-        if self._config.intent_routing_enabled and intent_result:
-            with contextlib.suppress(Exception):
-                w_bm25, w_splade, w_graph, w_recency = (
-                    self._get_intent_weights(intent_result.intent)
-                )
+        # Resolve signal weights (globally or per-intent)
+        w_bm25, w_actr, w_splade, w_graph, w_recency = (
+            self._resolve_weights(intent_result)
+        )
 
         # Batch preload memories + access times
         t0 = time.perf_counter()
@@ -200,28 +152,115 @@ class ScoringPipeline:
             ),
         })
 
-        # Debug diagnostics
-        if self._config.pipeline_debug and scored:
-            intent_label = (
-                intent_result.intent.value if intent_result else "unknown"
-            )
-            self._event_log.retrieval_debug(
-                query="", intent=intent_label,
-                candidates=[{
-                    "id": s.memory.id, "type": s.memory.type,
-                    "content": s.memory.content[:120],
-                    "bm25": round(s.bm25_score, 4),
-                    "splade": round(s.splade_score, 4),
-                    "graph": round(s.spreading, 4),
-                    "actr": round(s.total_activation, 4),
-                } for s in sorted(
-                    scored, key=lambda x: x.total_activation,
-                    reverse=True,
-                )[:20]],
-                scores={}, agent_id=None,
-            )
-
+        self._emit_debug_candidates(scored, intent_result)
         return scored
+
+    async def _load_graph_context(
+        self, context_entity_ids: list[str],
+    ) -> tuple[
+        dict[tuple[str, str], float] | None,
+        dict[str, float] | None,
+        dict[str, float],
+    ]:
+        """Load association strengths, IDF weights, and PPR scores.
+
+        All three are optional query-time computations; each is
+        guarded so a failure in one doesn't block the others.
+        """
+        assoc_strengths: dict[tuple[str, str], float] | None = None
+        if self._config.dream_cycle_enabled:
+            try:
+                assoc_strengths = (
+                    await self._store.get_association_strengths()
+                )
+                if not assoc_strengths:
+                    assoc_strengths = None
+            except Exception:
+                logger.debug(
+                    "Failed to load association strengths",
+                    exc_info=True,
+                )
+
+        entity_idf: dict[str, float] | None = None
+        if context_entity_ids:
+            try:
+                doc_freq = self._graph.get_entity_document_frequency()
+                total_docs = max(self._graph.total_memory_count(), 1)
+                entity_idf = {
+                    eid: math.log(total_docs / df) if df > 0 else 0.0
+                    for eid, df in doc_freq.items()
+                }
+            except Exception:
+                logger.debug(
+                    "Failed to compute entity IDF", exc_info=True,
+                )
+
+        ppr_scores: dict[str, float] = {}
+        if context_entity_ids and self._config.scoring_weight_graph > 0:
+            try:
+                seed = {eid: 1.0 for eid in context_entity_ids}
+                ppr_scores = self._graph.personalized_pagerank(seed)
+                max_ppr = (
+                    max(ppr_scores.values()) if ppr_scores else 0.0
+                )
+                if max_ppr > 0:
+                    ppr_scores = {
+                        k: v / max_ppr
+                        for k, v in ppr_scores.items()
+                    }
+            except Exception:
+                logger.debug(
+                    "PPR failed, falling back to BFS", exc_info=True,
+                )
+
+        return assoc_strengths, entity_idf, ppr_scores
+
+    def _resolve_weights(
+        self, intent_result: IntentResult | None,
+    ) -> tuple[float, float, float, float, float]:
+        """Resolve ``(w_bm25, w_actr, w_splade, w_graph, w_recency)``.
+
+        Uses global defaults unless intent-aware routing is enabled and
+        a classified intent is present.
+        """
+        w_bm25 = self._config.scoring_weight_bm25
+        w_actr = self._config.scoring_weight_actr
+        w_splade = self._config.scoring_weight_splade
+        w_graph = self._config.scoring_weight_graph
+        w_recency = self._config.scoring_weight_recency
+        if self._config.intent_routing_enabled and intent_result:
+            with contextlib.suppress(Exception):
+                w_bm25, w_splade, w_graph, w_recency = (
+                    self._get_intent_weights(intent_result.intent)
+                )
+        return w_bm25, w_actr, w_splade, w_graph, w_recency
+
+    def _emit_debug_candidates(
+        self,
+        scored: list[ScoredMemory],
+        intent_result: IntentResult | None,
+    ) -> None:
+        """Emit per-candidate scoring diagnostics in pipeline-debug mode."""
+        if not (self._config.pipeline_debug and scored):
+            return
+        intent_label = (
+            intent_result.intent.value if intent_result else "unknown"
+        )
+        self._event_log.retrieval_debug(
+            query="", intent=intent_label,
+            candidates=[{
+                "id": s.memory.id, "type": s.memory.type,
+                "content": s.memory.content[:120],
+                "bm25": round(s.bm25_score, 4),
+                "splade": round(s.splade_score, 4),
+                "graph": round(s.spreading, 4),
+                "actr": round(s.total_activation, 4),
+            } for s in sorted(
+                scored, key=lambda x: x.total_activation,
+                reverse=True,
+            )[:20]],
+            scores={}, agent_id=None,
+        )
 
     # ── Pass 1: Raw Signals ──────────────────────────────────────────────
 
@@ -414,14 +453,16 @@ class ScoringPipeline:
         if not raw_candidates:
             return []
 
-        max_bm25 = max(c["bm25_raw"] for c in raw_candidates) or 1.0
-        max_splade = (
-            max(c["splade_raw"] for c in raw_candidates) or 1.0
-        )
-        max_graph = max(c["graph_raw"] for c in raw_candidates) or 1.0
-        max_temporal = (
-            max(c["temporal_raw"] for c in raw_candidates) or 1.0
-        )
+        maxes = {
+            "bm25": max(c["bm25_raw"] for c in raw_candidates) or 1.0,
+            "splade": (
+                max(c["splade_raw"] for c in raw_candidates) or 1.0
+            ),
+            "graph": max(c["graph_raw"] for c in raw_candidates) or 1.0,
+            "temporal": (
+                max(c["temporal_raw"] for c in raw_candidates) or 1.0
+            ),
+        }
 
         w_hierarchy = self._config.scoring_weight_hierarchy
         w_temporal = (
@@ -431,76 +472,113 @@ class ScoringPipeline:
         w_ce = self._config.scoring_weight_ce if ce_scores else 0.0
         actr_enabled = w_actr > 0
 
-        # CE normalization
-        if ce_scores:
-            ce_vals = [
-                ce_scores.get(c["memory_id"], 0.0) for c in raw_candidates
-            ]
-            min_ce = min(ce_vals) if ce_vals else 0.0
-            ce_range = (
-                (max(ce_vals) - min_ce)
-                if ce_vals and max(ce_vals) > min_ce else 1.0
-            )
-        else:
-            min_ce = 0.0
-            ce_range = 1.0
+        min_ce, ce_range = self._compute_ce_range(ce_scores, raw_candidates)
 
         scored: list[ScoredMemory] = []
         for c in raw_candidates:
-            bm25_n = c["bm25_raw"] / max_bm25
-            splade_n = c["splade_raw"] / max_splade
-            graph_n = c["graph_raw"] / max_graph
-            temporal_n = c["temporal_raw"] / max_temporal
-            temporal_contrib = temporal_n * w_temporal
-
-            if ce_scores:
-                ce_norm = (
-                    (ce_scores.get(c["memory_id"], min_ce) - min_ce)
-                    / ce_range
-                )
-                combined = (
-                    ce_norm * w_ce
-                    + bm25_n * (1.0 - w_ce) * 0.67
-                    + splade_n * (1.0 - w_ce) * 0.33
-                    + temporal_contrib - c["penalty"]
-                )
-            else:
-                combined = (
-                    bm25_n * w_bm25 + c["act"] * w_actr
-                    + splade_n * w_splade + graph_n * w_graph
-                    + c["h_bonus"] * w_hierarchy
-                    + c["rec_score"] * w_recency
-                    + temporal_contrib - c["penalty"]
-                )
-
-            # ACT-R threshold filter
-            if actr_enabled:
-                ret_prob = retrieval_probability(
-                    c["act"], threshold=self._config.actr_threshold,
-                    tau=self._config.actr_temperature,
-                )
-                if ret_prob < 0.05:
-                    continue
-            else:
-                ret_prob = 1.0
-
-            scored.append(ScoredMemory(
-                memory=c["memory"], bm25_score=c["bm25_raw"],
-                splade_score=c["splade_raw"], base_level=c["bl"],
-                spreading=c["graph_raw"], total_activation=combined,
-                retrieval_prob=ret_prob,
-                is_superseded=c["is_superseded"],
-                has_conflicts=c["has_conflicts"],
-                superseded_by=c["superseded_by"],
-                node_types=c["node_types"],
-                intent=(
-                    intent_result.intent.value if intent_result else None
-                ),
-                hierarchy_bonus=c["h_bonus"],
-                temporal_score=temporal_contrib,
-            ))
+            sm = self._score_one_candidate(
+                c=c, maxes=maxes, ce_scores=ce_scores,
+                min_ce=min_ce, ce_range=ce_range,
+                w_bm25=w_bm25, w_actr=w_actr, w_splade=w_splade,
+                w_graph=w_graph, w_recency=w_recency,
+                w_hierarchy=w_hierarchy, w_temporal=w_temporal,
+                w_ce=w_ce, actr_enabled=actr_enabled,
+                intent_result=intent_result,
+            )
+            if sm is not None:
+                scored.append(sm)
 
         return scored
+
+    @staticmethod
+    def _compute_ce_range(
+        ce_scores: dict[str, float],
+        raw_candidates: list[dict],
+    ) -> tuple[float, float]:
+        """Min-max normalization constants for cross-encoder scores."""
+        if not ce_scores:
+            return 0.0, 1.0
+        ce_vals = [
+            ce_scores.get(c["memory_id"], 0.0) for c in raw_candidates
+        ]
+        min_ce = min(ce_vals) if ce_vals else 0.0
+        ce_range = (
+            (max(ce_vals) - min_ce)
+            if ce_vals and max(ce_vals) > min_ce else 1.0
+        )
+        return min_ce, ce_range
+
+    def _score_one_candidate(
+        self,
+        *,
+        c: dict,
+        maxes: dict[str, float],
+        ce_scores: dict[str, float],
+        min_ce: float,
+        ce_range: float,
+        w_bm25: float, w_actr: float, w_splade: float,
+        w_graph: float, w_recency: float,
+        w_hierarchy: float, w_temporal: float,
+        w_ce: float, actr_enabled: bool,
+        intent_result: IntentResult | None,
+    ) -> ScoredMemory | None:
+        """Normalize signals for one candidate and build ScoredMemory.
+
+        Returns ``None`` when the candidate is filtered by the ACT-R
+        threshold; otherwise returns the populated ``ScoredMemory``.
+        """
+        bm25_n = c["bm25_raw"] / maxes["bm25"]
+        splade_n = c["splade_raw"] / maxes["splade"]
+        graph_n = c["graph_raw"] / maxes["graph"]
+        temporal_n = c["temporal_raw"] / maxes["temporal"]
+        temporal_contrib = temporal_n * w_temporal
+
+        if ce_scores:
+            ce_norm = (
+                (ce_scores.get(c["memory_id"], min_ce) - min_ce)
+                / ce_range
+            )
+            combined = (
+                ce_norm * w_ce
+                + bm25_n * (1.0 - w_ce) * 0.67
+                + splade_n * (1.0 - w_ce) * 0.33
+                + temporal_contrib - c["penalty"]
+            )
+        else:
+            combined = (
+                bm25_n * w_bm25 + c["act"] * w_actr
+                + splade_n * w_splade + graph_n * w_graph
+                + c["h_bonus"] * w_hierarchy
+                + c["rec_score"] * w_recency
+                + temporal_contrib - c["penalty"]
+            )
+
+        # ACT-R threshold filter
+        if actr_enabled:
+            ret_prob = retrieval_probability(
+                c["act"], threshold=self._config.actr_threshold,
+                tau=self._config.actr_temperature,
+            )
+            if ret_prob < 0.05:
+                return None
+        else:
+            ret_prob = 1.0
+
+        return ScoredMemory(
+            memory=c["memory"], bm25_score=c["bm25_raw"],
+            splade_score=c["splade_raw"], base_level=c["bl"],
+            spreading=c["graph_raw"], total_activation=combined,
+            retrieval_prob=ret_prob,
+            is_superseded=c["is_superseded"],
+            has_conflicts=c["has_conflicts"],
+            superseded_by=c["superseded_by"],
+            node_types=c["node_types"],
+            intent=(
+                intent_result.intent.value if intent_result else None
+            ),
+            hierarchy_bonus=c["h_bonus"],
+            temporal_score=temporal_contrib,
+        )
 
     # ── Per-Intent Weight Routing ────────────────────────────────────────
 

@@ -545,58 +545,91 @@ class RetrievalPipeline:
     ) -> set[str]:
         """Generate supplementary candidate memory IDs for specialised intents.
 
-        Returns memory_ids not already in the candidate set.
+        Returns memory_ids not already in the candidate set.  Dispatches
+        to a per-intent fetcher; ``pattern_lookup`` and
+        ``strategic_reflection`` have no supplement yet.
         """
-        supplement: set[str] = set()
         max_supp = self._config.intent_supplement_max
+        fetchers = {
+            QueryIntent.CURRENT_STATE_LOOKUP: self._supp_current_state,
+            QueryIntent.CHANGE_DETECTION: self._supp_change_detection,
+            QueryIntent.EVENT_RECONSTRUCTION: self._supp_events,
+            QueryIntent.HISTORICAL_LOOKUP: self._supp_historical,
+        }
+        fetcher = fetchers.get(intent.intent)
+        if fetcher is None:
+            return set()
+        return await fetcher(context_entity_ids, already_seen, max_supp)
 
-        if intent.intent == QueryIntent.CURRENT_STATE_LOOKUP:
-            for eid in context_entity_ids:
-                states = await self._store.get_entity_states_by_entity(
-                    eid,
-                )
-                for s in states:
-                    if s.is_current and s.memory_id not in already_seen:
-                        supplement.add(s.memory_id)
-                        if len(supplement) >= max_supp:
-                            return supplement
-
-        elif intent.intent == QueryIntent.CHANGE_DETECTION:
-            for eid in context_entity_ids:
-                states = await self._store.get_entity_states_by_entity(
-                    eid,
-                )
-                for s in states:
-                    if s.memory_id not in already_seen:
-                        supplement.add(s.memory_id)
-                        if len(supplement) >= max_supp:
-                            return supplement
-
-        elif intent.intent == QueryIntent.EVENT_RECONSTRUCTION:
-            episodes = await self._store.get_open_episodes()
-            for ep in episodes[:5]:  # Cap episode lookups
-                members = await self._store.get_episode_members(ep.id)
-                for m in members:
-                    if m.memory_id not in already_seen:
-                        supplement.add(m.memory_id)
-                        if len(supplement) >= max_supp:
-                            return supplement
-
-        elif intent.intent == QueryIntent.HISTORICAL_LOOKUP:
-            from datetime import UTC, datetime, timedelta
-
-            cutoff = (
-                datetime.now(UTC) - timedelta(days=90)
-            ).isoformat()
-            changes = await self._store.get_state_changes_since(cutoff)
-            for c in changes:
-                if c.memory_id not in already_seen:
-                    supplement.add(c.memory_id)
+    async def _supp_current_state(
+        self,
+        context_entity_ids: list[str],
+        already_seen: set[str],
+        max_supp: int,
+    ) -> set[str]:
+        """Current entity-state memories for the query's entities."""
+        supplement: set[str] = set()
+        for eid in context_entity_ids:
+            states = await self._store.get_entity_states_by_entity(eid)
+            for s in states:
+                if s.is_current and s.memory_id not in already_seen:
+                    supplement.add(s.memory_id)
                     if len(supplement) >= max_supp:
                         return supplement
+        return supplement
 
-        # pattern_lookup and strategic_reflection: no supplement yet
+    async def _supp_change_detection(
+        self,
+        context_entity_ids: list[str],
+        already_seen: set[str],
+        max_supp: int,
+    ) -> set[str]:
+        """All entity-state memories (current + historical) for change queries."""
+        supplement: set[str] = set()
+        for eid in context_entity_ids:
+            states = await self._store.get_entity_states_by_entity(eid)
+            for s in states:
+                if s.memory_id not in already_seen:
+                    supplement.add(s.memory_id)
+                    if len(supplement) >= max_supp:
+                        return supplement
+        return supplement
 
+    async def _supp_events(
+        self,
+        context_entity_ids: list[str],
+        already_seen: set[str],
+        max_supp: int,
+    ) -> set[str]:
+        """Member memories of open episodes for event reconstruction."""
+        supplement: set[str] = set()
+        episodes = await self._store.get_open_episodes()
+        for ep in episodes[:5]:  # Cap episode lookups
+            members = await self._store.get_episode_members(ep.id)
+            for m in members:
+                if m.memory_id not in already_seen:
+                    supplement.add(m.memory_id)
+                    if len(supplement) >= max_supp:
+                        return supplement
+        return supplement
+
+    async def _supp_historical(
+        self,
+        context_entity_ids: list[str],
+        already_seen: set[str],
+        max_supp: int,
+    ) -> set[str]:
+        """Recent state changes (last 90 days) for historical queries."""
+        from datetime import UTC, datetime, timedelta
+
+        supplement: set[str] = set()
+        cutoff = (datetime.now(UTC) - timedelta(days=90)).isoformat()
+        changes = await self._store.get_state_changes_since(cutoff)
+        for c in changes:
+            if c.memory_id not in already_seen:
+                supplement.add(c.memory_id)
+                if len(supplement) >= max_supp:
+                    return supplement
         return supplement
 
     # ── PMI Query Expansion ──────────────────────────────────────────────

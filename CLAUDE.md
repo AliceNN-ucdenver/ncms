@@ -93,7 +93,17 @@ src/ncms/
 │   ├── watch.py       # File watch event models
 │   └── exceptions.py # Typed exception hierarchy
 ├── application/      # Use cases — orchestration logic
-│   ├── memory_service.py        # Store/search/recall/synthesize pipeline (index + graph + scorer)
+│   ├── memory_service.py        # Composition root: holds public API (store/search/recall/synthesize/traverse), delegates to focused pipelines
+│   ├── scoring/                 # Phase 0.1 — multi-signal scoring (BM25/SPLADE/Graph/ACT-R/CE/temporal/recency)
+│   │   └── pipeline.py          # ScoringPipeline: score_and_rank (two-pass normalize + combine)
+│   ├── retrieval/               # Phase 0.2 — candidate discovery, reranking, expansion
+│   │   └── pipeline.py          # RetrievalPipeline: retrieve_candidates, rerank_candidates, expand_candidates, intent_supplement, query expansion, RRF fusion
+│   ├── enrichment/              # Phase 0.3 — recall bonuses + RecallResult decoration
+│   │   └── pipeline.py          # EnrichmentPipeline: recall_structured_state, recall_episode_bonus, enrich_existing_results, expand_document_sections
+│   ├── ingestion/               # Phase 0.4 — store-side gates, indexing, node creation
+│   │   └── pipeline.py          # IngestionPipeline: pre_admission_gates, gate_admission, run_inline_indexing, create_memory_nodes, reconcile/assign, deferred_contradiction_check
+│   ├── traversal/               # Phase 0.5 — HTMG hierarchy walks + topic clustering
+│   │   └── pipeline.py          # TraversalPipeline: traverse_top_down/bottom_up/temporal/lateral, get_topic_map
 │   ├── admission_service.py     # Admission scoring: 4-feature text heuristics + routing (Phase 1)
 │   ├── reconciliation_service.py # State reconciliation: classify + apply (supports/refines/supersedes/conflicts)
 │   ├── episode_service.py       # Hybrid episode linker: BM25/SPLADE/entity scoring (Phase 3)
@@ -157,6 +167,7 @@ src/ncms/
 
 ## Key Design Decisions
 
+0. **Pipelined MemoryService** (Phase 0 refactor) — `memory_service.py` is a composition root that holds the public API (`store_memory`, `search`, `recall`, `synthesize`, `traverse`, `get_topic_map`) and delegates to five focused pipelines, each in its own package under `application/`: `scoring/` (multi-signal ranking), `retrieval/` (candidate discovery + expansion), `enrichment/` (recall bonuses + context decoration), `ingestion/` (store-side gates + node creation), `traversal/` (HTMG walks + topic clustering). Each pipeline is instantiated once in `MemoryService.__init__` with explicit constructor injection — no pipeline pulls hidden state from a larger service. New retrieval features (dense embeddings, session storage, preference extraction, temporal boosts) land in the matching package and the orchestrator barely changes. All five pipeline modules are A-grade maintainability.
 1. **No dense vectors** — BM25 via Tantivy (Rust) for lexical precision. SPLADE v3 sparse neural retrieval via sentence-transformers SparseEncoder (asymmetric encoding: `encode_document()` for indexing, `encode_query()` for search) with MPS/CUDA auto-detection. Rich document loading (DOCX/PPTX/PDF/XLSX) optional via `ncms[docs]` (markitdown).
 2. **Three-signal retrieval**: BM25 (0.6) + SPLADE (0.3) + Graph spreading activation (0.3) — tuned via grid search on SciFact BEIR (nDCG@10=0.7206, +3.3% over BM25+SPLADE baseline, exceeds published ColBERTv2 and SPLADE++ on SciFact). Zero LLM at query time. The graph signal uses real BFS traversal (`graph_spreading_activation()` in scoring.py) with per-hop decay through PMI-weighted co-occurrence edges and IDF-weighted entity matching (rare entities contribute more than common ones). Cleanly separated from ACT-R: `spread` (Jaccard overlap) feeds only ACT-R's `total_activation`; `graph_spread` (graph traversal + IDF + PMI) feeds only `w_graph`. Reconciliation penalties applied directly to combined score (not just via ACT-R), so they work even with w_actr=0.0.
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + jaccard_spread + noise`. Spreading activation uses Jaccard normalization (`|overlap| / |union|` instead of `|overlap| / |context|`). Weight defaults to 0.0 — grid search showed ACT-R hurts on cold corpora with no access history; designed to activate after dream cycles build differential access patterns.
