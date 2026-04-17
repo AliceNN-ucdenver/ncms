@@ -29,3 +29,6 @@ htmlcov/
 *.log
 .DS_Store
 openapi_letta.json
+
+# AI assistant session data (local only — contains conversation transcripts)
+.claude/
