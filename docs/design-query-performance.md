@@ -1,9 +1,26 @@
 # NCMS Query Performance: LongMemEval Improvement Plan
 
-**Status:** Proposed
-**Date:** 2026-04-12
+**Status:** P0 complete (Phase 0 refactor shipped); P1-P8 pending
+**Date:** 2026-04-12 (initial); **updated 2026-04-16** to reflect Phase 0
 **Authors:** Shawn McCarthy, with analysis assistance from Claude (Anthropic)
 **Context:** NCMS scores Recall@5=0.4680 on LongMemEval (500 questions across 6 categories). Competitive analysis of MemPalace (96-99% on this benchmark) identified five targeted improvements to close the gap. Each feature addresses a specific category weakness with measurable expected impact.
+
+**What changed since the initial draft:**
+
+1. **P0 (Code Quality) shipped.** See §9.3 Phase 0.  `memory_service.py`
+   is now a 1,243-line composition root delegating to five focused
+   pipeline packages (`scoring`, `retrieval`, `enrichment`, `ingestion`,
+   `traversal`).  Three architectural fitness functions lock the
+   structure against regression.  Details in `docs/fitness-functions.md`.
+2. **P1 effort reduced from 3-4 days to 1-2 days.**  The temporal
+   infrastructure was landed during Phase 4 (intent-aware retrieval)
+   before Phase 0.  Remaining work is validation, weight tuning, and
+   pattern expansion rather than construction.  See §4.3.
+3. **Landing zones added.**  §9.5 maps each feature to its owning
+   pipeline package, with a fitness-function checklist for PRs.
+4. **Implementation plans refer to pipeline packages, not
+   `memory_service.py`.**  Post-Phase 0, feature code lives in the
+   matching pipeline; `memory_service.py` changes minimally.
 
 ---
 
@@ -122,7 +139,7 @@ Edge cases:
 
 **Stage 2: Temporal Proximity Boost**
 
-Integrated into the scoring loop in `application/memory_service.py`, after the existing weighted combination and before final ranking.
+Integrated into the scoring loop in `application/scoring/pipeline.py` (post-Phase 0; this was `memory_service.py` in the original draft), after the existing weighted combination and before final ranking.
 
 For each candidate memory with a non-null timestamp:
 
@@ -144,134 +161,66 @@ The timestamp used is `observed_at` if present, falling back to `ingested_at`. T
 
 ### 4.3 Implementation Plan
 
-**Step 1: Domain layer — `src/ncms/domain/temporal_parser.py` (new file)**
+**Current state: infrastructure already landed in earlier work.**  When
+the doc was first drafted this was a greenfield build.  The temporal
+plumbing was then implemented as part of Phase 4 (intent-aware
+retrieval) before Phase 0 began, so the remaining work is validation
+and tuning rather than construction.
 
-Pure module in the domain layer (zero infrastructure deps). Contains:
+**Already in place:**
 
-```python
-from __future__ import annotations
+| Component | Location | State |
+|-----------|----------|-------|
+| `TemporalReference` dataclass | `domain/temporal_parser.py` | Exists (`range_start`, `range_end`, `recency_bias`, `ordinal`). |
+| `parse_temporal_reference(query)` | `domain/temporal_parser.py` | Exists.  Allowlisted in the complexity gate (CC=31 is regex dispatch density, not real complexity). |
+| `compute_temporal_proximity(event_time, ref)` | `domain/temporal_parser.py` | Exists; imported by `scoring/pipeline.py`. |
+| Query parse at search entry | `memory_service.search()` | Already calls `parse_temporal_reference(query)` when `NCMS_TEMPORAL_ENABLED=true` and passes the result as `temporal_ref` through retrieval and scoring. |
+| Temporal signal computation | `scoring/pipeline.py::_compute_raw_signals` | Already computes `temporal_raw = compute_temporal_proximity(event_time, temporal_ref)` per candidate. |
+| Per-query normalization | `scoring/pipeline.py::_normalize_and_combine` | Already normalizes `max_temporal` and combines `temporal_contrib = temporal_n * w_temporal`. |
+| Config flags | `config.py` | `temporal_enabled: bool = False`, `scoring_weight_temporal: float = 0.2` already present. |
+| Pipeline event | `memory_service.search()` | Already emits `temporal_parse` stage with `range_start`, `range_end`, `recency_bias`, `ordinal`. |
 
-import re
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+**Remaining work (1-2 days):**
 
-@dataclass(frozen=True)
-class TemporalConstraint:
-    """Parsed temporal reference from a query."""
-    target_date: datetime
-    window_days: float
-    expression: str
-    confidence: float
+**Step 1: End-to-end validation on LongMemEval (half day).**
+Flip `NCMS_TEMPORAL_ENABLED=true` and run the benchmark.  Compare
+per-category Recall@5 against the current baseline (temporal-reasoning
+= 0.2782).  This tells us whether the existing patterns cover the
+LongMemEval distribution before any tuning.
 
-# Compiled regex patterns — evaluated in specificity order
-_PATTERNS: list[tuple[re.Pattern, Callable]] = [
-    # "3 days ago", "yesterday", "5 weeks ago", "a couple months back"
-    (re.compile(r"(\d+|a|a couple of?|a few|several)\s+(day|week|month|year)s?\s+(ago|back)", re.I), _parse_relative),
-    # "last week", "last month", "last year"
-    (re.compile(r"last\s+(week|month|year)", re.I), _parse_last),
-    # "in January", "back in October", "in March 2025"
-    (re.compile(r"(?:back\s+)?in\s+(January|February|...)\s*(\d{4})?", re.I), _parse_named_month),
-    # "yesterday", "today", "the other day", "recently"
-    (re.compile(r"\b(yesterday|today|recently|the other day)\b", re.I), _parse_vague),
-    # ... additional patterns
-]
+**Step 2: Weight grid search (half day).**
+Sweep `NCMS_SCORING_WEIGHT_TEMPORAL` over `[0.1, 0.2, 0.3, 0.4, 0.5]`.
+The current default 0.2 was chosen without benchmark pressure.  Use
+SciFact as a non-regression guard — nDCG@10 must stay ≥ 0.70.  Pick
+the weight that maximizes temporal-reasoning Recall@5 without
+regressing the strong categories.
 
-def parse_temporal_expression(
-    query: str,
-    reference_time: datetime | None = None,
-) -> TemporalConstraint | None:
-    """Extract the most specific temporal reference from a query.
+**Step 3: Pattern expansion where failures cluster (half day).**
+Analyze the temporal-reasoning questions that still miss after Step 2.
+Extract the temporal expressions that `parse_temporal_reference`
+failed to recognize.  Add regex patterns to the parser for each
+failure class.  The parser lives in `domain/`, so this is pure-function
+work with unit tests in `tests/unit/domain/test_temporal_parser.py`.
 
-    Returns None if no temporal expression detected.
-    reference_time defaults to datetime.utcnow() if not provided.
-    """
-```
+**Step 4: Benchmark harness reference-time wiring (half day).**
+LongMemEval provides a question timestamp, but the current harness
+uses wall-clock time for relative expressions like "3 weeks ago".  If
+the benchmark timestamps are historical, the resolution is wrong.
+Add a `reference_time` parameter threaded from the harness metadata
+through `memory_service.search()` (may require a minor API extension
+— currently `parse_temporal_reference(query)` has no reference-time
+override).  File: `benchmarks/longmemeval/harness.py` and optionally
+`domain/temporal_parser.py`.
 
-Each pattern handler returns `(target_date, window_days, confidence)`. The parser tries all patterns, picks the most specific (smallest window). Ambiguous year resolution: prefer the most recent past occurrence relative to `reference_time`.
+**Landing zone:** all work is in `domain/` (parser patterns) and
+`benchmarks/longmemeval/` (reference-time wiring).  The scoring
+pipeline does not need edits — the signal is already plumbed.
 
-**Tests:** `tests/unit/domain/test_temporal_parser.py` — covers:
-- Relative offsets: "3 days ago", "2 weeks ago", "a month ago", "a few weeks back"
-- Named months: "in January" (year inference), "in October 2025" (explicit year)
-- Vague: "recently" (7-day window), "the other day" (3-day window), "yesterday" (1-day)
-- Fuzzy quantities: "a couple weeks" → 2, "a few months" → 3, "several days" → 5
-- No temporal expression → returns None
-- Multiple expressions → picks most specific
-- Edge: reference_time at year boundary, month boundary
-
-**Step 2: Scoring function — `src/ncms/domain/scoring.py` (extend existing)**
-
-Add pure function alongside existing `activation()` and `admission_score()`:
-
-```python
-def temporal_proximity_score(
-    memory_date: datetime,
-    target_date: datetime,
-    window_days: float,
-) -> float:
-    """Gaussian proximity score: 1.0 at target, decays with distance.
-
-    score = exp(-(delta_days / window_days)^2)
-
-    Uses observed_at if available, falls back to ingested_at.
-    """
-    delta = abs((memory_date - target_date).total_seconds()) / 86400.0
-    return math.exp(-(delta / window_days) ** 2)
-```
-
-**Tests:** extend `tests/unit/domain/test_scoring.py` — covers:
-- Memory exactly at target → 1.0
-- Memory 1 window away → ~0.37 (1/e)
-- Memory 2 windows away → ~0.02 (near zero)
-- Edge: same day, same hour
-
-**Step 3: Pipeline integration — `src/ncms/application/memory_service.py`**
-
-Insert temporal parsing early in the search method, apply boost in the scoring loop:
-
-```python
-async def search(self, query: str, ..., domain: str = "", ...) -> list[ScoredMemory]:
-    # ... existing intent classification, entity extraction ...
-
-    # NEW: Parse temporal expression from query
-    temporal_constraint = None
-    if self._config.temporal_query_parsing_enabled:
-        temporal_constraint = parse_temporal_expression(query, reference_time=reference_time)
-        if temporal_constraint:
-            self._emit_event("pipeline.search.temporal_parse", {
-                "expression": temporal_constraint.expression,
-                "target_date": temporal_constraint.target_date.isoformat(),
-                "window_days": temporal_constraint.window_days,
-                "confidence": temporal_constraint.confidence,
-            })
-
-    # ... existing BM25, SPLADE, RRF fusion, graph expansion ...
-
-    # In scoring loop, after existing weighted combination:
-    for memory_id, candidate in candidates.items():
-        # ... existing: bm25_score, splade_score, graph_score, actr ...
-        combined = w_bm25 * bm25_n + w_splade * splade_n + w_graph * graph_n  # existing
-
-        # NEW: Temporal proximity boost
-        if temporal_constraint and temporal_constraint.confidence >= confidence_threshold:
-            memory_date = memory.observed_at or memory.created_at
-            if memory_date:
-                t_score = temporal_proximity_score(memory_date, temporal_constraint.target_date, temporal_constraint.window_days)
-                combined += w_temporal * t_score
-```
-
-The temporal score enters the same per-query min-max normalization as other signals. Pipeline event emitted for dashboard observability.
-
-**Step 4: Configuration — `src/ncms/config.py`**
-
-```python
-temporal_query_parsing_enabled: bool = False
-temporal_proximity_weight: float = 0.4
-temporal_proximity_timestamp: str = "observed_at"  # or "ingested_at"
-```
-
-**Step 5: Benchmark harness — `benchmarks/longmemeval/harness.py`**
-
-Pass `reference_time` from the benchmark question metadata (LongMemEval provides a question timestamp) to the search call so temporal parsing resolves relative dates correctly against the question's time context, not wall-clock time.
+**Fitness check:** the complexity gate already allowlists
+`parse_temporal_reference` because adding patterns to a regex
+dispatch grows CC but not real complexity.  New patterns should keep
+the allowlist honest: if a pattern requires non-trivial logic, extract
+it into a helper function rather than bloating the main parser.
 
 ### 4.4 Expected Impact
 
@@ -413,13 +362,21 @@ Processing:
 - Short/noisy input → empty list
 - Quoted speech exclusion: `"I prefer X," she said` → not extracted (no leading "I")
 
-**Step 2: Synthetic memory creation — `src/ncms/application/index_worker.py`**
+**Step 2: Synthetic memory creation — `src/ncms/application/ingestion/pipeline.py`**
 
-In the index pipeline, after entity extraction and before episode linking:
+Post-Phase 0, the inline indexing path is `IngestionPipeline.run_inline_indexing`.
+The background path is `index_worker.py::_IndexWorkerPool._run_worker`,
+which calls the same indexing logic but on the queued task.  Either
+path can emit preferences; the cleanest place is right after entity
+extraction in both, so the synthetic memory benefits from the same
+entity linking.
+
+In the `run_inline_indexing` method, after the GLiNER merge and before
+`build_cooccurrence_edges`:
 
 ```python
-# index_worker.py — inside _index_memory()
-async def _index_memory(self, memory: Memory) -> None:
+# ingestion/pipeline.py — inside run_inline_indexing(), after entity extraction
+async def run_inline_indexing(self, memory, content, domains, ...):
     # ... existing: BM25 index, SPLADE index, GLiNER entity extraction ...
 
     # NEW: Preference extraction
@@ -711,30 +668,40 @@ CREATE TABLE IF NOT EXISTS dense_embeddings (
 );
 ```
 
-**Index pipeline integration:** Parallel with BM25/SPLADE/GLiNER in `index_worker.py`:
+**Index pipeline integration:** Parallel with BM25/SPLADE/GLiNER in
+`application/ingestion/pipeline.py::IngestionPipeline.run_inline_indexing`
+(and matching code in `index_worker.py` for the background pool path):
 
 ```python
-# Current parallel indexing (index_worker.py)
-bm25_task = index_bm25(memory)
-splade_task = index_splade(memory)
-gliner_task = extract_entities(memory)
-dense_task = index_dense(memory)  # NEW — runs in parallel
+# ingestion/pipeline.py — run_inline_indexing
+bm25_task = self._do_bm25(memory)
+splade_task = self._do_splade(memory)
+gliner_task = self._do_gliner(memory, domains)
+dense_task = self._do_dense(memory)  # NEW — runs in parallel
 await asyncio.gather(bm25_task, splade_task, gliner_task, dense_task)
 ```
 
-**Search pipeline integration:** Dense candidates enter RRF fusion alongside BM25 and SPLADE:
+**Search pipeline integration:** Dense candidates enter RRF fusion
+alongside BM25 and SPLADE in `application/retrieval/pipeline.py::retrieve_candidates`:
 
 ```python
-# memory_service.py search pipeline
-bm25_results = await self._index.search(query, top_k)
-splade_results = await self._splade.search(query, top_k) if splade else []
-dense_results = await self._dense.search(query, top_k) if dense else []  # NEW
+# retrieval/pipeline.py — retrieve_candidates
+bm25_results = await asyncio.to_thread(self._index.search, query, top_k)
+splade_results = await self._splade_task()  # existing gated call
+dense_results = await self._dense_task()    # NEW gated call
 
-# RRF fusion across all candidate sets
-fused = rrf_fuse(bm25_results, splade_results, dense_results)
+# RRF fusion across all candidate sets (rrf_fuse is already on RetrievalPipeline)
+fused = self.rrf_fuse(bm25_results, splade_results, dense_results)
+```
 
-# Per-query normalization + weighted scoring
-# w_bm25=0.6, w_splade=0.3, w_graph=0.3, w_dense=0.2 (new)
+The scoring weight and per-query normalization for the new signal land
+in `application/scoring/pipeline.py` alongside the existing BM25/SPLADE/
+graph/temporal signals:
+
+```
+# scoring/pipeline.py — _compute_raw_signals adds dense_raw per candidate
+# _normalize_and_combine adds max_dense and dense_n * w_dense to combined
+# w_bm25=0.6, w_splade=0.3, w_graph=0.3, w_dense=0.2 (new, tuneable)
 ```
 
 ### 7.6 Configuration
@@ -843,17 +810,28 @@ Optimistic estimate: +0.05 overall (if contamination is widespread in the benchm
 
 Features ordered by expected impact per unit effort, targeting the largest category weaknesses first:
 
-| Priority | Feature | Target Category | Questions | Expected Delta | Effort |
-|----------|---------|----------------|-----------|----------------|--------|
-| P0 | Code Quality Refactoring | all | — | enabler | **Done** |
-| P1 | Temporal Query Parsing | temporal-reasoning | 133 | +0.42 to +0.57 | 3-4 days |
-| P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days |
-| P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days |
-| P4 | Dense Embedding Signal | all | 500 | +0.02 to +0.08 | 5-7 days |
-| P5 | Query Sanitization | all | 500 | +0.01 to +0.05 | 1-2 days |
-| P6 | Entity State False Positive Reduction | all | 500 | quality improvement | 4h |
-| P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h |
-| P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h |
+| Priority | Feature | Target Category | Questions | Expected Delta | Effort | Current State |
+|----------|---------|----------------|-----------|----------------|--------|---------------|
+| P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (44 commits) |
+| P1 | Temporal Query Parsing | temporal-reasoning | 133 | +0.42 to +0.57 | **1-2 days (mostly built)** | Enable + tune + benchmark |
+| P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days | Greenfield |
+| P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days | Greenfield |
+| P4 | Dense Embedding Signal | all | 500 | +0.02 to +0.08 | 5-7 days | Greenfield (research + build) |
+| P5 | Query Sanitization | all | 500 | +0.01 to +0.05 | 1-2 days | Greenfield |
+| P6 | Entity State False Positive Reduction | all | 500 | quality improvement | 4h | Targets existing regex in ingestion/ |
+| P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service |
+| P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield |
+
+**P1 effort reduction:** the temporal infrastructure was landed during
+the Phase 4 work that preceded Phase 0 — `domain/temporal_parser.py`
+exists with `TemporalReference` and `parse_temporal_reference()`;
+`scoring/pipeline.py` accepts `temporal_ref` and computes
+`temporal_raw` via `compute_temporal_proximity`;
+`memory_service.search()` already parses the query and passes the
+reference through when `NCMS_TEMPORAL_ENABLED=true`. P1 is now
+scoped as: flip the flag, run LongMemEval, tune
+`NCMS_SCORING_WEIGHT_TEMPORAL` via grid search, expand regex patterns
+where benchmark failures cluster. See §4.3 for the updated plan.
 
 ### 9.2 Items Adopted from Resilience Doc Phase 7
 
@@ -866,16 +844,65 @@ Current regex patterns in `memory_service.py` fire on YAML template fields like 
 Admission scoring achieves 65.9% accuracy on 44 labeled examples. Per-category breakdown shows `atomic_memory` at 41.7% and `episode_fragment` at 50.0%. Adding a content-type prefix classifier (detect announcement, status update, question, etc.) before feature scoring would improve routing accuracy. Requires expanding the labeled dataset from 44 → 200+ examples. Files: `admission_service.py`, `benchmarks/tuning/`.
 
 **P8: User/Assistant Retrieval Asymmetry (3h)**
-MemPalace's two-pass approach: search user turns → find sessions → search assistant responses. Valuable for multi-agent queries like "what did the architect recommend?" where the answer is in an assistant turn but the query vocabulary matches user turns better. Implementation in `memory_service.py` — optionally tag memories with `role` metadata and boost role-matching candidates.
+MemPalace's two-pass approach: search user turns → find sessions → search assistant responses. Valuable for multi-agent queries like "what did the architect recommend?" where the answer is in an assistant turn but the query vocabulary matches user turns better. Implementation lands in `application/retrieval/pipeline.py` (role filter in `expand_candidates`, or a new role-aware filter pass) and optionally `application/scoring/pipeline.py` (role-match bonus as a scoring signal). Requires `role` metadata at ingest — wire through `application/ingestion/pipeline.py`.
 
 ### 9.3 Phase Plan
 
 **Phase 0: Code Quality (Complete)**
-- Refactored `search()` from F(56) to C(15) — extracted `_classify_search_intent`, `_retrieve_candidates`, `_rerank_candidates`, `_expand_candidates`, `_score_and_rank` as independent pipeline stages
-- Refactored `store_memory()` from E(31) to D(22) — extracted `_pre_admission_gates`, `_gate_admission`, `_run_inline_indexing`, `_create_memory_nodes`
-- DRY consolidation via `_store_abstract()` shared helper
-- Eliminated all F-grade methods from production code
-- Prerequisite: the search and store pipelines were too complex (F/E grade) to safely add new scoring signals and retrieval features. Each new signal (temporal boost, preference scoring, dense embeddings) adds branching to the scoring loop. Without extraction, this would push already-F methods deeper into unmaintainable territory. Now each pipeline stage is isolated and testable.
+
+Phase 0 delivered more than complexity reduction — it established a
+durable architecture under `src/ncms/application/` that every
+subsequent feature lands into.
+
+Headline metrics:
+
+- `memory_service.py`: 3,522 → 1,243 lines, MI C (0.00) → **A (20.73)**.
+  It is now a composition root holding public API and delegating to
+  five focused pipelines.
+- 14 D-grade methods in application code → **0**, enforced by a
+  fitness function test.
+- Average cyclomatic complexity across 1,089 analyzed blocks:
+  **A (3.49)**.
+- 918 tests pass, including 122 architectural fitness tests.
+
+The five extracted pipeline packages each have a single responsibility:
+
+| Package | File | Owns |
+|---------|------|------|
+| `application/scoring/` | `pipeline.py` | Multi-signal scoring (BM25 + SPLADE + Graph + ACT-R + CE + temporal + recency), two-pass normalize + combine. |
+| `application/retrieval/` | `pipeline.py` | Candidate discovery (parallel BM25/SPLADE/GLiNER + RRF), selective cross-encoder rerank, expansion (entity resolution, PMI query expansion, graph expansion, intent supplement). |
+| `application/enrichment/` | `pipeline.py` | Recall bonuses (state/historical/event expansion) and RecallResult context decoration (entity states, episode membership, causal chains, document sections). |
+| `application/ingestion/` | `pipeline.py` | Pre-admission gates (dedup, size, classification), admission scoring, inline indexing (BM25/SPLADE/GLiNER/entity linking/co-occurrence), HTMG node creation (L1/L2), reconciliation, episode assignment, deferred contradiction. |
+| `application/traversal/` | `pipeline.py` | HTMG traversal (top-down, bottom-up, temporal, lateral) and topic-map clustering. |
+
+Shared utilities live outside any pipeline:
+
+- `application/label_cache.py` — `load_cached_labels(store, domains)` is
+  a free async function used by `memory_service.recall`, retrieval, and
+  ingestion (was a callable passed through three constructors, now
+  imported directly).
+
+Three **fitness functions** under `tests/architecture/` run on every
+test pass and lock the architecture against regression:
+
+1. **Complexity gate** (`test_complexity_gate.py`, 101 parametrized
+   cases) — fails if any method in `src/ncms/` (except demo/) regresses
+   to D+ cyclomatic complexity. One documented allowlist entry
+   (`parse_temporal_reference`, a regex dispatch parser).
+2. **Import boundaries** (`test_import_boundaries.py`, 20 parametrized
+   cases) — enforces domain purity (domain → no application/
+   infrastructure imports) and pipeline isolation (the five packages
+   may not import each other or `memory_service`).
+3. **Dead code** (`test_dead_code.py`) — Vulture at 80% confidence
+   must return clean against `.vulture_whitelist.py`.
+
+The full rationale is in `docs/fitness-functions.md`.
+
+**What this means for the features below.** Each P1-P8 feature has a
+specific landing zone in one of the five pipelines. New code must pass
+the complexity gate (no D-grade methods) and the import-boundary test
+(don't reach across pipelines). The table in §9.5 maps each feature to
+its owning pipeline.
 
 **Phase A: Quick Wins (Week 1)**
 - P1: Temporal Query Parsing & Proximity Boost
@@ -918,6 +945,35 @@ P8 (User/Asst Asymmetry)    -- independent, parallel with P4
 ```
 
 All features are feature-flagged and independent. Any subset can be deployed without the others.
+
+### 9.5 Landing Zones — Where Each Feature Adds Code
+
+Post-Phase 0, each feature has a specific owning pipeline.  New code
+lives in that pipeline's package; `memory_service.py` should change
+minimally (only to wire a new constructor arg or emit a new config).
+
+| Feature | Pipeline / New Module | Specific Functions Touched |
+|---------|----------------------|----------------------------|
+| P1 Temporal | **scoring/pipeline.py** (already wired); **domain/temporal_parser.py** (already present) | `_compute_raw_signals` (temporal_raw — already computes), `_normalize_and_combine` (normalizes `max_temporal` — already present). Work is config tuning + pattern expansion in the parser. |
+| P2 Preference | **infrastructure/extraction/preference_extractor.py** (new); **ingestion/pipeline.py** (call site in `run_inline_indexing`) | Add `extract_preferences()` call after GLiNER; spawn synthetic `preference` memory through the same `store_memory` path. |
+| P3 Session Storage | **application/session_service.py** (new, follow `section_service.py` pattern); **ingestion/pipeline.py** (session entry point) | New `store_session()` on `MemoryService`, delegates to `session_service.build_session_profile()`, which calls `document_service.publish_document` under the hood. |
+| P4 Dense Embeddings | **infrastructure/indexing/dense_engine.py** (new); **retrieval/pipeline.py** (`retrieve_candidates` — add parallel retriever); **scoring/pipeline.py** (new signal in raw + combine) | Three touchpoints: index writer in ingestion's `run_inline_indexing`, parallel retriever in retrieval, signal term in scoring. |
+| P5 Query Sanitization | **domain/query_sanitizer.py** (new); **memory_service.search / recall** (preprocessing) | Single pure function called at top of `search()` and `recall()`. No pipeline internals touched. |
+| P6 Entity State FP | **ingestion/pipeline.py::_detect_and_create_l2_node** | Tighten regex list, add template-pattern blocklist, require co-located entity mention. Edits inside one private method. |
+| P7 Admission Classifier | **application/admission_service.py** (extend); **ingestion/pipeline.py::gate_admission** (no change needed) | Add content-type prefix classifier to `compute_features`; admission scoring already consumes features. |
+| P8 User/Asst Asymmetry | **retrieval/pipeline.py** (role filter in `expand_candidates` or new filter pass); **scoring/pipeline.py** (optional role bonus) | Tag memories with `role` metadata at ingest, boost role-matched candidates in retrieval or scoring. |
+
+**Fitness-function checklist for every feature PR:**
+
+- Runs `pytest tests/architecture/` green (complexity, import
+  boundaries, dead code).
+- No new method above cyclomatic C (≤ 20).  If a natural implementation
+  is D, extract helpers until each is ≤ C.
+- New files follow the pipeline-package boundary rule — no imports
+  *from* another pipeline package, only *from* domain, infrastructure,
+  or sibling services outside the five pipelines.
+- Feature flag defaults to `false` in `config.py` so a release can ship
+  with the feature dark and turn it on via env var.
 
 ---
 
