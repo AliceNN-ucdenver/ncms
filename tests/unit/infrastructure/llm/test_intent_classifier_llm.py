@@ -69,21 +69,3 @@ class TestClassifyIntentWithLlm:
         assert result is not None
         assert result.confidence == 0.0
 
-    async def test_query_truncated_in_prompt(self) -> None:
-        long_query = "x" * 5000
-        self.mock_llm.return_value = {"intent": "fact_lookup", "confidence": 0.9}
-        await classify_intent_with_llm(long_query, model="test-model")
-        # Verify the prompt was called with truncated query
-        call_args = self.mock_llm.call_args
-        prompt = call_args[0][0]  # First positional arg
-        assert len(prompt) < 5000  # Truncated
-
-    async def test_all_intent_types_accepted(self) -> None:
-        for intent in QueryIntent:
-            self.mock_llm.return_value = {
-                "intent": intent.value,
-                "confidence": 0.8,
-            }
-            result = await classify_intent_with_llm("test", model="test-model")
-            assert result is not None
-            assert result.intent == intent

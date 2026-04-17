@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.enrichment import EnrichmentPipeline
 from ncms.application.ingestion import IngestionPipeline
+from ncms.application.label_cache import load_cached_labels
 from ncms.application.retrieval import RetrievalPipeline
 from ncms.application.scoring import ScoringPipeline
 from ncms.application.traversal import TraversalPipeline
@@ -120,7 +121,6 @@ class MemoryService:
             config=self._config,
             splade=self._splade,
             reranker=self._reranker,
-            get_cached_labels=self._get_cached_labels,
         )
 
         # Enrichment pipeline (recall bonuses + context decoration)
@@ -149,7 +149,6 @@ class MemoryService:
             reconciliation=self._reconciliation,
             episode=self._episode,
             section_service=self._section_svc,
-            get_cached_labels=self._get_cached_labels,
             add_entity=self.add_entity,
         )
 
@@ -236,27 +235,6 @@ class MemoryService:
             return None
         from dataclasses import asdict
         return asdict(self._index_pool.stats())  # type: ignore[union-attr]
-
-    async def _get_cached_labels(self, domains: list[str]) -> dict:
-        """Load domain-specific entity labels from consolidation_state."""
-        import json as _json
-
-        cached: dict = {}
-        for domain in domains:
-            raw = await self._store.get_consolidation_value(f"entity_labels:{domain}")
-            if raw:
-                try:
-                    labels = _json.loads(raw)
-                    if isinstance(labels, list):
-                        cached[domain] = labels
-                except Exception:
-                    pass
-        # Load keep_universal preference
-        raw_ku = await self._store.get_consolidation_value("_keep_universal")
-        if raw_ku:
-            with contextlib.suppress(Exception):
-                cached["_keep_universal"] = _json.loads(raw_ku)
-        return cached
 
     # ── Store ────────────────────────────────────────────────────────────
 
@@ -736,7 +714,6 @@ class MemoryService:
             return False
 
         # Remove from search indexes
-        import contextlib
 
         with contextlib.suppress(Exception):
             self._index.remove(memory_id)
@@ -926,7 +903,7 @@ class MemoryService:
         )
 
         search_domains = [domain] if domain else []
-        cached = await self._get_cached_labels(search_domains)
+        cached = await load_cached_labels(self._store, search_domains)
         labels = resolve_labels(search_domains, cached_labels=cached)
         query_entity_names = extract_entities_gliner(
             query,

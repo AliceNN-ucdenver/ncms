@@ -21,7 +21,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ncms.domain.models import MemoryNode
 
 logger = logging.getLogger(__name__)
 
@@ -570,7 +573,7 @@ class IndexWorkerPool:
         memory: Any,
         all_entities: list[dict],
         admission_features: object | None,
-        l1_node: Any,
+        l1_node: MemoryNode,
     ) -> None:
         """Detect state changes and create L2 entity_state node.
 
@@ -669,7 +672,7 @@ class IndexWorkerPool:
     async def _run_episode_formation(
         self,
         memory: Any,
-        l1_node: Any,
+        l1_node: MemoryNode,
         linked_entity_ids: list[str],
     ) -> None:
         """Assign memory to an episode and check for closure."""

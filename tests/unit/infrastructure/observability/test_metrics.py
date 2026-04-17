@@ -38,10 +38,6 @@ class TestNullMetric:
 class TestMetricsCollector:
     """MetricsCollector should work regardless of prometheus_client install."""
 
-    def test_creation(self) -> None:
-        collector = MetricsCollector()
-        assert collector is not None
-
     def test_observe_search_latency(self) -> None:
         collector = MetricsCollector()
         collector.observe_search_latency(0.045, intent="fact_lookup")

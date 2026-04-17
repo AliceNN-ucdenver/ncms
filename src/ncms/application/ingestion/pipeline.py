@@ -28,8 +28,9 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, cast
 
+from ncms.application.label_cache import load_cached_labels
 from ncms.domain.entity_extraction import resolve_labels
-from ncms.domain.models import Memory, Relationship
+from ncms.domain.models import Memory, MemoryNode, Relationship
 
 if TYPE_CHECKING:
     from ncms.application.admission_service import AdmissionService
@@ -69,9 +70,6 @@ class IngestionPipeline:
         reconciliation: ReconciliationService | None = None,
         episode: EpisodeService | None = None,
         section_service: SectionService | None = None,
-        get_cached_labels: (
-            Callable[[list[str]], Awaitable[dict]] | None
-        ) = None,
         add_entity: (
             Callable[..., Awaitable[Any]] | None
         ) = None,
@@ -86,7 +84,6 @@ class IngestionPipeline:
         self._reconciliation = reconciliation
         self._episode = episode
         self._section_svc = section_service
-        self._get_cached_labels = get_cached_labels
         self._add_entity = add_entity
 
     # ── Entity State Extraction (shared with index_worker) ──────────────
@@ -554,10 +551,7 @@ class IngestionPipeline:
 
         async def _do_gliner() -> tuple[list[dict[str, str]], float]:
             t = time.perf_counter()
-            cached = (
-                await self._get_cached_labels(domains or [])
-                if self._get_cached_labels else {}
-            )
+            cached = await load_cached_labels(self._store, domains or [])
             gliner_labels = resolve_labels(
                 domains or [], cached_labels=cached,
             )
@@ -738,15 +732,14 @@ class IngestionPipeline:
         memory: Memory,
         content: str,
         all_entities: list[dict],
-        l1_node: object,
+        l1_node: MemoryNode,
         admission_features: object | None,
         emit_stage: Callable,
-    ) -> object | None:
+    ) -> MemoryNode | None:
         """Detect entity state change and create L2 ENTITY_STATE node."""
         from ncms.domain.models import (
             EdgeType,
             GraphEdge,
-            MemoryNode,
             NodeType,
         )
 
@@ -818,7 +811,7 @@ class IngestionPipeline:
 
     async def _reconcile_entity_state(
         self,
-        l2_node: object,
+        l2_node: MemoryNode,
         memory_id: str,
         emit_stage: Callable,
     ) -> None:
@@ -826,9 +819,7 @@ class IngestionPipeline:
         assert self._reconciliation is not None
         t0 = time.perf_counter()
         try:
-            results = await self._reconciliation.reconcile(
-                l2_node,  # type: ignore[arg-type]
-            )
+            results = await self._reconciliation.reconcile(l2_node)
             emit_stage(
                 "reconciliation",
                 (time.perf_counter() - t0) * 1000,
@@ -860,7 +851,7 @@ class IngestionPipeline:
 
     async def _assign_episode(
         self,
-        l1_node: object,
+        l1_node: MemoryNode,
         memory: Memory,
         content: str,
         linked_entity_ids: list[str],
@@ -871,7 +862,7 @@ class IngestionPipeline:
         t0 = time.perf_counter()
         try:
             episode_node = await self._episode.assign_or_create(
-                fragment_node=l1_node,  # type: ignore[arg-type]
+                fragment_node=l1_node,
                 fragment_memory=memory,
                 entity_ids=linked_entity_ids,
             )

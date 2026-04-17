@@ -178,11 +178,15 @@ class TestGetEpisode:
         assert "get_episode" in tool_names
 
 
-class TestToolCount:
-    """Verify total tool count after Phase 6."""
+class TestToolRegistration:
+    """Verify Phase-6 tool names appear in the registered tool set.
 
-    async def test_total_tools_without_consolidation(self) -> None:
-        """25 tools without consolidation service (Phase 6 added 3)."""
+    We test for the specific tools this file's phase added, not exact
+    counts — adding tools in future phases should not break this test.
+    """
+
+    async def test_phase6_tools_registered(self) -> None:
+        """Phase 6 added get_current_state, get_state_history, list_episodes."""
         from mcp.server.fastmcp import FastMCP
 
         from ncms.interfaces.mcp.tools import register_tools
@@ -190,18 +194,36 @@ class TestToolCount:
         mcp = FastMCP(name="test")
         register_tools(mcp, AsyncMock(), MagicMock(), MagicMock())
         tools = await mcp.list_tools()
-        assert len(tools) == 25  # noqa: PLR2004
+        tool_names = {t.name for t in tools}
+        for expected in (
+            "get_current_state",
+            "get_state_history",
+            "list_episodes",
+        ):
+            assert expected in tool_names, (
+                f"Phase 6 tool {expected!r} not registered"
+            )
 
-    async def test_total_tools_with_consolidation(self) -> None:
-        """26 tools with consolidation service (Phase 6 added 3)."""
+    async def test_consolidation_adds_consolidation_tools(self) -> None:
+        """Passing consolidation_svc should register consolidation-specific tools."""
         from mcp.server.fastmcp import FastMCP
 
         from ncms.interfaces.mcp.tools import register_tools
 
-        mcp = FastMCP(name="test")
+        mcp_without = FastMCP(name="test-without")
         register_tools(
-            mcp, AsyncMock(), MagicMock(), MagicMock(),
+            mcp_without, AsyncMock(), MagicMock(), MagicMock(),
+        )
+        without = {t.name for t in await mcp_without.list_tools()}
+
+        mcp_with = FastMCP(name="test-with")
+        register_tools(
+            mcp_with, AsyncMock(), MagicMock(), MagicMock(),
             consolidation_svc=AsyncMock(),
         )
-        tools = await mcp.list_tools()
-        assert len(tools) == 26  # noqa: PLR2004
+        with_consol = {t.name for t in await mcp_with.list_tools()}
+
+        # With consolidation must be a strict superset.
+        assert without < with_consol, (
+            "consolidation_svc did not add any new tools"
+        )

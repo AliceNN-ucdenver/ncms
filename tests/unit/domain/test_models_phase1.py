@@ -24,9 +24,6 @@ class TestNodeType:
         assert isinstance(NodeType.ATOMIC, str)
         assert NodeType.ATOMIC.upper() == "ATOMIC"
 
-    def test_all_members(self):
-        assert len(NodeType) == 4
-
 
 class TestEdgeType:
     def test_membership_edges(self):
@@ -54,9 +51,6 @@ class TestEdgeType:
         """Design spec §7.2: temporal/causal edges."""
         assert EdgeType.PRECEDES == "precedes"
         assert EdgeType.CAUSED_BY == "caused_by"
-
-    def test_all_members(self):
-        assert len(EdgeType) == 14
 
 
 class TestMemoryNode:

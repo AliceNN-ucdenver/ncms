@@ -19,9 +19,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ncms.application.label_cache import load_cached_labels
 from ncms.domain.entity_extraction import resolve_labels
 from ncms.domain.intent import IntentResult, QueryIntent
 
@@ -54,9 +55,6 @@ class RetrievalPipeline:
         config: NCMSConfig,
         splade: SpladeEngine | None = None,
         reranker: CrossEncoderReranker | None = None,
-        get_cached_labels: (
-            Callable[[list[str]], Awaitable[dict]] | None
-        ) = None,
     ) -> None:
         self._store = store
         self._index = index
@@ -64,7 +62,6 @@ class RetrievalPipeline:
         self._config = config
         self._splade = splade
         self._reranker = reranker
-        self._get_cached_labels = get_cached_labels
         # Lazy-loaded PMI expansion dict (invalidated after dream cycles)
         self._query_expansion_dict: dict[str, list[str]] | None = None
 
@@ -88,10 +85,7 @@ class RetrievalPipeline:
         )
 
         search_domains = [domain] if domain else []
-        cached = (
-            await self._get_cached_labels(search_domains)
-            if self._get_cached_labels else {}
-        )
+        cached = await load_cached_labels(self._store, search_domains)
         labels = resolve_labels(search_domains, cached_labels=cached)
 
         t0 = time.perf_counter()
