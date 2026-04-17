@@ -66,8 +66,9 @@ class SQLiteStore:
         await self.db.execute(
             """INSERT OR REPLACE INTO memories
                (id, content, structured, type, importance, content_hash,
-                created_at, updated_at, source_agent, project, domains, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_at, updated_at, observed_at, source_agent,
+                project, domains, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 memory.id,
                 memory.content,
@@ -77,6 +78,8 @@ class SQLiteStore:
                 memory.content_hash,
                 memory.created_at.isoformat(),
                 memory.updated_at.isoformat(),
+                memory.observed_at.isoformat()
+                if memory.observed_at else None,
                 memory.source_agent,
                 memory.project,
                 json.dumps(memory.domains),
@@ -906,15 +909,24 @@ class SQLiteStore:
 
     @staticmethod
     def _row_to_memory(row: aiosqlite.Row) -> Memory:
+        # aiosqlite.Row.__contains__ doesn't work on string keys; use
+        # row.keys() explicitly.
+        keys = set(row.keys())
+        observed_raw = row["observed_at"] if "observed_at" in keys else None
+        content_hash = row["content_hash"] if "content_hash" in keys else None
         return Memory(
             id=row["id"],
             content=row["content"],
             structured=json.loads(row["structured"]) if row["structured"] else None,
             type=row["type"],
             importance=row["importance"],
-            content_hash=row["content_hash"] if "content_hash" in row else None,  # noqa: SIM401
+            content_hash=content_hash,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            observed_at=(
+                datetime.fromisoformat(observed_raw)
+                if observed_raw else None
+            ),
             source_agent=row["source_agent"],
             project=row["project"],
             domains=json.loads(row["domains"]),

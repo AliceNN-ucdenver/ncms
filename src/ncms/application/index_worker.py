@@ -555,6 +555,7 @@ class IndexWorkerPool:
             memory_id=memory.id,
             node_type=NodeType.ATOMIC,
             importance=memory.importance,
+            observed_at=memory.observed_at,
         )
         await self._svc._store.save_memory_node(l1_node)
 

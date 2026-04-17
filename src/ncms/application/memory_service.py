@@ -12,6 +12,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.enrichment import EnrichmentPipeline
@@ -250,6 +251,7 @@ class MemoryService:
         importance: float = 5.0,
         entities: list[dict] | None = None,
         relationships: list[dict] | None = None,
+        observed_at: datetime | None = None,
     ) -> Memory:
         """Store a new memory with automatic indexing and graph updates."""
         pipeline_id = uuid.uuid4().hex[:12]
@@ -303,6 +305,7 @@ class MemoryService:
             structured=structured,
             importance=importance,
             content_hash=content_hash,
+            observed_at=observed_at,
         )
 
         # Persist to SQLite
@@ -559,8 +562,17 @@ class MemoryService:
         limit: int = 10,
         agent_id: str | None = None,
         intent_override: str | None = None,
+        reference_time: datetime | None = None,
     ) -> list[ScoredMemory]:
-        """Execute the full retrieval pipeline: BM25 -> ACT-R rescoring."""
+        """Execute the full retrieval pipeline: BM25 -> ACT-R rescoring.
+
+        Args:
+            reference_time: Overrides "now" for temporal expression
+                parsing.  Used when ingesting historical data (e.g.
+                conversational sessions from a past date) so "yesterday"
+                resolves relative to the conversation's time, not the
+                current wall-clock time.  Defaults to ``datetime.now(UTC)``.
+        """
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()
 
@@ -583,7 +595,9 @@ class MemoryService:
         temporal_ref: TemporalReference | None = None
         if self._config.temporal_enabled:
             t0_temp = time.perf_counter()
-            temporal_ref = parse_temporal_reference(query)
+            temporal_ref = parse_temporal_reference(
+                query, now=reference_time,
+            )
             if temporal_ref:
                 _emit_stage("temporal_parse", (time.perf_counter() - t0_temp) * 1000, {
                     "range_start": (
@@ -877,6 +891,7 @@ class MemoryService:
         domain: str | None = None,
         limit: int = 10,
         agent_id: str | None = None,
+        reference_time: datetime | None = None,
     ) -> list[RecallResult]:
         """Structured recall: BM25 search base + intent-based context layering.
 
@@ -884,9 +899,14 @@ class MemoryService:
         to guarantee recall ≥ search. Then layers intent-specific structured
         results (entity states, episode expansions, causal chains) on top.
         One call returns what currently takes 5+ tool calls.
+
+        ``reference_time`` is forwarded to search() for temporal query
+        parsing; see ``search()`` for details.
         """
         # 1. Always run full search pipeline as the base
-        scored = await self.search(query, domain=domain, limit=limit)
+        scored = await self.search(
+            query, domain=domain, limit=limit, reference_time=reference_time,
+        )
 
         # 2. Classify intent for context enrichment strategy
         intent_result: IntentResult | None = None

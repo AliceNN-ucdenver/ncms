@@ -20,6 +20,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ncms.domain.intent import IntentResult, QueryIntent
@@ -370,14 +371,10 @@ class ScoringPipeline:
                     half_life_days=self._config.recency_half_life_days,
                 )
 
-            # Temporal proximity
+            # Temporal proximity against the event's true time.
             temporal_raw = 0.0
             if temporal_ref is not None:
-                event_time = memory.created_at
-                for mn in nodes:
-                    if mn.observed_at is not None:
-                        event_time = mn.observed_at
-                        break
+                event_time = self._resolve_event_time(memory, nodes)
                 if event_time is not None:
                     temporal_raw = compute_temporal_proximity(
                         event_time, temporal_ref,
@@ -404,6 +401,28 @@ class ScoringPipeline:
             })
 
         return raw_candidates
+
+    @staticmethod
+    def _resolve_event_time(
+        memory: object,
+        nodes: list,
+    ) -> datetime | None:
+        """Resolve the "when did this happen" timestamp for temporal scoring.
+
+        Preference order:
+
+        1. ``MemoryNode.observed_at`` on any loaded HTMG node (most
+           specific — an L2 entity_state might have its own time).
+        2. ``Memory.observed_at`` (bitemporal field set at ingest by the
+           source, e.g. the session date for replayed conversations).
+        3. ``Memory.created_at`` (fallback: NCMS ingest time).
+        """
+        for mn in nodes:
+            if getattr(mn, "observed_at", None) is not None:
+                return mn.observed_at
+        if getattr(memory, "observed_at", None) is not None:
+            return memory.observed_at  # type: ignore[attr-defined]
+        return getattr(memory, "created_at", None)
 
     async def _compute_reconciliation_penalty(
         self, nodes: list,

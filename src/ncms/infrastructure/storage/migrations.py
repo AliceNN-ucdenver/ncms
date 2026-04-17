@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -21,6 +21,11 @@ CREATE TABLE IF NOT EXISTS memories (
     importance REAL NOT NULL DEFAULT 5.0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    -- Bitemporal field (schema v10): when the source event happened.
+    -- Distinct from created_at (ingest time). Used by temporal query
+    -- scoring to match queries like "3 weeks ago" against when the
+    -- underlying event occurred, not when NCMS observed it.
+    observed_at TEXT,
     content_hash TEXT,
     source_agent TEXT,
     project TEXT,
@@ -31,6 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_memories_domains ON memories(domains);
 CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(source_agent);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
+CREATE INDEX IF NOT EXISTS idx_memories_observed_at ON memories(observed_at);
 
 -- Entity registry (knowledge graph nodes)
 CREATE TABLE IF NOT EXISTS entities (

@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from datetime import UTC, datetime
 
 from benchmarks.core.qa_metrics import contains_match, f1_token_overlap, recall_at_k_qa
 from benchmarks.core.rag_pipeline import (
@@ -27,6 +29,30 @@ from benchmarks.core.rag_pipeline import (
 from benchmarks.longmemeval.loader import LongMemQuestion, Session
 
 logger = logging.getLogger(__name__)
+
+# LongMemEval dates look like "2023/04/10 (Mon) 23:07" or "2023/04/10".
+# Strip the weekday parenthetical before parsing.
+_WEEKDAY_RE = re.compile(r"\s*\([A-Za-z]+\)\s*")
+
+
+def _parse_lme_date(raw: str | None) -> datetime | None:
+    """Parse a LongMemEval date string to a UTC datetime.
+
+    Returns ``None`` on empty or unparseable input so callers can fall
+    back to default behavior.
+    """
+    if not raw:
+        return None
+    cleaned = _WEEKDAY_RE.sub(" ", raw).strip()
+    # Try common formats seen in the dataset.
+    for fmt in ("%Y/%m/%d %H:%M", "%Y/%m/%d", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+        return dt.replace(tzinfo=UTC)
+    logger.debug("Unparseable LongMemEval date: %r", raw)
+    return None
 
 
 async def _create_ncms_instance(
@@ -95,14 +121,25 @@ async def _create_ncms_instance(
 async def _ingest_sessions(
     svc: object,
     sessions: list[Session],
+    haystack_dates: list[str] | None = None,
 ) -> list[str]:
-    """Ingest sessions into an NCMS MemoryService, return stored memory IDs."""
+    """Ingest sessions into an NCMS MemoryService, return stored memory IDs.
+
+    When ``haystack_dates`` is provided, each session's memories are
+    tagged with ``observed_at`` set to the session's date so temporal
+    queries match the event's true time rather than the ingest time.
+    """
     from ncms.application.memory_service import MemoryService
 
     svc_typed: MemoryService = svc  # type: ignore[assignment]
     memory_ids: list[str] = []
+    dates = haystack_dates or []
 
-    for session in sessions:
+    for s_idx, session in enumerate(sessions):
+        session_observed = (
+            _parse_lme_date(dates[s_idx])
+            if s_idx < len(dates) else None
+        )
         for turn in session.turns:
             if not turn.content.strip():
                 continue
@@ -112,6 +149,7 @@ async def _ingest_sessions(
                 source_agent=turn.role,
                 domains=["assistant"],
                 tags=["longmemeval", f"session:{session.session_id}"],
+                observed_at=session_observed,
             )
             memory_ids.append(memory.id)
 
@@ -152,7 +190,15 @@ async def evaluate_question(
 
     svc_typed: MemoryService = svc  # type: ignore[assignment]
 
-    results = await svc_typed.search(query=question.question, limit=top_k)
+    # Resolve temporal expressions relative to the question's own date
+    # (e.g. "yesterday" means the day before question_date, not today).
+    ref_time = _parse_lme_date(question.question_date)
+
+    results = await svc_typed.search(
+        query=question.question,
+        limit=top_k,
+        reference_time=ref_time,
+    )
     retrieved_contents = [s.memory.content for s in results]
 
     recall = recall_at_k_qa(retrieved_contents, question.answer, k=top_k)
@@ -293,8 +339,13 @@ async def run_longmemeval_benchmark(
         )
 
         try:
-            # Ingest this question's sessions
-            mem_ids = await _ingest_sessions(svc, q_sessions)
+            # Ingest this question's sessions, tagging each memory's
+            # observed_at with the session's haystack_date so temporal
+            # scoring matches on the event's true time.
+            mem_ids = await _ingest_sessions(
+                svc, q_sessions,
+                haystack_dates=q.haystack_dates,
+            )
             total_memories += len(mem_ids)
             total_sessions += len(q_sessions)
 

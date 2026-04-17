@@ -195,6 +195,11 @@ class Memory(BaseModel):
     content_hash: str | None = None
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
+    # Bitemporal: when the source says the event happened (may be in the
+    # past relative to created_at, which is always ingestion time).
+    # Required for temporal queries to work on historical / replayed data
+    # where ingestion date ≠ event date.
+    observed_at: datetime | None = None
     source_agent: str | None = None
     project: str | None = None
     domains: list[str] = Field(default_factory=list)

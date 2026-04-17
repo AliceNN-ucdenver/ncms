@@ -690,11 +690,14 @@ class IngestionPipeline:
         """
         from ncms.domain.models import MemoryNode, NodeType
 
-        # L1: always create atomic node
+        # L1: always create atomic node.  Carry observed_at from the
+        # Memory so temporal scoring can match against the event's
+        # original date rather than NCMS's ingest date.
         l1_node = MemoryNode(
             memory_id=memory.id,
             node_type=NodeType.ATOMIC,
             importance=memory.importance,
+            observed_at=memory.observed_at,
         )
         await self._store.save_memory_node(l1_node)
         emit_stage("memory_node", 0.0, {
