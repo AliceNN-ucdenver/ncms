@@ -8,11 +8,12 @@
 
 ## Executive summary
 
-NCMS runs four machine-checked **fitness functions** on every test run.
-They do not test behavior; they test that the *architecture itself*
-hasn't eroded.  Three minutes of added CI time converts architectural
-decisions from "something a senior engineer remembers" into "something
-a failing build enforces."
+NCMS runs three machine-checked **fitness functions** (plus a ruff /
+radon linting baseline) on every test run.  They do not test behavior;
+they test that the *architecture itself* hasn't eroded.  Under half a
+second of added CI time converts architectural decisions from
+"something a senior engineer remembers" into "something a failing
+build enforces."
 
 This matters more in 2026 than it did in 2020.  AI coding assistants
 now produce changes at a pace that outstrips human review.  Without
@@ -48,18 +49,20 @@ pipeline is fast.
 
 ## What's in place today
 
-The four functions live under `tests/architecture/` and run with the
-regular test suite (~0.4 s total):
+The three architecture-specific fitness functions live under
+`tests/architecture/` and run with the regular test suite (49
+parametrized cases, ~0.5 s total).  Ruff and radon run as their own
+steps and cover day-to-day hygiene:
 
 ### 1. Complexity gate — "no method may silently become unmaintainable"
 
 - **What it enforces:** every method in `src/ncms/application/` stays
   at cyclomatic complexity grade C or better.  A D-grade method (21+
   branches) fails the build.
-- **Why it matters:** before Phase 0, one file (`memory_service.py`)
-  was 3,522 lines with seven D-grade methods.  After Phase 0 it's a
-  1,220-line composition root that delegates to five focused pipelines.
-  The gate guarantees that subsequent changes — including AI-generated
+- **Why it matters:** before Phase 0, `memory_service.py` was 3,522
+  lines with seven D-grade methods.  After Phase 0 it's a 1,243-line
+  composition root that delegates to five focused pipelines.  The
+  gate guarantees that subsequent changes — including AI-generated
   refactors — cannot re-merge it.  Any attempt to "simplify" by
   inlining back into the orchestrator fails fast.
 - **Escape hatch:** an explicit `ALLOWLIST` in the test file with a
@@ -95,14 +98,19 @@ regular test suite (~0.4 s total):
   resurrect it.  Keeping the corpus clean directly improves the
   quality of AI-assisted changes.
 
-### 4. Inherited baseline — ruff and radon run on every commit
+### Linting baseline — ruff and radon as background infrastructure
+
+Not fitness functions in the strict Neal Ford sense — they don't
+encode an architectural invariant — but they provide the daily
+hygiene the fitness functions depend on.
 
 - `ruff` enforces the style guide and catches the 80% of obvious
   issues (unused imports, sorted imports, unused variables) without
   human effort.
 - `radon` provides the metrics the complexity gate operates on;
   developers can also run it locally (`uv run radon cc src/ncms/`) to
-  see trends.
+  see trends.  Current state: 1,089 analyzed blocks, average grade **A
+  (3.49)**.
 
 ---
 
@@ -138,11 +146,12 @@ than humans can retire it.
 
 | Dimension | Pre-Phase-0 | Post-Phase-0 with fitness functions |
 |-----------|-------------|-------------------------------------|
-| Largest app file | 3,522 lines, MI = C (0.00) | 1,220 lines, MI = A (19.44) |
-| D+ complexity methods in app | 14 | 0 (gated to stay) |
+| `memory_service.py` | 3,522 lines, MI = C (0.00) | 1,243 lines, MI = A (20.73) |
+| D+ methods in `application/` | 14 | 0 (gated to stay) |
+| Average CC across 1,089 app+domain+infra blocks | mixed, several F | A (3.49) |
 | Architecture documented? | README + tribal memory | README + executable tests |
 | AI-assisted refactor risk | "hope the reviewer catches it" | change fails CI pre-review |
-| Cost of architectural review | ~1 expert hour / PR | ~15 min / PR + 0.4 s of CI |
+| Cost of architectural review | ~1 expert hour / PR | ~15 min / PR + ~0.5 s of CI |
 
 ---
 
@@ -157,7 +166,7 @@ To set the expectation honestly:
   part of code review — the part reviewers skim when they're tired.
   Intent, security, and domain correctness still need human eyes.
 - **They don't catch behavioral regressions.**  That's what the other
-  845 tests are for.  Fitness functions and behavioral tests are
+  ~800 tests are for.  Fitness functions and behavioral tests are
   complementary, not substitutes.
 
 ---
@@ -195,7 +204,7 @@ Longer term:
 
 - Run just the fitness tests: `pytest tests/architecture/`
 - Run with vulture: `uv run --with vulture pytest tests/architecture/`
-- All four fitness functions together: ~0.4 seconds.
+- All three fitness functions together: ~0.5 seconds.
 
 The essay-length justification for the design choice lives in this
 document; the machine-readable version lives in code.  The two agree

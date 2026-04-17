@@ -42,8 +42,11 @@ uv run ncms topic-map             # Show emergent topic map from L4 clustering
 uv run pytest tests/ -v          # Run all tests
 uv run pytest tests/unit/ -v     # Unit tests only
 uv run pytest tests/integration/ # Integration tests only
+uv run pytest tests/architecture/  # Fitness functions (see docs/fitness-functions.md)
 uv run ruff check src/           # Lint
 uv run mypy src/                 # Type check
+uv run radon cc src/ncms/ -a --min D  # Find D+ complexity methods
+uv run --with vulture vulture src/ncms/ .vulture_whitelist.py --min-confidence 80  # Dead code
 
 # Benchmarks (retrieval ablation study)
 uv sync --group bench                                         # Install benchmark deps
@@ -104,6 +107,7 @@ src/ncms/
 │   │   └── pipeline.py          # IngestionPipeline: pre_admission_gates, gate_admission, run_inline_indexing, create_memory_nodes, reconcile/assign, deferred_contradiction_check
 │   ├── traversal/               # Phase 0.5 — HTMG hierarchy walks + topic clustering
 │   │   └── pipeline.py          # TraversalPipeline: traverse_top_down/bottom_up/temporal/lateral, get_topic_map
+│   ├── label_cache.py           # Shared helper: load_cached_labels(store, domains) — used by recall + retrieval + ingestion
 │   ├── admission_service.py     # Admission scoring: 4-feature text heuristics + routing (Phase 1)
 │   ├── reconciliation_service.py # State reconciliation: classify + apply (supports/refines/supersedes/conflicts)
 │   ├── episode_service.py       # Hybrid episode linker: BM25/SPLADE/entity scoring (Phase 3)
@@ -277,8 +281,10 @@ Single-pass creation in `migrations.py`. All tables created together.
 - All tests use in-memory backends (`:memory:` SQLite, ephemeral Tantivy/NetworkX)
 - Fixtures in `tests/conftest.py` provide `memory_service`, `bus_service`, `snapshot_service`
 - No hardcoded expected values — use formula-computed expectations or relative assertions
+- No collection-count assertions (e.g. `len(tools) == 25`) — test for specific members instead, or delete the test
 - Integration tests use real service compositions (not mocks)
 - Test files mirror source structure: `tests/unit/domain/`, `tests/unit/infrastructure/`, `tests/integration/`
+- `tests/architecture/` holds fitness functions that enforce structural invariants (D+ complexity, import boundaries, dead code) — see `docs/fitness-functions.md`
 
 ## Configuration
 
