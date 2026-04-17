@@ -260,33 +260,177 @@ def create_dashboard_app(
         agents = [a for a in bus_service.get_all_agents() if a.agent_id != "human"]
         online = sum(1 for a in agents if a.status == "online")
 
-        # Active feature flags for dashboard badges
-        features: list[str] = []
         cfg = memory_service._config
-        if cfg.splade_enabled:
-            features.append("SPLADE")
-        if cfg.admission_enabled:
-            features.append("Admission")
-        if cfg.reconciliation_enabled:
-            features.append("Reconciliation")
-        if cfg.episodes_enabled:
-            features.append("Episodes")
-        if cfg.intent_classification_enabled:
-            features.append("Intent")
-        if cfg.reranker_enabled:
-            features.append("Reranker")
-        if cfg.temporal_enabled:
-            features.append("Temporal")
-        if cfg.content_classification_enabled:
-            features.append("Sections")
-        if cfg.contradiction_detection_enabled:
-            features.append("Contradictions")
-        if cfg.dream_cycle_enabled:
-            features.append("Dream")
-        if cfg.maintenance_enabled:
-            features.append("Maintenance")
-        if cfg.search_feedback_enabled:
-            features.append("Feedback")
+
+        # Feature catalog.  One entry per capability; `enabled` is read
+        # from the live config so the dashboard reflects the running
+        # configuration.  Categories mirror the Phase 0 pipeline
+        # architecture so features group naturally in the UI.
+        catalog = [
+            # ── Retrieval ────────────────────────────────────────────
+            {
+                "id": "splade",
+                "name": "SPLADE",
+                "category": "retrieval",
+                "description": (
+                    "Sparse neural retrieval via SPLADE v3. Expands "
+                    "query and document terms to related BERT-vocabulary "
+                    "tokens, catching synonym / morphological gaps that "
+                    "BM25 misses."
+                ),
+                "config_key": "NCMS_SPLADE_ENABLED",
+                "enabled": cfg.splade_enabled,
+            },
+            {
+                "id": "reranker",
+                "name": "Cross-encoder Rerank",
+                "category": "retrieval",
+                "description": (
+                    "Reranks the top-K RRF candidates with a small "
+                    "cross-encoder (ms-marco-MiniLM). Applied only for "
+                    "fact / pattern / reflection intents; skipped for "
+                    "temporal queries where it hurts ordering."
+                ),
+                "config_key": "NCMS_RERANKER_ENABLED",
+                "enabled": cfg.reranker_enabled,
+            },
+            {
+                "id": "temporal",
+                "name": "Temporal Scoring",
+                "category": "retrieval",
+                "description": (
+                    "Parses temporal expressions like \"3 weeks ago\" or "
+                    "\"last month\" from the query and boosts memories "
+                    "whose observed_at falls inside the resolved range "
+                    "(Gaussian proximity)."
+                ),
+                "config_key": "NCMS_TEMPORAL_ENABLED",
+                "enabled": cfg.temporal_enabled,
+            },
+            {
+                "id": "intent",
+                "name": "Intent Classification",
+                "category": "retrieval",
+                "description": (
+                    "Classifies each query into one of seven intent "
+                    "classes (fact / current-state / historical / event "
+                    "/ change / pattern / reflection) via a BM25 "
+                    "exemplar index. Drives per-intent weight routing "
+                    "and supplementary candidate selection."
+                ),
+                "config_key": "NCMS_INTENT_CLASSIFICATION_ENABLED",
+                "enabled": cfg.intent_classification_enabled,
+            },
+            # ── Ingestion ───────────────────────────────────────────
+            {
+                "id": "admission",
+                "name": "Admission Scoring",
+                "category": "ingestion",
+                "description": (
+                    "Four-feature text-heuristic gate at ingest "
+                    "(utility, persistence, state-change, temporal "
+                    "salience) that routes content to discard / "
+                    "ephemeral cache / persist."
+                ),
+                "config_key": "NCMS_ADMISSION_ENABLED",
+                "enabled": cfg.admission_enabled,
+            },
+            {
+                "id": "sections",
+                "name": "Content Classification",
+                "category": "ingestion",
+                "description": (
+                    "Two-class gate that splits content into ATOMIC "
+                    "(facts, observations) and NAVIGABLE (structured "
+                    "documents with sections). Navigable content gets "
+                    "a rich document profile plus sectioned storage."
+                ),
+                "config_key": "NCMS_CONTENT_CLASSIFICATION_ENABLED",
+                "enabled": cfg.content_classification_enabled,
+            },
+            {
+                "id": "contradictions",
+                "name": "Contradiction Detection",
+                "category": "ingestion",
+                "description": (
+                    "Post-ingest LLM check that looks for factual "
+                    "contradictions between a new memory and similar "
+                    "existing ones. Fire-and-forget; never blocks "
+                    "ingestion."
+                ),
+                "config_key": "NCMS_CONTRADICTION_DETECTION_ENABLED",
+                "enabled": cfg.contradiction_detection_enabled,
+            },
+            # ── Memory model ────────────────────────────────────────
+            {
+                "id": "episodes",
+                "name": "Episodes",
+                "category": "memory",
+                "description": (
+                    "Hybrid episode linker that groups related fragments "
+                    "into episodes using BM25 + SPLADE + entity overlap "
+                    "+ temporal proximity signals. No LLM required."
+                ),
+                "config_key": "NCMS_EPISODES_ENABLED",
+                "enabled": cfg.episodes_enabled,
+            },
+            {
+                "id": "reconciliation",
+                "name": "State Reconciliation",
+                "category": "memory",
+                "description": (
+                    "When a new entity-state arrives, classifies its "
+                    "relation to existing states (supports / refines / "
+                    "supersedes / conflicts) and maintains is_current + "
+                    "bidirectional edges."
+                ),
+                "config_key": "NCMS_RECONCILIATION_ENABLED",
+                "enabled": cfg.reconciliation_enabled,
+            },
+            # ── Background / offline ────────────────────────────────
+            {
+                "id": "dream",
+                "name": "Dream Cycles",
+                "category": "offline",
+                "description": (
+                    "Offline rehearsal + PMI association learning + "
+                    "importance drift. Builds the differential access "
+                    "patterns that ACT-R spreading activation needs to "
+                    "produce meaningful signal."
+                ),
+                "config_key": "NCMS_DREAM_CYCLE_ENABLED",
+                "enabled": cfg.dream_cycle_enabled,
+            },
+            {
+                "id": "maintenance",
+                "name": "Maintenance Scheduler",
+                "category": "offline",
+                "description": (
+                    "Background scheduler that runs consolidation, dream "
+                    "cycles, episode closure, and decay passes on "
+                    "configurable intervals."
+                ),
+                "config_key": "NCMS_MAINTENANCE_ENABLED",
+                "enabled": cfg.maintenance_enabled,
+            },
+            {
+                "id": "feedback",
+                "name": "Search Feedback",
+                "category": "offline",
+                "description": (
+                    "Records implicit search feedback (which results "
+                    "were accessed after a query) so later dream cycles "
+                    "can compute PMI associations and query-expansion "
+                    "vocabulary."
+                ),
+                "config_key": "NCMS_SEARCH_FEEDBACK_ENABLED",
+                "enabled": cfg.search_feedback_enabled,
+            },
+        ]
+
+        # Compact name list kept for backward compatibility with any
+        # caller that reads `features` as a list-of-strings.
+        enabled_names = [f["name"] for f in catalog if f["enabled"]]
 
         return JSONResponse({
             "memory_count": await memory_service.memory_count(),
@@ -297,7 +441,8 @@ def create_dashboard_app(
             "agents_sleeping": sum(1 for a in agents if a.status == "sleeping"),
             "domain_count": len(bus_service.list_domains()),
             "event_count": event_log.count(),
-            "features": features,
+            "features": enabled_names,
+            "features_catalog": catalog,
         })
 
     async def api_topics(request: Request) -> JSONResponse:

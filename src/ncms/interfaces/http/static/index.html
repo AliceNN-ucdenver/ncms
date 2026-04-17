@@ -239,7 +239,15 @@
   <div class="stat">Entities <span class="stat-value" id="stat-entities">0</span></div>
   <div class="stat">Agents <span class="stat-value" id="stat-agents">0</span></div>
   <div class="stat">Events <span class="stat-value" id="stat-events">0</span></div>
-  <div class="feature-badges" id="feature-badges"></div>
+  <button type="button" class="features-toggle"
+          id="features-toggle"
+          onclick="openFeaturesPanel()"
+          title="View active features">
+    <span class="features-toggle-icon" aria-hidden="true">&#9432;</span>
+    <span class="features-toggle-count" id="features-toggle-count">0 of 0</span>
+    <span class="features-toggle-label">features</span>
+    <span class="features-toggle-chevron" aria-hidden="true">&#9656;</span>
+  </button>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════ -->
@@ -348,8 +356,27 @@
          min="0" max="1000" value="1000" step="1">
 </div>
 
+<!-- Features Overlay (slide-in from right, stats-bar "features" button) -->
+<div class="features-overlay" id="features-overlay">
+  <div class="features-overlay-header">
+    <div class="features-overlay-title-group">
+      <span class="features-overlay-title">Active Features</span>
+      <span class="features-overlay-subtitle" id="features-overlay-subtitle">
+        — of — enabled
+      </span>
+    </div>
+    <button class="features-overlay-close"
+            onclick="closeFeaturesPanel()"
+            aria-label="Close">&times;</button>
+  </div>
+  <div class="features-overlay-body" id="features-overlay-body">
+    <div class="features-empty">Loading…</div>
+  </div>
+</div>
+
 <!-- Scripts — login.js MUST load first (patches fetch for auth header) -->
 <script src="/js/login.js"></script>
+<script src="/js/features.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/agents.js"></script>
 <script src="/js/learning.js"></script>
