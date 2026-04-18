@@ -424,6 +424,55 @@ class ScoringPipeline:
             return memory.observed_at  # type: ignore[attr-defined]
         return getattr(memory, "created_at", None)
 
+    # ── P1b: Ordinal rerank ──────────────────────────────────────────────
+
+    @staticmethod
+    def apply_ordinal_rerank(
+        scored: list[ScoredMemory],
+        temporal_ref: object | None,
+        rerank_k: int = 20,
+    ) -> list[ScoredMemory]:
+        """Reorder the top ``rerank_k`` candidates by ``observed_at`` when
+        the query has explicit ordinal intent.
+
+        * ``temporal_ref.ordinal == "first"`` → ascending by event time
+          (earliest first).
+        * ``temporal_ref.ordinal == "last"`` → descending (most recent
+          first).
+        * Anything else → no-op, return the list unchanged.
+
+        The caller is expected to have already sorted ``scored`` by
+        relevance (total_activation) descending.  Only the head
+        (``scored[:rerank_k]``) is reordered; the tail is preserved in
+        its relevance order so a ``limit`` larger than ``rerank_k``
+        falls back cleanly to the relevance-ordered tail.
+
+        Tie-breaker within the head: original relevance order (stable
+        sort).  When ``observed_at`` is missing, falls back to
+        ``created_at`` so candidates without bitemporal data still have
+        *some* timestamp to rank by.
+        """
+        if not scored or temporal_ref is None:
+            return scored
+        ordinal = getattr(temporal_ref, "ordinal", None)
+        if ordinal not in ("first", "last"):
+            return scored
+
+        k = min(len(scored), rerank_k)
+        head = list(scored[:k])
+        tail = scored[k:]
+
+        def _event_time(sm: ScoredMemory) -> datetime:
+            mem = sm.memory
+            return (
+                getattr(mem, "observed_at", None)
+                or getattr(mem, "created_at", None)
+                or datetime.min
+            )
+
+        head.sort(key=_event_time, reverse=(ordinal == "last"))
+        return head + list(tail)
+
     async def _compute_reconciliation_penalty(
         self, nodes: list,
     ) -> tuple[float, bool, bool]:

@@ -660,6 +660,16 @@ class MemoryService:
         )
 
         scored.sort(key=lambda s: s.total_activation, reverse=True)
+
+        # P1b: ordinal rerank.  When the query has "first/last/latest/
+        # most recent/earliest" intent, reorder the top-K candidates by
+        # observed_at so the true chronological answer wins regardless
+        # of which candidate got the best BM25/SPLADE match.
+        scored = self._scoring.apply_ordinal_rerank(
+            scored, temporal_ref,
+            rerank_k=max(limit * 3, 20),
+        )
+
         results = scored[:limit]
 
         # Log access ONLY for returned results (not all scored candidates)
