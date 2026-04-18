@@ -1,7 +1,7 @@
 # NCMS Query Performance: LongMemEval Improvement Plan
 
-**Status:** P0 complete (Phase 0 refactor shipped); P1-P8 pending
-**Date:** 2026-04-12 (initial); **updated 2026-04-16** to reflect Phase 0
+**Status:** P0 complete; P1a shipped (zero LongMemEval impact); P1b queued as next build; P1c cut
+**Date:** 2026-04-12 (initial); **updated 2026-04-17** after P1a measurement + diagnostic
 **Authors:** Shawn McCarthy, with analysis assistance from Claude (Anthropic)
 **Context:** NCMS scores Recall@5=0.4680 on LongMemEval (500 questions across 6 categories). Competitive analysis of MemPalace (96-99% on this benchmark) identified five targeted improvements to close the gap. Each feature addresses a specific category weakness with measurable expected impact.
 
@@ -12,10 +12,20 @@
    pipeline packages (`scoring`, `retrieval`, `enrichment`, `ingestion`,
    `traversal`).  Three architectural fitness functions lock the
    structure against regression.  Details in `docs/fitness-functions.md`.
-2. **P1 effort reduced from 3-4 days to 1-2 days.**  The temporal
-   infrastructure was landed during Phase 4 (intent-aware retrieval)
-   before Phase 0.  Remaining work is validation, weight tuning, and
-   pattern expansion rather than construction.  See §4.3.
+2. **P1 redesigned based on measurement.**  The original "+0.42 to
+   +0.57 delta" projection assumed LongMemEval's temporal category
+   needed range-filter retrieval.  It doesn't — 68% of the category's
+   133 questions are arithmetic with a hard Recall@K ceiling.
+   - **P1a** (range-filter scoring + bitemporal `observed_at`
+     end-to-end) shipped cleanly.  LongMemEval delta: 0.0000.  See
+     `docs/p1-measurement.md`.
+   - **P1b** (ordinal rerank over the candidate pool) is the next
+     build.  Small LongMemEval ceiling (+0.012 overall) but targets
+     the high-value production pattern ("last ADR on X").  Plan in
+     `docs/p1-temporal-findings.md`; production mapping in
+     `docs/p1-temporal-usecases.md`.
+   - **P1c** (multi-anchor retrieval) cut — the diagnostic found zero
+     candidate-generation gap on LongMemEval.
 3. **Landing zones added.**  §9.5 maps each feature to its owning
    pipeline package, with a fitness-function checklist for PRs.
 4. **Implementation plans refer to pipeline packages, not
@@ -812,8 +822,10 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 
 | Priority | Feature | Target Category | Questions | Expected Delta | Effort | Current State |
 |----------|---------|----------------|-----------|----------------|--------|---------------|
-| P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (44 commits) |
-| P1 | Temporal Query Parsing | temporal-reasoning | 133 | +0.42 to +0.57 | **1-2 days (mostly built)** | Enable + tune + benchmark |
+| P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (Phase 0 complete) |
+| P1a | Range-filter temporal + bitemporal model | temporal-reasoning | 133 | 0.000 | **Done** | Shipped; see `docs/p1-measurement.md` |
+| P1b | Ordinal rerank (post-retrieval) | temporal-reasoning + production ADR queries | 133 LM + production | +0.012 overall on LM, high impact on prod | **4-6 hours** | Next build — see `docs/p1-temporal-findings.md` |
+| ~~P1c~~ | ~~Multi-anchor retrieval~~ | ~~arithmetic~~ | — | ~~0~~ | ~~Cut — diagnostic showed zero Recall@K upside~~ | Not pursuing |
 | P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days | Greenfield |
 | P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days | Greenfield |
 | P4 | Dense Embedding Signal | all | 500 | +0.02 to +0.08 | 5-7 days | Greenfield (research + build) |
@@ -822,16 +834,33 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service |
 | P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield |
 
-**P1 effort reduction:** the temporal infrastructure was landed during
-the Phase 4 work that preceded Phase 0 — `domain/temporal_parser.py`
-exists with `TemporalReference` and `parse_temporal_reference()`;
-`scoring/pipeline.py` accepts `temporal_ref` and computes
-`temporal_raw` via `compute_temporal_proximity`;
-`memory_service.search()` already parses the query and passes the
-reference through when `NCMS_TEMPORAL_ENABLED=true`. P1 is now
-scoped as: flip the flag, run LongMemEval, tune
-`NCMS_SCORING_WEIGHT_TEMPORAL` via grid search, expand regex patterns
-where benchmark failures cluster. See §4.3 for the updated plan.
+**P1 status — revised based on empirical measurement.**  The original
+estimate (+0.42 to +0.57 on temporal-reasoning) was wrong because it
+assumed LongMemEval's temporal questions needed range-filter
+retrieval.  They don't.  A 27-minute diagnostic over all 133
+temporal-reasoning questions (`benchmarks/longmemeval/temporal_diagnostic.py`)
+found:
+
+- **P1a** (range-filter scoring) shipped cleanly but produces 0.0000
+  delta because 68% of the benchmark's temporal questions are
+  arithmetic ("how many days between X and Y") with answers that never
+  appear in any source memory — a hard Recall@K ceiling that no
+  retrieval change can cross.
+- **P1c** (multi-anchor retrieval) is cut.  Every retrievable answer
+  already lands in top-50 today; there is no candidate-generation gap
+  to close.
+- **P1b** (ordinal rerank) ceiling on LongMemEval is +0.012 overall
+  Recall@5 — small but real.  More importantly, it directly serves the
+  production software-dev workload ("last ADR on X", "original design
+  for Y", "most recent change to Z") where the arithmetic ceiling
+  doesn't apply and the ordinal impact is large.  See
+  `docs/p1-temporal-findings.md` for the per-pattern diagnostic and
+  `docs/p1-temporal-usecases.md` for the production mapping.
+- **Arithmetic questions** (~90 of 133) require RAG-mode evaluation;
+  they're a measurement-stack concern, not a retrieval one.  Parked.
+
+§4.3 below retains the original P1a design for reference; P1b's
+implementation plan is captured in the findings doc.
 
 ### 9.2 Items Adopted from Resilience Doc Phase 7
 
@@ -954,7 +983,8 @@ minimally (only to wire a new constructor arg or emit a new config).
 
 | Feature | Pipeline / New Module | Specific Functions Touched |
 |---------|----------------------|----------------------------|
-| P1 Temporal | **scoring/pipeline.py** (already wired); **domain/temporal_parser.py** (already present) | `_compute_raw_signals` (temporal_raw — already computes), `_normalize_and_combine` (normalizes `max_temporal` — already present). Work is config tuning + pattern expansion in the parser. |
+| P1a Range-filter temporal | **scoring/pipeline.py** + **domain/temporal_parser.py** — shipped | `_compute_raw_signals` (temporal_raw), `_normalize_and_combine` (max_temporal). Also landed the bitemporal `observed_at` / `reference_time` wiring end-to-end. Ships the infrastructure; no LongMemEval delta. |
+| P1b Ordinal rerank | **scoring/pipeline.py** (new `apply_ordinal_rerank` method) + **memory_service.search** (one-line call site) | When `temporal_ref.ordinal` ∈ {"first","last"}, reorder the top-K candidates (K = max(limit×3, 20)) by `observed_at`, with BM25-combined score as tie-breaker. ~50 lines, no new data model. Direct production impact on ADR / evolution queries. |
 | P2 Preference | **infrastructure/extraction/preference_extractor.py** (new); **ingestion/pipeline.py** (call site in `run_inline_indexing`) | Add `extract_preferences()` call after GLiNER; spawn synthetic `preference` memory through the same `store_memory` path. |
 | P3 Session Storage | **application/session_service.py** (new, follow `section_service.py` pattern); **ingestion/pipeline.py** (session entry point) | New `store_session()` on `MemoryService`, delegates to `session_service.build_session_profile()`, which calls `document_service.publish_document` under the hood. |
 | P4 Dense Embeddings | **infrastructure/indexing/dense_engine.py** (new); **retrieval/pipeline.py** (`retrieve_candidates` — add parallel retriever); **scoring/pipeline.py** (new signal in raw + combine) | Three touchpoints: index writer in ingestion's `run_inline_indexing`, parallel retriever in retrieval, signal term in scoring. |
