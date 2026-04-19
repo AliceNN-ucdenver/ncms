@@ -334,6 +334,37 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
+    async def find_memory_ids_by_entity(
+        self, entity_identifier: str,
+    ) -> list[str]:
+        """Return memory IDs linked to the given entity.
+
+        ``entity_identifier`` can be either an entity ID (primary key
+        in ``entities``) or an entity name.  We first try the ID
+        match, then fall back to a name lookup — both paths hit the
+        ``idx_entities_name`` index so cost is O(log |entities|)
+        regardless of which form the caller passes.
+
+        Used by TLG dispatch (Phase 4 entity-memory index) to shrink
+        the event-name resolution from O(|subject_nodes|) to a
+        store-level index lookup.
+        """
+        # Exact-ID match first.  Most callers pass a name, but
+        # internal code sometimes passes an ID — either is safe.
+        cursor = await self.db.execute(
+            """SELECT DISTINCT me.memory_id
+               FROM memory_entities me
+               WHERE me.entity_id = ?
+               UNION
+               SELECT DISTINCT me.memory_id
+               FROM memory_entities me
+               JOIN entities e ON me.entity_id = e.id
+               WHERE LOWER(e.name) = LOWER(?)""",
+            (entity_identifier, entity_identifier),
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
     # ── Content Ranges (P1-temporal-experiment) ──────────────────────────
 
     async def save_content_range(
@@ -875,6 +906,59 @@ class SQLiteStore:
         for transition, head in rows:
             bucketed.setdefault(transition, set()).add(head)
         return {t: frozenset(heads) for t, heads in bucketed.items()}
+
+    # ── TLG grammar-shape cache (schema v12, Phase 3d) ────────────────────
+
+    async def save_shape_cache_entry(
+        self,
+        skeleton: str,
+        intent: str,
+        slot_names: list[str],
+        hit_count: int,
+        last_used: str | None,
+    ) -> None:
+        """Upsert one cache entry.
+
+        Called by :class:`ncms.application.tlg.shape_cache_store.ShapeCacheStore`
+        on every learn event — idempotent: conflicting rows update
+        hit_count + last_used only, never intent (production remains
+        the authority for intent assignment).
+        """
+        import json
+        await self.db.execute(
+            """INSERT INTO grammar_shape_cache
+               (skeleton, intent, slot_names, hit_count, last_used)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(skeleton) DO UPDATE SET
+                   hit_count = excluded.hit_count,
+                   last_used = excluded.last_used""",
+            (
+                skeleton,
+                intent,
+                json.dumps(slot_names),
+                hit_count,
+                last_used,
+            ),
+        )
+        await self.db.commit()
+
+    async def load_shape_cache(self) -> dict[str, dict]:
+        """Return the full persisted shape cache in snapshot form."""
+        import json
+        cursor = await self.db.execute(
+            "SELECT skeleton, intent, slot_names, hit_count, last_used "
+            "FROM grammar_shape_cache",
+        )
+        rows = await cursor.fetchall()
+        out: dict[str, dict] = {}
+        for skel, intent, slot_names_json, hit_count, last_used in rows:
+            out[skel] = {
+                "intent": intent,
+                "slot_names": json.loads(slot_names_json or "[]"),
+                "hit_count": int(hit_count),
+                "last_used": last_used,
+            }
+        return out
 
     # ── Ephemeral Cache (Phase 1 — Admission Routing) ────────────────────
 

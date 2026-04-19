@@ -1,22 +1,19 @@
-"""Minimal query-intent classifier for Phase 3c dispatch.
+"""Minimal query-intent classifier (retired).
+
+.. deprecated:: 2026-04
+   Superseded by :mod:`ncms.domain.tlg.query_parser.analyze_query`
+   which handles 12 intents with proper slot filling.  This module
+   is retained only so older callers that imported
+   ``classify_query_intent`` keep working during the transition; no
+   production path in the TLG pipeline references it.  Safe to
+   delete once downstream integrations migrate to
+   ``analyze_query``.
 
 Hand-coded regex patterns pick the intent from the three primitive
-dispatch classes implemented so far: ``current`` / ``origin`` /
-``still``.  Subject and entity slots are filled by the caller from
-the L1 :class:`InducedVocabulary` (usually via
-:class:`ncms.application.tlg.VocabularyCache`).
-
-Phase 4+ intents (``sequence`` / ``predecessor`` / ``interval`` /
-``range``) are not classified here — they require the query parser
-in ``experiments/temporal_trajectory/query_parser.py`` which is
-~900 lines and pulls in more machinery (temporal normaliser, alias
-expansion).  Port those when the corresponding dispatch paths land.
-
-The patterns are the tiny hand-maintained "grammar atom" lexicon
-referenced in ``docs/temporal-linguistic-geometry.md`` §6.  They
-encode English interrogative structure, not domain vocabulary; the
-vocabulary grows by induction (:mod:`.vocabulary`,
-:mod:`.markers`).
+dispatch classes: ``current`` / ``origin`` / ``still``.  Subject and
+entity slots are NOT filled here — callers had to do that
+separately (which is exactly why the structural parser subsumed
+this module).
 """
 
 from __future__ import annotations
@@ -72,9 +69,18 @@ def classify_query_intent(query: str) -> str | None:
     """Return the intent name for ``query``, or ``None`` when no
     pattern matches.
 
-    Cheap and deterministic — pure regex, no LLM, no I/O.  Intended
-    to be called once per query at dispatch time.
+    .. deprecated:: 2026-04
+       Use :func:`ncms.domain.tlg.analyze_query` — it returns a
+       populated :class:`QueryStructure` with subject + entity
+       slots, not just the intent name.
     """
+    import warnings
+    warnings.warn(
+        "classify_query_intent is deprecated; "
+        "use ncms.domain.tlg.analyze_query instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if not query:
         return None
     if _match_any(_STILL_PATTERNS, query):

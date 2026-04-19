@@ -44,7 +44,6 @@ Output goes to
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import random
@@ -272,15 +271,14 @@ def _format_markdown(
 
 
 async def _run(args: argparse.Namespace) -> None:
+    from ncms.application.retrieval.pipeline import RetrievalPipeline
     from ncms.config import NCMSConfig
     from ncms.domain.temporal.normalizer import (
-        merge_intervals,
         normalize_spans,
     )
     from ncms.infrastructure.extraction.gliner_extractor import (
         extract_entities_gliner,
     )
-    from ncms.application.retrieval.pipeline import RetrievalPipeline
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     output_dir = Path(args.output_dir)

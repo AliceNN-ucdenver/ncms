@@ -80,6 +80,20 @@ class InducedVocabulary:
     # can reason about ambiguity without re-scanning the corpus.
     distinctiveness: dict[str, Counter[str]]
 
+    # Inverted indexes keyed by the stem of each word in the token.
+    # Turns :func:`lookup_subject` / :func:`lookup_entity` from
+    # O(|vocab|) token iteration into O(|query_words|) lookups + a
+    # small candidate set.  Values are tokens (the same strings that
+    # appear in ``*_tokens_ranked``).
+    subject_stem_index: dict[str, list[str]] = field(default_factory=dict)
+    entity_stem_index: dict[str, list[str]] = field(default_factory=dict)
+
+    # Precomputed token → {stem} frozensets.  Saves re-stemming every
+    # candidate during :func:`_candidate_tokens` subset-intersection.
+    # Keyed by the same strings used in ``*_tokens_ranked``.
+    subject_token_stems: dict[str, frozenset[str]] = field(default_factory=dict)
+    entity_token_stems: dict[str, frozenset[str]] = field(default_factory=dict)
+
 
 # ---------------------------------------------------------------------------
 # Induction
@@ -151,6 +165,32 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
         entity_canon.keys(), key=len, reverse=True,
     )
 
+    # Stem-keyed inverted indexes + precomputed per-token stem sets.
+    # The index maps stem → candidate tokens; the stem set on each
+    # token lets the filter stage test subset membership against
+    # the query's stem set in O(1) without re-stemming.
+    subject_stem_index: dict[str, list[str]] = {}
+    subject_token_stems: dict[str, frozenset[str]] = {}
+    for token in subject_tokens_ranked:
+        stems = {
+            _stem(word) for word in re.findall(r"\w+", token) if word
+        }
+        stems.discard("")
+        subject_token_stems[token] = frozenset(stems)
+        for stem in stems:
+            subject_stem_index.setdefault(stem, []).append(token)
+
+    entity_stem_index: dict[str, list[str]] = {}
+    entity_token_stems: dict[str, frozenset[str]] = {}
+    for token in entity_tokens_ranked:
+        stems = {
+            _stem(word) for word in re.findall(r"\w+", token) if word
+        }
+        stems.discard("")
+        entity_token_stems[token] = frozenset(stems)
+        for stem in stems:
+            entity_stem_index.setdefault(stem, []).append(token)
+
     return InducedVocabulary(
         subject_lookup=subject_lookup,
         entity_lookup=entity_canon,
@@ -158,6 +198,10 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
         entity_tokens_ranked=entity_tokens_ranked,
         primary_tokens=frozenset(primary),
         distinctiveness=subject_counts,
+        subject_stem_index=subject_stem_index,
+        entity_stem_index=entity_stem_index,
+        subject_token_stems=subject_token_stems,
+        entity_token_stems=entity_token_stems,
     )
 
 
@@ -198,6 +242,38 @@ def _token_in_query(token: str, query_lower: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _candidate_tokens(
+    query_lower: str,
+    stem_index: dict[str, list[str]],
+    token_stems: dict[str, frozenset[str]],
+) -> list[str]:
+    """Return vocab tokens whose stem inventory is a subset of the
+    query's stems.
+
+    Uses the precomputed ``token_stems`` map so the filter stage
+    skips re-stemming on every candidate — membership check is
+    a single O(1) subset test.
+    """
+    query_stems: set[str] = set()
+    for word in re.findall(r"\w+", query_lower):
+        stem = _stem(word)
+        if stem:
+            query_stems.add(stem)
+    if not query_stems:
+        return []
+
+    seeds: set[str] = set()
+    for stem in query_stems:
+        seeds.update(stem_index.get(stem, ()))
+
+    candidates = [
+        token for token in seeds
+        if token_stems.get(token, frozenset()).issubset(query_stems)
+    ]
+    candidates.sort(key=len, reverse=True)
+    return candidates
+
+
 def lookup_subject(
     query: str, vocab: InducedVocabulary,
 ) -> str | None:
@@ -209,15 +285,13 @@ def lookup_subject(
        match, not a word split)
     2. **distinctiveness** (1 / |subjects the token could route to|)
     3. **length** (longer tokens carry more signal)
-
-    This prefers the "roadmap" token (unique to a single subject) over
-    a generic word split like "project" even when "project" is longer
-    — the combination protects against both overfitting to partial
-    entity names and being drowned out by shared vocabulary.
     """
     q = query.lower()
+    candidates = _candidate_tokens(
+        q, vocab.subject_stem_index, vocab.subject_token_stems,
+    )
     matches: list[tuple[bool, float, int, str]] = []
-    for token in vocab.subject_tokens_ranked:
+    for token in candidates:
         if not _token_in_query(token, q):
             continue
         counts = vocab.distinctiveness.get(token, Counter())
@@ -235,12 +309,27 @@ def lookup_subject(
 def lookup_entity(
     query: str, vocab: InducedVocabulary,
 ) -> str | None:
-    """Return the canonical form of the longest matching entity, or None."""
+    """Return the canonical form of the longest matching entity, or None.
+
+    Uses the stem-keyed candidate set to avoid iterating every token
+    in the vocabulary — falls back to longest-token order when two
+    candidates both match.
+    """
     q = query.lower()
-    for token in vocab.entity_tokens_ranked:
-        if _token_in_query(token, q):
-            return vocab.entity_lookup[token]
-    return None
+    candidates = _candidate_tokens(
+        q, vocab.entity_stem_index, vocab.entity_token_stems,
+    )
+    longest_hit: str | None = None
+    longest_len = -1
+    for token in candidates:
+        if not _token_in_query(token, q):
+            continue
+        if len(token) > longest_len:
+            longest_len = len(token)
+            longest_hit = token
+    if longest_hit is None:
+        return None
+    return vocab.entity_lookup[longest_hit]
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,13 @@
 """Temporal-intent classification — pure, zero-infrastructure.
 
+.. deprecated:: 2026-04
+   Superseded by the TLG structural query parser in
+   :mod:`ncms.domain.tlg.query_parser`, which subsumes these
+   primitive families with richer slot filling (``sequence`` /
+   ``predecessor`` / ``interval`` / ``range`` intents).  Kept for
+   the baseline ``temporal_range_filter_enabled=true, tlg_enabled
+   =false`` path; slated for removal after TLG benchmark parity.
+
 Classifies a user query into one of the six LLM-free retrieval routes
 defined in ``docs/p1-temporal-experiment.md`` §17.2.  The three
 primitive families are:
@@ -12,11 +20,6 @@ primitive families are:
 * **Arithmetic** — "how many days between X and Y" / "how long since".
   Answered by `MemoryService.compute_temporal_arithmetic` (Phase B.5),
   retrieval skips its filtering work.
-
-The classifier is deterministic, regex+token-driven, and returns
-``TemporalIntent.NONE`` unless it has reasonable confidence.  Orthogonal
-to ``QueryIntent`` (document-shape classification) — both classifiers
-run independently and consumers compose their outputs.
 """
 
 from __future__ import annotations

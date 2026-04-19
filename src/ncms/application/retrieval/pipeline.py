@@ -323,6 +323,17 @@ class RetrievalPipeline:
     ) -> list[ScoredMemory]:
         """Reorder top-K candidates by ``observed_at`` for ordinal queries.
 
+        .. deprecated:: 2026-04
+           Superseded by the TLG dispatch path
+           (``sequence`` / ``predecessor`` / ``origin`` intents in
+           :mod:`ncms.application.tlg.dispatch`).  When
+           ``NCMS_TLG_ENABLED=true`` the grammar layer resolves
+           ordinal semantics over the zone graph, which is more
+           precise than scalar re-ranking.  Kept for the
+           ``temporal_range_filter_enabled=true, tlg_enabled=false``
+           deployment path; slated for removal once benchmark parity
+           is demonstrated.
+
         Phase B.2 primitive (see ``docs/p1-temporal-experiment.md``
         §17.2 and §14.3).  Invoked by the search pipeline ONLY when
         the temporal-intent classifier has emitted one of
@@ -454,6 +465,14 @@ class RetrievalPipeline:
     ) -> list[tuple[str, float]]:
         """Hard-filter candidates whose ``memory_content_ranges`` row
         overlaps the query range.
+
+        .. deprecated:: 2026-04
+           Superseded by the TLG ``range`` intent dispatcher in
+           :mod:`ncms.application.tlg.dispatch`, which filters
+           subject-scoped ENTITY_STATE nodes by ``observed_at``
+           without relying on the GLiNER range-extraction pipeline.
+           Kept active for the baseline temporal-only deployment;
+           slated for removal after TLG benchmark parity.
 
         Phase B.4 primitive — implements the paper §5.4 "retrieval
         restricted to items within the relevant time range" mechanism

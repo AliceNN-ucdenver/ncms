@@ -30,6 +30,8 @@ async def _run(args: argparse.Namespace) -> None:
     output_dir = Path(args.output_dir)
     if args.features_on:
         output_dir = output_dir / "features_on"
+    if args.tlg:
+        output_dir = output_dir / "tlg"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load dataset
@@ -107,6 +109,19 @@ async def _run(args: argparse.Namespace) -> None:
             synthesis_enabled=False,
         )
         logger.info("Features ON: production retrieval bundle enabled")
+
+    # --tlg — opt in to Temporal Linguistic Geometry grammar layer.
+    # May be combined with --features-on or used on the baseline
+    # config; either way, we flip the master TLG flag.
+    if args.tlg:
+        if ncms_config is None:
+            from ncms.config import NCMSConfig
+            ncms_config = NCMSConfig(db_path=":memory:")
+        ncms_config.tlg_enabled = True
+        # Reconciliation must be on — TLG reads retires_entities off
+        # SUPERSEDES edges emitted by the reconciler.
+        ncms_config.reconciliation_enabled = True
+        logger.info("TLG ON: grammar layer + retirement extractor enabled")
 
     # Run benchmark
     results = await run_longmemeval_benchmark(
@@ -243,6 +258,14 @@ def main() -> None:
         "--features-on",
         action="store_true",
         help="Enable full production retrieval bundle (admission, episodes, intent, etc.)",
+    )
+    parser.add_argument(
+        "--tlg",
+        action="store_true",
+        help=(
+            "Enable Temporal Linguistic Geometry (NCMS_TLG_ENABLED). "
+            "May be combined with --features-on; implies reconciliation."
+        ),
     )
     parser.add_argument(
         "--rag",

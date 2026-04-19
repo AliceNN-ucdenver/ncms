@@ -147,15 +147,16 @@ async def _find_event_node(
     """Resolve an entity-name phrase (e.g. ``"session cookies"``) to
     the earliest subject-scoped ENTITY_STATE node that mentions it.
 
-    Three-tier match preserved from the research ``_find_memory``:
+    Phase 4 O(1) entity index: first ask the store for the memory IDs
+    that link to the entity (SQL index lookup, not a node scan).
+    Filter the result down to this subject's ENTITY_STATE nodes and
+    return the earliest.
 
-    1. Exact entity match (case-insensitive) on the memory's
-       linked entities.
-    2. Substring match on any entity.
-    3. Word-boundary match in memory content.
-
-    Returns the earliest-observed match so "what came after X?"
-    uses the first mention of X rather than a later refinement.
+    Falls back to a full node scan (three-tier match: exact entity
+    equality → entity substring → content word-boundary) when the
+    index returns nothing — catches entities that were spelled
+    differently from any canonical entity record, matching the
+    research ``_find_memory`` behaviour.
     """
     if not event_name:
         return None
@@ -163,30 +164,44 @@ async def _find_event_node(
     if not needle:
         return None
 
-    # Snapshot + sort nodes by observed_at (falling back to created_at).
+    memory_to_node: dict[str, MemoryNode] = {
+        n.memory_id: n for n in node_index.values()
+    }
+
+    # Fast path — O(log N) store index lookup.
+    try:
+        candidate_memory_ids = await store.find_memory_ids_by_entity(needle)  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover — defensive guard
+        candidate_memory_ids = []
+    indexed_nodes = [
+        memory_to_node[mid]
+        for mid in candidate_memory_ids
+        if mid in memory_to_node
+    ]
+    if indexed_nodes:
+        indexed_nodes.sort(key=lambda n: (n.observed_at or n.created_at))
+        return indexed_nodes[0]
+
+    # Fallback — three-tier scan over subject nodes for the edge
+    # cases where the entity isn't registered under the queried name.
     nodes = list(node_index.values())
     nodes.sort(key=lambda n: (n.observed_at or n.created_at))
-
+    import re as _re
+    pattern = _re.compile(r"\b" + _re.escape(needle) + r"\b", _re.IGNORECASE)
     for node in nodes:
         try:
             entities = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover — defensive guard
             continue
         ents_low = [e.lower() for e in entities]
-        if needle in ents_low:
+        if needle in ents_low or any(needle in e for e in ents_low):
             return node
-        if any(needle in e for e in ents_low):
-            return node
-        # Content scan.
         try:
             memory = await store.get_memory(node.memory_id)  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover — defensive guard
             memory = None
-        if memory is not None and memory.content:
-            import re as _re
-            pat = r"\b" + _re.escape(needle) + r"\b"
-            if _re.search(pat, memory.content, _re.IGNORECASE):
-                return node
+        if memory is not None and memory.content and pattern.search(memory.content):
+            return node
     return None
 
 
@@ -585,6 +600,7 @@ async def retrieve_lg(
     *,
     store: object,
     vocabulary_cache: object,
+    shape_cache: object | None = None,
 ) -> LGTrace:
     """Classify + dispatch a query against the grammar layer.
 
@@ -592,6 +608,11 @@ async def retrieve_lg(
     slot filling, then routes through an intent-specific dispatcher
     that walks the subject's zone structure.  Returns an
     :class:`LGTrace`; never raises on missing data.
+
+    When ``shape_cache`` is provided, skeleton matches short-circuit
+    the production list with the cached intent (slots still refilled
+    from the actual query).  Successful parses are memoised
+    (persistently, via the shape-cache store) for future hits.
 
     Supported intents (Phase 3d):
 
@@ -623,9 +644,38 @@ async def retrieve_lg(
             proof=f"parser context build failed: {exc!r}",
         )
 
-    qs = analyze_query(query, ctx)
+    # Shape-cache fast path.  The cache stores skeleton → intent;
+    # slot values still come from the actual query every time.
+    qs = None
+    cache_hit = False
+    if shape_cache is not None:
+        hit = shape_cache.lookup(query, ctx.vocabulary)  # type: ignore[attr-defined]
+        if hit is not None:
+            cached_intent, slots = hit
+            qs = QueryStructure(
+                intent=cached_intent,
+                subject=ctx.vocabulary.subject_lookup.get(
+                    slots.get("<X>", "").lower(),
+                ) if slots else None,
+                target_entity=slots.get("<X>"),
+                secondary_entity=slots.get("<Y>"),
+                detected_marker="shape_cache_hit",
+            )
+            cache_hit = True
+    if qs is None:
+        qs = analyze_query(query, ctx)
+        if shape_cache is not None and qs.intent not in ("none", "abstain"):
+            try:
+                await shape_cache.learn(  # type: ignore[attr-defined]
+                    store, query, qs.intent, ctx.vocabulary,
+                )
+            except Exception:  # pragma: no cover — defensive guard
+                logger.debug("TLG: shape-cache learn failed", exc_info=True)
+
     intent = _intent_to_lg_intent(qs)
     trace = LGTrace(query=query, intent=intent)
+    if cache_hit:
+        trace.proof = f"shape-cache hit: intent={qs.intent}"
 
     if qs.intent == "none":
         trace.proof = "no LG intent matched; grammar did not apply"

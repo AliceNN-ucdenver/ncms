@@ -45,7 +45,6 @@ from typing import Protocol
 
 from ncms.domain.tlg.markers import VERB_PHRASE_SHAPES
 
-
 _STOPWORDS: frozenset[str] = frozenset({
     "the", "a", "an", "and", "or", "but", "for", "with", "of", "to",
     "in", "on", "at", "by", "from", "as", "is", "are", "was", "were",

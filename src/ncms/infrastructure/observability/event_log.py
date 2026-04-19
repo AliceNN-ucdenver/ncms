@@ -529,6 +529,73 @@ class EventLog:
             },
         ))
 
+    def grammar_dispatched(
+        self,
+        query: str,
+        intent: str,
+        subject: str | None,
+        entity: str | None,
+        confidence: str,
+        grammar_answer: str | None,
+        proof: str,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit a TLG grammar-dispatch event.
+
+        Fires once per ``retrieve_lg`` call.  Dashboards can watch
+        the ``grammar.*`` namespace to visualise how often the
+        grammar layer participates, which intents fire, and the
+        confidence distribution (zero-confidently-wrong invariant
+        audit).
+        """
+        self.emit(DashboardEvent(
+            type=f"grammar.{intent or 'none'}",
+            agent_id=agent_id,
+            data={
+                "query_preview": query[:120],
+                "intent": intent,
+                "subject": subject,
+                "entity": entity,
+                "confidence": confidence,
+                "grammar_answer": grammar_answer,
+                "proof_preview": (proof or "")[:200],
+            },
+        ))
+
+    def grammar_composed(
+        self,
+        query: str,
+        intent: str,
+        confidence: str,
+        grammar_answer_memory_id: str | None,
+        zone_context_count: int,
+        bm25_count_before: int,
+        composed_count: int,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an event when grammar composition modifies the BM25
+        ranking.
+
+        Only fires when ``retrieve_lg`` returned a confident trace
+        AND the memory service auto-composed it onto ``search``
+        output.  Not emitted when the trace was ``NONE`` / ``ABSTAIN``
+        / ``LOW`` (those leave BM25 unchanged — the composition is
+        a no-op).
+        """
+        self.emit(DashboardEvent(
+            type="grammar.composed",
+            agent_id=agent_id,
+            data={
+                "query_preview": query[:120],
+                "intent": intent,
+                "confidence": confidence,
+                "grammar_answer_memory_id": grammar_answer_memory_id,
+                "zone_context_count": zone_context_count,
+                "bm25_count_before": bm25_count_before,
+                "composed_count": composed_count,
+            },
+        ))
+
     def episode_created(
         self,
         episode_id: str,

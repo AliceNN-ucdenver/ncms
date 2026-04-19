@@ -136,9 +136,7 @@ def print_trace(label: str, stages: list[StageEvent], wall_ms: float) -> None:
             )
         elif s.stage == "started":
             extra = f"  worker={s.data.get('worker_id', '?')} attempt={s.data.get('attempt', 0)}"
-        elif s.stage == "bm25":
-            extra = f"  candidates={s.data.get('candidate_count', '?')}"
-        elif s.stage == "splade":
+        elif s.stage == "bm25" or s.stage == "splade":
             extra = f"  candidates={s.data.get('candidate_count', '?')}"
         elif s.stage == "rrf_fusion":
             extra = f"  fused={s.data.get('fused_count', '?')}"
@@ -345,7 +343,7 @@ async def run_profile(
         # Show background worker traces
         print()
         print(f"{'=' * 60}")
-        print(f"BACKGROUND INDEX TRACES")
+        print("BACKGROUND INDEX TRACES")
         print(f"{'=' * 60}")
         print()
         # Group by pipeline_id

@@ -65,15 +65,25 @@ class VocabularyCache:
     def __init__(self) -> None:
         self._vocab: InducedVocabulary | None = None
         self._aliases: dict[str, frozenset[str]] | None = None
+        self._domain_nouns: frozenset[str] | None = None
+        self._content_markers: InducedContentMarkers | None = None
+        self._parser_context_key: tuple[int, ...] | None = None
+        self._parser_context: ParserContext | None = None
 
     def invalidate(self) -> None:
-        """Clear the cache — next :meth:`get_vocabulary` call rebuilds.
+        """Clear every cached artefact — next accessor rebuilds.
 
-        Also clears the alias cache since both are derived from the
-        same corpus scan.
+        Clears vocab, aliases, domain-nouns, content-markers, and
+        the parser-context snapshot in one call since all five are
+        derived from the same corpus scan.  Callers hook this to the
+        ingest path (see :meth:`MemoryService.invalidate_tlg_vocabulary`).
         """
         self._vocab = None
         self._aliases = None
+        self._domain_nouns = None
+        self._content_markers = None
+        self._parser_context_key = None
+        self._parser_context = None
 
     async def get_vocabulary(self, store: object) -> InducedVocabulary:
         """Return the cached vocabulary, rebuilding on first call / after
@@ -131,30 +141,47 @@ class VocabularyCache:
         *,
         induced_markers: InducedEdgeMarkers | None = None,
     ) -> ParserContext:
-        """Compose the full :class:`ParserContext` used by
+        """Compose the full :class:`ParserContext` for
         :func:`ncms.domain.tlg.analyze_query`.
 
-        Reuses the cached vocabulary + aliases, computes domain
-        nouns + content-derived current/origin markers from the
-        same ENTITY_STATE universe.  ``induced_markers`` is optional —
-        callers that have an ``InducedEdgeMarkers`` already
-        materialised (e.g. freshly loaded from
-        ``grammar_transition_markers`` by dispatch) pass it in.
+        Caches every derived artefact — vocabulary, aliases, domain
+        nouns, content markers, and the assembled :class:`ParserContext`
+        itself.  Only the ``induced_markers`` argument varies per
+        call (it comes from a fresh read of
+        ``grammar_transition_markers`` so callers see newly-persisted
+        L2 vocabulary without an invalidate), so we cache the context
+        keyed on marker-bucket identity.  A fresh marker table causes
+        exactly one re-assembly; subsequent calls in the same epoch
+        are zero-cost.
         """
         vocab = await self.get_vocabulary(store)
         aliases = await self.get_aliases(store)
-        domain_nouns = await self._compute_domain_nouns(store)
-        content = await self._compute_content_markers(store)
+        if self._domain_nouns is None:
+            self._domain_nouns = await self._compute_domain_nouns(store)
+        if self._content_markers is None:
+            self._content_markers = await self._compute_content_markers(store)
         markers = induced_markers or InducedEdgeMarkers(markers={})
-        return ParserContext(
+        marker_key = tuple(sorted(
+            (t, tuple(sorted(heads)))
+            for t, heads in markers.markers.items()
+        ))
+        if (
+            self._parser_context is not None
+            and self._parser_context_key == marker_key
+        ):
+            return self._parser_context
+        ctx = ParserContext(
             vocabulary=vocab,
             induced_markers=markers,
             aliases=aliases,
             issue_entities=ISSUE_SEED,
-            domain_nouns=domain_nouns,
-            content_current_markers=content.current_candidates,
-            content_origin_markers=content.origin_candidates,
+            domain_nouns=self._domain_nouns,
+            content_current_markers=self._content_markers.current_candidates,
+            content_origin_markers=self._content_markers.origin_candidates,
         )
+        self._parser_context = ctx
+        self._parser_context_key = marker_key
+        return ctx
 
     # ── Rebuild ──────────────────────────────────────────────────────
 

@@ -23,9 +23,11 @@ from ncms.application.tlg.induction import (
     load_retirement_verbs,
     run_marker_induction,
 )
+from ncms.application.tlg.shape_cache_store import ShapeCacheStore
 from ncms.application.tlg.vocabulary_cache import VocabularyCache
 
 __all__ = [
+    "ShapeCacheStore",
     "VocabularyCache",
     "induce_and_persist_markers",
     "load_retirement_verbs",

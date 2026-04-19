@@ -199,8 +199,12 @@ class MemoryService:
         # don't need to branch on the feature flag; the cache simply
         # returns an empty InducedVocabulary when no ENTITY_STATE
         # nodes exist.
-        from ncms.application.tlg import VocabularyCache
+        from ncms.application.tlg import ShapeCacheStore, VocabularyCache
         self._tlg_vocab_cache = VocabularyCache()
+        # Persistent skeleton cache (schema v12 ``grammar_shape_cache``).
+        # ``warm`` is called lazily on the first retrieve_lg call.
+        self._tlg_shape_cache = ShapeCacheStore()
+        self._tlg_shape_cache_warmed = False
 
         # Log active feature flags for diagnostics
         features = []
@@ -1597,9 +1601,33 @@ class MemoryService:
                 confidence=Confidence.NONE,
                 proof="tlg disabled (NCMS_TLG_ENABLED=false)",
             )
-        return await _dispatch(
-            query, store=self._store, vocabulary_cache=self._tlg_vocab_cache,
+        # Warm the persistent shape cache once per process lifetime.
+        if not self._tlg_shape_cache_warmed:
+            try:
+                await self._tlg_shape_cache.warm(self._store)
+            except Exception:  # pragma: no cover — defensive guard
+                logger.debug("TLG shape-cache warm failed", exc_info=True)
+            self._tlg_shape_cache_warmed = True
+        trace = await _dispatch(
+            query,
+            store=self._store,
+            vocabulary_cache=self._tlg_vocab_cache,
+            shape_cache=self._tlg_shape_cache,
         )
+        # Dashboard observability — one event per dispatch; dashboards
+        # can aggregate the ``grammar.*`` namespace to visualise intent
+        # mix + confidence distribution.
+        with contextlib.suppress(Exception):  # pragma: no cover — defensive guard
+            self._event_log.grammar_dispatched(  # type: ignore[attr-defined]
+                query=query,
+                intent=trace.intent.kind,
+                subject=trace.intent.subject,
+                entity=trace.intent.entity,
+                confidence=trace.confidence.value,
+                grammar_answer=trace.grammar_answer,
+                proof=trace.proof,
+            )
+        return trace
 
     def invalidate_tlg_vocabulary(self) -> None:
         """Clear the L1 vocabulary cache so the next
@@ -1673,7 +1701,24 @@ class MemoryService:
         composed = await self._compose_trace_onto_scored(
             trace.grammar_answer, trace.zone_context, results,
         )
-        return composed[:limit] if limit else composed
+        composed = composed[:limit] if limit else composed
+        try:
+            # Grammar-answer's backing memory_id for dashboard observers.
+            grammar_memory_id = await self._resolve_node_to_memory_id(
+                trace.grammar_answer,
+            )
+            self._event_log.grammar_composed(  # type: ignore[attr-defined]
+                query=query,
+                intent=trace.intent.kind,
+                confidence=trace.confidence.value,
+                grammar_answer_memory_id=grammar_memory_id,
+                zone_context_count=len(trace.zone_context),
+                bm25_count_before=len(results),
+                composed_count=len(composed),
+            )
+        except Exception:  # pragma: no cover — defensive guard
+            pass
+        return composed
 
     async def _compose_trace_onto_scored(
         self,
