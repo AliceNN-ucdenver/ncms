@@ -30,85 +30,79 @@ from ncms.domain.tlg import (
     LGIntent,
     LGTrace,
     classify_query_intent,
+    current_zone,
+    origin_memory,
+    retirement_memory,
 )
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Subject-scoped helpers
+# Subject-scoped helpers — built on top of ``ncms.domain.tlg.zones``.
 # ---------------------------------------------------------------------------
 
 
-async def _current_state_node(
+# NCMS EdgeType → zones transition-name mapping.  We only consider
+# edges that participate in the zone grammar; SUPPORTS / DERIVED_FROM
+# / MENTIONS_ENTITY don't appear here.
+_TRANSITION_FOR_EDGE: dict[str, str] = {
+    EdgeType.SUPERSEDES.value: "supersedes",
+    EdgeType.REFINES.value: "refines",
+}
+
+
+async def _load_subject_zones(
     store: object, subject: str,
-) -> MemoryNode | None:
-    """Return the most recent is_current ENTITY_STATE node for ``subject``.
+) -> tuple[list, dict[str, MemoryNode], list]:
+    """Load the zone structure + supporting indexes for ``subject``.
 
-    When multiple current states exist (different ``state_key`` per
-    entity), returns the newest by ``created_at`` — dispatch treats
-    that as the subject's dominant current state.
+    Returns ``(zones, node_index, zone_edges)``:
+
+    * ``zones`` — list of :class:`~ncms.domain.tlg.Zone` in
+      chronological root order.
+    * ``node_index`` — ``node.id → MemoryNode`` for the subject's
+      ENTITY_STATE nodes.
+    * ``zone_edges`` — the :class:`~ncms.domain.tlg.ZoneEdge` list,
+      kept for :func:`retirement_memory` callers.
+
+    Pure read path — no writes.  Safe to call repeatedly; if the
+    caller wants caching they should memoise at a higher layer.
     """
+    from ncms.domain.tlg import ZoneEdge as _ZoneEdge
+    from ncms.domain.tlg import compute_zones as _compute_zones
+
     nodes = await store.get_entity_states_by_entity(subject)  # type: ignore[attr-defined]
-    current = [n for n in nodes if n.is_current]
-    if not current:
-        return None
-    # get_entity_states_by_entity orders newest-first already.
-    return current[0]
+    node_index = {n.id: n for n in nodes}
+    node_ids = set(node_index.keys())
 
-
-async def _origin_state_node(
-    store: object, subject: str,
-) -> MemoryNode | None:
-    """Return the earliest ENTITY_STATE node for ``subject`` (zone root).
-
-    Uses ``observed_at`` when set (real-world event time), falling
-    back to ``created_at`` (NCMS ingest time).  Matches the research
-    zone-root heuristic: the first memory for a subject.
-    """
-    nodes = await store.get_entity_states_by_entity(subject)  # type: ignore[attr-defined]
-    if not nodes:
-        return None
-
-    def _sort_key(n: MemoryNode):
-        return (n.observed_at or n.created_at)
-
-    return min(nodes, key=_sort_key)
-
-
-async def _retirement_edge_for_entity(
-    store: object,
-    subject: str,
-    entity: str,
-    *,
-    alias_candidates: frozenset[str] | None = None,
-) -> str | None:
-    """If ``entity`` has been retired within ``subject``, return the
-    MemoryNode ID of the memory that retired it; else ``None``.
-
-    Scans SUPERSEDES edges whose source is a state node belonging to
-    ``subject`` and whose ``retires_entities`` contains ``entity``
-    (or any of its aliases).  The structural retirement set is
-    populated by Phase 1 / Phase 3a — only SUPERSEDES edges born
-    while TLG is enabled carry the set.
-
-    ``alias_candidates`` should come from
-    :meth:`VocabularyCache.expand` so a query using the short form
-    matches an edge that recorded the long form (JWT ↔ JSON Web
-    Tokens).  Callers pass ``None`` to skip alias expansion.
-    """
-    needles = {entity.lower()}
-    if alias_candidates:
-        needles.update(a.lower() for a in alias_candidates)
-
-    subject_nodes = await store.get_entity_states_by_entity(subject)  # type: ignore[attr-defined]
-    for node in subject_nodes:
-        edges = await store.get_graph_edges(node.id, EdgeType.SUPERSEDES)  # type: ignore[attr-defined]
+    # Direction inversion: NCMS reconciliation stores SUPERSEDES /
+    # REFINES as source=new, target=existing.  The research zone
+    # walker expects src=old, dst=new so the state flows forward in
+    # time along admissible edges.  We invert on the way in.
+    zone_edges: list = []
+    for node in nodes:
+        edges = await store.get_graph_edges(node.id)  # type: ignore[attr-defined]
         for edge in edges:
-            for retired in edge.retires_entities:
-                if retired.lower() in needles:
-                    return edge.source_id
-    return None
+            transition = _TRANSITION_FOR_EDGE.get(edge.edge_type.value)
+            if transition is None:
+                continue
+            # ``edge.source_id`` is the announcer (new); ``target_id``
+            # is the existing (old).  In the zone model we want
+            # ``src=old, dst=new``, so swap.
+            zone_src = edge.target_id
+            zone_dst = edge.source_id
+            if zone_src not in node_ids or zone_dst not in node_ids:
+                continue
+            zone_edges.append(_ZoneEdge(
+                src=zone_src,
+                dst=zone_dst,
+                transition=transition,
+                retires_entities=frozenset(edge.retires_entities),
+            ))
+
+    zones = _compute_zones(subject, list(nodes), zone_edges)
+    return zones, node_index, zone_edges
 
 
 # ---------------------------------------------------------------------------
@@ -119,22 +113,34 @@ async def _retirement_edge_for_entity(
 async def _dispatch_current(
     store: object, trace: LGTrace,
 ) -> None:
-    if trace.intent.subject is None:
+    subject = trace.intent.subject
+    if subject is None:
         trace.proof = "current: no subject inferred"
         trace.confidence = Confidence.ABSTAIN
         return
-    node = await _current_state_node(store, trace.intent.subject)
-    if node is None:
+    zones, node_index, _ = await _load_subject_zones(store, subject)
+    if not zones:
         trace.proof = (
-            f"current(subject={trace.intent.subject}): "
-            "no current ENTITY_STATE node found"
+            f"current(subject={subject}): no ENTITY_STATE nodes"
         )
         trace.confidence = Confidence.ABSTAIN
         return
-    trace.grammar_answer = node.id
+    zone = current_zone(zones, node_index)
+    if zone is None:
+        trace.proof = (
+            f"current(subject={subject}): every zone is closed "
+            "(no ungrounded current)"
+        )
+        trace.confidence = Confidence.ABSTAIN
+        return
+    trace.grammar_answer = zone.terminal_mid
+    trace.zone_context = [
+        mid for mid in zone.memory_ids if mid != zone.terminal_mid
+    ]
+    trace.admitted_zones = [f"zone{zone.zone_id}"]
     trace.proof = (
-        f"current(subject={trace.intent.subject}): "
-        f"is_current ENTITY_STATE node {node.id}"
+        f"current(subject={subject}): terminal of zone {zone.zone_id} "
+        f"(chain: {' -> '.join(zone.memory_ids)})"
     )
     trace.confidence = Confidence.HIGH
 
@@ -142,22 +148,33 @@ async def _dispatch_current(
 async def _dispatch_origin(
     store: object, trace: LGTrace,
 ) -> None:
-    if trace.intent.subject is None:
+    subject = trace.intent.subject
+    if subject is None:
         trace.proof = "origin: no subject inferred"
         trace.confidence = Confidence.ABSTAIN
         return
-    node = await _origin_state_node(store, trace.intent.subject)
-    if node is None:
+    zones, node_index, _ = await _load_subject_zones(store, subject)
+    if not zones:
         trace.proof = (
-            f"origin(subject={trace.intent.subject}): "
-            "no ENTITY_STATE nodes for subject"
+            f"origin(subject={subject}): no ENTITY_STATE nodes"
         )
         trace.confidence = Confidence.ABSTAIN
         return
-    trace.grammar_answer = node.id
+    root = origin_memory(zones, node_index)
+    if root is None:
+        trace.proof = f"origin(subject={subject}): empty zone list"
+        trace.confidence = Confidence.ABSTAIN
+        return
+    # zone_context: the rest of the earliest zone's chain.
+    earliest = next((z for z in zones if z.start_mid == root), None)
+    if earliest is not None:
+        trace.zone_context = [
+            mid for mid in earliest.memory_ids if mid != root
+        ]
+        trace.admitted_zones = [f"zone{earliest.zone_id}"]
+    trace.grammar_answer = root
     trace.proof = (
-        f"origin(subject={trace.intent.subject}): "
-        f"earliest ENTITY_STATE node {node.id}"
+        f"origin(subject={subject}): root of earliest zone = {root}"
     )
     trace.confidence = Confidence.HIGH
 
@@ -178,45 +195,63 @@ async def _dispatch_still(
         trace.confidence = Confidence.ABSTAIN
         return
 
-    # 1. Structural retirement — entity (or any of its aliases) in a
-    #    SUPERSEDES edge's retires_entities set.  Highest confidence:
-    #    the state change was recorded with an explicit retirement
-    #    annotation.
-    retire_src = await _retirement_edge_for_entity(
-        store, subject, entity, alias_candidates=aliases,
+    zones, node_index, zone_edges = await _load_subject_zones(
+        store, subject,
     )
-    if retire_src is not None:
-        trace.grammar_answer = retire_src
+    if not zones:
+        trace.proof = f"still(subject={subject}): no ENTITY_STATE nodes"
+        trace.confidence = Confidence.ABSTAIN
+        return
+
+    # 1. Structural retirement — entity (or alias) in a SUPERSEDES
+    #    edge's retires_entities set.  Uses the zones module's
+    #    stem + alias + prefix matcher.
+    alias_map: dict[str, frozenset[str]] | None = None
+    if aliases:
+        alias_map = {entity: aliases}
+    retired_dst = retirement_memory(
+        entity, zone_edges, set(node_index.keys()), aliases=alias_map,
+    )
+    if retired_dst is not None:
+        trace.grammar_answer = retired_dst
         trace.proof = (
             f"still(subject={subject}, entity={entity}): retired by "
-            f"SUPERSEDES edge source {retire_src}"
+            f"SUPERSEDES edge producing {retired_dst}"
         )
         trace.confidence = Confidence.HIGH
         return
 
-    # 2. Entity-in-current-zone heuristic — if the entity (or any
-    #    alias) is linked to the subject's current ENTITY_STATE
-    #    memory, "still using" resolves to that current state.
-    #    Medium confidence: we didn't see a retirement, but we're
-    #    relying on co-occurrence.
-    current = await _current_state_node(store, subject)
+    # 2. Entity-in-current-zone heuristic — entity (or alias) is
+    #    linked to any memory in the current zone.  Medium confidence:
+    #    no explicit retirement, but co-occurrence is a strong hint.
+    current = current_zone(zones, node_index)
     if current is not None:
-        linked = await store.get_memory_entities(current.memory_id)  # type: ignore[attr-defined]
         needles = {entity.lower()}
         if aliases:
             needles.update(a.lower() for a in aliases)
-        if any(e.lower() in needles for e in linked):
-            trace.grammar_answer = current.id
-            trace.proof = (
-                f"still(subject={subject}, entity={entity}): entity is "
-                f"linked to the current state node {current.id}"
-            )
-            trace.confidence = Confidence.MEDIUM
-            return
+        for zone_member_id in current.memory_ids:
+            node = node_index.get(zone_member_id)
+            if node is None:
+                continue
+            linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+            if any(e.lower() in needles for e in linked):
+                trace.grammar_answer = current.terminal_mid
+                trace.zone_context = [
+                    mid for mid in current.memory_ids
+                    if mid != current.terminal_mid
+                ]
+                trace.admitted_zones = [f"zone{current.zone_id}"]
+                trace.proof = (
+                    f"still(subject={subject}, entity={entity}): entity "
+                    f"in current zone {current.zone_id}; terminal = "
+                    f"{current.terminal_mid}"
+                )
+                trace.confidence = Confidence.MEDIUM
+                return
 
     trace.proof = (
         f"still(subject={subject}, entity={entity}): "
-        "no retirement found and entity not linked to current state"
+        "no retirement found and entity not linked to current zone"
     )
     trace.confidence = Confidence.ABSTAIN
 

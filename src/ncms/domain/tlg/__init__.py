@@ -49,6 +49,15 @@ from ncms.domain.tlg.vocabulary import (
     lookup_entity,
     lookup_subject,
 )
+from ncms.domain.tlg.zones import (
+    ADMISSIBLE_TRANSITIONS,
+    Zone,
+    ZoneEdge,
+    compute_zones,
+    current_zone,
+    origin_memory,
+    retirement_memory,
+)
 
 __all__ = [
     # Phase 1 — retirement extraction
@@ -79,4 +88,12 @@ __all__ = [
     "classify_query_intent",
     "compose",
     "is_confident",
+    # Phase 3d — zones (L3 grammar)
+    "ADMISSIBLE_TRANSITIONS",
+    "Zone",
+    "ZoneEdge",
+    "compute_zones",
+    "current_zone",
+    "origin_memory",
+    "retirement_memory",
 ]
