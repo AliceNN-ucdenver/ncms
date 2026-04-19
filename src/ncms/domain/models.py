@@ -547,6 +547,44 @@ class RecallResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# P1-Temporal-Experiment Phase B.5: Deterministic arithmetic resolver
+# ---------------------------------------------------------------------------
+
+
+class TemporalArithmeticResult(BaseModel):
+    """Structured answer to an arithmetic temporal question.
+
+    Produced by ``MemoryService.compute_temporal_arithmetic`` — no
+    LLM involved.  Consumers (MCP tools, dashboard, RAG readers) can
+    format the ``answer_text`` directly or drill into ``anchor_memories``
+    for the underlying evidence.
+
+    Fields:
+      - ``answer_value`` — the computed delta as a float in ``unit``.
+      - ``unit`` — the unit the caller asked for (days/weeks/months/
+        years/hours).
+      - ``answer_text`` — rounded, human-readable summary ("7 days").
+      - ``operation`` — which arithmetic shape fired (``between``,
+        ``since``, ``age_of``).
+      - ``anchor_memories`` — the memories whose ``observed_at`` fed
+        the calculation, in chronological order.
+      - ``anchor_dates`` — parallel list of ISO-8601 timestamps (echo
+        of the memory metadata; duplicative but avoids consumers
+        re-reading the memory objects).
+      - ``confidence`` — 0–1, lower when the anchor picks were
+        ambiguous (multiple candidate memories per entity).
+    """
+
+    answer_value: float
+    unit: str
+    answer_text: str
+    operation: str
+    anchor_memories: list[Memory] = Field(default_factory=list)
+    anchor_dates: list[datetime] = Field(default_factory=list)
+    confidence: float = 1.0
+
+
+# ---------------------------------------------------------------------------
 # Phase 5: Level-First Retrieval & Synthesis
 # ---------------------------------------------------------------------------
 

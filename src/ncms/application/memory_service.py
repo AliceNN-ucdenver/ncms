@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.enrichment import EnrichmentPipeline
@@ -34,6 +34,7 @@ from ncms.domain.models import (
     SearchLogEntry,
     SynthesisMode,
     SynthesizedResponse,
+    TemporalArithmeticResult,
     TopicCluster,
     TraversalMode,
     TraversalResult,
@@ -60,6 +61,45 @@ if TYPE_CHECKING:
     from ncms.infrastructure.reranking.cross_encoder_reranker import CrossEncoderReranker
 
 logger = logging.getLogger(__name__)
+
+
+# ── Phase B.5 helpers: arithmetic-delta formatting ─────────────────────
+# Kept at module scope so ``MemoryService.compute_temporal_arithmetic``
+# stays under the complexity gate.  Pure — no dependencies on service
+# state.
+
+_SECONDS_PER_UNIT: dict[str, float] = {
+    "hours":  3600.0,
+    "days":   86400.0,
+    "weeks":  604800.0,
+    "months": 2_629_746.0,    # average month (Gregorian)
+    "years":  31_556_952.0,   # average Gregorian year
+}
+
+
+def _format_delta(
+    delta_seconds: float, requested_unit: str,
+) -> tuple[float, str]:
+    """Convert a raw delta to (value, unit_label) at the caller's unit.
+
+    Caller's unit is respected (we don't rescale "days" to "weeks"
+    even if the delta is small).  Rounded to one decimal place for
+    display.
+    """
+    secs_per = _SECONDS_PER_UNIT.get(requested_unit, _SECONDS_PER_UNIT["days"])
+    value = round(delta_seconds / secs_per, 1)
+    return value, requested_unit
+
+
+def _format_answer_text(value: float, unit: str) -> str:
+    """Format a numeric delta + unit as a human-readable string.
+
+    Integer-valued deltas drop the decimal; non-integer deltas keep
+    one place ("7 days", "3.5 weeks").
+    """
+    if float(value).is_integer():
+        return f"{int(value)} {unit}"
+    return f"{value} {unit}"
 
 
 class MemoryService:
@@ -478,6 +518,213 @@ class MemoryService:
 
     # ── Search: Intent Classification ──────────────────────────────────
 
+    def _extract_query_range(
+        self,
+        query_entity_names: list[dict],
+        reference_time: datetime,
+        _emit_stage: Callable,
+    ) -> tuple[list[dict], object | None]:
+        """Split mixed GLiNER output into (entity names, query range).
+
+        Phase A of P1-temporal-experiment — logs the resolved range via
+        ``temporal_range_extracted`` but does not filter candidates.
+        Returns entity-only list (temporal spans stripped) and the
+        resolved range (or None).
+
+        When the feature flag is off, passes through unchanged.
+        """
+        if not self._config.temporal_range_filter_enabled:
+            return query_entity_names, None
+        entity_names, temporal_spans = (
+            self._retrieval.split_entity_and_temporal_spans(
+                query_entity_names,
+            )
+        )
+        if not temporal_spans:
+            return entity_names, None
+        query_range = self._retrieval.resolve_temporal_range(
+            temporal_spans, reference_time,
+        )
+        _emit_stage("temporal_range_extracted", 0.0, {
+            "span_count": len(temporal_spans),
+            "spans": [s.text for s in temporal_spans[:10]],
+            "range_start": (
+                query_range.start.isoformat() if query_range else None
+            ),
+            "range_end": (
+                query_range.end.isoformat() if query_range else None
+            ),
+            "confidence": (
+                query_range.confidence if query_range else None
+            ),
+        })
+        return entity_names, query_range
+
+    def _apply_ordinal_if_eligible(
+        self,
+        query: str,
+        scored: list,
+        temporal_ref: object | None,
+        context_entity_ids: list[str],
+        subject_names: list[str],
+        _emit_stage: Callable,
+    ) -> list:
+        """Classify temporal intent; on ordinal match, reorder by observed_at.
+
+        Phase B.2 wiring.  Gated on ``temporal_range_filter_enabled``
+        (the same flag that gates content-date extraction) because the
+        ordinal primitive only pays off when the temporal stack is
+        active.  No-op otherwise.
+        """
+        from ncms.domain.temporal_intent import (
+            TemporalIntent,
+            classify_temporal_intent,
+        )
+
+        if not self._config.temporal_range_filter_enabled:
+            return scored
+        if not scored:
+            return scored
+        ordinal = (
+            getattr(temporal_ref, "ordinal", None)
+            if temporal_ref else None
+        )
+        has_range = bool(temporal_ref) and bool(
+            getattr(temporal_ref, "range_start", None)
+            or getattr(temporal_ref, "range_end", None),
+        )
+        has_relative = bool(temporal_ref) and bool(
+            getattr(temporal_ref, "recency_bias", False),
+        )
+        intent = classify_temporal_intent(
+            query,
+            ordinal=ordinal,
+            has_range=has_range,
+            has_relative=has_relative,
+            subject_count=len(context_entity_ids),
+        )
+        _emit_stage("temporal_intent_classified", 0.0, {
+            "intent": intent.value,
+            "subject_count": len(context_entity_ids),
+            "ordinal": ordinal,
+        })
+        if intent == TemporalIntent.ORDINAL_SINGLE and ordinal:
+            return self._retrieval.apply_ordinal_ordering(
+                scored,
+                subject_entity_ids=context_entity_ids,
+                subject_names=subject_names,
+                ordinal=ordinal,
+                multi_subject=False,
+            )
+        if intent in (
+            TemporalIntent.ORDINAL_COMPARE,
+            TemporalIntent.ORDINAL_ORDER,
+        ) and ordinal:
+            return self._retrieval.apply_ordinal_ordering(
+                scored,
+                subject_entity_ids=context_entity_ids,
+                subject_names=None,  # text-fallback unsafe for multi
+                ordinal=ordinal,
+                multi_subject=True,
+            )
+        return scored
+
+    async def _apply_range_filter_if_eligible(
+        self,
+        query: str,
+        candidates: list[tuple[str, float]],
+        query_range: object | None,
+        temporal_ref: object | None,
+        context_entity_ids: list[str],
+        _emit_stage: Callable,
+    ) -> list[tuple[str, float]]:
+        """Hard-filter candidates by temporal range when appropriate.
+
+        Phase B.4 dispatch — fires the ``apply_range_filter`` primitive
+        when the temporal-intent classifier emits ``RANGE`` or
+        ``RELATIVE_ANCHOR``.  Arithmetic queries fast-fail (never
+        filter).  ``NONE`` and ordinal intents fall through unchanged
+        — the ordinal primitive handles those separately.
+
+        Range source preference:
+          1. ``temporal_ref.range_start/range_end`` (regex parser —
+             catches common calendar expressions like "during 2024"
+             that don't round-trip cleanly through GLiNER).
+          2. ``query_range`` (GLiNER + normalizer) — covers the rest.
+
+        Gated on ``temporal_range_filter_enabled`` like the other
+        Phase B primitives.
+        """
+        from ncms.domain.temporal_intent import (
+            TemporalIntent,
+            classify_temporal_intent,
+        )
+        from ncms.domain.temporal_normalizer import (
+            NormalizedInterval,
+            RawSpan,
+        )
+
+        if not self._config.temporal_range_filter_enabled:
+            return candidates
+        if not candidates:
+            return candidates
+
+        ordinal = (
+            getattr(temporal_ref, "ordinal", None)
+            if temporal_ref else None
+        )
+        has_range = bool(temporal_ref) and bool(
+            getattr(temporal_ref, "range_start", None)
+            or getattr(temporal_ref, "range_end", None),
+        )
+        has_relative = bool(temporal_ref) and bool(
+            getattr(temporal_ref, "recency_bias", False),
+        )
+        intent = classify_temporal_intent(
+            query,
+            ordinal=ordinal,
+            has_range=has_range,
+            has_relative=has_relative,
+            subject_count=len(context_entity_ids),
+        )
+
+        if intent not in (
+            TemporalIntent.RANGE,
+            TemporalIntent.RELATIVE_ANCHOR,
+        ):
+            return candidates
+
+        # Promote the regex-parser range to a NormalizedInterval if
+        # present, else use the normalizer-produced query_range.
+        interval: NormalizedInterval | None = None
+        if has_range:
+            r_start = getattr(temporal_ref, "range_start", None)
+            r_end = getattr(temporal_ref, "range_end", None)
+            if r_start is not None and r_end is not None:
+                interval = NormalizedInterval(
+                    start=r_start, end=r_end, confidence=0.9,
+                    source_span=RawSpan("<parser>", "date"),
+                    origin="parser",
+                )
+        if interval is None:
+            interval = query_range  # may be None
+        if interval is None:
+            return candidates
+
+        before = len(candidates)
+        filtered = await self._retrieval.apply_range_filter(
+            candidates, interval,
+            missing_range_policy=self._config.temporal_missing_range_policy,
+        )
+        _emit_stage("temporal_range_filtered", 0.0, {
+            "intent": intent.value,
+            "candidates_before": before,
+            "candidates_after": len(filtered),
+            "policy": self._config.temporal_missing_range_policy,
+            "range_source": interval.origin,
+        })
+        return filtered
+
     async def _classify_search_intent(
         self,
         query: str,
@@ -629,6 +876,15 @@ class MemoryService:
             bm25_scores, splade_scores, query_entity_names, parallel_ms,
         ) = retrieval
 
+        # P1-temporal-experiment: extract the query-side range (Phase
+        # A instrumentation ships the log; Phase B.4 uses it below as
+        # a hard filter).
+        query_entity_names, query_range = self._extract_query_range(
+            query_entity_names,
+            reference_time or datetime.now(UTC),
+            _emit_stage,
+        )
+
         # Cross-encoder reranking (selective by intent)
         fused_candidates, ce_scores = (
             await self._retrieval.rerank_candidates(
@@ -643,6 +899,16 @@ class MemoryService:
                 query, fused_candidates, query_entity_names,
                 intent_result, bm25_scores, parallel_ms, _emit_stage,
             )
+        )
+
+        # P1-temporal-experiment Phase B.4 — explicit-range primitive.
+        # When the query has a resolvable calendar range AND temporal
+        # intent isn't ARITHMETIC, hard-filter candidates whose
+        # persisted content_range doesn't overlap.  Fires before
+        # scoring so pruning reduces downstream scoring cost too.
+        all_candidates = await self._apply_range_filter_if_eligible(
+            query, all_candidates, query_range,
+            temporal_ref, context_entity_ids, _emit_stage,
         )
 
         # ── Score, rank, and finalize results ─────────────────────────
@@ -661,13 +927,17 @@ class MemoryService:
 
         scored.sort(key=lambda s: s.total_activation, reverse=True)
 
-        # P1b: ordinal rerank.  When the query has "first/last/latest/
-        # most recent/earliest" intent, reorder the top-K candidates by
-        # observed_at so the true chronological answer wins regardless
-        # of which candidate got the best BM25/SPLADE match.
-        scored = self._scoring.apply_ordinal_rerank(
-            scored, temporal_ref,
-            rerank_k=max(limit * 3, 20),
+        # P1-temporal-experiment Phase B.2 — ordinal-sequence primitive.
+        # Classify temporal intent (pure, fast) and, on an ordinal
+        # match with subjects, reorder by ``observed_at`` within the
+        # top-K head.  No-op on all other intents.
+        subject_names = [
+            qe.get("name", "") for qe in query_entity_names
+            if isinstance(qe, dict) and qe.get("name")
+        ]
+        scored = self._apply_ordinal_if_eligible(
+            query, scored, temporal_ref,
+            context_entity_ids, subject_names, _emit_stage,
         )
 
         results = scored[:limit]
@@ -893,6 +1163,286 @@ class MemoryService:
 
         return flags
 
+    # ── Phase B.5: Temporal arithmetic resolver ──────────────────────
+
+    async def compute_temporal_arithmetic(
+        self,
+        query: str,
+        reference_time: datetime | None = None,
+        domain: str | None = None,
+    ) -> TemporalArithmeticResult | None:
+        """Compute a deterministic duration answer for an arithmetic
+        temporal question — zero LLM.
+
+        Mechanism:
+          1. Parse the query for operation (between / since / age_of)
+             and unit (days / weeks / months / years / hours).
+          2. Extract subject entities via GLiNER (using the same
+             label-budget helper the search path uses).
+          3. For each anchor entity: resolve to graph entity_id,
+             pull the earliest ``observed_at`` among graph-linked
+             memories as the anchor date.
+          4. Compute the delta in Python, round to the caller's
+             requested unit, format an answer string.
+
+        Returns ``None`` (never raises) when:
+
+        * The query isn't an arithmetic temporal question.
+        * ``between`` operation needs 2 anchor entities and fewer are
+          extracted, OR ``since`` / ``age_of`` needs 1 and none are.
+        * An anchor entity has no graph-linked memories, OR those
+          memories have no ``observed_at`` timestamps (pre-metadata-
+          fallback data).
+        * The computed delta is zero or negative after abs().
+
+        This resolver does NOT help LongMemEval Recall@K (the answer
+        string isn't a retrievable memory).  Its value is product-
+        facing: MCP tools and dashboards can answer arithmetic
+        temporal questions without an LLM round-trip.
+        """
+        from ncms.domain.models import TemporalArithmeticResult
+        from ncms.domain.temporal_intent import (
+            ARITHMETIC_ANCHOR_COUNTS,
+            parse_arithmetic_spec,
+        )
+
+        spec = parse_arithmetic_spec(query)
+        if spec is None:
+            return None
+
+        needed = ARITHMETIC_ANCHOR_COUNTS[spec.operation]
+        anchor_names = await self._extract_anchor_entity_names(
+            query, domain,
+        )
+        if len(anchor_names) < needed:
+            return None
+
+        ref = reference_time or datetime.now(UTC)
+        anchor_dates, anchor_mems = await self._resolve_anchor_dates(
+            anchor_names[:needed], query=query,
+        )
+        if len(anchor_dates) < needed:
+            return None
+
+        # Build the two ends of the delta.
+        if spec.operation == "between":
+            t_a, t_b = anchor_dates[0], anchor_dates[1]
+        else:
+            # since / age_of: anchor date + reference_time.
+            t_a, t_b = anchor_dates[0], ref
+
+        delta_seconds = abs((t_b - t_a).total_seconds())
+        if delta_seconds <= 0:
+            return None
+
+        value, unit_label = _format_delta(delta_seconds, spec.unit)
+        answer_text = _format_answer_text(value, unit_label)
+        chron = sorted(
+            zip(anchor_mems, anchor_dates, strict=True),
+            key=lambda pair: pair[1],
+        )
+        return TemporalArithmeticResult(
+            answer_value=value,
+            unit=unit_label,
+            answer_text=answer_text,
+            operation=spec.operation,
+            anchor_memories=[m for m, _ in chron],
+            anchor_dates=[d for _, d in chron],
+            confidence=1.0 if needed == len(anchor_dates) else 0.7,
+        )
+
+    async def _extract_anchor_entity_names(
+        self, query: str, domain: str | None,
+    ) -> list[str]:
+        """GLiNER extraction → subject names, filtered to non-temporal
+        entity labels.  Temporal spans are discarded since they aren't
+        anchor entities."""
+        from ncms.application.retrieval.pipeline import RetrievalPipeline
+        from ncms.domain.entity_extraction import (
+            add_temporal_labels,
+            resolve_labels,
+        )
+        from ncms.infrastructure.extraction.gliner_extractor import (
+            extract_with_label_budget,
+        )
+
+        search_domains = [domain] if domain else []
+        cached = await load_cached_labels(self._store, search_domains)
+        labels = resolve_labels(search_domains, cached_labels=cached)
+        if self._config.temporal_range_filter_enabled:
+            labels = add_temporal_labels(labels)
+        mixed = extract_with_label_budget(
+            query, labels,
+            model_name=self._config.gliner_model,
+            threshold=self._config.gliner_threshold,
+            cache_dir=self._config.model_cache_dir,
+        )
+        entities, _temporal = (
+            RetrievalPipeline.split_entity_and_temporal_spans(mixed)
+        )
+        return [
+            str(e.get("name", "")) for e in entities
+            if e.get("name")
+        ]
+
+    async def _resolve_anchor_dates(
+        self,
+        anchor_names: list[str],
+        query: str | None = None,
+    ) -> tuple[list[datetime], list[object]]:
+        """For each anchor name, resolve to a representative memory
+        mentioning that entity.
+
+        Two-source candidate lookup (same pattern as B.2 ordinal
+        primitive):
+
+        1. Graph linkage — ``graph.get_memory_ids_for_entity``.
+        2. Content text fallback — any memory whose ``content``
+           contains the anchor name (case-insensitive).  Needed
+           because GLiNER non-determinism on semantically-similar
+           phrasings ("Metropolitan Museum" vs "Metropolitan
+           Museum of Art") creates separate graph entities that
+           don't share memories.
+
+        Anchor-picking strategy within candidate set:
+
+        * If ``query`` is provided, run BM25 against it and prefer
+          the highest-scoring candidate — query qualifiers ("the
+          MoMA retrospective") naturally pick the right memory when
+          an entity has multiple linked memories.
+        * Otherwise, fall back to the earliest ``observed_at``
+          candidate.  (Also used when BM25 returns no overlap with
+          the anchor candidates.)
+
+        Returns parallel lists of dates and memory objects, in input
+        order.  Skips anchors with no resolvable memory.
+        """
+        bm25_ranking = (
+            await self._bm25_anchor_ranking(query) if query else {}
+        )
+        dates: list[datetime] = []
+        memories: list[object] = []
+        for name in anchor_names:
+            candidates = await self._candidates_for_anchor(name)
+            if not candidates:
+                continue
+            picked = self._pick_anchor_memory(candidates, bm25_ranking)
+            if picked is None:
+                continue
+            memories.append(picked[0])
+            dates.append(picked[1])
+        return dates, memories
+
+    async def _bm25_anchor_ranking(
+        self, query: str,
+    ) -> dict[str, float]:
+        """Return ``{memory_id: bm25_score}`` for the query.  Used to
+        pick the most-relevant anchor memory per entity."""
+        try:
+            ranked = await asyncio.to_thread(
+                self._index.search, query,
+                self._config.tier1_candidates,
+            )
+        except Exception:
+            return {}
+        return {mid: score for mid, score in ranked}
+
+    @staticmethod
+    def _pick_anchor_memory(
+        candidates: list[object],
+        bm25_scores: dict[str, float],
+    ) -> tuple[object, datetime] | None:
+        """Choose one memory + its event date from an anchor's candidate set.
+
+        BM25-top preferred; earliest-by-date fallback.
+        """
+        if bm25_scores:
+            ranked = sorted(
+                (
+                    (mem, bm25_scores.get(mem.id, -1.0))
+                    for mem in candidates
+                    if bm25_scores.get(mem.id, -1.0) >= 0.0
+                ),
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
+            if ranked:
+                top_mem = ranked[0][0]
+                when = (
+                    getattr(top_mem, "observed_at", None)
+                    or getattr(top_mem, "created_at", None)
+                )
+                if when is not None:
+                    return top_mem, when
+        # Fallback: earliest observed_at.
+        best: tuple[object, datetime] | None = None
+        for mem in candidates:
+            when = (
+                getattr(mem, "observed_at", None)
+                or getattr(mem, "created_at", None)
+            )
+            if when is None:
+                continue
+            if best is None or when < best[1]:
+                best = (mem, when)
+        return best
+
+    async def _candidates_for_anchor(
+        self, name: str,
+    ) -> list[object]:
+        """Gather memories for a given anchor name via graph + text scan."""
+        seen_ids: set[str] = set()
+        candidates: list[object] = []
+        # Graph-linked memories first.
+        eid = self._graph.find_entity_by_name(name)
+        if eid is None:
+            ent = await self._store.find_entity_by_name(name)
+            if ent is not None:
+                eid = ent.id
+        if eid is not None:
+            linked_ids = self._graph.get_memory_ids_for_entity(eid)
+            if linked_ids:
+                batch = await self._store.get_memories_batch(
+                    list(linked_ids),
+                )
+                for mid, mem in batch.items():
+                    if mid not in seen_ids:
+                        seen_ids.add(mid)
+                        candidates.append(mem)
+        # Text fallback — case-insensitive substring scan.
+        if len(name.strip()) >= 3:
+            needle = name.strip().lower()
+            try:
+                all_mems = await self._store.list_memories()
+            except Exception:
+                all_mems = []
+            for mem in all_mems:
+                if mem.id in seen_ids:
+                    continue
+                if needle in (mem.content or "").lower():
+                    seen_ids.add(mem.id)
+                    candidates.append(mem)
+        return candidates
+
+    @staticmethod
+    def _earliest_with_observed_at(
+        memories: list[object],
+    ) -> tuple[object, datetime] | None:
+        """Pick the memory with the earliest observed_at (fallback to
+        created_at).  Returns None if none of the memories have a
+        usable timestamp."""
+        best: tuple[object, datetime] | None = None
+        for mem in memories:
+            when = (
+                getattr(mem, "observed_at", None)
+                or getattr(mem, "created_at", None)
+            )
+            if when is None:
+                continue
+            if best is None or when < best[1]:
+                best = (mem, when)
+        return best
+
     # ── Phase 11: Structured Recall ───────────────────────────────────
 
     async def recall(
@@ -929,17 +1479,16 @@ class MemoryService:
 
         # 3. Extract entities from query for structured lookups
         from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_entities_gliner,
+            extract_with_label_budget,
         )
 
         search_domains = [domain] if domain else []
         cached = await load_cached_labels(self._store, search_domains)
         labels = resolve_labels(search_domains, cached_labels=cached)
-        query_entity_names = extract_entities_gliner(
-            query,
+        query_entity_names = extract_with_label_budget(
+            query, labels,
             model_name=self._config.gliner_model,
             threshold=self._config.gliner_threshold,
-            labels=labels,
             cache_dir=self._config.model_cache_dir,
         )
         context_entity_ids: list[str] = []

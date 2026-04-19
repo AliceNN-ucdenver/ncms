@@ -487,6 +487,10 @@ async def _run(args: argparse.Namespace) -> None:
         intent_routing_enabled=True,
         reranker_enabled=True,
         temporal_enabled=True, scoring_weight_temporal=0.2,
+        # P1-temporal-experiment Phase B — activates the full stack:
+        # ordinal primitive, explicit-range filter, metadata-fallback
+        # content_range at ingest, and the intent-routed dispatch.
+        temporal_range_filter_enabled=True,
         scoring_weight_recency=0.1, recency_half_life_days=30.0,
         contradiction_detection_enabled=False,
         consolidation_knowledge_enabled=False,

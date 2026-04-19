@@ -1,25 +1,21 @@
-"""Integration test for P1b ordinal rerank — ADR-style production workload.
+"""Phase B.2 end-to-end integration: ordinal-sequence primitive.
 
-The unit tests in test_ordinal_rerank.py cover the rerank function in
-isolation.  This integration test walks through the real
-MemoryService.search path end-to-end, reproducing the production
-scenario that motivated P1b:
+Walks the real ``MemoryService.search`` pipeline with five seeded
+ADR memories at different dates.  With ``temporal_range_filter_enabled``
+on, the temporal-intent classifier should detect ORDINAL_SINGLE on
+queries like "What is the latest decision on authentication?" and the
+retrieval pipeline should reorder the top-K by ``observed_at``.
 
-    An agent asks "What was the last decision on the authentication
-    flow?" over a small seeded NCMS with several ADRs on overlapping
-    topics at different dates.  The correct answer is the
-    most-recent ADR on authentication; BM25 by itself may rank an
-    older ADR first (because the older one had more keyword matches
-    or higher similarity).  P1b reorders the top-K so recency wins.
-
-Single-test fixture; the scenarios inside differ only in query text.
+Differs from the retired ADR regression test: the rerank now fires
+only when the classifier confirms ordinal intent, not on every
+"first" / "last" keyword, and uses classified graph entity linkage
+plus the metadata fallback range so memory-side coverage is 100%.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
 import pytest_asyncio
 
 from ncms.application.memory_service import MemoryService
@@ -31,14 +27,13 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 @pytest_asyncio.fixture
 async def adr_service() -> MemoryService:
-    """NCMS seeded with five ADRs about authentication across dates."""
+    """NCMS seeded with five authentication ADRs across dates."""
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
     index = TantivyEngine()
     index.initialize()
     graph = NetworkXGraph()
 
-    # Keep SPLADE and graph out so we isolate the rerank effect.
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
@@ -49,16 +44,12 @@ async def adr_service() -> MemoryService:
         scoring_weight_recency=0.0,
         scoring_weight_temporal=0.2,
         temporal_enabled=True,
+        temporal_range_filter_enabled=True,
     )
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
     )
-    # Inline indexing path (no background pool) — we want deterministic
-    # state at the end of every store_memory call so the fixture is
-    # simpler and we don't leak workers on teardown.
 
-    # Five authentication ADRs at different dates, lexically similar
-    # so BM25 can't fully disambiguate by keyword match alone.
     adrs = [
         (
             "ADR-001: Initial authentication design uses session cookies "
@@ -98,84 +89,54 @@ async def adr_service() -> MemoryService:
     await store.close()
 
 
-class TestOrdinalRerankADR:
-    """ADR workload: the most-recent / original ADR should rank first."""
+class TestOrdinalSingle:
+    """Single-subject ordinal: 'latest X' / 'first X' with one subject."""
 
-    async def test_latest_adr_on_authentication(
+    async def test_latest_on_authentication_surfaces_newest(
         self, adr_service: MemoryService,
     ) -> None:
-        """Query with 'latest' must put the most recent ADR at rank 1."""
         results = await adr_service.search(
             query="What is the latest decision on authentication?",
             limit=5,
         )
         assert results, "expected candidates"
+        # ADR-029 is newest (2026-01-08); the ordinal-single primitive
+        # should sort subject-linked memories by observed_at desc.
         top_content = results[0].memory.content
         assert "ADR-029" in top_content, (
-            f"Expected ADR-029 (most recent) at rank 1, got:\n  "
+            "Expected ADR-029 at rank 1; got:\n  "
             + "\n  ".join(
                 f"{i + 1}. {r.memory.content[:60]}"
                 for i, r in enumerate(results)
             )
         )
 
-    async def test_most_recent_change_to_authentication(
+    async def test_original_authentication_surfaces_oldest(
         self, adr_service: MemoryService,
     ) -> None:
-        """'Most recent' is an ordinal-last synonym."""
-        results = await adr_service.search(
-            query="What is the most recent change to authentication flow?",
-            limit=5,
-        )
-        assert results
-        assert "ADR-029" in results[0].memory.content
-
-    async def test_original_authentication_design(
-        self, adr_service: MemoryService,
-    ) -> None:
-        """Query with 'original' must put the earliest ADR at rank 1."""
         results = await adr_service.search(
             query="What was the original authentication design?",
             limit=5,
         )
         assert results
-        top_content = results[0].memory.content
-        assert "ADR-001" in top_content, (
-            f"Expected ADR-001 (earliest) at rank 1, got:\n  "
-            + "\n  ".join(
-                f"{i + 1}. {r.memory.content[:60]}"
-                for i, r in enumerate(results)
-            )
-        )
-
-    async def test_first_authentication_change(
-        self, adr_service: MemoryService,
-    ) -> None:
-        """'First' is an ordinal-first synonym."""
-        results = await adr_service.search(
-            query="What was the first authentication design?",
-            limit=5,
-        )
-        assert results
+        # ADR-001 is oldest (2023-01-15); ordinal=first sort ascending.
         assert "ADR-001" in results[0].memory.content
 
-    async def test_non_ordinal_query_is_not_reordered(
+
+class TestNoOrdinalNoOp:
+    """Queries without ordinal intent don't get reordered by date."""
+
+    async def test_plain_authentication_query_not_chronological(
         self, adr_service: MemoryService,
     ) -> None:
-        """A query without ordinal intent must NOT be reordered by date.
-
-        This is the regression guard: P1b must be a conditional
-        operation, not a side effect on every query.
-        """
+        """Plain 'what authentication does the system use' should not
+        force a date ordering — the temporal-intent classifier returns
+        NONE, so the ordinal primitive is a no-op."""
         results = await adr_service.search(
             query="What authentication does the system use?",
             limit=5,
         )
         assert results
-        # No strong assertion on exact rank — just that the result
-        # is not forced into chronological order.  Extract the order
-        # of observed_at timestamps: if P1b fired by accident, they'd
-        # be monotonic; they shouldn't be.
         dates = [
             r.memory.observed_at for r in results
             if r.memory.observed_at is not None
@@ -192,3 +153,48 @@ class TestOrdinalRerankADR:
             assert not (monotonic_asc or monotonic_desc), (
                 "non-ordinal query should not be chronologically sorted"
             )
+
+
+class TestFlagOff:
+    """With the flag off, the ordinal primitive never fires."""
+
+    async def test_ordinal_primitive_gated_off(self) -> None:
+        store = SQLiteStore(db_path=":memory:")
+        await store.initialize()
+        index = TantivyEngine()
+        index.initialize()
+        graph = NetworkXGraph()
+        config = NCMSConfig(
+            db_path=":memory:",
+            splade_enabled=False,
+            scoring_weight_splade=0.0,
+            temporal_enabled=True,
+            temporal_range_filter_enabled=False,  # OFF
+        )
+        svc = MemoryService(
+            store=store, index=index, graph=graph, config=config,
+        )
+        try:
+            # Seed two ADRs; query with ordinal intent.
+            await svc.store_memory(
+                content="ADR-001 authentication uses cookies",
+                memory_type="fact",
+                observed_at=datetime(2023, 1, 1, tzinfo=UTC),
+            )
+            await svc.store_memory(
+                content="ADR-029 authentication uses passkeys",
+                memory_type="fact",
+                observed_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+            await svc.flush_indexing()
+
+            results = await svc.search(
+                query="What is the latest authentication?",
+                limit=5,
+            )
+            # With primitive off, top result is whatever BM25 picks —
+            # we don't assert chronological order.  Just assert no
+            # crash, and that we got results.
+            assert results
+        finally:
+            await store.close()

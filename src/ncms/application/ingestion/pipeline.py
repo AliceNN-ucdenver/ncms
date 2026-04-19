@@ -26,11 +26,21 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.label_cache import load_cached_labels
-from ncms.domain.entity_extraction import resolve_labels
+from ncms.domain.entity_extraction import (
+    TEMPORAL_LABELS,
+    add_temporal_labels,
+    resolve_labels,
+)
 from ncms.domain.models import Memory, MemoryNode, Relationship
+from ncms.domain.temporal_normalizer import (
+    RawSpan,
+    merge_intervals,
+    normalize_spans,
+)
 
 if TYPE_CHECKING:
     from ncms.application.admission_service import AdmissionService
@@ -456,8 +466,6 @@ class IngestionPipeline:
                     },
                 )
             elif route == "ephemeral_cache":
-                from datetime import UTC, datetime, timedelta
-
                 ttl = self._config.admission_ephemeral_ttl_seconds
                 now = datetime.now(UTC)
                 entry = EphemeralEntry(
@@ -524,7 +532,7 @@ class IngestionPipeline:
         Returns ``(all_entities, linked_entity_ids)``.
         """
         from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_entities_gliner,
+            extract_with_label_budget,
         )
 
         async def _do_bm25() -> float:
@@ -555,11 +563,14 @@ class IngestionPipeline:
             gliner_labels = resolve_labels(
                 domains or [], cached_labels=cached,
             )
+            # P1-temporal-experiment: additively merge temporal labels
+            # for content-date extraction at ingest (§2.1 of the design).
+            if self._config.temporal_range_filter_enabled:
+                gliner_labels = add_temporal_labels(gliner_labels)
             result = await asyncio.to_thread(
-                extract_entities_gliner, content,
+                extract_with_label_budget, content, gliner_labels,
                 model_name=self._config.gliner_model,
                 threshold=self._config.gliner_threshold,
-                labels=gliner_labels,
                 cache_dir=self._config.model_cache_dir,
             )
             return result, (time.perf_counter() - t) * 1000
@@ -580,6 +591,14 @@ class IngestionPipeline:
         emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
         if self._splade is not None:
             emit_stage("splade_index", splade_ms, memory_id=memory.id)
+
+        # P1-temporal-experiment: split temporal spans out of the
+        # GLiNER output before entity linking, resolve them to a
+        # content range, and persist when non-empty.  The entity-
+        # linking path below sees only entity-typed items.
+        auto_entities = await self._persist_content_range(
+            memory, auto_entities, emit_stage,
+        )
 
         # Merge manual + auto-extracted entities (dedup by name)
         manual = list(entities_manual or [])
@@ -622,6 +641,107 @@ class IngestionPipeline:
             )
 
         return all_entities, linked_entity_ids
+
+    async def _persist_content_range(
+        self,
+        memory: Memory,
+        auto_entities: list[dict[str, str]],
+        emit_stage: Callable,
+    ) -> list[dict[str, str]]:
+        """Split temporal spans out of GLiNER output, resolve, persist.
+
+        Returns the entity-only subset of ``auto_entities`` (temporal
+        items removed).  When the feature flag is off, passes through
+        unchanged.
+
+        Resolution order (§14.2 of the design):
+          1. If GLiNER extracted content-date spans that normalize to
+             at least one interval, persist the merged content range
+             with ``source='gliner'``.
+          2. Otherwise, fall back to ``memory.observed_at`` (session
+             envelope date) as a day-wide range with
+             ``source='metadata'``.  This gives ~100% memory coverage
+             on benchmarks like LongMemEval where conversational prose
+             rarely contains explicit dates but every session carries
+             a timestamp.
+          3. If neither is available, persist nothing — retrieval will
+             treat the memory as range-unknown.
+
+        P1-temporal-experiment, Phase A (revised).  See
+        ``docs/p1-temporal-experiment.md`` §14.
+        """
+        if not self._config.temporal_range_filter_enabled:
+            return auto_entities
+        temporal_label_set = {t.lower() for t in TEMPORAL_LABELS}
+        entities_only: list[dict[str, str]] = []
+        spans: list[RawSpan] = []
+        for item in auto_entities:
+            label = str(item.get("type", "")).lower()
+            if label in temporal_label_set:
+                spans.append(RawSpan(
+                    text=str(item.get("name", "")),
+                    label=label,
+                    char_start=int(item.get("char_start", 0) or 0),
+                    char_end=int(item.get("char_end", 0) or 0),
+                ))
+            else:
+                entities_only.append(item)
+
+        # Resolve relative expressions against the memory's own
+        # observed_at if set — this lets historical replays encode
+        # "yesterday" relative to the session date, not wall clock.
+        ref = memory.observed_at or memory.created_at
+        intervals = normalize_spans(spans, ref) if spans else []
+        merged = merge_intervals(intervals)
+
+        source, range_start, range_end = self._resolve_memory_range(
+            merged, memory,
+        )
+        emit_stage("content_range_extracted", 0.0, {
+            "span_count": len(spans),
+            "resolved_intervals": len(intervals),
+            "spans": [s.text for s in spans[:10]],
+            "source": source,
+            "range_start": range_start,
+            "range_end": range_end,
+        }, memory_id=memory.id)
+        if range_start is not None and range_end is not None:
+            await self._store.save_content_range(
+                memory_id=memory.id,
+                range_start=range_start,
+                range_end=range_end,
+                span_count=len(spans),
+                source=source or "unknown",
+            )
+        return entities_only
+
+    @staticmethod
+    def _resolve_memory_range(
+        merged: object | None,
+        memory: Memory,
+    ) -> tuple[str | None, str | None, str | None]:
+        """Pick the best available range for a memory.
+
+        Returns ``(source, range_start, range_end)`` where range_start
+        and range_end are ISO-8601 strings (or all ``None`` when no
+        temporal information is available).
+        """
+        if merged is not None:
+            return (
+                "gliner",
+                merged.start.isoformat(),  # type: ignore[attr-defined]
+                merged.end.isoformat(),    # type: ignore[attr-defined]
+            )
+        anchor = memory.observed_at or memory.created_at
+        if anchor is None:
+            return None, None, None
+        # Day-wide interval anchored on the session timestamp.
+        day_start = datetime(
+            anchor.year, anchor.month, anchor.day,
+            tzinfo=anchor.tzinfo or UTC,
+        )
+        day_end = day_start + timedelta(days=1)
+        return "metadata", day_start.isoformat(), day_end.isoformat()
 
     def build_cooccurrence_edges(
         self,

@@ -22,6 +22,20 @@ UNIVERSAL_LABELS: list[str] = [
     "metric",
 ]
 
+# Temporal-extraction labels.  Orthogonal to entity labels — answer
+# "when is this about" rather than "what is this about".  Attached to
+# the GLiNER call only when the temporal range-filter feature is
+# enabled.  See docs/p1-temporal-experiment.md §2.1.
+TEMPORAL_LABELS: list[str] = [
+    "date",            # Absolute calendar dates: "April 18, 2026"
+    "relative date",   # "yesterday", "last Thursday", "next Monday"
+    "duration",        # "three days", "6 months", "a couple of weeks"
+    "start date",      # "since June 5", "starting Monday"
+    "end date",        # "until yesterday", "through Friday"
+    "time of day",     # "2pm", "in the morning"
+    "event anchor",    # "after the surgery", "before the meeting"
+]
+
 # Max entities per extraction (cap for GLiNER output)
 MAX_ENTITIES = 20
 
@@ -95,3 +109,27 @@ def resolve_labels(
 
     # Replace mode: domain labels only (better performance)
     return domain_labels
+
+
+def add_temporal_labels(labels: list[str]) -> list[str]:
+    """Additively merge temporal-extraction labels with an existing set.
+
+    Temporal labels are a separate, orthogonal dimension from entity
+    labels — they compose on top of whichever entity label set is in
+    play (universal, domain-specific, or merged) without replacing it.
+
+    Case-insensitive deduplication prevents a domain config that
+    already includes ``date`` from emitting it twice.
+
+    The returned list preserves input order (entity labels first,
+    temporal appended in canonical order) so downstream log output
+    stays readable.
+    """
+    seen = {label.lower() for label in labels}
+    extended = list(labels)
+    for temporal in TEMPORAL_LABELS:
+        low = temporal.lower()
+        if low not in seen:
+            extended.append(temporal)
+            seen.add(low)
+    return extended

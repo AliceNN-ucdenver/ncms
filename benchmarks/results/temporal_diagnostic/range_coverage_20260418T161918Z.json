@@ -1,0 +1,113 @@
+{
+  "total_questions": 10,
+  "elapsed_s": 27.028643124969676,
+  "query_extraction_rate": 0.0,
+  "avg_gliner_ms": 162.42220838321373,
+  "memory_coverage": {
+    "sample_size": 50,
+    "with_range": 1,
+    "avg_spans_when_extracted": 5.0
+  },
+  "queries": [
+    {
+      "question_id": "gpt4_59149c77",
+      "pattern": "ARITH_BETWEEN",
+      "question": "How many days passed between my visit to the Museum of Modern Art (MoMA) and the 'Ancient Civilizations' exhibit at the ",
+      "span_count": 0,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 238.04620804730803
+    },
+    {
+      "question_id": "gpt4_f49edff3",
+      "pattern": "COMPARE_FIRST",
+      "question": "Which three events happened in the order from first to last: the day I helped my friend prepare the nursery, the day I h",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 268.28524994198233
+    },
+    {
+      "question_id": "71017276",
+      "pattern": "AGE_OF_EVENT",
+      "question": "How many weeks ago did I meet up with my aunt and receive the crystal chandelier?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 196.736374986358
+    },
+    {
+      "question_id": "b46e15ed",
+      "pattern": "ARITH_ANCHORED",
+      "question": "How many months have passed since I participated in two charity events in a row, on consecutive days?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 187.3510000295937
+    },
+    {
+      "question_id": "gpt4_fa19884c",
+      "pattern": "ARITH_BETWEEN",
+      "question": "How many days passed between the day I started playing along to my favorite songs on my old keyboard and the day I disco",
+      "span_count": 0,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 173.3746670652181
+    },
+    {
+      "question_id": "0bc8ad92",
+      "pattern": "ARITH_ANCHORED",
+      "question": "How many months have passed since I last visited a museum with a friend?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 174.079249962233
+    },
+    {
+      "question_id": "af082822",
+      "pattern": "AGE_OF_EVENT",
+      "question": "How many weeks ago did I attend the friends and family sale at Nordstrom?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 50.96637492533773
+    },
+    {
+      "question_id": "gpt4_4929293a",
+      "pattern": "COMPARE_FIRST",
+      "question": "Which event happened first, my cousin's wedding or Michael's engagement party?",
+      "span_count": 0,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 54.159624967724085
+    },
+    {
+      "question_id": "gpt4_b5700ca9",
+      "pattern": "AGE_OF_EVENT",
+      "question": "How many days ago did I attend the Maundy Thursday service at the Episcopal Church?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 95.7391249248758
+    },
+    {
+      "question_id": "9a707b81",
+      "pattern": "AGE_OF_EVENT",
+      "question": "How many days ago did I attend a baking class at a local culinary school when I made my friend's birthday cake?",
+      "span_count": 1,
+      "had_range": false,
+      "range_start": null,
+      "range_end": null,
+      "gliner_ms": 185.48420898150653
+    }
+  ]
+}

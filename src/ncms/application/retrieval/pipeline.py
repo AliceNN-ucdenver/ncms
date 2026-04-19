@@ -20,14 +20,26 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ncms.application.label_cache import load_cached_labels
-from ncms.domain.entity_extraction import resolve_labels
+from ncms.domain.entity_extraction import (
+    TEMPORAL_LABELS,
+    add_temporal_labels,
+    resolve_labels,
+)
 from ncms.domain.intent import IntentResult, QueryIntent
+from ncms.domain.temporal_normalizer import (
+    NormalizedInterval,
+    RawSpan,
+    merge_intervals,
+    normalize_spans,
+)
 
 if TYPE_CHECKING:
     from ncms.config import NCMSConfig
+    from ncms.domain.models import ScoredMemory
     from ncms.domain.protocols import GraphEngine, IndexEngine, MemoryStore
     from ncms.infrastructure.indexing.splade_engine import SpladeEngine
     from ncms.infrastructure.reranking.cross_encoder_reranker import (
@@ -35,6 +47,86 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Pure helpers for apply_ordinal_ordering (kept at module scope
+# so RetrievalPipeline.apply_ordinal_ordering stays under the D-
+# complexity gate).  See that method's docstring for semantics.
+
+def _event_time(sm: ScoredMemory) -> datetime:
+    """Extract the sort-key timestamp for a scored memory."""
+    mem = sm.memory
+    return (
+        getattr(mem, "observed_at", None)
+        or getattr(mem, "created_at", None)
+        or datetime.min
+    )
+
+
+def _partition_subjects(
+    head: list[ScoredMemory],
+    subject_memory_ids: dict[str, str],
+    needles: list[str],
+) -> tuple[list[ScoredMemory], list[ScoredMemory]]:
+    """Split head into (subject_linked, other) using graph + text fallback."""
+    def _touches(sm: ScoredMemory) -> bool:
+        if sm.memory.id in subject_memory_ids:
+            return True
+        if not needles:
+            return False
+        content_lc = (sm.memory.content or "").lower()
+        return any(n in content_lc for n in needles)
+
+    subject_linked = [sm for sm in head if _touches(sm)]
+    other = [sm for sm in head if not _touches(sm)]
+    return subject_linked, other
+
+
+def _order_single_subject(
+    subject_linked: list[ScoredMemory],
+    other: list[ScoredMemory],
+    tail: list[ScoredMemory],
+    ordinal: str,
+) -> list[ScoredMemory]:
+    """Sort subject-linked slice by date, place at front of head."""
+    sorted_linked = sorted(
+        subject_linked, key=_event_time, reverse=(ordinal == "last"),
+    )
+    return sorted_linked + other + tail
+
+
+def _order_multi_subject(
+    subject_linked: list[ScoredMemory],
+    other: list[ScoredMemory],
+    tail: list[ScoredMemory],
+    subject_entity_ids: list[str],
+    subject_memory_ids: dict[str, str],
+    ordinal: str,
+) -> list[ScoredMemory]:
+    """Pick one representative per subject, chronological across reps."""
+    reverse = (ordinal == "last")
+    by_subject: dict[str, list[ScoredMemory]] = {}
+    for sm in subject_linked:
+        eid = subject_memory_ids.get(sm.memory.id)
+        if eid is None:
+            continue  # text-fallback-matched — not used for multi-subject
+        by_subject.setdefault(eid, []).append(sm)
+    reps: list[ScoredMemory] = []
+    for eid in subject_entity_ids:
+        bucket = by_subject.get(eid)
+        if not bucket:
+            continue
+        reps.append(
+            min(bucket, key=_event_time) if not reverse
+            else max(bucket, key=_event_time)
+        )
+    reps.sort(key=_event_time)
+    rep_ids = {sm.memory.id for sm in reps}
+    remaining = sorted(
+        (sm for sm in subject_linked if sm.memory.id not in rep_ids),
+        key=_event_time, reverse=reverse,
+    )
+    return reps + list(remaining) + other + tail
 
 
 class RetrievalPipeline:
@@ -81,12 +173,17 @@ class RetrievalPipeline:
         parallel_ms)``.
         """
         from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_entities_gliner,
+            extract_with_label_budget,
         )
 
         search_domains = [domain] if domain else []
         cached = await load_cached_labels(self._store, search_domains)
         labels = resolve_labels(search_domains, cached_labels=cached)
+        # P1-temporal-experiment: add temporal labels when the range-
+        # filter feature is enabled.  Additive — never replaces the
+        # entity labels; downstream splits by label type.
+        if self._config.temporal_range_filter_enabled:
+            labels = add_temporal_labels(labels)
 
         t0 = time.perf_counter()
 
@@ -126,10 +223,9 @@ class RetrievalPipeline:
         async def _entity_task() -> list[dict]:
             t = time.perf_counter()
             result = await asyncio.to_thread(
-                extract_entities_gliner, query,
+                extract_with_label_budget, query, labels,
                 model_name=self._config.gliner_model,
                 threshold=self._config.gliner_threshold,
-                labels=labels,
                 cache_dir=self._config.model_cache_dir,
             )
             logger.info(
@@ -186,6 +282,233 @@ class RetrievalPipeline:
             bm25_scores, splade_scores, query_entity_names,
             parallel_ms,
         )
+
+    # ── Temporal helpers (P1-temporal-experiment) ────────────────────────
+
+    @staticmethod
+    def split_entity_and_temporal_spans(
+        mixed: list[dict],
+    ) -> tuple[list[dict], list[RawSpan]]:
+        """Partition a mixed GLiNER output into entities and temporal spans.
+
+        ``mixed`` is the list returned by ``extract_entities_gliner``
+        (with ``name``, ``type``, ``char_start``, ``char_end`` keys).
+        Entities go to the existing entity-linking path unchanged;
+        temporal spans are converted to ``RawSpan`` for the normalizer.
+        """
+        temporal_label_set = {t.lower() for t in TEMPORAL_LABELS}
+        entities: list[dict] = []
+        spans: list[RawSpan] = []
+        for item in mixed:
+            label = str(item.get("type", "")).lower()
+            if label in temporal_label_set:
+                spans.append(RawSpan(
+                    text=str(item.get("name", "")),
+                    label=label,
+                    char_start=int(item.get("char_start", 0) or 0),
+                    char_end=int(item.get("char_end", 0) or 0),
+                ))
+            else:
+                entities.append(item)
+        return entities, spans
+
+    def apply_ordinal_ordering(
+        self,
+        scored: list[ScoredMemory],
+        subject_entity_ids: list[str],
+        ordinal: str,
+        multi_subject: bool,
+        subject_names: list[str] | None = None,
+        rerank_k: int = 20,
+    ) -> list[ScoredMemory]:
+        """Reorder top-K candidates by ``observed_at`` for ordinal queries.
+
+        Phase B.2 primitive (see ``docs/p1-temporal-experiment.md``
+        §17.2 and §14.3).  Invoked by the search pipeline ONLY when
+        the temporal-intent classifier has emitted one of
+        ``ORDINAL_SINGLE`` / ``ORDINAL_COMPARE`` / ``ORDINAL_ORDER``
+        and GLiNER extracted at least one subject entity.
+
+        Semantics:
+
+        * ``multi_subject=False`` (single-subject "first/last X"):
+          partition top-K into subject-linked and other.  Sort the
+          subject-linked slice by ``observed_at`` ascending (``first``)
+          or descending (``last``).  Place subject-linked slice at
+          the front; other candidates stay in relevance order behind.
+        * ``multi_subject=True`` (multi-subject compare/order):
+          partition by subject.  For each subject, keep its
+          earliest/latest memory as a *representative*.  Place
+          representatives at the front, ordered chronologically
+          (ascending for both ``first`` and ``last`` — we want the
+          timeline order, and the ``ordinal`` word tells us which end
+          per subject to pick).  Remaining subject-linked candidates
+          follow.  Non-subject candidates at the tail.
+
+        Subject matching:
+
+        * Graph linkage — memory is an edge target of one of
+          ``subject_entity_ids`` (primary path).
+        * Text fallback — memory content contains one of
+          ``subject_names`` (case-insensitive, ≥3 chars).  Only used
+          for ``multi_subject=False`` because multi-subject text
+          matching creates cross-subject bleed (subject A's earliest
+          text-match beats subject B's true chronological first).
+          Needed because GLiNER is non-deterministic across
+          semantically-similar documents.
+
+        Degrade rules (all no-ops, not failures):
+
+        * ``scored`` empty
+        * ``subject_entity_ids`` and ``subject_names`` both empty
+        * No candidate in top-K touches any subject
+        * ``ordinal`` is not ``"first"`` or ``"last"``
+
+        Relies on ``memory.observed_at`` (or ``created_at`` as fallback)
+        for the sort key.  Both are populated on every memory by the
+        ingestion path.
+        """
+        if not scored:
+            return scored
+        if not subject_entity_ids and not subject_names:
+            return scored
+        if ordinal not in ("first", "last"):
+            return scored
+
+        subject_memory_ids = self._build_subject_membership(
+            subject_entity_ids,
+        )
+        needles = self._subject_needles(subject_names, multi_subject)
+
+        k = min(len(scored), rerank_k)
+        head = list(scored[:k])
+        tail = list(scored[k:])
+        subject_linked, other = _partition_subjects(
+            head, subject_memory_ids, needles,
+        )
+        if not subject_linked:
+            return scored
+
+        if multi_subject:
+            return _order_multi_subject(
+                subject_linked, other, tail,
+                subject_entity_ids, subject_memory_ids, ordinal,
+            ) or scored
+        return _order_single_subject(
+            subject_linked, other, tail, ordinal,
+        )
+
+    def _build_subject_membership(
+        self, subject_entity_ids: list[str],
+    ) -> dict[str, str]:
+        """Map memory_id → subject_entity_id for graph-linked memories."""
+        membership: dict[str, str] = {}
+        for eid in subject_entity_ids:
+            try:
+                linked = self._graph.get_memory_ids_for_entity(eid)
+            except Exception:
+                continue
+            for mid in linked:
+                # First-subject-wins when a memory links to multiple.
+                membership.setdefault(mid, eid)
+        return membership
+
+    @staticmethod
+    def _subject_needles(
+        subject_names: list[str] | None,
+        multi_subject: bool,
+    ) -> list[str]:
+        """Lowercased, min-length-filtered name list for text-fallback.
+
+        Only populated for single-subject mode; multi-subject text
+        matching creates cross-subject bleed and is intentionally
+        disabled.
+        """
+        if multi_subject or not subject_names:
+            return []
+        return [
+            n.strip().lower()
+            for n in subject_names
+            if n and len(n.strip()) >= 3
+        ]
+
+    @staticmethod
+    def resolve_temporal_range(
+        spans: list[RawSpan],
+        reference_time: datetime,
+    ) -> NormalizedInterval | None:
+        """Normalize + merge temporal spans into one query-side range.
+
+        Returns ``None`` when no span resolves cleanly — callers should
+        treat that as "no filter applies, fall through to baseline
+        retrieval".
+        """
+        intervals = normalize_spans(spans, reference_time)
+        return merge_intervals(intervals)
+
+    async def apply_range_filter(
+        self,
+        candidates: list[tuple[str, float]],
+        query_range: NormalizedInterval,
+        missing_range_policy: str = "include",
+    ) -> list[tuple[str, float]]:
+        """Hard-filter candidates whose ``memory_content_ranges`` row
+        overlaps the query range.
+
+        Phase B.4 primitive — implements the paper §5.4 "retrieval
+        restricted to items within the relevant time range" mechanism
+        LLM-free.  Called from ``MemoryService.search`` only when
+        the temporal-intent classifier emits ``RANGE`` or
+        ``RELATIVE_ANCHOR`` AND a non-None ``query_range`` exists.
+
+        Overlap semantics:
+
+            Memory range ``[A, B)`` matches query range ``[C, D)``
+            iff ``A < D AND B > C``.
+
+        ``missing_range_policy``:
+
+        * ``"include"`` (recall-safe default) — memories without a
+          persisted content_range pass the filter.  They weren't
+          filterable, so we don't drop them; scoring decides.
+        * ``"exclude"`` (precision-safe) — memories without a
+          persisted content_range are dropped.  Only memories with a
+          known range are kept.
+
+        The filter preserves the input order of the surviving
+        candidates.  Called BEFORE scoring, so a tight filter reduces
+        downstream scoring cost too.
+
+        Never raises.  Store lookup errors degrade to a no-op (return
+        input unchanged) with a warning log.
+        """
+        if not candidates:
+            return candidates
+        memory_ids = [mid for mid, _ in candidates]
+        try:
+            ranges = await self._store.get_content_ranges_batch(
+                memory_ids,
+            )
+        except Exception:
+            logger.warning(
+                "content_ranges lookup failed; skipping range filter",
+                exc_info=True,
+            )
+            return candidates
+        q_start_iso = query_range.start.isoformat()
+        q_end_iso = query_range.end.isoformat()
+        include_missing = missing_range_policy == "include"
+
+        def _survives(mid: str) -> bool:
+            row = ranges.get(mid)
+            if row is None:
+                return include_missing
+            m_start, m_end = row
+            # Overlap: half-open intervals, compare ISO-8601 strings
+            # lexically (safe because tz-normalized UTC).
+            return m_start < q_end_iso and m_end > q_start_iso
+
+        return [(mid, score) for mid, score in candidates if _survives(mid)]
 
     @staticmethod
     def rrf_fuse(

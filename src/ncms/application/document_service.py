@@ -156,11 +156,11 @@ class DocumentService:
                 import asyncio
 
                 from ncms.infrastructure.extraction.gliner_extractor import (
-                    extract_entities_gliner,
+                    extract_with_label_budget,
                 )
 
                 entities = await asyncio.to_thread(
-                    extract_entities_gliner, content, labels=labels,
+                    extract_with_label_budget, content, labels,
                 )
                 logger.info(
                     "[doc-svc] GLiNER extracted %d entities for %s",

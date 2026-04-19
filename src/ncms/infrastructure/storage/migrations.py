@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -121,6 +121,22 @@ CREATE TABLE IF NOT EXISTS memory_nodes (
 CREATE INDEX IF NOT EXISTS idx_mnodes_memory ON memory_nodes(memory_id);
 CREATE INDEX IF NOT EXISTS idx_mnodes_type ON memory_nodes(node_type);
 CREATE INDEX IF NOT EXISTS idx_mnodes_parent ON memory_nodes(parent_id);
+
+-- P1-temporal-experiment: per-memory content date range.
+-- Populated at ingest when temporal_range_filter_enabled is on and
+-- GLiNER extracts at least one resolvable temporal span.
+-- Queried by RetrievalPipeline to hard-filter candidates whose
+-- content range doesn't overlap the query range.
+CREATE TABLE IF NOT EXISTS memory_content_ranges (
+    memory_id   TEXT PRIMARY KEY,
+    range_start TEXT NOT NULL,      -- ISO 8601, UTC
+    range_end   TEXT NOT NULL,      -- ISO 8601, UTC, exclusive
+    span_count  INTEGER NOT NULL,   -- how many spans contributed
+    source      TEXT NOT NULL,      -- 'gliner' | 'metadata' | 'mixed'
+    FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_mcr_range
+    ON memory_content_ranges(range_start, range_end);
 
 -- HTMG typed directed edges
 CREATE TABLE IF NOT EXISTS graph_edges (

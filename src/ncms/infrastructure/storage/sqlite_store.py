@@ -334,6 +334,52 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
+    # ── Content Ranges (P1-temporal-experiment) ──────────────────────────
+
+    async def save_content_range(
+        self,
+        memory_id: str,
+        range_start: str,
+        range_end: str,
+        span_count: int,
+        source: str,
+    ) -> None:
+        await self.db.execute(
+            """INSERT OR REPLACE INTO memory_content_ranges
+               (memory_id, range_start, range_end, span_count, source)
+               VALUES (?, ?, ?, ?, ?)""",
+            (memory_id, range_start, range_end, span_count, source),
+        )
+        await self.db.commit()
+
+    async def get_content_range(
+        self, memory_id: str,
+    ) -> tuple[str, str] | None:
+        cursor = await self.db.execute(
+            "SELECT range_start, range_end FROM memory_content_ranges "
+            "WHERE memory_id = ?",
+            (memory_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return (row[0], row[1])
+
+    async def get_content_ranges_batch(
+        self, memory_ids: list[str],
+    ) -> dict[str, tuple[str, str]]:
+        if not memory_ids:
+            return {}
+        placeholders = ",".join("?" * len(memory_ids))
+        cursor = await self.db.execute(
+            f"SELECT memory_id, range_start, range_end "
+            f"FROM memory_content_ranges "
+            f"WHERE memory_id IN ({placeholders})",
+            memory_ids,
+        )
+        rows = await cursor.fetchall()
+        return {row[0]: (row[1], row[2]) for row in rows}
+
     # ── Snapshots ────────────────────────────────────────────────────────
 
     async def save_snapshot(self, snapshot: KnowledgeSnapshot) -> None:

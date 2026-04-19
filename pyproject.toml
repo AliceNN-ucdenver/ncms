@@ -32,6 +32,8 @@ dependencies = [
     "gliner>=0.2.10,<1.0",
     "sentence-transformers>=5.0,<6.0",
     "json-repair>=0.39,<1.0",
+    "dateparser>=1.2,<2.0",
+    "snowballstemmer>=2.2,<3.0",
     "arxiv>=2.4.1",
     "bcrypt>=5.0.0",
     "pyjwt>=2.11.0",
@@ -100,6 +102,9 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.15.5",
     "mypy>=1.10",
+    # Fitness-function toolchain — imported by tests/architecture/.
+    "radon>=6.0,<7.0",
+    "vulture>=2.16,<3.0",
 ]
 bench = [
     "datasets>=2.0",

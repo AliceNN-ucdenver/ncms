@@ -16,6 +16,7 @@ Feature Flag Tiers:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -156,6 +157,14 @@ class NCMSConfig(BaseSettings):
     # Temporal query scoring (Phase 4 temporal)
     temporal_enabled: bool = False
     scoring_weight_temporal: float = 0.2  # Additive weight when temporal ref detected
+
+    # P1-temporal-experiment: GLiNER-extracted date ranges + hard-filter
+    # retrieval.  See docs/p1-temporal-experiment.md.
+    temporal_range_filter_enabled: bool = False
+    # Policy for memories with no extracted content range when the query
+    # produces one.  "include" = recall-safe (pass filter), "exclude" =
+    # precision-safe (drop).  Default recall-safe.
+    temporal_missing_range_policy: Literal["include", "exclude"] = "include"
 
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False

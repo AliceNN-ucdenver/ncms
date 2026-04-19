@@ -141,6 +141,35 @@ class EphemeralStore(Protocol):
 # ── Composite Storage Protocol ────────────────────────────────────────────
 
 
+class ContentRangeStore(Protocol):
+    """Per-memory temporal range extracted at ingest (P1-temporal-exp).
+
+    Populated by the ingestion pipeline when the temporal range-filter
+    feature is enabled and GLiNER extracts resolvable temporal spans
+    from the memory content.  Queried at retrieval time to hard-filter
+    candidates whose content range doesn't overlap the query range.
+    """
+
+    async def save_content_range(
+        self,
+        memory_id: str,
+        range_start: str,    # ISO 8601, UTC
+        range_end: str,
+        span_count: int,
+        source: str,         # 'gliner' | 'metadata' | 'mixed'
+    ) -> None: ...
+
+    async def get_content_range(
+        self, memory_id: str,
+    ) -> tuple[str, str] | None:
+        """Return (range_start, range_end) or None if unknown."""
+        ...
+
+    async def get_content_ranges_batch(
+        self, memory_ids: list[str],
+    ) -> dict[str, tuple[str, str]]: ...
+
+
 class MemoryStore(
     EntityStore,
     SnapshotStore,
@@ -148,6 +177,7 @@ class MemoryStore(
     MemoryNodeStore,
     GraphEdgeStore,
     EphemeralStore,
+    ContentRangeStore,
     Protocol,
 ):
     """Persistent storage for memory records.

@@ -211,6 +211,20 @@ def parse_temporal_reference(
             end = now
         return TemporalReference(range_start=start, range_end=end)
 
+    # ── Bare year: "in 2024", "during 2024", "since 2024" ──────────
+    # Matches queries where a year stands alone after a range-opening
+    # preposition.  Must come after the named-month pattern (which
+    # consumes "in March 2024" etc.) but before quarter so "in Q1 2024"
+    # doesn't get swallowed as a bare-year match.
+    m = re.search(r"\b(?:in|during|from|since)\s+(\d{4})\b", q)
+    if m:
+        year = int(m.group(1))
+        start = datetime(year, 1, 1, tzinfo=UTC)
+        end = datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC)
+        if re.search(r"\bsince\b", q):
+            end = now
+        return TemporalReference(range_start=start, range_end=end)
+
     # ── Named quarter: "Q1 2026", "this quarter", "last quarter" ─────
     m = re.search(r"\bq([1-4])\s*(\d{4})?\b", q)
     if m:
