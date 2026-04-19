@@ -2,7 +2,7 @@
 
 **Status:** Pre-build planning
 **Date:** 2026-04-17
-**Prerequisite reads:** `docs/design-query-performance.md` §5, `docs/p1-temporal-findings.md`
+**Prerequisite reads:** `docs/design-query-performance.md` §5, `docs/research-longmemeval-temporal.md`
 
 ---
 

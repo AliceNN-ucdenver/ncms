@@ -622,7 +622,7 @@ FUNCTION is_abbreviation(short, long)
 Catches JWT ↔ JSON Web Tokens, MFA ↔ multi-factor authentication,
 PT ↔ physical therapy.  Does not catch semantic synonyms (delay ↔
 blocker) — those require embedding or curated synonym packs
-(P2.6).
+(M6).
 
 **Lookup helper.**  The retirement and cause_of handlers consult
 the alias table via:
@@ -843,7 +843,7 @@ rebuild.  The reload pattern is an artifact of Python's
 `experiments/temporal_trajectory/longmemeval_ingest.py::ingest_question`.
 Integration replaces this with explicit `recompute_state()`
 functions and incremental updates against NCMS's persistent
-stores (§7.6, P2.2).
+stores (§7.6, M2).
 
 ### 4.10 Marker induction from memory content
 
@@ -1143,7 +1143,7 @@ Per trajectory intent (where TLG is designed to win):
 | `before_named` | 19 | 11 / 19 (58 %) |
 | `sequence` / `predecessor` / `interval` / `range` / `retirement` | 39 | 4 / 39 |
 
-The 100 % on `current` and `origin` is the strong grammar-wins story.  The lower scores on `interval`/`range`/`retirement` are *abstentions* (not confidently-wrong) — grammar classifies the intent correctly but returns a session adjacent to the gold, an artifact of LongMemEval's fact-level answers inside multi-fact sessions vs. our session-as-memory granularity.  Integration with NCMS's turn-level memories is expected to close this gap (P2.2).
+The 100 % on `current` and `origin` is the strong grammar-wins story.  The lower scores on `interval`/`range`/`retirement` are *abstentions* (not confidently-wrong) — grammar classifies the intent correctly but returns a session adjacent to the gold, an artifact of LongMemEval's fact-level answers inside multi-fact sessions vs. our session-as-memory granularity.  Integration with NCMS's turn-level memories is expected to close this gap (milestone M2).
 
 **Reconciling the breakdown.**  The trajectory-intent rows sum to 93 grammar-correct out of 136 classified questions.  The remaining 270 − 93 = 177 grammar-correct answers come from `intent = none` queries where the query's subject resolved to a single-memory subject (§4.8 subject-only fallback); the grammar returns that memory with `confidence = medium`.  This is the path that lets TLG correctly answer "What is our next project on the roadmap?" on a single-memory `identity_project` subject even though no temporal-intent production fires.  The 230 abstentions plus the 177 single-memory-subject answers make up the 363 `intent = none` queries of §5.10's abstention taxonomy.
 
@@ -1524,7 +1524,7 @@ Validation covers 500 LongMemEval + 32 structured + 15 adversarial + 15 taxonomy
 
 ### 7.3 Session-vs-fact granularity
 
-LongMemEval's answers are fact-level within multi-fact sessions; TLG's mock-ingest currently treats sessions as atomic memories.  The 4 / 39 rate on two-event intents (sequence / predecessor / interval / range / retirement) is hypothesized to be a granularity artifact; this hypothesis is tested empirically by P2.2 (NCMS integration with turn-level memories).  The pre-paper reports the 54 % figure at session granularity; P2.2 reports whether turn granularity changes it.
+LongMemEval's answers are fact-level within multi-fact sessions; TLG's mock-ingest currently treats sessions as atomic memories.  The 4 / 39 rate on two-event intents (sequence / predecessor / interval / range / retirement) is hypothesized to be a granularity artifact; this hypothesis is tested empirically by milestone M2 (NCMS integration with turn-level memories).  The pre-paper reports the 54 % figure at session granularity; M2 reports whether turn granularity changes it.
 
 ### 7.4 Production induction
 
@@ -1572,14 +1572,22 @@ The structural layer is stable by design.  Extending the productions themselves 
   correct.  Spot-check on 50 randomly-sampled confidently-wrong
   candidates found no labeling errors.
 
-### 7.6 Phase 2 roadmap
+### 7.6 Research milestones (M1 – M8)
 
-The pre-paper establishes the foundational architecture.  Phase 2
-deepens the empirical evidence and validates at production scale.
-Each work-item has a concrete artifact, a rough effort estimate,
-and a measurable outcome.
+The pre-paper establishes the foundational architecture.  The
+milestones below deepen the empirical evidence and validate at
+production scale.  Each has a concrete artifact, a rough effort
+estimate, and a measurable outcome.
 
-#### P2.1  Direct SOTA comparison on LongMemEval
+**Note on terminology.**  We use *Milestones* (M1 – M8) for this
+paper's research roadmap to avoid collision with the integrating
+system's *Phases* (e.g. the NCMS integration plan numbers its own
+Phase 0 – Phase 7).  When this paper says "Mn" it refers to a
+research work-item below; when a downstream integration plan says
+"Phase n" it refers to a code-shipping phase, which may bundle
+multiple milestones or run in parallel with them.
+
+#### M1  Direct SOTA comparison on LongMemEval
 
 **Goal.**  Head-to-head numbers against Zep, Mem0, A-MEM, MemGPT
 on the same 500-question LongMemEval benchmark — the key number a
@@ -1603,7 +1611,7 @@ competitively with SOTA systems ≥ 80 % of their accuracy with
 0 confidently-wrong, or (b) we document the specific intents
 where SOTA beats TLG + BM25 and refine the taxonomy.
 
-#### P2.2  NCMS production integration
+#### M2  NCMS production integration
 
 **Goal.**  Replace the experimental `_find_memory` iterator with
 NCMS's entity-graph index for O(1) lookup; integrate TLG's
@@ -1630,7 +1638,7 @@ pieces are already in production-shape.
 with <50 ms query latency at scale.  Grammar ∨ BM25+SPLADE
 combined coverage measured on each benchmark.
 
-#### P2.3  Dense-retriever baselines
+#### M3  Dense-retriever baselines
 
 **Goal.**  Include BGE / E5 / Voyage as baselines alongside
 BM25 — addresses the "is this better than neural retrievers?"
@@ -1650,7 +1658,7 @@ harness is the work.
 zero-confidently-wrong property holds independently of which
 statistical retriever it composes with.
 
-#### P2.4  Cross-benchmark validation
+#### M4  Cross-benchmark validation
 
 **Goal.**  Validate that TLG generalizes beyond LongMemEval —
 MemoryAgentBench primarily; possibly clinical memory (MIMIC-III
@@ -1671,7 +1679,7 @@ and legal memory (court-case timelines).
 discipline holds across domains; per-benchmark rank-1 numbers
 that are interpretable in context.
 
-#### P2.5  Production-scale stress test
+#### M5  Production-scale stress test
 
 **Goal.**  Scaling beyond the 50 k synthetic memories in this
 pre-paper to 100 k – 1 M memories on a real NCMS deployment.
@@ -1691,7 +1699,7 @@ effort; measurement is cheap.
 **Measurable outcome.**  Query-dispatch under 100 ms at 1 M
 memories with NCMS's entity-graph index in place.
 
-#### P2.6  Semantic alias extension
+#### M6  Semantic alias extension
 
 **Goal.**  Close the "delay ≈ blocker" gap beyond initials-based
 aliases.  Two candidate approaches:
@@ -1716,7 +1724,7 @@ aliases.  Two candidate approaches:
 aliases resolved via grammar (previously required BM25
 fallback).
 
-#### P2.7  Production induction (structural layer self-improvement)
+#### M7  Production induction (structural layer self-improvement)
 
 **Goal.**  Explore whether the **structural layer** (productions,
 intent seeds) can partially self-improve from the shape-cache's
@@ -1737,15 +1745,15 @@ research; target would be workshop-quality exploratory results.
 **Measurable outcome.**  Demonstration (not yet deployment) that
 new productions can be induced from usage data.
 
-#### P2.8  Formal tier-1 paper revision
+#### M8  Formal tier-1 paper revision
 
 **Goal.**  Revise this pre-paper into a full conference paper
-incorporating P2.1 – P2.5.
+incorporating M1 – M5.
 
 **Artifacts.**
 
 * Revised manuscript with full SOTA comparison table.
-* Additional propositions if P2.7 yields theoretical results.
+* Additional propositions if M7 yields theoretical results.
 * Camera-ready formatting for target venue (EMNLP / ACL / SIGIR).
 
 **Expected effort.**  2 weeks writing + revision cycle.
@@ -1753,30 +1761,30 @@ incorporating P2.1 – P2.5.
 **Measurable outcome.**  Submission to a tier-1 venue within 3 – 6
 months of this pre-paper's posting.
 
-#### Phase 2 timeline (summary)
+#### Milestone timeline (summary)
 
 | Work | Weeks | Depends on |
 |---|---:|---|
-| P2.1  SOTA comparison | 1 – 2 | nothing |
-| P2.2  NCMS integration | 2 – 3 | nothing |
-| P2.3  Dense baselines | <1 | P2.2 |
-| P2.4  Cross-benchmark | 1 – 2 | P2.2 |
-| P2.5  Scale stress | 1 | P2.2 |
-| P2.6  Semantic aliases | 1 – 2 | P2.2 |
-| P2.7  Production induction | 2 | P2.2 + 3 months of logs |
-| P2.8  Paper revision | 2 | P2.1, P2.4 |
+| M1  SOTA comparison | 1 – 2 | nothing |
+| M2  NCMS integration | 2 – 3 | nothing |
+| M3  Dense baselines | <1 | M2 |
+| M4  Cross-benchmark | 1 – 2 | M2 |
+| M5  Scale stress | 1 | M2 |
+| M6  Semantic aliases | 1 – 2 | M2 |
+| M7  Production induction | 2 | M2 + 3 months of logs |
+| M8  Paper revision | 2 | M1, M4 |
 
-Sequential critical path: P2.2 (integration) → P2.4 (cross-
-benchmark) → P2.8 (revision).  Parallel tracks:
-P2.1 (SOTA comparison, can start without integration),
-P2.3 (dense baselines, after integration),
-P2.5 (scale, after integration),
-P2.6 / P2.7 (research extensions, as bandwidth allows).
+Sequential critical path: M2 (integration) → M4 (cross-
+benchmark) → M8 (revision).  Parallel tracks:
+M1 (SOTA comparison, can start without integration),
+M3 (dense baselines, after integration),
+M5 (scale, after integration),
+M6 / M7 (research extensions, as bandwidth allows).
 
-Target end-state for Phase 2: full paper submission to EMNLP
-2026 or SIGIR 2027 (whichever deadline lands sooner post-
-integration) with the comparison table, integration evidence,
-and cross-benchmark validation needed for tier-1 review.
+Target end-state: full paper submission to EMNLP 2026 or SIGIR
+2027 (whichever deadline lands sooner post-integration) with the
+comparison table, integration evidence, and cross-benchmark
+validation needed for tier-1 review.
 
 ---
 
@@ -1837,15 +1845,15 @@ To be honest about the scope:
   LongMemEval is **competitive**, not dominant — Zep reports
   ~94 % on DMR (different benchmark) and 18.5 % gains on
   LongMemEval over baseline; Mem0 reports 26 % over OpenAI
-  memory.  Direct head-to-head comparison is Phase 2 work.
+  memory.  Direct head-to-head comparison is milestone M1 work.
 * **Not validated at production scale.**  50 k synthetic
   memories is larger than our test corpus but smaller than a
   real NCMS deployment (10⁵ – 10⁶).  Scaling to that regime and
-  measuring under real workloads is Phase 2 work.
+  measuring under real workloads is milestone M5 work.
 * **Not yet integrated.**  The proof that grammar-and-BM25
   composition works in production — with NCMS's full stack
   (GLiNER, SPLADE v3, cross-encoder, dense embeddings) — is
-  Phase 2 work.
+  milestone M2 work.
 * **LLM-free by design.**  This rules out certain query families
   (open-ended aggregation, synonym reasoning, summarization).
   TLG composes WITH LLMs rather than replacing them; the LLM-free
@@ -1854,20 +1862,23 @@ To be honest about the scope:
 
 ### 8.4 Publication pathway
 
-Given the above, the publication roadmap we're following:
+Given the above, the publication roadmap we're following
+(*stages* are publication submissions; *milestones* are research
+work-items that feed them):
 
 * **Stage 1 — Now.**  arXiv pre-paper (this document) + optional
   workshop submission (NeurIPS agent-memory workshop,
   ACL retrieval workshop, CIKM).  Establishes priority on the
-  theoretical framework and the LG → memory move.
+  theoretical framework and the LG → memory move.  Requires: no
+  further work beyond the pre-paper.
 * **Stage 2 — Post-integration (3 months).**  Full paper with
   (a) direct SOTA comparison on LongMemEval vs. Zep / Mem0 /
-  A-MEM, (b) production-scale measurements from NCMS
-  integration, (c) dense-retriever baselines.  Submit to
-  EMNLP / ACL main track or SIGIR.
-* **Stage 3 — Broader validation (6+ months).**  MemoryAgentBench,
-  cross-domain (clinical, codebase, customer support), scaling
-  to 10⁵–10⁶ memories.  Tier-1 journal (TACL, JMLR) or SIGIR /
+  A-MEM (**M1**), (b) production-scale measurements from NCMS
+  integration (**M2**), (c) dense-retriever baselines (**M3**).
+  Submit to EMNLP / ACL main track or SIGIR.
+* **Stage 3 — Broader validation (6+ months).**  MemoryAgentBench
+  and cross-domain evaluation (**M4**), scaling to 10⁵–10⁶
+  memories (**M5**).  Tier-1 journal (TACL, JMLR) or SIGIR /
   WWW main track.
 
 The pre-paper is the foundational contribution.  The production

@@ -1,7 +1,7 @@
 # NCMS Query Performance: LongMemEval Improvement Plan
 
-**Status:** P0 complete; P1a shipped (zero LongMemEval impact); P1b queued as next build; P1c cut
-**Date:** 2026-04-12 (initial); **updated 2026-04-17** after P1a measurement + diagnostic
+**Status:** P0 complete; P1a shipped (zero LongMemEval impact); P1b retired; P1-temporal-experiment is the new direction; P1c cut
+**Date:** 2026-04-12 (initial); **updated 2026-04-18** after direct LongMemEval paper study
 **Authors:** Shawn McCarthy, with analysis assistance from Claude (Anthropic)
 **Context:** NCMS scores Recall@5=0.4680 on LongMemEval (500 questions across 6 categories). Competitive analysis of MemPalace (96-99% on this benchmark) identified five targeted improvements to close the gap. Each feature addresses a specific category weakness with measurable expected impact.
 
@@ -12,25 +12,38 @@
    pipeline packages (`scoring`, `retrieval`, `enrichment`, `ingestion`,
    `traversal`).  Three architectural fitness functions lock the
    structure against regression.  Details in `docs/fitness-functions.md`.
-2. **P1 redesigned based on measurement.**  The original "+0.42 to
-   +0.57 delta" projection assumed LongMemEval's temporal category
-   needed range-filter retrieval.  It doesn't — 68% of the category's
-   133 questions are arithmetic with a hard Recall@K ceiling.
+2. **P1 redesigned based on measurement — twice.**  The original
+   "+0.42 to +0.57 delta" projection assumed LongMemEval's temporal
+   category needed range-filter retrieval.  It doesn't — 68% of the
+   category's 133 questions are arithmetic with a hard Recall@K
+   ceiling.
    - **P1a** (range-filter scoring + bitemporal `observed_at`
-     end-to-end) shipped cleanly.  LongMemEval delta: 0.0000.  See
-     `docs/p1-measurement.md`.
-   - **P1b** (ordinal rerank over the candidate pool) is the next
-     build.  Small LongMemEval ceiling (+0.012 overall) but targets
-     the high-value production pattern ("last ADR on X").  Plan in
-     `docs/p1-temporal-findings.md`; production mapping in
-     `docs/p1-temporal-usecases.md`.
+     end-to-end) shipped cleanly.  LongMemEval delta: 0.0000.
+   - **P1b** (ordinal rerank over the candidate pool) was built,
+     measured, and **retired**.  Both a pool-wide and a subject-
+     scoped variant regressed the benchmark.  Root cause: the
+     LongMemEval paper (arXiv 2410.10813 §5.4) does not rerank the
+     retrieval pool by `observed_at` for ordinal queries — that's
+     a design NCMS invented on its own that does not match how
+     the benchmark's temporal-reasoning questions are constructed.
+     Dead code has been removed. Full analysis in
+     `docs/research-longmemeval-temporal.md` (§6).
    - **P1c** (multi-anchor retrieval) cut — the diagnostic found zero
      candidate-generation gap on LongMemEval.
+   - **P1-temporal-experiment** (new) — port the paper's §5.4 recipe
+     (time-aware indexing + hard-filter range query) using our existing
+     SLM stack (GLiNER + regex/dateparser).  Zero LLM at query time.
+     Design in `docs/p1-temporal-experiment.md`.
 3. **Landing zones added.**  §9.5 maps each feature to its owning
    pipeline package, with a fitness-function checklist for PRs.
 4. **Implementation plans refer to pipeline packages, not
    `memory_service.py`.**  Post-Phase 0, feature code lives in the
    matching pipeline; `memory_service.py` changes minimally.
+5. **The "LLM-free at query time" pitch is a hard constraint, not a
+   preference.**  Any design that needs an LLM at query time gets
+   rejected at gate; the temporal experiment must deliver its
+   gains through SLMs we already load (GLiNER, SPLADE, the
+   cross-encoder reranker, planned E5-small-v2) plus rules.
 
 ---
 
@@ -823,8 +836,9 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | Priority | Feature | Target Category | Questions | Expected Delta | Effort | Current State |
 |----------|---------|----------------|-----------|----------------|--------|---------------|
 | P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (Phase 0 complete) |
-| P1a | Range-filter temporal + bitemporal model | temporal-reasoning | 133 | 0.000 | **Done** | Shipped; see `docs/p1-measurement.md` |
-| P1b | Ordinal rerank (post-retrieval) | temporal-reasoning + production ADR queries | 133 LM + production | +0.012 overall on LM, high impact on prod | **4-6 hours** | Next build — see `docs/p1-temporal-findings.md` |
+| P1a | Range-filter temporal + bitemporal model | temporal-reasoning | 133 | 0.000 | **Done** | Shipped; infrastructure only (observed_at/reference_time), no LongMemEval gain. |
+| ~~P1b~~ | ~~Ordinal rerank (post-retrieval)~~ | ~~temporal-reasoning~~ | — | ~~negative~~ | ~~Retired~~ | Both variants (pool-wide and subject-scoped) regressed LongMemEval; paper §5.4 does not rerank the retrieval pool. Dead code removed. |
+| P1-exp | Time-aware indexing + hard-filter range query | temporal-reasoning | 133 | **+10 to +23 pts R@5** (paper §5.4, Table 4) | **3-5 days** | Next build — see `docs/p1-temporal-experiment.md`. Zero LLM at query time — GLiNER date label + regex/dateparser. |
 | ~~P1c~~ | ~~Multi-anchor retrieval~~ | ~~arithmetic~~ | — | ~~0~~ | ~~Cut — diagnostic showed zero Recall@K upside~~ | Not pursuing |
 | P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days | Greenfield |
 | P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days | Greenfield |
@@ -834,33 +848,51 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service |
 | P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield |
 
-**P1 status — revised based on empirical measurement.**  The original
-estimate (+0.42 to +0.57 on temporal-reasoning) was wrong because it
-assumed LongMemEval's temporal questions needed range-filter
-retrieval.  They don't.  A 27-minute diagnostic over all 133
-temporal-reasoning questions (`benchmarks/longmemeval/temporal_diagnostic.py`)
-found:
+**P1 status — twice revised based on empirical measurement.**  The
+original estimate (+0.42 to +0.57 on temporal-reasoning) assumed
+LongMemEval's temporal questions needed range-filter retrieval.  The
+first revision (§9.1 row P1a/P1b) assumed they needed ordinal rerank.
+Both were wrong in different ways; the paper's actual recipe is
+neither.
 
-- **P1a** (range-filter scoring) shipped cleanly but produces 0.0000
-  delta because 68% of the benchmark's temporal questions are
-  arithmetic ("how many days between X and Y") with answers that never
-  appear in any source memory — a hard Recall@K ceiling that no
-  retrieval change can cross.
-- **P1c** (multi-anchor retrieval) is cut.  Every retrievable answer
-  already lands in top-50 today; there is no candidate-generation gap
-  to close.
-- **P1b** (ordinal rerank) ceiling on LongMemEval is +0.012 overall
-  Recall@5 — small but real.  More importantly, it directly serves the
-  production software-dev workload ("last ADR on X", "original design
-  for Y", "most recent change to Z") where the arithmetic ceiling
-  doesn't apply and the ordinal impact is large.  See
-  `docs/p1-temporal-findings.md` for the per-pattern diagnostic and
-  `docs/p1-temporal-usecases.md` for the production mapping.
-- **Arithmetic questions** (~90 of 133) require RAG-mode evaluation;
-  they're a measurement-stack concern, not a retrieval one.  Parked.
+Timeline:
 
-§4.3 below retains the original P1a design for reference; P1b's
-implementation plan is captured in the findings doc.
+1. **P1a — range-filter scoring + bitemporal `observed_at` end-to-end
+   (shipped).**  Correct infrastructure (memories, L1/L2 nodes, and the
+   scoring signal all carry `observed_at`; `search()` accepts
+   `reference_time`).  Zero LongMemEval delta, because the signal is a
+   *soft scoring boost* where the paper uses a *hard filter*, and
+   because content-date extraction at ingest isn't wired.
+2. **P1b — ordinal rerank (built, measured, retired).**  Two variants
+   both regressed LongMemEval.  Pool-wide rerank: COMPARE_FIRST R@5
+   0.414 → 0.276, ORDINAL_FIRST 0.333 → 0.000.  Subject-scoped
+   variant: 0.414 → 0.345, 0.333 → 0.167.  Better than pool-wide,
+   still worse than doing nothing.  Root cause: **the paper explicitly
+   does not rerank the retrieval pool by `observed_at`**.  §5.4
+   time-awareness lives in indexing and query-range filtering; the
+   §5.1 timestamp sort is read-stage LLM presentation order, not a
+   retrieval rerank.  Paper footnote 4 also reports that merging
+   rank pathways at retrieval stage underperformed merging at
+   indexing stage — exactly the design we kept reaching for.  All
+   rerank code and tests have been removed.  Full quotes and
+   numerical evidence in `docs/research-longmemeval-temporal.md`.
+3. **P1c — multi-anchor retrieval (cut).**  Every retrievable
+   LongMemEval answer already lands in top-50 today; there is no
+   candidate-generation gap to close.
+4. **P1-temporal-experiment (next build).**  Implements the paper's
+   §5.4 recipe under NCMS's zero-LLM-at-query-time constraint: add a
+   GLiNER `date` label to ingest-side entity extraction (already
+   loaded, zero marginal model cost); extend `temporal_parser.py` +
+   `dateparser` (pure Python) for query-side range extraction; apply
+   the range as a hard candidate filter (not a soft boost).  Design:
+   `docs/p1-temporal-experiment.md`.
+5. **Arithmetic questions (~90 of 133).**  Answer strings absent from
+   every source memory — a retrieval-only ceiling at Recall@K = 0.
+   Scoring these requires RAG + LLM judge; parked as a
+   measurement-stack concern, not a retrieval one.
+
+§4.3 below retains the original P1a design for reference; the new
+temporal experiment is described in `docs/p1-temporal-experiment.md`.
 
 ### 9.2 Items Adopted from Resilience Doc Phase 7
 
@@ -984,7 +1016,8 @@ minimally (only to wire a new constructor arg or emit a new config).
 | Feature | Pipeline / New Module | Specific Functions Touched |
 |---------|----------------------|----------------------------|
 | P1a Range-filter temporal | **scoring/pipeline.py** + **domain/temporal_parser.py** — shipped | `_compute_raw_signals` (temporal_raw), `_normalize_and_combine` (max_temporal). Also landed the bitemporal `observed_at` / `reference_time` wiring end-to-end. Ships the infrastructure; no LongMemEval delta. |
-| P1b Ordinal rerank | **scoring/pipeline.py** (new `apply_ordinal_rerank` method) + **memory_service.search** (one-line call site) | When `temporal_ref.ordinal` ∈ {"first","last"}, reorder the top-K candidates (K = max(limit×3, 20)) by `observed_at`, with BM25-combined score as tie-breaker. ~50 lines, no new data model. Direct production impact on ADR / evolution queries. |
+| ~~P1b Ordinal rerank~~ | **retired** | Both variants (`apply_ordinal_rerank`, `apply_subject_scoped_ordinal_rerank`) regressed LongMemEval. Paper §5.4 uses time-aware indexing + hard-filter range query rather than post-retrieval rerank. All rerank code and tests removed 2026-04-18. |
+| P1-temporal-experiment | **infrastructure/extraction/gliner_extractor.py** (add `date` label at query+ingest) + **domain/temporal_parser.py** (extend with dateparser-backed range extraction) + **scoring/pipeline.py** OR **retrieval/pipeline.py** (hard range filter — pre-scoring candidate filter) + **infrastructure/storage/migrations.py** (store extracted content dates) | See `docs/p1-temporal-experiment.md`. Zero LLM at query time — leverages already-loaded GLiNER (209M) and pure-Python regex+dateparser. |
 | P2 Preference | **infrastructure/extraction/preference_extractor.py** (new); **ingestion/pipeline.py** (call site in `run_inline_indexing`) | Add `extract_preferences()` call after GLiNER; spawn synthetic `preference` memory through the same `store_memory` path. |
 | P3 Session Storage | **application/session_service.py** (new, follow `section_service.py` pattern); **ingestion/pipeline.py** (session entry point) | New `store_session()` on `MemoryService`, delegates to `session_service.build_session_profile()`, which calls `document_service.publish_document` under the hood. |
 | P4 Dense Embeddings | **infrastructure/indexing/dense_engine.py** (new); **retrieval/pipeline.py** (`retrieve_candidates` — add parallel retriever); **scoring/pipeline.py** (new signal in raw + combine) | Three touchpoints: index writer in ingestion's `run_inline_indexing`, parallel retriever in retrieval, signal term in scoring. |
