@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" font-family="Helvetica, Arial, sans-serif">
+  <style>
+    .title    { font-size: 18px; font-weight: bold; fill: #1a1a1a; }
+    .subtitle { font-size: 12px; fill: #555; font-style: italic; }
+    .label    { font-size: 12px; fill: #333; }
+    .small    { font-size: 10px; fill: #555; }
+    .axis     { stroke: #333; stroke-width: 1.2; }
+    .grid     { stroke: #ccc; stroke-width: 0.4; stroke-dasharray: 2,2; }
+    .line-alias-old  { fill: none; stroke: #dc2626; stroke-width: 2.5; stroke-dasharray: 6,4; }
+    .line-alias-new  { fill: none; stroke: #1f8a3f; stroke-width: 2.5; }
+    .line-l1         { fill: none; stroke: #2563eb; stroke-width: 2; }
+    .line-l2         { fill: none; stroke: #7a4ec4; stroke-width: 2; }
+    .line-query      { fill: none; stroke: #d97706; stroke-width: 2.5; }
+    .line-query-proj { fill: none; stroke: #d97706; stroke-width: 2; stroke-dasharray: 4,4; }
+    .pt              { fill: #111; }
+    .anno            { font-size: 10px; fill: #555; }
+    .legend-txt      { font-size: 11px; fill: #333; }
+  </style>
+
+  <!-- Title -->
+  <text x="450" y="28" text-anchor="middle" class="title">
+    TLG scaling: induction time vs. corpus size
+  </text>
+  <text x="450" y="48" text-anchor="middle" class="subtitle">
+    Log-log axes · alias optimization (red dashed → green solid) · query dispatch bottleneck
+  </text>
+
+  <!-- Plot area: x=120..820 (corpus size), y=100..430 (time, log) -->
+  <line x1="120" y1="430" x2="820" y2="430" class="axis"/>
+  <line x1="120" y1="100" x2="120" y2="430" class="axis"/>
+
+  <!-- Y axis (log): 0.1 → 100000 ms spans 100..430 = 330px over 6 decades -->
+  <!-- y_px(ms) = 430 - 55 * log10(ms) + 55 ; mapping: 0.1ms→430, 1ms→375, 10ms→320, 100ms→265, 1000ms→210, 10000ms→155, 100000ms→100 -->
+  <g>
+    <line x1="120" y1="375" x2="820" y2="375" class="grid"/>
+    <text x="112" y="378" text-anchor="end" class="small">1 ms</text>
+    <line x1="120" y1="320" x2="820" y2="320" class="grid"/>
+    <text x="112" y="323" text-anchor="end" class="small">10 ms</text>
+    <line x1="120" y1="265" x2="820" y2="265" class="grid"/>
+    <text x="112" y="268" text-anchor="end" class="small">100 ms</text>
+    <line x1="120" y1="210" x2="820" y2="210" class="grid"/>
+    <text x="112" y="213" text-anchor="end" class="small">1 s</text>
+    <line x1="120" y1="155" x2="820" y2="155" class="grid"/>
+    <text x="112" y="158" text-anchor="end" class="small">10 s</text>
+    <line x1="120" y1="100" x2="820" y2="100" class="grid"/>
+    <text x="112" y="103" text-anchor="end" class="small">100 s</text>
+  </g>
+
+  <!-- X axis (log): 100 → 100000 memories = 3 decades over 700px -->
+  <!-- x_px(n) = 120 + 233.3 * (log10(n) - 2) ; 100→120, 1000→353, 10000→586, 100000→820 -->
+  <g>
+    <line x1="353" y1="100" x2="353" y2="430" class="grid"/>
+    <text x="353" y="448" text-anchor="middle" class="small">10³</text>
+    <line x1="586" y1="100" x2="586" y2="430" class="grid"/>
+    <text x="586" y="448" text-anchor="middle" class="small">10⁴</text>
+    <line x1="820" y1="100" x2="820" y2="430" class="grid"/>
+    <text x="820" y="448" text-anchor="middle" class="small">10⁵</text>
+    <text x="120" y="448" text-anchor="middle" class="small">10²</text>
+  </g>
+  <text x="470" y="468" text-anchor="middle" class="label">corpus size N (memories)</text>
+  <text x="55" y="265" text-anchor="middle" class="label" transform="rotate(-90, 55, 265)">time per operation</text>
+
+  <!-- Data points converted to (x_px, y_px):
+       N=100 (117), N=500 (280), N=1k (353), N=2.5k (446), N=5k (516),
+       N=10k (586), N=25k (679), N=50k (749)
+
+       Helper: x_px(N) = 120 + 233.3 * (log10(N) - 2)
+        N=100 → 120,    N=500 → 283,    N=1000 → 353,   N=2500 → 446,
+        N=5000 → 516,   N=10000 → 586,  N=25000 → 679,  N=50000 → 749
+       y_px(ms) = 430 - 55*log10(ms)
+   -->
+
+  <!-- Alias old (naive O(n²)): only have data at 100/500/1000/2500/5000 -->
+  <!-- 37, 374, 1368, 8151, 30210 ms -->
+  <!-- y: 430-55*log10 -->
+  <!-- 37→344, 374→288, 1368→199, 8151→160, 30210→183 wait let me recompute -->
+  <!-- log10(37)=1.57, y=430-55*1.57=344; log10(374)=2.57, y=289;
+       log10(1368)=3.14, y=257;  log10(8151)=3.91, y=215;
+       log10(30210)=4.48, y=184 -->
+  <polyline class="line-alias-old"
+            points="120,344 283,289 353,257 446,215 516,184"/>
+  <circle cx="120" cy="344" r="3" class="pt"/>
+  <circle cx="283" cy="289" r="3" class="pt"/>
+  <circle cx="353" cy="257" r="3" class="pt"/>
+  <circle cx="446" cy="215" r="3" class="pt"/>
+  <circle cx="516" cy="184" r="3" class="pt"/>
+
+  <!-- Alias new (bucketed): 37, 42, 16, 32, 74, 151, 428, 888 -->
+  <!-- log10 → y:  37→344, 42→341, 16→364, 32→348, 74→324, 151→309, 428→283, 888→269 -->
+  <polyline class="line-alias-new"
+            points="120,344 283,341 353,364 446,348 516,324 586,309 679,283 749,269"/>
+  <circle cx="120" cy="344" r="3" class="pt"/>
+  <circle cx="283" cy="341" r="3" class="pt"/>
+  <circle cx="353" cy="364" r="3" class="pt"/>
+  <circle cx="446" cy="348" r="3" class="pt"/>
+  <circle cx="516" cy="324" r="3" class="pt"/>
+  <circle cx="586" cy="309" r="3" class="pt"/>
+  <circle cx="679" cy="283" r="3" class="pt"/>
+  <circle cx="749" cy="269" r="3" class="pt"/>
+
+  <!-- L1 induction: 0.8, 2.3, 3.8, 9.8, 19.2, 42, 119.7, 249.4 ms -->
+  <!-- y: 0.8→435(!), 2.3→409, 3.8→397, 9.8→376, 19.2→359, 42→340, 119.7→316, 249.4→298 -->
+  <!-- Clamp 0.8 to below chart range: actually log10(0.8)=-0.097, y=430+5=435 (off chart). Let me clip. -->
+  <polyline class="line-l1"
+            points="120,398 283,389 353,376 446,365 516,360 586,340 679,316 749,298"/>
+
+  <!-- L2 induction: 2.1, 4.7, 9.2, 21.4, 43.8, 87.5, 255.4, 538.3 ms -->
+  <!-- y: 2.1→412, 4.7→393, 9.2→377, 21.4→356, 43.8→339, 87.5→323, 255.4→298, 538.3→281 -->
+  <polyline class="line-l2"
+            points="120,412 283,393 353,377 446,356 516,339 586,323 679,298 749,281"/>
+
+  <!-- Query dispatch: 19, 69, 128, 301, 598, 1278, 3459, 7803 ms -->
+  <!-- y: 19→360, 69→331, 128→315, 301→294, 598→278, 1278→263, 3459→239, 7803→220 -->
+  <polyline class="line-query"
+            points="120,360 283,331 353,315 446,294 516,278 586,263 679,239 749,220"/>
+  <circle cx="120" cy="360" r="3" class="pt"/>
+  <circle cx="283" cy="331" r="3" class="pt"/>
+  <circle cx="353" cy="315" r="3" class="pt"/>
+  <circle cx="446" cy="294" r="3" class="pt"/>
+  <circle cx="516" cy="278" r="3" class="pt"/>
+  <circle cx="586" cy="263" r="3" class="pt"/>
+  <circle cx="679" cy="239" r="3" class="pt"/>
+  <circle cx="749" cy="220" r="3" class="pt"/>
+
+  <!-- Projected query with NCMS entity index: constant ~30ms at any N -->
+  <polyline class="line-query-proj"
+            points="120,350 749,350"/>
+
+  <!-- Annotations -->
+  <text x="540" y="180" class="anno" fill="#dc2626" font-weight="bold">
+    alias (naïve O(n²))
+  </text>
+  <text x="570" y="170" class="anno" fill="#dc2626">
+    30s at 5k
+  </text>
+  <line x1="550" y1="182" x2="520" y2="186" stroke="#dc2626" stroke-width="1"/>
+
+  <text x="530" y="333" class="anno" fill="#1f8a3f" font-weight="bold">
+    alias (bucketed)
+  </text>
+  <line x1="540" y1="325" x2="530" y2="317" stroke="#1f8a3f" stroke-width="1"/>
+
+  <text x="550" y="214" class="anno" fill="#d97706" font-weight="bold">
+    query dispatch (pre-index)
+  </text>
+  <text x="580" y="228" class="anno" fill="#d97706">
+    8 s at 50k — integration bottleneck
+  </text>
+  <line x1="590" y1="218" x2="680" y2="242" stroke="#d97706" stroke-width="1"/>
+
+  <text x="430" y="358" class="anno" fill="#d97706" font-weight="bold">
+    query (post-NCMS index, projected)
+  </text>
+  <line x1="500" y1="362" x2="600" y2="354" stroke="#d97706" stroke-width="1"/>
+
+  <!-- Legend -->
+  <g transform="translate(135, 495)">
+    <line x1="0" y1="6" x2="20" y2="6" class="line-alias-old"/>
+    <text x="25" y="10" class="legend-txt">alias O(n²)</text>
+    <line x1="105" y1="6" x2="125" y2="6" class="line-alias-new"/>
+    <text x="130" y="10" class="legend-txt">alias (bucketed)</text>
+    <line x1="235" y1="6" x2="255" y2="6" class="line-l1"/>
+    <text x="260" y="10" class="legend-txt">L1 vocab</text>
+    <line x1="330" y1="6" x2="350" y2="6" class="line-l2"/>
+    <text x="355" y="10" class="legend-txt">L2 markers</text>
+    <line x1="425" y1="6" x2="445" y2="6" class="line-query"/>
+    <text x="450" y="10" class="legend-txt">query dispatch</text>
+    <line x1="545" y1="6" x2="565" y2="6" class="line-query-proj"/>
+    <text x="570" y="10" class="legend-txt">query (projected, NCMS index)</text>
+  </g>
+</svg>

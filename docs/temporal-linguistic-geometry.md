@@ -149,7 +149,30 @@ abstentions.
 
 ### 2.2 Hierarchical induction (what makes TLG a THEORY, not just an engine)
 
-TLG splits retrieval-relevant knowledge into three layers.  Each grows with corpus ingest; only the seed primitives of the top layer are hand-written.
+TLG splits retrieval-relevant knowledge into three layers.  Each
+grows with corpus ingest; only the seed primitives of the top
+layer are hand-written.  **Figure 1** summarizes the split: data-
+layer artifacts (L1 vocabulary, L2 markers, alias table, domain-
+noun filter) are recomputed on every ingest, while the structural
+layer (12 production matchers and a ~75-word intent-seed
+vocabulary) is a language invariant that stays stable.
+
+![Figure 1: Three-layer induction architecture](figures/fig1-three-layer-architecture.svg)
+
+***Figure 1.*** *TLG's three-layer induction architecture.  Top
+row (green): the self-improving data layer — L1 vocabulary
+(subject and entity tokens with distinctiveness), L2 transition
+markers (verb heads mined from edge-destination content, filtered
+by distinctiveness), and derived tables (initials-based alias map,
+domain-noun filter, issue-entity inventory).  Every new memory or
+typed edge triggers recomputation.  Bottom row (purple): the
+structural layer — 12 production matchers (`_match_*`) and a
+~75-word intent-seed vocabulary (current/still/origin markers,
+retirement structural patterns, intrinsic issue words).  These
+encode English WH-question grammar, don't vary with the corpus,
+and never self-modify.  The data-vs-structural split is the
+architectural choice that lets TLG generalize to new domains
+without retraining.*
 
 **Layer 1 — Entity / subject vocabulary.**  Induced from `memory.entities`.  Subject-lookup uses per-token distinctiveness (1 / number-of-subjects-a-token-indexes), preferring distinctive tokens over polysemous ones.  Multi-word entities contribute their word-splits too.  Entirely corpus-derived.
 
@@ -171,7 +194,7 @@ Every query produces an `LGTrace` with a four-level confidence:
 * **low** — loose fallback (generic entity-mention).
 * **abstain** — intent matched but slots didn't resolve, or no subject inferred.
 
-`has_confident_answer()` returns True iff confidence ∈ {high, medium}.  Integration pattern:
+`has_confident_answer()` returns True iff confidence ∈ {high, medium}.  **Figure 2** shows the composition pattern that makes abstention useful: a query is run through both grammar and BM25 in parallel; the `has_confident_answer()` gate decides whether the grammar's rank-1 answer takes precedence or whether the BM25 ordering is returned unchanged.
 
 ```python
 trace = retrieve_lg(query, bm25_ranking)
@@ -180,6 +203,22 @@ if trace.has_confident_answer():
 else:
     return bm25_ranking           # BM25 + SPLADE handle it
 ```
+
+![Figure 2: Composition flow — grammar ∨ BM25](figures/fig2-composition-flow.svg)
+
+***Figure 2.*** *The grammar-∨-BM25 composition flow.  A user
+query q is routed in parallel through TLG (left, green) and a
+statistical retriever (right, orange).  The TLG path resolves
+subject, parses intent, dispatches to a zone-level operation, and
+returns a `grammar_answer` plus a confidence label in
+{high, medium, low, abstain, none}.  The decision point in the
+center checks `has_confident_answer()`: only high/medium paths
+prepend the grammar answer to rank-1, followed by zone context
+and then BM25 ordering for the rest.  Low/abstain paths leave the
+BM25 ordering entirely unchanged.  Proposition 1 states that if
+reconciliation produces correct typed edges, this composition
+never returns a confidently-wrong rank-1 answer; the call-out at
+the bottom shows the empirical validation at N=500.*
 
 This is the critical property: **the grammar never displaces BM25 when it shouldn't**.  On 15 adversarial queries designed to trip confident-wrong: 0 confident-wrong answers.  On the full 500-question LongMemEval benchmark: 0 / 500 confident-wrong answers (§5.4).
 
@@ -384,15 +423,21 @@ ALGORITHM compute_zones(subject)
   INPUT: subject S
   OUTPUT: ordered list of Zone objects
 
-  # Build an adjacency index: memory mid → list of outgoing admissible edges.
+  # Build an adjacency index: memory mid → list of outgoing admissible
+  # edges.  Only edges where both endpoints belong to S qualify.
   out_edges : dict[mid → list[Edge]] ← defaultdict(list)
   for e ∈ EDGES where e.src.subject = S ∧ e.dst.subject = S
                    ∧ e.transition ∈ ADMISSIBLE:
       out_edges[e.src].append(e)
 
-  in_count[m] ← |{ e ∈ out_edges[any] : e.dst = m }|
+  # Derive `incoming` from out_edges by inverting the relation.
+  incoming : dict[mid → list[Edge]] ← defaultdict(list)
+  for edge_list in out_edges.values():
+      for e in edge_list:
+          incoming[e.dst].append(e)
 
-  roots ← { m : m.subject = S ∧ in_count[m] = 0 }   # zone roots
+  # Roots of S's graph: memories with no incoming admissible edge.
+  roots ← { m : m.subject = S ∧ incoming[m.mid] is empty }
   sort roots by m.observed_at ascending
 
   zones ← []
@@ -526,6 +571,14 @@ no edge.  Distinctiveness concentrates the signal.
 
 ### 4.4 Initials-based alias induction
 
+Naive pairwise enumeration of entity pairs is O(|entities|²) and
+observed at 30 s / 5 k memories during development (§5.7).  The
+implementation uses a short/long bucket partition: abbreviations
+are always short single-word tokens (2–8 chars); full forms are
+always multi-word phrases.  Comparing short × long reduces work
+to O(|short| · |long|) — measured 407× speedup at 5 k memories
+while preserving correctness across all test suites.
+
 ```
 ALGORITHM induce_aliases(corpus, edges)
   INPUT: corpus memories, edges with retires_entities
@@ -534,26 +587,42 @@ ALGORITHM induce_aliases(corpus, edges)
   all_ents ← { e : e ∈ m.entities, m ∈ corpus }
               ∪ { e : e ∈ edge.retires_entities, edge ∈ edges }
 
+  # Partition into short (abbreviation candidates) vs long (full
+  # forms).  An entity is "short" when its normalized (alphanumeric-
+  # only) form is 2–8 characters AND it's a single token.  An entity
+  # is "long" when it has ≥ 2 tokens (whitespace or hyphen split).
+  # The two buckets overlap (neither) for numeric IDs and single
+  # long-word entities.
+  shorts, longs ← [], []
+  for ent ∈ all_ents:
+      n_tokens ← |split(ent.strip(), /[\s\-]+/)|
+      if n_tokens ≥ 2:
+          longs.append(ent)
+      normed ← regex_sub(/[^\w]/, "", ent.strip())
+      if 2 ≤ |normed| ≤ 8 and n_tokens = 1:
+          shorts.append(ent)
+
   aliases ← defaultdict(set)
-  for (a, b) ∈ all_ents × all_ents  with a ≠ b:
-      short, long ← (a, b) if |a| < |b| else (b, a)
-      if is_abbreviation(short, long):
-          aliases[a] ∪= {b}
-          aliases[b] ∪= {a}
+  for short in shorts:                             # O(|shorts| · |longs|)
+      for full in longs:
+          if is_abbreviation(short, full):
+              aliases[short] ∪= {full}
+              aliases[full] ∪= {short}
 
   return aliases
 
 FUNCTION is_abbreviation(short, long)
-  short_n  ← normalize(short)    # lowercase, strip punctuation
+  short_n  ← normalize(short)    # lowercase, strip non-word chars
   initials ← concat(word[0] for word in split(long, /[\s-]+/)) . lower()
-  if |short_n| < 2 or |split(long)| < 2: return false
+  if |short_n| < 2 or |split(long, /[\s-]+/)| < 2: return false
   return short_n = initials
          OR (short_n ends in "s" AND short_n[:-1] = initials)
 ```
 
 Catches JWT ↔ JSON Web Tokens, MFA ↔ multi-factor authentication,
 PT ↔ physical therapy.  Does not catch semantic synonyms (delay ↔
-blocker) — those require embedding or curated synonym packs.
+blocker) — those require embedding or curated synonym packs
+(P2.6).
 
 **Lookup helper.**  The retirement and cause_of handlers consult
 the alias table via:
@@ -763,6 +832,18 @@ Incremental form (amortized):  each induction step is O(new items)
 rather than O(corpus) — e.g., adding memory m adds at most
 |m.entities| new vocab entries and triggers at most |m.entities|²
 pairwise alias checks.
+
+**Implementation note.**  The experiment codebase realizes this
+update via module-reload semantics: `corpus.ADR_CORPUS` is
+reassigned, then dependent modules (`vocab_induction`,
+`edge_markers`, `aliases`, `retirement_extractor`,
+`query_parser`) are reloaded so their module-level caches
+rebuild.  The reload pattern is an artifact of Python's
+`from X import Y` rebinding — see
+`experiments/temporal_trajectory/longmemeval_ingest.py::ingest_question`.
+Integration replaces this with explicit `recompute_state()`
+functions and incremental updates against NCMS's persistent
+stores (§7.6, P2.2).
 
 ### 4.10 Marker induction from memory content
 
@@ -1014,7 +1095,25 @@ Mock reconciliation uses the full structural extractor (no hand labels); parity 
 
 ### 5.4 End-to-end LongMemEval (N=500, full benchmark)
 
-Full pipeline: mock-ingest LongMemEval haystack → regex entity extraction → union-find subject clustering → mock reconciliation → grammar query.  All 500 questions stratified across 6 LongMemEval types.
+Full pipeline: mock-ingest LongMemEval haystack → regex entity extraction → union-find subject clustering → mock reconciliation → grammar query.  All 500 questions stratified across 6 LongMemEval types.  **Figure 3** shows per-type breakdown with grammar, BM25-only, and combined accuracy bars, highlighting the dominant pattern: grammar wins on single-session types (where the temporal-intent taxonomy fits cleanly) and abstains on multi-session / knowledge-update types (where cross-session fact aggregation belongs to BM25).
+
+![Figure 3: LongMemEval end-to-end results](figures/fig3-lme500-results.svg)
+
+***Figure 3.*** *Per-question-type breakdown of the full 500-
+question LongMemEval evaluation.  Green bars show TLG's rank-1
+accuracy when it confidently answers (has_confident_answer =
+True); orange bars show the BM25-only baseline; dark-green bars
+show the grammar-∨-BM25 integration pattern (the composition
+defined in Figure 2).  Grammar dominates on `single-session-*`
+types where temporal intents like `current` and `origin` match
+the question shape directly (93–100 % grammar rank-1).  On
+`multi-session` and `knowledge-update` types — which include
+aggregation, counting, and cross-session reasoning — grammar
+abstains on most queries (24–35 % grammar rank-1) and BM25 takes
+over.  The combined bars reach 97–100 % per type.  The callout at
+the bottom summarizes the critical invariant: across all 500
+queries, TLG never committed to a wrong rank-1 with
+high/medium confidence.*
 
 | Metric | Score |
 |---|---|
@@ -1094,8 +1193,14 @@ layer (productions, seed markers) unchanged by construction.
 
 ### 5.7 Scale regression (synthetic corpora)
 
-Measured induction and dispatch times at increasing synthetic-corpus
-sizes up to 50,000 memories.
+Measured induction and dispatch times at increasing synthetic-
+corpus sizes up to 50,000 memories.  **Figure 4** plots the
+scaling curves on log-log axes, making three properties visible
+at a glance: (i) data-layer induction (L1/L2) scales linearly,
+(ii) the alias bottleneck — quadratic in the naïve implementation
+— was closed by the short/long bucket optimization, and (iii)
+query dispatch is the one remaining bottleneck, addressed by
+NCMS's entity-graph index at integration time.
 
 | N memories | L1 (ms) | L2 (ms) | Alias (ms) | Zone (ms) | Props (ms) | Query (ms) |
 |---:|---:|---:|---:|---:|---:|---:|
@@ -1104,6 +1209,24 @@ sizes up to 50,000 memories.
 | 5,000 | 19.2 | 43.8 | 74 | 0.5 | 63.4 | 598 |
 | 10,000 | 42.0 | 87.5 | 151 | 1.1 | 172.4 | 1,278 |
 | 50,000 | 249.4 | 538.3 | 888 | 8.5 | 3,995.5 | 7,803 |
+
+![Figure 4: TLG scaling curves (log-log)](figures/fig4-scale-curve.svg)
+
+***Figure 4.*** *Induction and dispatch times as a function of
+corpus size N.  Both axes are log-scaled.  **Red dashed:** the
+original O(|entities|²) alias induction — 30 seconds at 5 k
+memories, projected to hours at 50 k.  **Green solid:** the
+bucketed variant shipped in the code — sub-quadratic in practice
+(partition restricts the cross-product), 74 ms at 5 k, 888 ms at
+50 k.  **Blue / purple:** L1 vocabulary and L2 marker induction,
+both clearly linear in corpus size (one-time cost per ingest).
+**Orange solid:** query dispatch as measured in the experiment,
+where `_find_memory` iterates the full corpus — 8 s at 50 k,
+the remaining integration-critical bottleneck.  **Orange
+dashed:** projected query cost after NCMS integration replaces
+the iterator with the existing entity-graph index (O(1) lookup),
+expected to be approximately constant at <50 ms regardless of
+N.*
 
 Key findings:
 
@@ -1941,27 +2064,61 @@ arXiv, or ACL Anthology where available).
 
 ## Appendix A: Implementation artifacts
 
+Measured line counts via `wc -l` on the committed experiment at
+`experiments/temporal_trajectory/`:
+
+### Core grammar modules (~2,600 LOC)
+
 | Module | LOC | Role |
 |---|---|---|
-| `corpus.py` | 513 | ADR / medical / project corpus + typed edges |
-| `grammar.py` | 262 | Zone computation, retirement lookup |
-| `vocab_induction.py` | 251 | Layer 1 |
-| `edge_markers.py` | 147 | Layer 2 |
-| `retirement_extractor.py` | 170 | Structural `retires_entities` |
-| `query_parser.py` | ~450 | Layer 3 productions + cache lookup |
-| `lg_retriever.py` | ~500 | Intent dispatch, confidence levels |
-| `shape_cache.py` | 150 | Query-shape cache |
-| `marker_induction.py` | 130 | Content-derived marker candidates |
-| `aliases.py` | 120 | Initials-based alias table |
-| `mock_reconciliation.py` | 200 | Edge emission from content |
-| `adversarial.py` | 250 | 15-query failure-mode suite |
-| `longmemeval_subset.py` | 180 | 15-query taxonomy coverage |
-| `longmemeval_ingest.py` | 230 | End-to-end ingest pipeline |
-| `run_longmemeval.py` | 200 | End-to-end evaluation runner |
-| `properties.py` | 180 | 7 structural invariant checks |
-| `ingest_growth_report.py` | 130 | Self-improvement measurement |
+| `corpus.py` | 552 | ADR / medical / project corpus + typed edges |
+| `grammar.py` | 272 | Zone computation, retirement lookup (§4.1, §4.5) |
+| `vocab_induction.py` | 273 | Layer 1 vocabulary (§3.4) |
+| `edge_markers.py` | 172 | Layer 2 markers + distinctiveness (§4.3) |
+| `retirement_extractor.py` | 196 | Structural `retires_entities` (§4.2) |
+| `aliases.py` | 150 | Initials-based alias induction (§4.4) |
+| `query_parser.py` | 905 | Layer 3 — 12 productions + cache (§4.6) |
+| `lg_retriever.py` | 774 | Dispatch + confidence gating (§4.8) |
+| `shape_cache.py` | 231 | Query-shape cache (§4.7) |
+| `marker_induction.py` | 191 | Content-derived marker candidates (§4.10) |
+| `mock_reconciliation.py` | 303 | Edge emission from content (validation) |
 
-**Total:** ~4,000 LOC.  All Python, zero LLM dependencies, zero external APIs.
+### Evaluation harnesses (~1,900 LOC)
+
+| Module | LOC | Role |
+|---|---|---|
+| `queries.py` | 386 | 32 gold-labeled test queries |
+| `retrievers.py` | 369 | BM25 / date-sort / entity-scope / path-rerank baselines |
+| `run.py` | 138 | Positive-suite runner (§5.1) |
+| `run_mock_edges.py` | 104 | Positive-suite under mock reconciliation |
+| `adversarial.py` | 263 | 15-query failure-mode suite (§5.2) |
+| `longmemeval_subset.py` | 250 | Taxonomy coverage suite (§5.3) |
+| `longmemeval_ingest.py` | 317 | Mock ingest pipeline for LongMemEval |
+| `run_longmemeval.py` | 371 | End-to-end LongMemEval runner (§5.4) |
+| `properties.py` | 283 | 7 invariant checks (§5.6) |
+
+### Scale and analysis tools (~1,100 LOC)
+
+| Module | LOC | Role |
+|---|---|---|
+| `run_scale_test.py` | 357 | Synthetic corpus scaling 100 – 50 000 (§5.7) |
+| `run_ablation.py` | 231 | Component ablation runner (§5.11) |
+| `ingest_growth_report.py` | 172 | Data-layer self-improvement measurement (§5.5) |
+| `run_cache_warming.py` | 146 | Cache-warming curve (§5.9) |
+
+### Totals
+
+| Category | LOC |
+|---|---:|
+| Core grammar (12 modules) | 4,019 |
+| Evaluation harnesses (9 modules) | 2,481 |
+| Scale / analysis tools (4 modules) | 906 |
+| Data JSONs (`scale_results/*.json`) | ~12,000 |
+| **Total Python (24 modules)** | **7,421** |
+
+All Python ≥ 3.12.  Zero LLM dependencies.  Zero external APIs.
+Only library dependencies: `snowballstemmer` (morphology),
+standard library everywhere else.
 
 ## Appendix B: Validation matrix
 

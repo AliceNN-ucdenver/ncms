@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" font-family="Helvetica, Arial, sans-serif">
+  <style>
+    .title    { font-size: 18px; font-weight: bold; fill: #1a1a1a; }
+    .subtitle { font-size: 12px; fill: #555; font-style: italic; }
+    .label    { font-size: 12px; fill: #333; }
+    .small    { font-size: 10px; fill: #555; }
+    .bar-grammar  { fill: #1f8a3f; }
+    .bar-bm25     { fill: #d97706; }
+    .bar-abstain  { fill: #c8c8c8; }
+    .bar-wrong    { fill: #dc2626; }
+    .axis         { stroke: #333; stroke-width: 1; }
+    .grid         { stroke: #ccc; stroke-width: 0.5; stroke-dasharray: 2,2; }
+    .num          { font-size: 11px; fill: #111; font-weight: bold; }
+    .legend-txt   { font-size: 11px; fill: #333; }
+  </style>
+
+  <!-- Title -->
+  <text x="450" y="28" text-anchor="middle" class="title">
+    LongMemEval end-to-end (N = 500)
+  </text>
+  <text x="450" y="48" text-anchor="middle" class="subtitle">
+    Per question type · grammar-correct vs. BM25-correct vs. combined
+  </text>
+
+  <!-- Plot area -->
+  <!-- X axis (question types) at y=420; Y axis at x=120; range 0-100% -->
+  <line x1="120" y1="420" x2="820" y2="420" class="axis"/>
+  <line x1="120" y1="100" x2="120" y2="420" class="axis"/>
+
+  <!-- Y axis gridlines + labels -->
+  <g>
+    <line x1="120" y1="100" x2="820" y2="100" class="grid"/>
+    <text x="110" y="105" text-anchor="end" class="small">100%</text>
+
+    <line x1="120" y1="180" x2="820" y2="180" class="grid"/>
+    <text x="110" y="185" text-anchor="end" class="small">75%</text>
+
+    <line x1="120" y1="260" x2="820" y2="260" class="grid"/>
+    <text x="110" y="265" text-anchor="end" class="small">50%</text>
+
+    <line x1="120" y1="340" x2="820" y2="340" class="grid"/>
+    <text x="110" y="345" text-anchor="end" class="small">25%</text>
+
+    <text x="110" y="425" text-anchor="end" class="small">0%</text>
+  </g>
+
+  <!-- Bars: 6 question types, 3 bars per type (grammar, BM25, combined) -->
+  <!-- Data: Grammar-correct% / BM25% / Combined% per type -->
+  <!-- single-session-preference (30): 100 / 97 / 100 -->
+  <!-- single-session-user (70):       93 / 96 / 97 -->
+  <!-- single-session-assistant (56):  95 / 100 / 100 -->
+  <!-- temporal-reasoning (133):       47 / 97 / 98 -->
+  <!-- multi-session (133):            24 / 98 / 98 -->
+  <!-- knowledge-update (78):          35 / 100 / 100 -->
+
+  <!-- Plot each type: bar-group width 100, offset 10 between bars -->
+  <g>
+    <!-- single-session-preference: 100/97/100 — full height bars -->
+    <g transform="translate(135, 0)">
+      <rect x="0"  y="100" width="25" height="320" class="bar-grammar"/>
+      <rect x="30" y="110" width="25" height="310" class="bar-bm25"/>
+      <rect x="60" y="100" width="25" height="320" fill="#0e6e2a" stroke="#0e6e2a"/>
+      <text x="15" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="45" y="105" text-anchor="middle" class="num">97</text>
+      <text x="75" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="45" y="440" text-anchor="middle" class="label">single-session-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">preference (30)</text>
+    </g>
+
+    <!-- single-session-user: 93/96/97 -->
+    <g transform="translate(245, 0)">
+      <rect x="0"  y="122" width="25" height="298" class="bar-grammar"/>
+      <rect x="30" y="112" width="25" height="308" class="bar-bm25"/>
+      <rect x="60" y="104" width="25" height="316" fill="#0e6e2a"/>
+      <text x="15" y="117" text-anchor="middle" class="num">93</text>
+      <text x="45" y="107" text-anchor="middle" class="num">96</text>
+      <text x="75" y="99"  text-anchor="middle" class="num">97</text>
+      <text x="45" y="440" text-anchor="middle" class="label">single-session-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">user (70)</text>
+    </g>
+
+    <!-- single-session-assistant: 95/100/100 -->
+    <g transform="translate(355, 0)">
+      <rect x="0"  y="116" width="25" height="304" class="bar-grammar"/>
+      <rect x="30" y="100" width="25" height="320" class="bar-bm25"/>
+      <rect x="60" y="100" width="25" height="320" fill="#0e6e2a"/>
+      <text x="15" y="111" text-anchor="middle" class="num">95</text>
+      <text x="45" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="75" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="45" y="440" text-anchor="middle" class="label">single-session-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">assistant (56)</text>
+    </g>
+
+    <!-- temporal-reasoning: 47/97/98 -->
+    <g transform="translate(465, 0)">
+      <rect x="0"  y="269" width="25" height="151" class="bar-grammar"/>
+      <rect x="30" y="110" width="25" height="310" class="bar-bm25"/>
+      <rect x="60" y="107" width="25" height="313" fill="#0e6e2a"/>
+      <text x="15" y="264" text-anchor="middle" class="num">47</text>
+      <text x="45" y="105" text-anchor="middle" class="num">97</text>
+      <text x="75" y="102" text-anchor="middle" class="num">98</text>
+      <text x="45" y="440" text-anchor="middle" class="label">temporal-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">reasoning (133)</text>
+    </g>
+
+    <!-- multi-session: 24/98/98 -->
+    <g transform="translate(575, 0)">
+      <rect x="0"  y="343" width="25" height="77"  class="bar-grammar"/>
+      <rect x="30" y="107" width="25" height="313" class="bar-bm25"/>
+      <rect x="60" y="107" width="25" height="313" fill="#0e6e2a"/>
+      <text x="15" y="338" text-anchor="middle" class="num">24</text>
+      <text x="45" y="102" text-anchor="middle" class="num">98</text>
+      <text x="75" y="102" text-anchor="middle" class="num">98</text>
+      <text x="45" y="440" text-anchor="middle" class="label">multi-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">session (133)</text>
+    </g>
+
+    <!-- knowledge-update: 35/100/100 -->
+    <g transform="translate(685, 0)">
+      <rect x="0"  y="308" width="25" height="112" class="bar-grammar"/>
+      <rect x="30" y="100" width="25" height="320" class="bar-bm25"/>
+      <rect x="60" y="100" width="25" height="320" fill="#0e6e2a"/>
+      <text x="15" y="303" text-anchor="middle" class="num">35</text>
+      <text x="45" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="75" y="95"  text-anchor="middle" class="num">100</text>
+      <text x="45" y="440" text-anchor="middle" class="label">knowledge-</text>
+      <text x="45" y="454" text-anchor="middle" class="label">update (78)</text>
+    </g>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(130, 480)">
+    <rect x="0"   y="0" width="16" height="12" class="bar-grammar"/>
+    <text x="20"  y="10" class="legend-txt">Grammar correct at rank-1 (of N)</text>
+    <rect x="220" y="0" width="16" height="12" class="bar-bm25"/>
+    <text x="240" y="10" class="legend-txt">BM25-only correct</text>
+    <rect x="400" y="0" width="16" height="12" fill="#0e6e2a"/>
+    <text x="420" y="10" class="legend-txt">Grammar ∨ BM25 (integration pattern)</text>
+  </g>
+
+  <!-- Key invariant callout -->
+  <rect x="150" y="505" width="600" height="22" rx="4" fill="#fde8e8" stroke="#9b1c1c"/>
+  <text x="450" y="521" text-anchor="middle" class="label" font-weight="bold" fill="#9b1c1c">
+    Grammar confidently-wrong rate: 0 / 500 (0 %) across all question types · the critical invariant
+  </text>
+</svg>

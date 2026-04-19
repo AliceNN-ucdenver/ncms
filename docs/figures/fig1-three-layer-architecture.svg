@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 540" font-family="Helvetica, Arial, sans-serif">
+  <style>
+    .title   { font-size: 18px; font-weight: bold; fill: #1a1a1a; }
+    .layer   { font-size: 14px; font-weight: bold; fill: #ffffff; }
+    .item    { font-size: 11px; fill: #1a1a1a; }
+    .label   { font-size: 10px; fill: #555555; font-style: italic; }
+    .data    { fill: #1f8a3f; }
+    .struct  { fill: #7a4ec4; }
+    .arrow   { stroke: #333333; stroke-width: 1.5; fill: none; }
+    .dashed  { stroke-dasharray: 5,3; }
+    .card    { fill: #ffffff; stroke: #888888; stroke-width: 1; }
+    .data-card   { fill: #e6f5ea; stroke: #1f8a3f; stroke-width: 1.5; }
+    .struct-card { fill: #f1eaf9; stroke: #7a4ec4; stroke-width: 1.5; }
+    .grow    { font-size: 11px; fill: #1f8a3f; font-weight: bold; }
+    .fixed   { font-size: 11px; fill: #7a4ec4; font-weight: bold; }
+  </style>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" class="title">
+    TLG Three-Layer Induction Architecture
+  </text>
+  <text x="450" y="50" text-anchor="middle" class="label">
+    Data layer grows with ingest · Structural layer is English-invariant
+  </text>
+
+  <!-- Memory corpus input -->
+  <rect x="30" y="80" width="160" height="80" rx="6" class="card"/>
+  <text x="110" y="103" text-anchor="middle" class="item" font-weight="bold">New memories + edges</text>
+  <text x="110" y="122" text-anchor="middle" class="label">m.entities, m.subject,</text>
+  <text x="110" y="136" text-anchor="middle" class="label">m.observed_at,</text>
+  <text x="110" y="150" text-anchor="middle" class="label">typed edges</text>
+
+  <!-- Arrow from input to L1 -->
+  <line x1="190" y1="120" x2="250" y2="120" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- Layer 1 -->
+  <rect x="260" y="80" width="180" height="80" rx="6" class="data-card"/>
+  <text x="350" y="100" text-anchor="middle" class="layer data">Layer 1 · Vocabulary</text>
+  <text x="350" y="120" text-anchor="middle" class="item">subject tokens</text>
+  <text x="350" y="135" text-anchor="middle" class="item">entity tokens</text>
+  <text x="350" y="150" text-anchor="middle" class="label">(distinctiveness scored)</text>
+
+  <!-- Arrow from L1 to L2 -->
+  <line x1="440" y1="120" x2="480" y2="120" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- Layer 2 -->
+  <rect x="490" y="80" width="180" height="80" rx="6" class="data-card"/>
+  <text x="580" y="100" text-anchor="middle" class="layer data">Layer 2 · Markers</text>
+  <text x="580" y="120" text-anchor="middle" class="item">verb heads</text>
+  <text x="580" y="135" text-anchor="middle" class="item">per transition type</text>
+  <text x="580" y="150" text-anchor="middle" class="label">(distinctiveness filter)</text>
+
+  <!-- Arrow from L2 to derived -->
+  <line x1="670" y1="120" x2="710" y2="120" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- Derived tables -->
+  <rect x="720" y="80" width="150" height="80" rx="6" class="data-card"/>
+  <text x="795" y="100" text-anchor="middle" class="layer data">Derived</text>
+  <text x="795" y="120" text-anchor="middle" class="item">alias table</text>
+  <text x="795" y="135" text-anchor="middle" class="item">domain nouns</text>
+  <text x="795" y="150" text-anchor="middle" class="item">issue entities</text>
+
+  <!-- SELF-IMPROVING label -->
+  <text x="450" y="192" text-anchor="middle" class="grow">▲ SELF-IMPROVING DATA LAYER · recomputed on every ingest</text>
+
+  <!-- Separator line -->
+  <line x1="50" y1="220" x2="850" y2="220" stroke="#888" stroke-width="1" class="dashed"/>
+
+  <!-- STRUCTURAL label -->
+  <text x="450" y="248" text-anchor="middle" class="fixed">▼ STRUCTURAL LAYER · language-universal, stays stable</text>
+
+  <!-- Layer 3: Productions -->
+  <rect x="80" y="270" width="350" height="200" rx="6" class="struct-card"/>
+  <text x="255" y="290" text-anchor="middle" class="layer struct">Layer 3 · Productions (12 matchers)</text>
+
+  <!-- Two columns of productions -->
+  <g font-size="10.5px" fill="#333">
+    <text x="100" y="315">P1  _match_interval</text>
+    <text x="100" y="332">P2  _match_before_named</text>
+    <text x="100" y="349">P3  _match_transitive_cause</text>
+    <text x="100" y="366">P4  _match_concurrent</text>
+    <text x="100" y="383">P5  _match_sequence</text>
+    <text x="100" y="400">P6  _match_predecessor</text>
+    <text x="260" y="315">P7   _match_range</text>
+    <text x="260" y="332">P8   _match_retirement</text>
+    <text x="260" y="349">P9   _match_still</text>
+    <text x="260" y="366">P10  _match_cause_of</text>
+    <text x="260" y="383">P11  _match_origin</text>
+    <text x="260" y="400">P12  _match_current</text>
+  </g>
+  <text x="255" y="430" text-anchor="middle" class="label">slot validation + explicit rejection</text>
+  <text x="255" y="448" text-anchor="middle" class="label">(Proposition 3 · correctness-critical)</text>
+
+  <!-- Layer 3: Seeds -->
+  <rect x="460" y="270" width="400" height="200" rx="6" class="struct-card"/>
+  <text x="660" y="290" text-anchor="middle" class="layer struct">Intent seed vocabulary (~75 words)</text>
+
+  <g font-size="11px" fill="#333">
+    <text x="480" y="315">~35 seed markers across core intents</text>
+    <text x="480" y="333">10 intrinsic issue words (blocker, bug, issue, …)</text>
+    <text x="480" y="351">Retirement structural patterns (3 shapes)</text>
+    <text x="480" y="369">Snowball stemmer for morphology</text>
+    <text x="480" y="387">Agentive-noun prefix tolerance (1 rule)</text>
+  </g>
+  <text x="660" y="432" text-anchor="middle" class="label">language invariants (English WH-questions)</text>
+  <text x="660" y="450" text-anchor="middle" class="label">not corpus-dependent</text>
+
+  <!-- Query input from bottom -->
+  <rect x="360" y="490" width="180" height="35" rx="6" class="card"/>
+  <text x="450" y="513" text-anchor="middle" class="item" font-weight="bold">user query → analyze_query</text>
+
+  <!-- Arrows from seeds to productions to query -->
+  <line x1="255" y1="465" x2="255" y2="490" class="arrow" marker-end="url(#arrow)"/>
+  <line x1="660" y1="465" x2="660" y2="485" stroke="#888" stroke-width="1" class="dashed" fill="none"/>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"/>
+    </marker>
+  </defs>
+</svg>
