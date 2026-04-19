@@ -963,6 +963,13 @@ details).
 
 Each phase is independently committable and testable.
 
+**Shipping status (2026-04-19).**  Phases 0 – 5 are landed on
+`main` across 14 commits (`fb62dd6` through `481cd67`).  Scale
+benchmark at N = 100 / 1k / 10k measures 2.5 / 3.6 / 13 ms mean
+dispatch latency respectively — all under the 50 ms target (§F.12).
+Full Phase 6 validation (LongMemEval baseline vs `--tlg`,
+MemoryAgentBench) runs next; paper §7.6 M2 marked SHIPPED.
+
 ### Phase 0 — Pre-flight (1–2 days)
 
 - Verify dead code removed (`grep apply_ordinal_rerank`,

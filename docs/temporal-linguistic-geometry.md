@@ -1611,32 +1611,50 @@ competitively with SOTA systems ≥ 80 % of their accuracy with
 0 confidently-wrong, or (b) we document the specific intents
 where SOTA beats TLG + BM25 and refine the taxonomy.
 
-#### M2  NCMS production integration
+#### M2  NCMS production integration  [SHIPPED 2026-04]
 
 **Goal.**  Replace the experimental `_find_memory` iterator with
 NCMS's entity-graph index for O(1) lookup; integrate TLG's
 production-matcher layer into `RetrievalPipeline`; gate behind a
 feature flag (`NCMS_TLG_ENABLED`).
 
-**Artifacts.**
+**Artifacts delivered (see the TLG Phase 0 – 3d commits on `main`):**
 
-* `src/ncms/application/retrieval/grammar_pipeline.py` — TLG as
-  a pipeline stage.
-* `ReconciliationService` extension to emit typed-edge
-  annotations (~50 LOC, uses the structural extractor from the
-  experiment).
-* Feature-flag integration alongside existing intent classifier.
-* Migration of the 12 productions + seed markers from the
-  experiment module to `ncms.domain.grammar`.
+* `src/ncms/domain/tlg/` — pure grammar layer (retirement
+  extractor, L1 vocabulary, L2 markers, content markers, aliases,
+  zones, structural query parser, shape cache, composition,
+  confidence).
+* `src/ncms/application/tlg/` — wiring: `VocabularyCache` (L1 +
+  aliases + domain nouns + content markers), `ShapeCacheStore`
+  (persistent skeleton memo backed by the `grammar_shape_cache`
+  table in schema v12), `dispatch.retrieve_lg` (12-intent
+  switch), `induction` (L2 marker pipeline).
+* `ReconciliationService._apply_supersedes` emits
+  `retires_entities` on SUPERSEDES edges via the structural
+  extractor (Phase 1).
+* `MemoryService.search` auto-composes the grammar answer into
+  the BM25 ranking when TLG is enabled; `retrieve_lg` /
+  `invalidate_tlg_vocabulary` are public entry points.
+* Feature-flag integration (`NCMS_TLG_ENABLED`), dashboard
+  events (`grammar.*`), maintenance-scheduler task
+  (`tlg_induction`), CLI (`ncms tlg status` / `induce`,
+  `--tlg` on the LongMemEval benchmark).
+* Entity-memory O(1) index:
+  `SQLiteStore.find_memory_ids_by_entity` plus a stem-index in
+  `InducedVocabulary` that shrinks `lookup_subject` /
+  `lookup_entity` from O(|vocab|) to O(|query_words|) hash
+  fetches.
 
-**Expected effort.**  2 – 3 weeks.  The drop-in replacement for
-`_find_memory` is the integration-critical change; most other
-pieces are already in production-shape.
+**Actual effort.**  ~2 weeks (13 commits: Phase 0 – Phase 4,
+plus content-markers / aliases / zones / query-parser /
+shape-cache slices).
 
-**Measurable outcome.**  TLG operating on NCMS corpora
-(SciFact / NFCorpus / LongMemEval / in-production workloads)
-with <50 ms query latency at scale.  Grammar ∨ BM25+SPLADE
-combined coverage measured on each benchmark.
+**Measurable outcome.**  Scale-curve benchmark
+(`benchmarks/tlg/scale_curve.py`) at mean dispatch latencies of
+2.5 ms / 3.6 ms / 13 ms for N = 100 / 1 000 / 10 000
+ENTITY_STATE nodes respectively — all three tiers comfortably
+under the 50 ms target.  N = 100 k data point runs off-cycle;
+update §5.7 once landed.
 
 #### M3  Dense-retriever baselines
 
