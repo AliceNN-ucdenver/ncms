@@ -162,6 +162,25 @@ benchmark for CI regression protection.
 
 ## 4. Implementation — file-by-file
 
+> **⚠ Regex extraction superseded (2026-04).**  §4.2 below proposes
+> hand-written regex families (`_POSITIVE`, `_NEGATIVE`, `_HABITUAL`,
+> `_DIFFICULTY`, `_CHOICE`) for preference detection.  We are
+> replacing that approach with a learned intent + slot classifier —
+> see `docs/intent-slot-distillation.md` (pre-paper) and
+> `experiments/intent_slot_distillation/` (experiment folder).  The
+> experiment will decide between three tiers (E5 zero-shot / NeMo
+> Joint pre-trained / NeMo Joint user-fine-tuned).  Sections §4.2
+> and §4.3 below stay as the *original* plan for reference but
+> will be rewritten after the experiment converges on a winner.
+>
+> Summary of what changes:
+> - `preference_extractor.py` → `intent_slot_extractor.py` behind
+>   the `IntentSlotExtractor` protocol.
+> - Regex families deleted.
+> - New flag: `NCMS_INTENT_SLOT_BACKEND={zero_shot,pretrained,custom}`.
+> - §5.1 test harness targets + §6 scale analysis carry forward
+>   unchanged; only the extractor internals change.
+
 ### 4.1 Domain model
 
 `src/ncms/domain/models.py`
