@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from ncms.application.index_worker import IndexWorkerPool
     from ncms.application.reconciliation_service import ReconciliationService
     from ncms.application.section_service import SectionService
+    from ncms.domain.tlg import LGTrace
     from ncms.infrastructure.indexing.splade_engine import SpladeEngine
     from ncms.infrastructure.reranking.cross_encoder_reranker import CrossEncoderReranker
 
@@ -193,6 +194,14 @@ class MemoryService:
             add_entity=self.add_entity,
         )
 
+        # TLG L1 vocabulary cache — lazy; rebuilt on first use after
+        # ingestion.  Always constructed so callers of ``retrieve_lg``
+        # don't need to branch on the feature flag; the cache simply
+        # returns an empty InducedVocabulary when no ENTITY_STATE
+        # nodes exist.
+        from ncms.application.tlg import VocabularyCache
+        self._tlg_vocab_cache = VocabularyCache()
+
         # Log active feature flags for diagnostics
         features = []
         if self._config.splade_enabled:
@@ -220,6 +229,8 @@ class MemoryService:
             features.append("synthesis")
         if self._config.topic_map_enabled:
             features.append("topic_map")
+        if self._config.tlg_enabled:
+            features.append("tlg")
         logger.info("[memory_service] Active features: %s", ", ".join(features) or "none")
 
     @property
@@ -1539,6 +1550,49 @@ class MemoryService:
         )
 
         return enriched
+
+    # ── TLG: grammar-layer query dispatch (Phase 3c) ───────────────
+
+    async def retrieve_lg(self, query: str) -> LGTrace:
+        """Dispatch ``query`` through the TLG grammar layer.
+
+        Returns an :class:`~ncms.domain.tlg.LGTrace` with a
+        ``confidence`` and optional ``grammar_answer``.  Callers
+        compose with their existing BM25 ranking via
+        :func:`ncms.domain.tlg.compose` — only HIGH / MEDIUM
+        answers are prepended; other confidence levels leave BM25
+        unchanged (the ``grammar ∨ BM25`` invariant).
+
+        Safe to call on any store state.  Returns a
+        :attr:`Confidence.NONE` trace when TLG is disabled via
+        ``NCMSConfig.tlg_enabled`` — this keeps callers' composition
+        logic identical whether TLG is on or off.
+        """
+        from ncms.application.tlg import retrieve_lg as _dispatch
+        from ncms.domain.tlg import Confidence, LGIntent, LGTrace
+
+        if not self._config.tlg_enabled:
+            return LGTrace(
+                query=query,
+                intent=LGIntent(kind=""),
+                confidence=Confidence.NONE,
+                proof="tlg disabled (NCMS_TLG_ENABLED=false)",
+            )
+        return await _dispatch(
+            query, store=self._store, vocabulary_cache=self._tlg_vocab_cache,
+        )
+
+    def invalidate_tlg_vocabulary(self) -> None:
+        """Clear the L1 vocabulary cache so the next
+        :meth:`retrieve_lg` call rebuilds.
+
+        Call after bulk ingestion or a maintenance pass that changes
+        which ENTITY_STATE nodes exist — otherwise the cache keeps
+        serving the pre-change vocabulary.  Phase 3c keeps
+        invalidation manual; a maintenance-scheduler tick can
+        automate this in a later phase.
+        """
+        self._tlg_vocab_cache.invalidate()
 
     # ── Phase 5: Level-First Retrieval & Synthesis ─────────────────
 
