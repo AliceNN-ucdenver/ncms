@@ -6,7 +6,7 @@ Pure function — easy to cover exhaustively.
 
 from __future__ import annotations
 
-from ncms.domain.temporal_intent import (
+from ncms.domain.temporal.intent import (
     ArithmeticSpec,
     TemporalIntent,
     classify_temporal_intent,

@@ -38,7 +38,7 @@ from ncms.domain.scoring import (
     supersession_penalty,
     total_activation,
 )
-from ncms.domain.temporal_parser import compute_temporal_proximity
+from ncms.domain.temporal.parser import compute_temporal_proximity
 
 if TYPE_CHECKING:
     from ncms.config import NCMSConfig

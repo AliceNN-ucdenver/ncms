@@ -52,8 +52,8 @@ async def _run(args: argparse.Namespace) -> None:
         add_temporal_labels,
         resolve_labels,
     )
-    from ncms.domain.temporal_intent import classify_temporal_intent
-    from ncms.domain.temporal_parser import parse_temporal_reference
+    from ncms.domain.temporal.intent import classify_temporal_intent
+    from ncms.domain.temporal.parser import parse_temporal_reference
     from ncms.infrastructure.extraction.gliner_extractor import (
         extract_with_label_budget,
     )

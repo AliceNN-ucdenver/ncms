@@ -30,7 +30,7 @@ from ncms.domain.entity_extraction import (
     resolve_labels,
 )
 from ncms.domain.intent import IntentResult, QueryIntent
-from ncms.domain.temporal_normalizer import (
+from ncms.domain.temporal.normalizer import (
     NormalizedInterval,
     RawSpan,
     merge_intervals,

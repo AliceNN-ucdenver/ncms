@@ -1503,7 +1503,7 @@ Before starting execution, these need answers:
    Phase 2 refactor (orthogonal to integration).
 6. **Q: Does `temporal_intent.py` deprecation break any external
    consumer (demo, CLI, bus agent)?**  Needs audit.  Action:
-   `grep -r "from ncms.domain.temporal_intent" src/ benchmarks/ tests/`.
+   `grep -r "from ncms.domain.temporal.intent" src/ benchmarks/ tests/`.
 
 ---
 

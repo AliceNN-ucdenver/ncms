@@ -36,7 +36,7 @@ from ncms.domain.entity_extraction import (
     resolve_labels,
 )
 from ncms.domain.models import Memory, MemoryNode, Relationship
-from ncms.domain.temporal_normalizer import (
+from ncms.domain.temporal.normalizer import (
     RawSpan,
     merge_intervals,
     normalize_spans,

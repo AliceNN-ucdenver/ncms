@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ncms.domain.temporal_normalizer import (
+from ncms.domain.temporal.normalizer import (
     NormalizedInterval,
     RawSpan,
     merge_intervals,

@@ -273,7 +273,7 @@ def _format_markdown(
 
 async def _run(args: argparse.Namespace) -> None:
     from ncms.config import NCMSConfig
-    from ncms.domain.temporal_normalizer import (
+    from ncms.domain.temporal.normalizer import (
         merge_intervals,
         normalize_spans,
     )

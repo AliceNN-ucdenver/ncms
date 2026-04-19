@@ -40,7 +40,7 @@ from ncms.domain.models import (
     TraversalResult,
 )
 from ncms.domain.protocols import GraphEngine, IndexEngine, IntentClassifier, MemoryStore
-from ncms.domain.temporal_parser import (
+from ncms.domain.temporal.parser import (
     TemporalReference,
     parse_temporal_reference,
 )
@@ -576,7 +576,7 @@ class MemoryService:
         ordinal primitive only pays off when the temporal stack is
         active.  No-op otherwise.
         """
-        from ncms.domain.temporal_intent import (
+        from ncms.domain.temporal.intent import (
             TemporalIntent,
             classify_temporal_intent,
         )
@@ -655,11 +655,11 @@ class MemoryService:
         Gated on ``temporal_range_filter_enabled`` like the other
         Phase B primitives.
         """
-        from ncms.domain.temporal_intent import (
+        from ncms.domain.temporal.intent import (
             TemporalIntent,
             classify_temporal_intent,
         )
-        from ncms.domain.temporal_normalizer import (
+        from ncms.domain.temporal.normalizer import (
             NormalizedInterval,
             RawSpan,
         )
@@ -1201,7 +1201,7 @@ class MemoryService:
         temporal questions without an LLM round-trip.
         """
         from ncms.domain.models import TemporalArithmeticResult
-        from ncms.domain.temporal_intent import (
+        from ncms.domain.temporal.intent import (
             ARITHMETIC_ANCHOR_COUNTS,
             parse_arithmetic_spec,
         )

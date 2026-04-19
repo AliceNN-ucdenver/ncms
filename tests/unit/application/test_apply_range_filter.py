@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from ncms.application.retrieval.pipeline import RetrievalPipeline
 from ncms.config import NCMSConfig
-from ncms.domain.temporal_normalizer import NormalizedInterval, RawSpan
+from ncms.domain.temporal.normalizer import NormalizedInterval, RawSpan
 
 
 def _make_pipeline(ranges_map: dict[str, tuple[str, str]]):
