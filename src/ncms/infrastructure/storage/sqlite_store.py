@@ -778,8 +778,9 @@ class SQLiteStore:
     async def save_graph_edge(self, edge: GraphEdge) -> None:
         await self.db.execute(
             """INSERT OR REPLACE INTO graph_edges
-               (id, source_id, target_id, edge_type, weight, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (id, source_id, target_id, edge_type, weight, metadata,
+                retires_entities, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 edge.id,
                 edge.source_id,
@@ -787,6 +788,7 @@ class SQLiteStore:
                 edge.edge_type.value,
                 edge.weight,
                 json.dumps(edge.metadata),
+                json.dumps(edge.retires_entities),
                 edge.created_at.isoformat(),
             ),
         )
@@ -1059,6 +1061,15 @@ class SQLiteStore:
 
     @staticmethod
     def _row_to_graph_edge(row: aiosqlite.Row) -> GraphEdge:
+        # Schema v12: retires_entities column stores a JSON array.
+        # Tolerate the column being absent (old rows, tests that only
+        # read a subset) — defaults to an empty list.
+        retires_raw: str | None = None
+        try:
+            retires_raw = row["retires_entities"]
+        except (IndexError, KeyError):
+            retires_raw = None
+        retires_entities = json.loads(retires_raw) if retires_raw else []
         return GraphEdge(
             id=row["id"],
             source_id=row["source_id"],
@@ -1066,6 +1077,7 @@ class SQLiteStore:
             edge_type=EdgeType(row["edge_type"]),
             weight=row["weight"],
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            retires_entities=retires_entities,
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 

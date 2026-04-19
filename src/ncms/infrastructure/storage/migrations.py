@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -146,11 +146,43 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     edge_type TEXT NOT NULL,
     weight REAL NOT NULL DEFAULT 1.0,
     metadata TEXT NOT NULL DEFAULT '{}',
+    -- Schema v12 (TLG integration): structural retirement set.
+    -- JSON array of entity IDs whose state this edge retires.
+    -- Populated by ReconciliationService when emitting SUPERSEDES
+    -- edges.  '[]' by default so TLG-unaware paths stay correct
+    -- before Phase 1 wires the extractor.
+    retires_entities TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gedges_source ON graph_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_gedges_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_gedges_type ON graph_edges(edge_type);
+
+-- Schema v12 (TLG integration): persisted query-shape cache.
+-- Keyed by `skeleton` — a normalized form of the incoming query —
+-- so repeated query shapes skip the classify/dispatch cost.
+-- Populated by the grammar dispatch pipeline (Phase 3).  Empty by
+-- default; no read path fails when empty.
+CREATE TABLE IF NOT EXISTS grammar_shape_cache (
+    skeleton TEXT PRIMARY KEY,
+    intent TEXT NOT NULL,
+    slot_names TEXT,                    -- JSON array of slot names
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    last_used TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_gsc_hit_count
+    ON grammar_shape_cache(hit_count DESC);
+
+-- Schema v12 (TLG integration): L2 transition-marker inventory.
+-- One row per (transition_type, marker_head) pair with a running
+-- observation count.  Populated by induction (Phase 2) and read by
+-- grammar dispatch (Phase 3).
+CREATE TABLE IF NOT EXISTS grammar_transition_markers (
+    transition_type TEXT NOT NULL,      -- supersedes | refines | conflicts_with | ...
+    marker_head TEXT NOT NULL,          -- verb/phrase head (e.g. "became", "replaced by")
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (transition_type, marker_head)
+);
 
 -- Ephemeral cache (short-lived entries below atomic admission threshold)
 CREATE TABLE IF NOT EXISTS ephemeral_cache (

@@ -334,9 +334,11 @@ requires this annotation.
    `extract_retired(dst_content, src_entities, dst_entities, subject)`
    and store the result on the edge.
 3. Add migration to persist `retires_entities` in `graph_edges`
-   (schema v13, §5).
-4. Backfill migration: for existing SUPERSEDES edges, re-run the
-   extractor at migration time (bounded cost: O(|supersedes edges|)).
+   (schema v12, §5).  NCMS uses single-pass clean-create DDL —
+   the column lands in the existing `CREATE TABLE graph_edges`
+   block; no `ALTER TABLE` is issued.
+4. No backfill.  The DB is recreated from scratch for this cut-in;
+   the structural extractor runs at ingest time from Phase 1 onward.
 
 **Tests.**
 
@@ -809,7 +811,7 @@ Honest tally, so no one over-claims simplification:
 | Layer | What changes |
 |---|---|
 | `reconciliation_service.py` | Emits `retires_entities` on SUPERSEDES (new column) |
-| `graph_edges` schema | Adds `retires_entities` column (v13) |
+| `graph_edges` schema | Adds `retires_entities` column (v12) |
 
 **Orthogonal (completely unchanged):**
 
@@ -898,33 +900,57 @@ lookup; this module wires them into the TLG integration layer.
 Target post-integration query cost: <50 ms regardless of corpus
 size.
 
-### 4.4 Schema migrations (v12 → v13)
+### 4.4 Schema migrations (v11 → v12, clean-create)
+
+NCMS uses single-pass clean-create DDL (`migrations.py`).  The DB
+is recreated from scratch for this cut-in — **no `ALTER TABLE`,
+no backfill SQL**.  The v12 delta is:
+
+* `graph_edges` gains a `retires_entities TEXT NOT NULL DEFAULT '[]'`
+  column, baked into the existing CREATE TABLE.
+* Two new tables: `grammar_shape_cache` (persisted query-shape
+  cache), `grammar_transition_markers` (L2 marker inventory).
+
+The extended DDL (spliced into `migrations.CREATE_SCHEMA_SQL`):
 
 ```sql
--- Schema v13: TLG integration
-
--- Add retires_entities to typed edges.
-ALTER TABLE graph_edges ADD COLUMN retires_entities TEXT;  -- JSON array
--- Backfill '[]' for existing rows.
-UPDATE graph_edges SET retires_entities = '[]'
-  WHERE retires_entities IS NULL;
+-- Extended graph_edges table (retires_entities baked in):
+CREATE TABLE IF NOT EXISTS graph_edges (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    -- v12: structural-retirement set (JSON array of entity IDs).
+    -- Populated by ReconciliationService when emitting SUPERSEDES
+    -- edges (Phase 1).  '[]' by default so TLG-unaware code paths
+    -- stay correct.
+    retires_entities TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
 
 -- Persisted query-shape cache.
 CREATE TABLE IF NOT EXISTS grammar_shape_cache (
     skeleton TEXT PRIMARY KEY,
     intent TEXT NOT NULL,
-    slot_names TEXT,               -- JSON array
+    slot_names TEXT,                                -- JSON array
     hit_count INTEGER NOT NULL DEFAULT 0,
     last_used TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_gsc_hit_count
+    ON grammar_shape_cache(hit_count DESC);
 
--- Record schema version.
-INSERT INTO schema_version (version, applied_at) VALUES (13, datetime('now'));
+-- Layer 2 marker inventory persistence.
+CREATE TABLE IF NOT EXISTS grammar_transition_markers (
+    transition_type TEXT NOT NULL,                  -- supersedes | refines | ...
+    marker_head TEXT NOT NULL,                      -- verb head
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (transition_type, marker_head)
+);
 ```
 
-Re-run migration backfill step for existing SUPERSEDES edges
-using the structural retirement extractor (separate step, not
-part of the migration SQL — runs as a one-time job).
+`SCHEMA_VERSION` bumps `11 → 12`.
 
 ### 4.5 `src/ncms/config.py` additions
 
@@ -955,7 +981,7 @@ Each phase is independently committable and testable.
   `src/ncms/application/reconciliation/retirement_extractor.py`.
 - Extend `ReconciliationService.classify_and_apply()` to emit
   `retires_entities` on SUPERSEDES edges.
-- Schema v13 migration (add `graph_edges.retires_entities`).
+- Schema v12 migration (add `graph_edges.retires_entities`).
 - Backfill job for existing supersedes edges.
 - Tests: unit (extractor) + integration (reconcile → retires set)
   + parity (mock-reconciliation vs production reconciler).
@@ -1045,19 +1071,32 @@ reconciliation retrieval today:
 | `graph_edges.edge_type` (TEXT) | v6+ | SUPPORTS / REFINES / SUPERSEDES / SUPERSEDED_BY / CONFLICTS_WITH | **Keep** — TLG reads these |
 | `schema_version` (table) | v1 | Tracks applied migrations | **Keep** |
 
-### 6.2 New in v13 (this integration)
+### 6.2 New in v12 (this integration)
+
+NCMS uses single-pass clean-create DDL — the v12 changes land by
+editing the existing `CREATE TABLE graph_edges` block and adding
+two new tables.  **No `ALTER TABLE`, no backfill SQL** — the DB is
+recreated from scratch for this cut-in.
 
 ```sql
--- Schema v13: TLG integration
+-- Schema v12: TLG integration
 
--- Add retires_entities to typed edges (populated by reconciler's
--- structural extractor on SUPERSEDES edges).
-ALTER TABLE graph_edges ADD COLUMN retires_entities TEXT;  -- JSON array
-
--- Backfill '[]' for existing rows; subsequent backfill job
--- re-runs the structural extractor over historical supersedes.
-UPDATE graph_edges SET retires_entities = '[]'
-  WHERE retires_entities IS NULL;
+-- graph_edges: extended to carry structural-retirement sets.
+-- The column is baked into the existing CREATE TABLE statement
+-- (not added via ALTER) because migrations.py is clean-create.
+CREATE TABLE IF NOT EXISTS graph_edges (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    -- v12: populated by ReconciliationService when emitting
+    -- SUPERSEDES edges (Phase 1).  '[]' by default so code paths
+    -- unaware of TLG continue to work unchanged.
+    retires_entities TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
 
 -- Persisted query-shape cache.
 CREATE TABLE IF NOT EXISTS grammar_shape_cache (
@@ -1070,41 +1109,32 @@ CREATE TABLE IF NOT EXISTS grammar_shape_cache (
 CREATE INDEX IF NOT EXISTS idx_gsc_hit_count
     ON grammar_shape_cache(hit_count DESC);
 
--- Optional: Layer 2 marker inventory persistence.
--- (Alternative to recomputing from edges at every import.)
+-- Layer 2 marker inventory persistence.
 CREATE TABLE IF NOT EXISTS grammar_transition_markers (
     transition_type TEXT NOT NULL,                  -- supersedes | refines | ...
     marker_head TEXT NOT NULL,                      -- verb head
     count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (transition_type, marker_head)
 );
-
--- Record schema version.
-INSERT INTO schema_version (version, applied_at)
-VALUES (13, datetime('now'));
 ```
 
 Key properties:
 
-* **Forward-compatible:** old code still works; `retires_entities = '[]'` is the no-op default for any consumer that doesn't know about the column.
-* **Backward-migratable:** drop the new column and tables to revert to v12.
-* **Idempotent migration:** `ALTER TABLE` is guarded; `INSERT` of schema-version uses natural key.
-* **No change** to `memories` / `memory_nodes` / `memory_content_ranges` tables.  All existing temporal foundation stays.
+* **Safe default:** `retires_entities = '[]'` is the no-op value, so
+  TLG-unaware code paths stay correct whether Phase 1 has landed or
+  not.
+* **Clean-create only:** the extended `CREATE TABLE graph_edges`
+  replaces the v11 version in-place in `migrations.py`.  No
+  `ALTER TABLE`, no historical-row migration.
+* **No change** to `memories` / `memory_nodes` / `memory_content_ranges`
+  tables.  All existing temporal foundation stays.
 
 ### 6.3 Backfill plan for `retires_entities`
 
-One-time job, run post-migration:
-
-1. Enumerate all `graph_edges` where `edge_type = 'SUPERSEDES'`
-   and `retires_entities = '[]'`.
-2. For each, fetch src memory content + entities and dst memory
-   content + entities.
-3. Run the structural extractor (`ncms.application.reconciliation.retirement_extractor::extract_retired`).
-4. Update the row's `retires_entities`.
-
-Cost: O(|supersedes edges|) — single-pass, bounded.  In production
-the number of supersedes edges is small (state changes are rarer
-than observations).
+**Not applicable.**  The DB is recreated from scratch for this
+cut-in.  `retires_entities` starts empty on every edge; the
+structural extractor runs at ingest time from Phase 1 onward so
+fresh SUPERSEDES edges get populated as they're emitted.
 
 ---
 
@@ -1199,7 +1229,7 @@ consolidation.
 **Current:** documents schema version 11 (from P1 Phase A) with
 `memory_content_ranges` table.
 
-**Update:** bump to v13 with `graph_edges.retires_entities` and
+**Update:** bump to v12 with `graph_edges.retires_entities` and
 `grammar_shape_cache`.  Include the migration SQL.
 
 ### §5 New subsection: "Grammar layer (TLG)"
@@ -1688,7 +1718,7 @@ deciding what stays vs. what retires.
 ### F.8 Database schema — complete temporal inventory (34 columns across 28 tables)
 
 Complete roll-call of every temporal column in the schema.
-Schema version: **11** (plus the v13 TLG migration).
+Schema version at plan-time: **11**; this integration bumps to **12**.
 
 | Table | Temporal columns | Indexes on temporal columns | Disposition |
 |---|---|---|---|
@@ -1700,7 +1730,7 @@ Schema version: **11** (plus the v13 TLG migration).
 | `snapshots` | `timestamp`, `created_at` | `idx_snapshots_agent (agent_id, timestamp DESC)` | ⊕ Keep (snapshot TTL) |
 | `consolidation_state` | `updated_at` | — | ⊕ Keep (last-run tracking) |
 | `memory_nodes` | `valid_from`, `valid_to`, `observed_at`, `ingested_at`, `created_at` | none (**gap** — see F.20) | ⊕ Keep (bitemporal — TLG reads) |
-| `graph_edges` | `created_at` | — | ⊙ **TLG extends** with `retires_entities` (v13) |
+| `graph_edges` | `created_at` | — | ⊙ **TLG extends** with `retires_entities` (v12) |
 | `ephemeral_cache` | `created_at`, `expires_at` | `idx_ephemeral_expires (expires_at)` | ⊕ Keep (admission tier) |
 | `search_log` | `timestamp` | `idx_search_log_ts (timestamp)` | ⊕ Keep (dream PMI) |
 | `association_strengths` | `updated_at` | — | ⊕ Keep (PMI associations) |
@@ -1723,7 +1753,7 @@ Schema version: **11** (plus the v13 TLG migration).
 
 **Totals:** 28 tables, 34 temporal columns, 9 indexed temporal columns.
 
-**New in v13 (this integration adds):**
+**New in v12 (this integration adds):**
 
 | Element | Purpose |
 |---|---|
@@ -1923,12 +1953,12 @@ All 4 background loops are orthogonal to retrieval-side TLG:
 | `benchmarks/results/temporal_diagnostic/*.json` | Historical P1 runs | Keep as archive; stop generating new |
 | `benchmarks/results/longmemeval/features_on/*` | Features-on benchmark results | Re-run with TLG in Phase 6 |
 
-### F.12 Index audit and recommendations (new for v13)
+### F.12 Index audit and recommendations (new for v12)
 
 The audit surfaced two **missing-but-queried temporal indexes**.
 These are NOT required for TLG but would benefit any
 point-in-time bitemporal query (TLG-related or otherwise).
-Adding in v13 is optional; recommended as part of integration.
+Adding in v12 is optional; recommended as part of integration.
 
 | Missing index | Table | Columns | Queries that benefit |
 |---|---|---|---|
@@ -1970,7 +2000,7 @@ Adding in v13 is optional; recommended as part of integration.
 * Kept: 12+ (including bitemporal, content-range CRUD, label budget, normalizer, arithmetic)
 * New: 6 (TLG unit, integration, adversarial, parity, scale)
 
-**Schema changes (v13):**
+**Schema changes (v12):**
 * Tables added: 2 (`grammar_shape_cache`, `grammar_transition_markers`)
 * Columns added: 1 (`graph_edges.retires_entities`)
 * Indexes added: 3 recommended (see F.12)

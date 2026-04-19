@@ -271,7 +271,15 @@ class MemoryNode(BaseModel):
 
 
 class GraphEdge(BaseModel):
-    """A typed directed edge in the HTMG graph."""
+    """A typed directed edge in the HTMG graph.
+
+    ``retires_entities`` (schema v12 — TLG integration) carries the
+    structural retirement set for the edge: entity IDs whose state
+    this edge retires.  Populated by ``ReconciliationService`` when
+    emitting SUPERSEDES edges (Phase 1 of the TLG integration — see
+    ``docs/p1-plan.md``).  Empty by default so edges produced by
+    code paths unaware of TLG remain correct.
+    """
 
     id: str = Field(default_factory=_uuid)
     source_id: str  # memory_node or entity ID
@@ -279,6 +287,7 @@ class GraphEdge(BaseModel):
     edge_type: EdgeType
     weight: float = 1.0
     metadata: dict[str, Any] = Field(default_factory=dict)
+    retires_entities: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
 
 
