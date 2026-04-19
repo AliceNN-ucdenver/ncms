@@ -1,0 +1,2 @@
+# Log files are regenerable from the corresponding JSONs; JSONs are tracked.
+*.log

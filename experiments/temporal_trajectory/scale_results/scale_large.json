@@ -1,0 +1,53 @@
+[
+  {
+    "n_memories": 10000,
+    "n_subjects": 44,
+    "n_edges": 7914,
+    "layer1_ms": 41.985791991464794,
+    "layer2_ms": 87.51512505114079,
+    "aliases_ms": 151.19420795235783,
+    "domain_nouns_ms": 15.905624954029918,
+    "zone_compute_ms_per_subject": 1.0506392043845898,
+    "properties_ms": 172.3879580385983,
+    "mock_reconcile_ms": 178.8127920590341,
+    "query_dispatch_ms": 1278.0031208065338,
+    "total_unique_entities": 10594,
+    "aliases_found": 0,
+    "layer2_markers": 9,
+    "domain_nouns_count": 80
+  },
+  {
+    "n_memories": 25000,
+    "n_subjects": 70,
+    "n_edges": 20069,
+    "layer1_ms": 119.68129104934633,
+    "layer2_ms": 255.41695894207805,
+    "aliases_ms": 427.69491695798934,
+    "domain_nouns_ms": 43.43158402480185,
+    "zone_compute_ms_per_subject": 2.9635553564211086,
+    "properties_ms": 861.7115831002593,
+    "mock_reconcile_ms": 608.4683330263942,
+    "query_dispatch_ms": 3458.8633249979466,
+    "total_unique_entities": 25649,
+    "aliases_found": 0,
+    "layer2_markers": 9,
+    "domain_nouns_count": 116
+  },
+  {
+    "n_memories": 50000,
+    "n_subjects": 100,
+    "n_edges": 40083,
+    "layer1_ms": 249.39154100138694,
+    "layer2_ms": 538.3473340189084,
+    "aliases_ms": 887.5891669886187,
+    "domain_nouns_ms": 100.66229093354195,
+    "zone_compute_ms_per_subject": 8.536816250998527,
+    "properties_ms": 3995.533582987264,
+    "mock_reconcile_ms": 1787.337249959819,
+    "query_dispatch_ms": 7802.678783400916,
+    "total_unique_entities": 50650,
+    "aliases_found": 0,
+    "layer2_markers": 9,
+    "domain_nouns_count": 173
+  }
+]
