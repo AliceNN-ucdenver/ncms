@@ -163,6 +163,7 @@ async def create_ncms_services(
         episode_svc=episode,
         config=config,
         event_log=event_log,
+        memory_svc=memory_svc,
     )
     await scheduler.start()
 

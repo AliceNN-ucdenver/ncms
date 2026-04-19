@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ncms.application.consolidation_service import ConsolidationService
     from ncms.application.episode_service import EpisodeService
+    from ncms.application.memory_service import MemoryService
     from ncms.config import NCMSConfig
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,12 @@ class MaintenanceScheduler:
             "_always",  # decay has no separate feature flag
             "run_decay_pass",
         ),
+        (
+            "tlg_induction",
+            "maintenance_tlg_induction_interval_minutes",
+            "tlg_enabled",
+            "run_tlg_induction_pass",
+        ),
     ]
 
     def __init__(
@@ -92,9 +99,11 @@ class MaintenanceScheduler:
         episode_svc: EpisodeService | None,
         config: NCMSConfig,
         event_log: Any = None,
+        memory_svc: MemoryService | None = None,
     ) -> None:
         self._consolidation_svc = consolidation_svc
         self._episode_svc = episode_svc
+        self._memory_svc = memory_svc
         self._config = config
         self._event_log = event_log
 
@@ -197,6 +206,20 @@ class MaintenanceScheduler:
 
     # ── Internal ──────────────────────────────────────────────────────
 
+    def _service_for(self, task_name: str) -> Any:
+        """Map a task to the service that exposes its method.
+
+        Returns ``None`` when the required service wasn't provided;
+        ``_execute_task`` turns that into a ``skipped`` status so the
+        scheduler continues cleanly when an optional feature is
+        disabled at wiring time.
+        """
+        if task_name == "episode_close":
+            return self._episode_svc
+        if task_name == "tlg_induction":
+            return self._memory_svc
+        return self._consolidation_svc
+
     async def _loop(
         self,
         task_name: str,
@@ -247,11 +270,13 @@ class MaintenanceScheduler:
             t0 = time.monotonic()
             result: Any = None
             try:
-                svc = (
-                    self._episode_svc
-                    if task_name == "episode_close"
-                    else self._consolidation_svc
-                )
+                svc = self._service_for(task_name)
+                if svc is None:
+                    logger.info(
+                        "Maintenance task '%s' skipped — service not provided",
+                        task_name,
+                    )
+                    return {"status": "skipped", "task": task_name}
                 method = getattr(svc, method_name)
                 result = await method()
 

@@ -448,6 +448,15 @@ class MemoryService:
                     exc_info=True,
                 )
 
+            # TLG Phase 3c — ingestion may have produced an L2
+            # ENTITY_STATE node (via the state-detection fork inside
+            # create_memory_nodes).  Invalidate the L1 vocabulary cache
+            # so the next retrieve_lg call rebuilds with the new
+            # subject / entity tokens.  Cheap: invalidation is just a
+            # None-assignment; rebuild is lazy.
+            if self._config.tlg_enabled:
+                self._tlg_vocab_cache.invalidate()
+
         logger.info("Stored memory %s: %s", memory.id, content[:80])
         self._event_log.memory_stored(
             memory_id=memory.id,
@@ -993,6 +1002,16 @@ class MemoryService:
                 ))
             except Exception:
                 logger.debug("Failed to log search for dream cycle", exc_info=True)
+
+        # TLG Phase 3c — grammar ∨ BM25 composition.  Runs only when
+        # ``NCMS_TLG_ENABLED=true`` and the grammar dispatch returns a
+        # confident answer; otherwise the BM25-derived ranking is
+        # returned unchanged (the invariant that guarantees zero
+        # confidently-wrong results).
+        if self._config.tlg_enabled:
+            results = await self._compose_grammar_with_results(
+                query, results, limit,
+            )
 
         return results
 
@@ -1588,11 +1607,152 @@ class MemoryService:
 
         Call after bulk ingestion or a maintenance pass that changes
         which ENTITY_STATE nodes exist — otherwise the cache keeps
-        serving the pre-change vocabulary.  Phase 3c keeps
-        invalidation manual; a maintenance-scheduler tick can
-        automate this in a later phase.
+        serving the pre-change vocabulary.
         """
         self._tlg_vocab_cache.invalidate()
+
+    async def run_tlg_induction_pass(self) -> dict[str, Any]:
+        """Run a full L2 marker induction + L1 vocabulary rebuild.
+
+        Called by the maintenance scheduler (or manually from the
+        CLI / MCP tool).  Returns a small summary dict for logging.
+        No-op when TLG is disabled — returns an empty summary.
+        """
+        if not self._config.tlg_enabled:
+            return {"status": "skipped", "reason": "tlg_disabled"}
+        from ncms.application.tlg import induce_and_persist_markers
+        induced = await induce_and_persist_markers(self._store)
+        # Rebuild L1 vocabulary so the next retrieve_lg picks up the
+        # current corpus state (no need to wait for an ingest event).
+        self.invalidate_tlg_vocabulary()
+        await self._tlg_vocab_cache.get_vocabulary(self._store)
+        marker_counts = {
+            transition: len(heads)
+            for transition, heads in induced.markers.items()
+        }
+        logger.info(
+            "TLG induction pass: %d transition buckets, counts=%s",
+            len(induced.markers),
+            marker_counts,
+        )
+        return {
+            "status": "ok",
+            "transitions": len(induced.markers),
+            "marker_counts": marker_counts,
+        }
+
+    async def _compose_grammar_with_results(
+        self,
+        query: str,
+        results: list[ScoredMemory],
+        limit: int,
+    ) -> list[ScoredMemory]:
+        """Apply the grammar ∨ BM25 invariant to ``search`` results.
+
+        Runs ``retrieve_lg`` and, when the trace is confident, moves
+        the grammar answer's backing Memory to rank 1 — preserving
+        every other score field.  Zone-context siblings follow.
+        When the trace is not confident, the input list is returned
+        unchanged.
+
+        Never raises: any failure in dispatch or resolution logs and
+        returns the original list.  Benchmarks / callers observe
+        strict graceful-degradation semantics — TLG can only improve
+        results, not break search.
+        """
+        try:
+            trace = await self.retrieve_lg(query)
+        except Exception:
+            logger.warning("TLG dispatch failed during search", exc_info=True)
+            return results
+        if not trace.has_confident_answer():
+            return results
+
+        # grammar_answer is a MemoryNode ID — resolve it to the
+        # backing Memory.  Zone context IDs get the same treatment.
+        composed = await self._compose_trace_onto_scored(
+            trace.grammar_answer, trace.zone_context, results,
+        )
+        return composed[:limit] if limit else composed
+
+    async def _compose_trace_onto_scored(
+        self,
+        grammar_answer: str | None,
+        zone_context: list[str],
+        results: list[ScoredMemory],
+    ) -> list[ScoredMemory]:
+        """Reorder ``results`` so grammar answer + zone context lead.
+
+        Scores are preserved on items already in the list; new items
+        fetched from the store get a sentinel score so callers
+        sorting by total_activation keep them at the top.
+        """
+        by_memory_id = {sm.memory.id: sm for sm in results}
+        grammar_memory_id = await self._resolve_node_to_memory_id(grammar_answer)
+        zone_memory_ids: list[str] = []
+        for node_id in zone_context:
+            mid = await self._resolve_node_to_memory_id(node_id)
+            if mid is not None:
+                zone_memory_ids.append(mid)
+
+        # Compute the top-rank sentinel so composed items sort above
+        # everything BM25 produced.  Preserves relative order among
+        # composed items.
+        max_activation = max(
+            (sm.total_activation for sm in results), default=0.0,
+        )
+        sentinel = max_activation + 1.0
+
+        composed: list[ScoredMemory] = []
+        placed: set[str] = set()
+
+        async def _emit(memory_id: str | None) -> None:
+            if memory_id is None or memory_id in placed:
+                return
+            existing = by_memory_id.get(memory_id)
+            if existing is not None:
+                # Clone with bumped activation so sorted-by-score
+                # downstream stays stable.
+                bumped = existing.model_copy(
+                    update={"total_activation": sentinel}
+                )
+                composed.append(bumped)
+            else:
+                mem = await self._store.get_memory(memory_id)
+                if mem is None:
+                    return
+                composed.append(ScoredMemory(
+                    memory=mem, total_activation=sentinel,
+                ))
+            placed.add(memory_id)
+
+        await _emit(grammar_memory_id)
+        for mid in zone_memory_ids:
+            await _emit(mid)
+
+        for sm in results:
+            if sm.memory.id not in placed:
+                composed.append(sm)
+                placed.add(sm.memory.id)
+        return composed
+
+    async def _resolve_node_to_memory_id(
+        self, node_id: str | None,
+    ) -> str | None:
+        """Map a MemoryNode ID (grammar_answer / zone_context) to the
+        backing Memory ID.  Returns ``None`` when the node doesn't
+        exist or has no ``memory_id`` FK (shouldn't happen in prod
+        but we stay defensive)."""
+        if node_id is None:
+            return None
+        try:
+            node = await self._store.get_memory_node(node_id)
+        except Exception:
+            logger.debug(
+                "TLG: failed to fetch memory node %s", node_id, exc_info=True,
+            )
+            return None
+        return node.memory_id if node is not None else None
 
     # ── Phase 5: Level-First Retrieval & Synthesis ─────────────────
 

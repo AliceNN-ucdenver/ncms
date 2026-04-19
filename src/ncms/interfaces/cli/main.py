@@ -1352,6 +1352,12 @@ def maintenance_status() -> None:
                 "(always)",
                 True,
             ),
+            (
+                "tlg_induction",
+                f"{config.maintenance_tlg_induction_interval_minutes}m",
+                "tlg_enabled",
+                config.tlg_enabled,
+            ),
         ]
 
         for name, interval, flag, enabled in tasks_info:
@@ -1371,7 +1377,8 @@ def maintenance_status() -> None:
 @click.argument(
     "task",
     type=click.Choice(
-        ["consolidation", "dream", "episode-close", "decay", "all"],
+        ["consolidation", "dream", "episode-close", "decay",
+         "tlg-induction", "all"],
     ),
 )
 def maintenance_run(task: str) -> None:
@@ -1552,6 +1559,137 @@ def lint(db: str | None) -> None:
             await store.close()
 
     asyncio.run(_lint())
+
+
+@cli.group()
+def tlg() -> None:
+    """Temporal Linguistic Geometry — induction + status.
+
+    TLG is feature-flagged behind NCMS_TLG_ENABLED.  These commands
+    operate directly on the store without constructing a full
+    MemoryService, so they're cheap to run on production DBs for
+    inspection.
+    """
+    pass
+
+
+@tlg.command("status")
+@click.option("--db", default=None, help="Database path")
+def tlg_status(db: str | None) -> None:
+    """Show current L2 marker inventory + retires_entities coverage.
+
+    Reports:
+      * Feature flag state (``NCMS_TLG_ENABLED``).
+      * Persisted L2 marker buckets (from ``grammar_transition_markers``).
+      * Count of SUPERSEDES / SUPERSEDED_BY edges, and how many have
+        a populated ``retires_entities`` set.
+
+    Examples:
+        ncms tlg status
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    console = Console()
+
+    async def _status() -> None:
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            flag_state = "[green]enabled[/]" if config.tlg_enabled else "[red]disabled[/]"
+            console.print(f"TLG feature flag: {flag_state}")
+
+            # Marker inventory
+            markers = await store.load_transition_markers()
+            if not markers:
+                console.print(
+                    "[yellow]No induced markers persisted.[/]  "
+                    "Run [cyan]ncms tlg induce[/] to populate."
+                )
+            else:
+                table = Table(title="L2 marker inventory")
+                table.add_column("Transition", style="cyan")
+                table.add_column("Markers", justify="right")
+                table.add_column("Heads", overflow="fold")
+                for transition, heads in sorted(markers.items()):
+                    table.add_row(
+                        transition,
+                        str(len(heads)),
+                        ", ".join(sorted(heads)),
+                    )
+                console.print(table)
+
+            # retires_entities coverage
+            cursor = await store.db.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN retires_entities != '[]' THEN 1 ELSE 0 END) "
+                "FROM graph_edges WHERE edge_type IN ('supersedes', 'superseded_by')"
+            )
+            row = await cursor.fetchone()
+            total = row[0] if row else 0
+            populated = row[1] if row and row[1] else 0
+            console.print(
+                f"\nSUPERSEDES / SUPERSEDED_BY edges: "
+                f"[cyan]{total}[/]; "
+                f"with retires_entities: [green]{populated}[/]",
+            )
+        finally:
+            await store.close()
+
+    asyncio.run(_status())
+
+
+@tlg.command("induce")
+@click.option("--db", default=None, help="Database path")
+def tlg_induce(db: str | None) -> None:
+    """Run L2 marker induction and persist to grammar_transition_markers.
+
+    Batch job — scans every SUPERSEDES / REFINES edge and mines
+    distinctive verb heads from the announcement content.  Safe to
+    run repeatedly; output replaces the prior snapshot.
+
+    Examples:
+        ncms tlg induce
+        ncms tlg induce --db /path/to/ncms.db
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    async def _induce() -> None:
+        from ncms.application.tlg import induce_and_persist_markers
+        from ncms.config import NCMSConfig
+        from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+
+        config = NCMSConfig()
+        if db:
+            config.db_path = db
+        store = SQLiteStore(db_path=config.db_path)
+        try:
+            await store.initialize()
+            induced = await induce_and_persist_markers(store)
+            if not induced.markers:
+                console.print(
+                    "[yellow]No markers produced.[/]  The corpus has no "
+                    "SUPERSEDES / REFINES edges, or all verbs failed the "
+                    "distinctiveness filter."
+                )
+                return
+            counts = {t: len(h) for t, h in induced.markers.items()}
+            console.print(
+                "[green]Induction complete.[/]  Marker counts: "
+                + ", ".join(f"{t}={n}" for t, n in sorted(counts.items()))
+            )
+        finally:
+            await store.close()
+
+    asyncio.run(_induce())
 
 
 @cli.command("topic-map")

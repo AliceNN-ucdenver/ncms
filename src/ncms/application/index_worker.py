@@ -671,6 +671,12 @@ class IndexWorkerPool:
                     exc_info=True,
                 )
 
+        # TLG Phase 3c — background path also creates ENTITY_STATE
+        # nodes.  Invalidate the L1 vocabulary cache so the next
+        # retrieve_lg call sees the new subject / entity tokens.
+        if config.tlg_enabled:
+            self._svc.invalidate_tlg_vocabulary()
+
     async def _run_episode_formation(
         self,
         memory: Any,

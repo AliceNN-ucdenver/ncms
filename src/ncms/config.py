@@ -261,4 +261,8 @@ class NCMSConfig(BaseSettings):
     maintenance_dream_interval_minutes: int = 1440          # 24 hours
     maintenance_episode_close_interval_minutes: int = 60    # 1 hour
     maintenance_decay_interval_minutes: int = 720           # 12 hours
+    # TLG L2 marker induction — runs on the master ``tlg_enabled`` flag.
+    # Default 6 hours; induction is cheap (bounded by |transition edges|)
+    # so higher-frequency re-runs are safe.
+    maintenance_tlg_induction_interval_minutes: int = 360   # 6 hours
 
