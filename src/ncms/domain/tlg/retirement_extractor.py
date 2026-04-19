@@ -99,6 +99,136 @@ def _match_in_window(
 
 
 # ---------------------------------------------------------------------------
+# Per-sentence extraction helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_verb_hits(
+    sent_low: str, retirement_verbs: frozenset[str],
+) -> list[tuple[str, int, int]]:
+    """Every ``(verb, start, end)`` occurrence in the sentence."""
+    hits: list[tuple[str, int, int]] = []
+    for verb in retirement_verbs:
+        for match in re.finditer(rf"\b{re.escape(verb)}\w*\b", sent_low):
+            hits.append((verb, match.start(), match.end()))
+    return hits
+
+
+def _is_directional(verb_hits: list[tuple[str, int, int]]) -> bool:
+    """``moves`` / ``migrates`` — verbs that require a ``from`` anchor."""
+    return any(v.startswith(("mov", "migrat")) for v, _, _ in verb_hits)
+
+
+def _directional_retired(
+    sent_low: str,
+    candidates: dict[str, str],
+    domain: frozenset[str],
+) -> set[str]:
+    """Extract the ``from``-side of a ``moves from X to Y`` sentence.
+
+    Returns the empty set when the sentence has no ``from`` anchor
+    (``moves to Y`` alone names only the new state).
+    """
+    from_m = re.search(r"\bfrom\b", sent_low)
+    if from_m is None:
+        return set()
+    from_end = from_m.end()
+    to_m = re.search(
+        r"\b(?:to|into|toward|towards)\b", sent_low[from_end:],
+    )
+    to_start = from_end + to_m.start() if to_m else len(sent_low)
+    return _match_in_window(sent_low[from_end:to_start], candidates, domain)
+
+
+def _pre_post_window_retired(
+    verb_hits: list[tuple[str, int, int]],
+    sent_low: str,
+    candidates: dict[str, str],
+    domain: frozenset[str],
+) -> set[str]:
+    """Non-directional verbs — scan both pre- and post-verb windows.
+
+    Rationale for scanning BOTH sides:
+      * Passive ``<NP> (is|was|are|were) <verb>`` — pre-verb NP retired.
+      * Active nominal ``<NP> <verb> <OBJ>`` — either side potentially
+        retired; the ``dst_new`` filter drops the new-state object.
+      * Imperative ``<verb> <NP>`` — post-verb NP retired.
+    """
+    retired: set[str] = set()
+    for _, vstart, vend in verb_hits:
+        pre = sent_low[max(0, vstart - 60):vstart]
+        post = sent_low[vend:vend + 80]
+        retired |= _match_in_window(pre, candidates, domain)
+        retired |= _match_in_window(post, candidates, domain)
+    return retired
+
+
+def _retired_from_sentence(
+    sentence: str,
+    retirement_verbs: frozenset[str],
+    candidates: dict[str, str],
+    domain: frozenset[str],
+) -> set[str]:
+    """Structural extraction for a single sentence.
+
+    Dispatches to the directional or non-directional handler based on
+    the verbs that fire.  Returns ``set()`` when no retirement verb
+    matches the sentence at all.
+    """
+    sent_low = sentence.lower()
+    verb_hits = _find_verb_hits(sent_low, retirement_verbs)
+    if not verb_hits:
+        return set()
+    if _is_directional(verb_hits):
+        if "from" not in sent_low:
+            # ``moves to Y`` alone names only the new state — no
+            # retirement can be inferred.
+            return set()
+        return _directional_retired(sent_low, candidates, domain)
+    return _pre_post_window_retired(verb_hits, sent_low, candidates, domain)
+
+
+# ---------------------------------------------------------------------------
+# Filters composed after the sentence-level pass
+# ---------------------------------------------------------------------------
+
+
+def _setdiff_retired(
+    src_entities: frozenset[str],
+    dst_entities: frozenset[str],
+    domain: frozenset[str],
+) -> set[str]:
+    """Entities that dropped out silently (in src, not in dst).
+
+    Safety net for silent disappearances — content-scan catches
+    in-content retirements, set-diff catches entities that simply
+    stop being mentioned.  Respects the domain + MID-reference
+    exclusions so topical nouns don't leak in.
+    """
+    return {
+        ent for ent in src_entities
+        if ent not in dst_entities and not _is_excluded(ent.lower(), domain)
+    }
+
+
+def _drop_dst_new(
+    retired: set[str],
+    src_entities: frozenset[str],
+    dst_entities: frozenset[str],
+) -> set[str]:
+    """Drop entities that appear only in dst (introduced, not retired).
+
+    Fixes the failure mode where "Arthroscopic surgery scheduled" would
+    mark ``arthroscopic surgery`` as retired — it's the NEW state, not
+    the old one.
+    """
+    dst_new = {e.lower() for e in dst_entities} - {
+        e.lower() for e in src_entities
+    }
+    return {e for e in retired if e.lower() not in dst_new}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -113,6 +243,17 @@ def extract_retired(
 ) -> frozenset[str]:
     """Structurally extract the set of entities retired by a SUPERSEDES edge.
 
+    Pipeline:
+
+    1. For every sentence in ``dst_content``, run
+       :func:`_retired_from_sentence` — dispatches to the directional
+       or non-directional handler based on which retirement verbs fire.
+    2. Union the structural result with :func:`_setdiff_retired` — the
+       silent-disappearance safety net (entities in src, not in dst).
+    3. Drop any entity that appears only in dst via
+       :func:`_drop_dst_new` — protects against the new state's
+       introductions being tagged as retired.
+
     Args:
       dst_content: content of the **new** (superseding) memory — the
         announcement of the state change.  Retirement phrases are
@@ -124,82 +265,15 @@ def extract_retired(
         ``grammar_transition_markers`` once Phase 2 induction is
         populated; falls back to :data:`SEED_RETIREMENT_VERBS`.
       domain_entities: topical nouns appearing in ≥80 % of the
-        subject's memories.  Passed empty when the subject is
-        unknown or the corpus is too cold to compute.
-
-    Returns:
-      Frozenset of entity names retired by this transition.  Empty
-      when no retirement signal fires.
+        subject's memories.  Passed empty when the subject is unknown
+        or the corpus is too cold to compute.
     """
     candidates = {e.lower(): e for e in (src_entities | dst_entities)}
     retired: set[str] = set()
-
-    for sent in _sentences(dst_content):
-        sent_low = sent.lower()
-
-        # Find all retirement-verb occurrences in the sentence.
-        verb_hits: list[tuple[str, int, int]] = []
-        for verb in retirement_verbs:
-            for match in re.finditer(rf"\b{re.escape(verb)}\w*\b", sent_low):
-                verb_hits.append((verb, match.start(), match.end()))
-        if not verb_hits:
-            continue
-
-        # Directional verbs (``moves``/``migrates``): require ``from`` in
-        # the sentence.  ``moves to Y`` alone names only the new state
-        # — the source state isn't named, so no retirement can be
-        # inferred.
-        directional = any(
-            v.startswith(("mov", "migrat")) for v, _, _ in verb_hits
+    for sentence in _sentences(dst_content):
+        retired |= _retired_from_sentence(
+            sentence, retirement_verbs, candidates, domain_entities,
         )
-        if directional and "from" not in sent_low:
-            continue
-
-        # ``moves from X to Y`` → extract X (between ``from`` and
-        # ``to``/end-of-sentence).
-        if directional and "from" in sent_low:
-            from_m = re.search(r"\bfrom\b", sent_low)
-            if from_m is not None:
-                from_end = from_m.end()
-                to_m = re.search(
-                    r"\b(?:to|into|toward|towards)\b",
-                    sent_low[from_end:],
-                )
-                to_start = from_end + to_m.start() if to_m else len(sent_low)
-                window = sent_low[from_end:to_start]
-                retired |= _match_in_window(window, candidates, domain_entities)
-                continue
-
-        # Non-directional verbs — scan both pre- and post-verb windows.
-        # Rationale:
-        #   * ``<NP> (is|was|are|were) <verb>`` — passive — pre-verb
-        #     NP retired ("session cookies are fully retired").
-        #   * ``<NP> <verb> <OBJ>`` — active nominal — either side
-        #     potentially retired (dst_new filter below drops the
-        #     verb's new-state object).
-        #   * ``<verb> <NP>`` — imperative — post-verb NP retired
-        #     ("Retire long-lived JWTs").
-        for _, vstart, vend in verb_hits:
-            pre = sent_low[max(0, vstart - 60):vstart]
-            post = sent_low[vend:vend + 80]
-            retired |= _match_in_window(pre, candidates, domain_entities)
-            retired |= _match_in_window(post, candidates, domain_entities)
-
-    # Union with filtered set-diff — structural catches in-content
-    # retirements, set-diff catches silent disappearances (entities
-    # that simply stop being mentioned).
-    for ent in src_entities:
-        if ent in dst_entities:
-            continue
-        if _is_excluded(ent.lower(), domain_entities):
-            continue
-        retired.add(ent)
-
-    # ``dst_new`` filter: entities appearing only in dst (introduced
-    # by the new state) can't be retired by this edge.  Prevents
-    # "Arthroscopic surgery scheduled" marking ``arthroscopic surgery``
-    # as retired when it's being introduced, not replaced.
-    dst_new = {e.lower() for e in dst_entities} - {e.lower() for e in src_entities}
-    retired = {e for e in retired if e.lower() not in dst_new}
-
+    retired |= _setdiff_retired(src_entities, dst_entities, domain_entities)
+    retired = _drop_dst_new(retired, src_entities, dst_entities)
     return frozenset(retired)
