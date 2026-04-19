@@ -24,6 +24,7 @@ from ncms.domain.models import (
     ReconciliationResult,
     RelationType,
 )
+from ncms.domain.tlg import SEED_RETIREMENT_VERBS, extract_retired
 from ncms.infrastructure.observability.event_log import NullEventLog
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,15 @@ class ReconciliationService:
         existing_node: MemoryNode,
         reason: str = "",
     ) -> None:
-        """Close prior valid_to, flip is_current, create bidirectional edges."""
+        """Close prior valid_to, flip is_current, create bidirectional edges.
+
+        When :attr:`NCMSConfig.tlg_enabled` is True, the outgoing
+        SUPERSEDES edge also carries a structurally-extracted
+        ``retires_entities`` set (Phase 1 of the TLG integration — see
+        ``docs/p1-plan.md``).  Extraction never raises to the caller:
+        on any error we fall back to the empty set so reconciliation
+        semantics are preserved.
+        """
         now = datetime.now(UTC)
 
         # Close existing state
@@ -206,12 +215,18 @@ class ReconciliationService:
         new_node.metadata = new_meta
         await self._store.update_memory_node(new_node)  # type: ignore[attr-defined]
 
+        # TLG Phase 1: compute retires_entities via structural extractor.
+        # Disabled path returns an empty list so downstream code sees the
+        # same shape whether TLG is on or off.
+        retires = await self._compute_retires_entities(new_node, existing_node)
+
         # Create SUPERSEDES edge (new → old)
         await self._store.save_graph_edge(GraphEdge(  # type: ignore[attr-defined]
             source_id=new_node.id,
             target_id=existing_node.id,
             edge_type=EdgeType.SUPERSEDES,
             metadata={"reason": reason},
+            retires_entities=retires,
         ))
 
         # Create SUPERSEDED_BY edge (old → new)
@@ -220,6 +235,7 @@ class ReconciliationService:
             target_id=new_node.id,
             edge_type=EdgeType.SUPERSEDED_BY,
             metadata={"reason": reason},
+            retires_entities=retires,
         ))
 
         self._event_log.reconciliation_applied(  # type: ignore[attr-defined]
@@ -227,6 +243,52 @@ class ReconciliationService:
             existing_node_id=existing_node.id,
             relation="supersedes",
         )
+
+    async def _compute_retires_entities(
+        self,
+        new_node: MemoryNode,
+        existing_node: MemoryNode,
+    ) -> list[str]:
+        """Populate ``retires_entities`` when TLG is enabled; else empty.
+
+        Fetches the memory content for the new (superseding) node plus
+        entity sets for both sides, then delegates to the pure
+        ``extract_retired`` extractor in ``ncms.domain.tlg``.  On any
+        missing data or exception we return an empty list so the caller
+        can proceed unchanged — TLG-enablement is a best-effort
+        annotation, never a hard dependency for reconciliation.
+        """
+        if not getattr(self._config, "tlg_enabled", False):
+            return []
+        try:
+            new_memory = await self._store.get_memory(new_node.memory_id)  # type: ignore[attr-defined]
+            if new_memory is None or not new_memory.content:
+                return []
+            src_entities = frozenset(
+                await self._store.get_memory_entities(existing_node.memory_id)  # type: ignore[attr-defined]
+            )
+            dst_entities = frozenset(
+                await self._store.get_memory_entities(new_node.memory_id)  # type: ignore[attr-defined]
+            )
+            # Phase 1: seed retirement verbs only.  Phase 2 induction
+            # will replace this with the contents of
+            # ``grammar_transition_markers``.
+            retired = extract_retired(
+                new_memory.content,
+                src_entities,
+                dst_entities,
+                retirement_verbs=SEED_RETIREMENT_VERBS,
+                domain_entities=frozenset(),
+            )
+            return sorted(retired)
+        except Exception as exc:  # pragma: no cover — defensive guard
+            logger.warning(
+                "TLG retirement extraction failed for %s → %s: %s",
+                new_node.id,
+                existing_node.id,
+                exc,
+            )
+            return []
 
     async def _apply_conflicts(
         self, new_node: MemoryNode, existing_node: MemoryNode,

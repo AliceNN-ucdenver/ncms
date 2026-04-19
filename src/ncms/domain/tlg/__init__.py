@@ -2,12 +2,16 @@
 
 Zero infrastructure dependencies.  Submodules hold the theory pieces:
 
-* :mod:`.vocabulary` — L1 subject-vocabulary induction
-* :mod:`.markers` — L2 transition-marker induction
-* :mod:`.productions` — L3 production rules
+* :mod:`.retirement_extractor` — structural extractor for
+  ``retires_entities`` (Phase 1, ported from
+  ``experiments/temporal_trajectory/retirement_extractor.py``)
+* :mod:`.vocabulary` — L1 subject-vocabulary induction (Phase 2 stub)
+* :mod:`.markers` — L2 transition-marker induction (Phase 2 stub)
+* :mod:`.productions` — L3 production rules (Phase 3 stub)
 * :mod:`.grammar` — :class:`GrammarShape` model + dispatch policy
-* :mod:`.confidence` — four-level confidence model
-* :mod:`.composition` — grammar ∨ BM25 invariant
+  (Phase 3 stub)
+* :mod:`.confidence` — four-level confidence model (Phase 3 stub)
+* :mod:`.composition` — grammar ∨ BM25 invariant (Phase 3 stub)
 
 Runtime pipelines that use these domain pieces live under
 :mod:`ncms.application.tlg`.
@@ -18,4 +22,12 @@ for the theory and integration plan.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from ncms.domain.tlg.retirement_extractor import (
+    SEED_RETIREMENT_VERBS,
+    extract_retired,
+)
+
+__all__ = [
+    "SEED_RETIREMENT_VERBS",
+    "extract_retired",
+]

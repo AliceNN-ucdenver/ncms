@@ -166,6 +166,14 @@ class NCMSConfig(BaseSettings):
     # precision-safe (drop).  Default recall-safe.
     temporal_missing_range_policy: Literal["include", "exclude"] = "include"
 
+    # Temporal Linguistic Geometry (TLG) integration — master flag.
+    # When True, subsystems participate in the grammar layer: the
+    # ReconciliationService populates ``retires_entities`` on SUPERSEDES
+    # edges via the structural extractor (Phase 1), induction runs at
+    # ingest (Phase 2), grammar dispatch runs at query time (Phase 3).
+    # Default off until integration stabilizes — see docs/p1-plan.md.
+    tlg_enabled: bool = False
+
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False
     level_first_overfetch_factor: int = 3   # Over-fetch multiplier before node-type filter
