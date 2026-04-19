@@ -135,13 +135,23 @@ class ParserContext:
     aliases: dict[str, frozenset[str]] = field(default_factory=dict)
     issue_entities: frozenset[str] = ISSUE_SEED
     domain_nouns: frozenset[str] = frozenset()
+    # Content-induced extras for the current / origin buckets — mined
+    # from zone-terminal and subject-first memory content via
+    # :func:`ncms.domain.tlg.induce_content_markers`.  Empty on cold
+    # corpora; retirement vocabulary extends via L2 instead.
+    content_current_markers: frozenset[str] = frozenset()
+    content_origin_markers: frozenset[str] = frozenset()
 
     def augmented_markers(self) -> dict[str, frozenset[str]]:
-        """Seed + L2-induced markers for each intent family.
+        """Seed + L2 + content-induced markers per intent family.
 
-        Retirement verbs are a union of the seed and the
-        ``supersedes`` + ``retires`` L2 buckets — so the parser
-        auto-expands its vocabulary as new supersession edges land.
+        * ``retirement`` — seed + L2 supersedes + L2 retires buckets.
+        * ``current`` — seed + content-induced current candidates.
+        * ``origin`` — seed + content-induced origin candidates.
+
+        Other intents (still / cause_of) stay seed-only; their
+        markers are English structural atoms (``still`` / ``led to``)
+        that don't grow with the corpus.
         """
         out: dict[str, set[str]] = {
             k: set(v) for k, v in SEED_INTENT_MARKERS.items()
@@ -149,6 +159,8 @@ class ParserContext:
         induced = self.induced_markers.markers
         out["retirement"].update(induced.get("supersedes", frozenset()))
         out["retirement"].update(induced.get("retires", frozenset()))
+        out["current"].update(self.content_current_markers)
+        out["origin"].update(self.content_origin_markers)
         return {k: frozenset(v) for k, v in out.items()}
 
 

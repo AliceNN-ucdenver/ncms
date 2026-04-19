@@ -27,6 +27,10 @@ from __future__ import annotations
 from ncms.domain.tlg.aliases import expand_aliases, induce_aliases
 from ncms.domain.tlg.composition import compose
 from ncms.domain.tlg.confidence import CONFIDENT_LEVELS, Confidence, is_confident
+from ncms.domain.tlg.content_markers import (
+    InducedContentMarkers,
+    induce_content_markers,
+)
 from ncms.domain.tlg.grammar import LGIntent, LGTrace
 from ncms.domain.tlg.markers import (
     VERB_PHRASE_SHAPES,
@@ -111,4 +115,7 @@ __all__ = [
     "SEED_INTENT_MARKERS",
     "analyze_query",
     "compute_domain_nouns",
+    # Phase 3d — content-derived marker induction
+    "InducedContentMarkers",
+    "induce_content_markers",
 ]

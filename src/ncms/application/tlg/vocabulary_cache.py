@@ -35,6 +35,7 @@ import logging
 
 from ncms.domain.models import NodeType
 from ncms.domain.tlg import (
+    InducedContentMarkers,
     InducedEdgeMarkers,
     InducedVocabulary,
     ParserContext,
@@ -42,11 +43,12 @@ from ncms.domain.tlg import (
     compute_domain_nouns,
     expand_aliases,
     induce_aliases,
+    induce_content_markers,
     induce_vocabulary,
     lookup_entity,
     lookup_subject,
 )
-from ncms.domain.tlg.query_parser import ISSUE_SEED
+from ncms.domain.tlg.query_parser import ISSUE_SEED, SEED_INTENT_MARKERS
 
 logger = logging.getLogger(__name__)
 
@@ -132,17 +134,17 @@ class VocabularyCache:
         """Compose the full :class:`ParserContext` used by
         :func:`ncms.domain.tlg.analyze_query`.
 
-        Reuses the cached vocabulary + aliases and computes domain
-        nouns from the same ENTITY_STATE universe.  ``induced_markers``
-        is optional — callers that have an ``InducedEdgeMarkers``
-        already materialised (e.g. freshly loaded from
-        ``grammar_transition_markers`` by dispatch) pass it in;
-        otherwise the parser still runs with seed-only retirement
-        markers.
+        Reuses the cached vocabulary + aliases, computes domain
+        nouns + content-derived current/origin markers from the
+        same ENTITY_STATE universe.  ``induced_markers`` is optional —
+        callers that have an ``InducedEdgeMarkers`` already
+        materialised (e.g. freshly loaded from
+        ``grammar_transition_markers`` by dispatch) pass it in.
         """
         vocab = await self.get_vocabulary(store)
         aliases = await self.get_aliases(store)
         domain_nouns = await self._compute_domain_nouns(store)
+        content = await self._compute_content_markers(store)
         markers = induced_markers or InducedEdgeMarkers(markers={})
         return ParserContext(
             vocabulary=vocab,
@@ -150,6 +152,8 @@ class VocabularyCache:
             aliases=aliases,
             issue_entities=ISSUE_SEED,
             domain_nouns=domain_nouns,
+            content_current_markers=content.current_candidates,
+            content_origin_markers=content.origin_candidates,
         )
 
     # ── Rebuild ──────────────────────────────────────────────────────
@@ -207,6 +211,83 @@ class VocabularyCache:
                 group_count,
             )
         return aliases
+
+    async def _compute_content_markers(
+        self, store: object,
+    ) -> InducedContentMarkers:
+        """Mine content-derived current/origin markers from the
+        subject graphs.
+
+        Terminal IDs come from ``current_zone`` of each subject;
+        root IDs are each subject's earliest ENTITY_STATE node.
+        Uses the zone machinery already loaded elsewhere — we
+        rebuild it per-subject here because induction spans the
+        whole corpus, not a single dispatch call.
+        """
+        from ncms.application.tlg.dispatch import _load_subject_zones
+        from ncms.domain.tlg.zones import current_zone
+
+        nodes = await store.get_memory_nodes_by_type(  # type: ignore[attr-defined]
+            NodeType.ENTITY_STATE.value,
+        )
+        subject_nodes: dict[str, list] = {}
+        for node in nodes:
+            subj = node.metadata.get("entity_id") if node.metadata else None
+            if not subj:
+                continue
+            subject_nodes.setdefault(subj, []).append(node)
+
+        terminal_ids: set[str] = set()
+        root_ids: set[str] = set()
+        for subject, subj_nodes in subject_nodes.items():
+            if not subj_nodes:
+                continue
+            # Subject's earliest memory — by observed_at, then created_at.
+            earliest = min(
+                subj_nodes,
+                key=lambda n: (n.observed_at or n.created_at),
+            )
+            root_ids.add(earliest.memory_id)
+            # Current-zone terminal(s).
+            try:
+                zones, node_index, _ = await _load_subject_zones(
+                    store, subject,
+                )
+            except Exception as exc:  # pragma: no cover — defensive guard
+                logger.warning(
+                    "TLG content markers: zone build failed for %s: %s",
+                    subject, exc,
+                )
+                continue
+            terminal_zone = current_zone(zones, node_index)
+            if terminal_zone is not None:
+                term_node = node_index.get(terminal_zone.terminal_mid)
+                if term_node is not None:
+                    terminal_ids.add(term_node.memory_id)
+
+        # Load memory objects we care about (roots ∪ terminals ∪ middles).
+        relevant_ids = set()
+        for subj_nodes in subject_nodes.values():
+            for node in subj_nodes:
+                relevant_ids.add(node.memory_id)
+        memories: list = []
+        for memory_id in relevant_ids:
+            try:
+                mem = await store.get_memory(memory_id)  # type: ignore[attr-defined]
+            except Exception:  # pragma: no cover — defensive guard
+                continue
+            if mem is not None:
+                memories.append(mem)
+
+        seed_current = frozenset(SEED_INTENT_MARKERS.get("current", ()))
+        seed_origin = frozenset(SEED_INTENT_MARKERS.get("origin", ()))
+        return induce_content_markers(
+            memories,
+            terminal_ids=terminal_ids,
+            root_ids=root_ids,
+            seed_current=seed_current,
+            seed_origin=seed_origin,
+        )
 
     async def _compute_domain_nouns(
         self, store: object,
