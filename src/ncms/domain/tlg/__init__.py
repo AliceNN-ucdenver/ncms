@@ -38,6 +38,14 @@ from ncms.domain.tlg.markers import (
     retirement_verbs_from,
 )
 from ncms.domain.tlg.query_classifier import classify_query_intent
+from ncms.domain.tlg.query_parser import (
+    ISSUE_SEED,
+    SEED_INTENT_MARKERS,
+    ParserContext,
+    QueryStructure,
+    analyze_query,
+    compute_domain_nouns,
+)
 from ncms.domain.tlg.retirement_extractor import (
     SEED_RETIREMENT_VERBS,
     extract_retired,
@@ -96,4 +104,11 @@ __all__ = [
     "current_zone",
     "origin_memory",
     "retirement_memory",
+    # Phase 3d — structural query parser
+    "ISSUE_SEED",
+    "ParserContext",
+    "QueryStructure",
+    "SEED_INTENT_MARKERS",
+    "analyze_query",
+    "compute_domain_nouns",
 ]
