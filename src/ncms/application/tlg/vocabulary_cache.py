@@ -37,6 +37,8 @@ from ncms.domain.models import NodeType
 from ncms.domain.tlg import (
     InducedVocabulary,
     SubjectMemory,
+    expand_aliases,
+    induce_aliases,
     induce_vocabulary,
     lookup_entity,
     lookup_subject,
@@ -56,10 +58,16 @@ class VocabularyCache:
 
     def __init__(self) -> None:
         self._vocab: InducedVocabulary | None = None
+        self._aliases: dict[str, frozenset[str]] | None = None
 
     def invalidate(self) -> None:
-        """Clear the cache — next :meth:`get_vocabulary` call rebuilds."""
+        """Clear the cache — next :meth:`get_vocabulary` call rebuilds.
+
+        Also clears the alias cache since both are derived from the
+        same corpus scan.
+        """
         self._vocab = None
+        self._aliases = None
 
     async def get_vocabulary(self, store: object) -> InducedVocabulary:
         """Return the cached vocabulary, rebuilding on first call / after
@@ -88,7 +96,84 @@ class VocabularyCache:
         vocab = await self.get_vocabulary(store)
         return lookup_entity(query, vocab)
 
+    async def get_aliases(
+        self, store: object,
+    ) -> dict[str, frozenset[str]]:
+        """Return the cached alias mapping, rebuilding on first call.
+
+        Built from the same entity universe as :meth:`get_vocabulary`:
+        every entity name that appears in an ENTITY_STATE node plus
+        every entry in a SUPERSEDES / SUPERSEDED_BY edge's
+        ``retires_entities`` set.  That's the universe a query may
+        reference — aliases over any other entities would never be
+        matched.
+        """
+        if self._aliases is None:
+            self._aliases = await self._rebuild_aliases(store)
+        return self._aliases
+
+    async def expand(
+        self, entity: str, store: object,
+    ) -> frozenset[str]:
+        """``{entity}`` unioned with its known aliases (case-insensitive)."""
+        aliases = await self.get_aliases(store)
+        return expand_aliases(entity, aliases)
+
     # ── Rebuild ──────────────────────────────────────────────────────
+
+    async def _rebuild_aliases(
+        self, store: object,
+    ) -> dict[str, frozenset[str]]:
+        """Mine the alias table from the store's entity universe.
+
+        Scans two sources:
+
+        1. Every entity linked to an ENTITY_STATE node's backing
+           Memory (matches the vocabulary-rebuild universe).
+        2. Every entry in a SUPERSEDES / SUPERSEDED_BY edge's
+           ``retires_entities`` set — so a query can reference
+           retired entities using the short form even if the
+           reconciler recorded the long form.
+        """
+        universe: set[str] = set()
+        nodes = await store.get_memory_nodes_by_type(  # type: ignore[attr-defined]
+            NodeType.ENTITY_STATE.value
+        )
+        for node in nodes:
+            try:
+                linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+            except Exception as exc:  # pragma: no cover — defensive guard
+                logger.warning(
+                    "TLG aliases: could not load entities for memory %s: %s",
+                    node.memory_id,
+                    exc,
+                )
+                continue
+            universe.update(linked)
+
+        try:
+            edges = await store.list_graph_edges_by_type(  # type: ignore[attr-defined]
+                ["supersedes", "superseded_by"]
+            )
+        except Exception as exc:  # pragma: no cover — defensive guard
+            logger.warning(
+                "TLG aliases: could not list supersession edges: %s", exc,
+            )
+            edges = []
+        for edge in edges:
+            universe.update(edge.retires_entities)
+
+        aliases = induce_aliases(universe)
+        if aliases:
+            group_count = len({
+                frozenset({k, *v}) for k, v in aliases.items()
+            })
+            logger.info(
+                "TLG L1 aliases: %d surface forms, %d alias groups",
+                len(aliases),
+                group_count,
+            )
+        return aliases
 
     async def _rebuild(self, store: object) -> InducedVocabulary:
         """Scan the store's ENTITY_STATE nodes and induce a fresh vocab.

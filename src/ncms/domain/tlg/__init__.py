@@ -24,6 +24,7 @@ for the theory and integration plan.
 
 from __future__ import annotations
 
+from ncms.domain.tlg.aliases import expand_aliases, induce_aliases
 from ncms.domain.tlg.composition import compose
 from ncms.domain.tlg.confidence import CONFIDENT_LEVELS, Confidence, is_confident
 from ncms.domain.tlg.grammar import LGIntent, LGTrace
@@ -53,6 +54,9 @@ __all__ = [
     # Phase 1 — retirement extraction
     "SEED_RETIREMENT_VERBS",
     "extract_retired",
+    # Phase 3d — aliases
+    "expand_aliases",
+    "induce_aliases",
     # Phase 2 — L1 vocabulary
     "InducedVocabulary",
     "SubjectMemory",

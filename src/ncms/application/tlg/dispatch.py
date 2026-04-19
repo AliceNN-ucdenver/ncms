@@ -77,24 +77,36 @@ async def _origin_state_node(
 
 
 async def _retirement_edge_for_entity(
-    store: object, subject: str, entity: str,
+    store: object,
+    subject: str,
+    entity: str,
+    *,
+    alias_candidates: frozenset[str] | None = None,
 ) -> str | None:
     """If ``entity`` has been retired within ``subject``, return the
     MemoryNode ID of the memory that retired it; else ``None``.
 
     Scans SUPERSEDES edges whose source is a state node belonging to
-    ``subject`` and whose ``retires_entities`` contains ``entity``.
-    The structural retirement set is populated by Phase 1 /
-    Phase 3a — only SUPERSEDES edges born while TLG is enabled
-    carry the set.
+    ``subject`` and whose ``retires_entities`` contains ``entity``
+    (or any of its aliases).  The structural retirement set is
+    populated by Phase 1 / Phase 3a — only SUPERSEDES edges born
+    while TLG is enabled carry the set.
+
+    ``alias_candidates`` should come from
+    :meth:`VocabularyCache.expand` so a query using the short form
+    matches an edge that recorded the long form (JWT ↔ JSON Web
+    Tokens).  Callers pass ``None`` to skip alias expansion.
     """
+    needles = {entity.lower()}
+    if alias_candidates:
+        needles.update(a.lower() for a in alias_candidates)
+
     subject_nodes = await store.get_entity_states_by_entity(subject)  # type: ignore[attr-defined]
-    entity_lower = entity.lower()
     for node in subject_nodes:
         edges = await store.get_graph_edges(node.id, EdgeType.SUPERSEDES)  # type: ignore[attr-defined]
         for edge in edges:
             for retired in edge.retires_entities:
-                if retired.lower() == entity_lower:
+                if retired.lower() in needles:
                     return edge.source_id
     return None
 
@@ -152,6 +164,8 @@ async def _dispatch_origin(
 
 async def _dispatch_still(
     store: object, trace: LGTrace,
+    *,
+    aliases: frozenset[str] | None = None,
 ) -> None:
     subject = trace.intent.subject
     entity = trace.intent.entity
@@ -164,10 +178,13 @@ async def _dispatch_still(
         trace.confidence = Confidence.ABSTAIN
         return
 
-    # 1. Structural retirement — entity in a SUPERSEDES edge's
-    #    retires_entities set.  Highest confidence: the state change
-    #    was recorded with an explicit retirement annotation.
-    retire_src = await _retirement_edge_for_entity(store, subject, entity)
+    # 1. Structural retirement — entity (or any of its aliases) in a
+    #    SUPERSEDES edge's retires_entities set.  Highest confidence:
+    #    the state change was recorded with an explicit retirement
+    #    annotation.
+    retire_src = await _retirement_edge_for_entity(
+        store, subject, entity, alias_candidates=aliases,
+    )
     if retire_src is not None:
         trace.grammar_answer = retire_src
         trace.proof = (
@@ -177,14 +194,18 @@ async def _dispatch_still(
         trace.confidence = Confidence.HIGH
         return
 
-    # 2. Entity-in-current-zone heuristic — if the entity is linked
-    #    to the subject's current ENTITY_STATE memory, "still using"
-    #    resolves to that current state.  Medium confidence: we didn't
-    #    see a retirement, but we're relying on co-occurrence.
+    # 2. Entity-in-current-zone heuristic — if the entity (or any
+    #    alias) is linked to the subject's current ENTITY_STATE
+    #    memory, "still using" resolves to that current state.
+    #    Medium confidence: we didn't see a retirement, but we're
+    #    relying on co-occurrence.
     current = await _current_state_node(store, subject)
     if current is not None:
         linked = await store.get_memory_entities(current.memory_id)  # type: ignore[attr-defined]
-        if any(e.lower() == entity.lower() for e in linked):
+        needles = {entity.lower()}
+        if aliases:
+            needles.update(a.lower() for a in aliases)
+        if any(e.lower() in needles for e in linked):
             trace.grammar_answer = current.id
             trace.proof = (
                 f"still(subject={subject}, entity={entity}): entity is "
@@ -205,6 +226,9 @@ _INTENT_DISPATCHERS = {
     "origin": _dispatch_origin,
     "still": _dispatch_still,
 }
+
+# Intents that benefit from alias expansion (entity-slot lookups).
+_ALIAS_INTENTS: frozenset[str] = frozenset({"still"})
 
 
 # ---------------------------------------------------------------------------
@@ -254,8 +278,18 @@ async def retrieve_lg(
         trace.confidence = Confidence.NONE
         return trace
 
+    kwargs: dict = {}
+    if kind in _ALIAS_INTENTS and entity is not None:
+        try:
+            kwargs["aliases"] = await vocabulary_cache.expand(entity, store)  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover — defensive guard
+            logger.debug(
+                "TLG: alias expansion failed for entity=%s", entity,
+                exc_info=True,
+            )
+
     try:
-        await dispatcher(store, trace)
+        await dispatcher(store, trace, **kwargs)
     except Exception as exc:  # pragma: no cover — defensive guard
         logger.warning(
             "TLG dispatch for intent=%s raised: %s", kind, exc,
