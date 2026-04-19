@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ncms.domain.tlg.zones import (
-    Zone,
     ZoneEdge,
     compute_zones,
     current_zone,

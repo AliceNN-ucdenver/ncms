@@ -35,14 +35,18 @@ import logging
 
 from ncms.domain.models import NodeType
 from ncms.domain.tlg import (
+    InducedEdgeMarkers,
     InducedVocabulary,
+    ParserContext,
     SubjectMemory,
+    compute_domain_nouns,
     expand_aliases,
     induce_aliases,
     induce_vocabulary,
     lookup_entity,
     lookup_subject,
 )
+from ncms.domain.tlg.query_parser import ISSUE_SEED
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +123,35 @@ class VocabularyCache:
         aliases = await self.get_aliases(store)
         return expand_aliases(entity, aliases)
 
+    async def get_parser_context(
+        self,
+        store: object,
+        *,
+        induced_markers: InducedEdgeMarkers | None = None,
+    ) -> ParserContext:
+        """Compose the full :class:`ParserContext` used by
+        :func:`ncms.domain.tlg.analyze_query`.
+
+        Reuses the cached vocabulary + aliases and computes domain
+        nouns from the same ENTITY_STATE universe.  ``induced_markers``
+        is optional — callers that have an ``InducedEdgeMarkers``
+        already materialised (e.g. freshly loaded from
+        ``grammar_transition_markers`` by dispatch) pass it in;
+        otherwise the parser still runs with seed-only retirement
+        markers.
+        """
+        vocab = await self.get_vocabulary(store)
+        aliases = await self.get_aliases(store)
+        domain_nouns = await self._compute_domain_nouns(store)
+        markers = induced_markers or InducedEdgeMarkers(markers={})
+        return ParserContext(
+            vocabulary=vocab,
+            induced_markers=markers,
+            aliases=aliases,
+            issue_entities=ISSUE_SEED,
+            domain_nouns=domain_nouns,
+        )
+
     # ── Rebuild ──────────────────────────────────────────────────────
 
     async def _rebuild_aliases(
@@ -174,6 +207,43 @@ class VocabularyCache:
                 group_count,
             )
         return aliases
+
+    async def _compute_domain_nouns(
+        self, store: object,
+    ) -> frozenset[str]:
+        """Build the domain-noun frozenset by scanning the same
+        ENTITY_STATE universe the vocabulary uses.
+
+        Memory objects have a ``subject`` field only as metadata —
+        we lift it from the ENTITY_STATE node's ``entity_id``.
+        """
+        nodes = await store.get_memory_nodes_by_type(  # type: ignore[attr-defined]
+            NodeType.ENTITY_STATE.value
+        )
+
+        class _MemView:
+            __slots__ = ("subject", "entities")
+
+            def __init__(self, subject: str | None, entities: frozenset[str]):
+                self.subject = subject
+                self.entities = entities
+
+        views: list[_MemView] = []
+        for node in nodes:
+            subject = node.metadata.get("entity_id") if node.metadata else None
+            if not subject:
+                continue
+            try:
+                linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+            except Exception as exc:  # pragma: no cover — defensive guard
+                logger.warning(
+                    "TLG domain-nouns: could not load entities for memory %s: %s",
+                    node.memory_id,
+                    exc,
+                )
+                continue
+            views.append(_MemView(subject=subject, entities=frozenset(linked)))
+        return compute_domain_nouns(views)
 
     async def _rebuild(self, store: object) -> InducedVocabulary:
         """Scan the store's ENTITY_STATE nodes and induce a fresh vocab.
