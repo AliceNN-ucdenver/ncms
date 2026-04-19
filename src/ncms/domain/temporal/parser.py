@@ -77,190 +77,291 @@ def _quarter_range(year: int, quarter: int) -> tuple[datetime, datetime]:
     return start, end
 
 
+# ---------------------------------------------------------------------------
+# Pre-compiled pattern set — built once at import time.
+#
+# The dispatcher (``parse_temporal_reference``) walks each ``_match_*``
+# handler in order and returns the first non-None result.  Order
+# matters — more-specific patterns (named month + year) must run
+# before more-general ones (bare year) so we don't shadow.
+# ---------------------------------------------------------------------------
+
+_NUM_ALT = r"(?:\d+|" + "|".join(_WORD_NUMBERS) + r")"
+_MONTH_ALT = "|".join(_MONTH_NAMES)
+
+_RE_RECENCY = re.compile(
+    r"\b(latest|most\s+recent|current(?:ly)?|newest|up\s*to\s*date)\b"
+)
+_RE_FIRST = re.compile(r"\b(first|initial|earliest|original)\b")
+_RE_YESTERDAY = re.compile(r"\byesterday\b")
+_RE_TODAY = re.compile(r"\btoday\b")
+_RE_DAYS_AGO = re.compile(rf"\b({_NUM_ALT})\s+days?\s+ago\b")
+_RE_LAST_WEEK = re.compile(r"\blast\s+week\b")
+_RE_WEEKS_AGO = re.compile(rf"\b({_NUM_ALT})\s+weeks?\s+ago\b")
+_RE_LAST_MONTH = re.compile(r"\blast\s+month\b")
+_RE_MONTHS_AGO = re.compile(rf"\b({_NUM_ALT})\s+months?\s+ago\b")
+_RE_NAMED_MONTH = re.compile(
+    rf"\b(?:in|since|during|from)\s+({_MONTH_ALT})(?:\s+(\d{{4}}))?\b"
+)
+_RE_BARE_YEAR = re.compile(r"\b(?:in|during|from|since)\s+(\d{4})\b")
+_RE_QUARTER = re.compile(r"\bq([1-4])\s*(\d{4})?\b")
+_RE_THIS_QUARTER = re.compile(r"\bthis\s+quarter\b")
+_RE_LAST_QUARTER = re.compile(r"\blast\s+quarter\b")
+_RE_LAST_N_DAYS = re.compile(rf"\b(?:last|past)\s+({_NUM_ALT})\s+days?\b")
+_RE_SINCE = re.compile(r"\bsince\b")
+
+
+# ---------------------------------------------------------------------------
+# Per-pattern matchers.  Each one checks a single temporal shape and
+# returns a :class:`TemporalReference` on hit, ``None`` on miss.
+# ---------------------------------------------------------------------------
+
+
+def _match_recency(q: str, now: datetime) -> TemporalReference | None:
+    """Recency keywords — "latest", "most recent", "current"."""
+    if _RE_RECENCY.search(q) is None:
+        return None
+    return TemporalReference(
+        range_start=now - timedelta(hours=48),
+        range_end=now,
+        recency_bias=True,
+        ordinal="last",
+    )
+
+
+def _match_first(q: str, now: datetime) -> TemporalReference | None:
+    """Ordinal-first keywords — "first", "initial", "earliest", "original"."""
+    if _RE_FIRST.search(q) is None:
+        return None
+    return TemporalReference(ordinal="first")
+
+
+def _match_yesterday(q: str, now: datetime) -> TemporalReference | None:
+    if _RE_YESTERDAY.search(q) is None:
+        return None
+    day_start = (now - timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    day_end = day_start.replace(hour=23, minute=59, second=59)
+    return TemporalReference(range_start=day_start, range_end=day_end)
+
+
+def _match_today(q: str, now: datetime) -> TemporalReference | None:
+    if _RE_TODAY.search(q) is None:
+        return None
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return TemporalReference(range_start=day_start, range_end=now)
+
+
+def _match_days_ago(q: str, now: datetime) -> TemporalReference | None:
+    m = _RE_DAYS_AGO.search(q)
+    if m is None:
+        return None
+    n = _parse_number(m.group(1))
+    if n is None:
+        return None
+    day_start = (now - timedelta(days=n)).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    day_end = day_start.replace(hour=23, minute=59, second=59)
+    return TemporalReference(range_start=day_start, range_end=day_end)
+
+
+def _match_last_week(q: str, now: datetime) -> TemporalReference | None:
+    """"Last week" — the 7-day window ending on last Sunday."""
+    if _RE_LAST_WEEK.search(q) is None:
+        return None
+    end = (now - timedelta(days=now.weekday() + 1)).replace(
+        hour=23, minute=59, second=59, microsecond=0,
+    )
+    start = (end - timedelta(days=6)).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_weeks_ago(q: str, now: datetime) -> TemporalReference | None:
+    m = _RE_WEEKS_AGO.search(q)
+    if m is None:
+        return None
+    n = _parse_number(m.group(1))
+    if n is None:
+        return None
+    center = now - timedelta(weeks=n)
+    start = (center - timedelta(days=center.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_last_month(q: str, now: datetime) -> TemporalReference | None:
+    if _RE_LAST_MONTH.search(q) is None:
+        return None
+    if now.month == 1:
+        year, month = now.year - 1, 12
+    else:
+        year, month = now.year, now.month - 1
+    start, end = _month_range(year, month)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_months_ago(q: str, now: datetime) -> TemporalReference | None:
+    m = _RE_MONTHS_AGO.search(q)
+    if m is None:
+        return None
+    n = _parse_number(m.group(1))
+    if n is None:
+        return None
+    year, month = now.year, now.month
+    for _ in range(n):
+        month -= 1
+        if month < 1:
+            month = 12
+            year -= 1
+    start, end = _month_range(year, month)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _named_month_year(
+    match: re.Match[str], now: datetime,
+) -> int:
+    """Resolve the year for a named-month match, preferring past.
+
+    When the query has no explicit year and the named month is in
+    the future of ``now``'s calendar year, we interpret it as last
+    year ("in April" asked in March 2026 → April 2025).  The day-
+    of-month fudge-factor (``now.day < 15``) handles the edge case
+    where the month just rolled over.
+    """
+    if match.group(2):
+        return int(match.group(2))
+    month_num = _MONTH_NAMES[match.group(1)]
+    rolled_over = (
+        month_num > now.month
+        or (month_num == now.month and now.day < 15)
+    )
+    return now.year - 1 if rolled_over else now.year
+
+
+def _match_named_month(q: str, now: datetime) -> TemporalReference | None:
+    """"in March", "in January 2026", "since April"."""
+    m = _RE_NAMED_MONTH.search(q)
+    if m is None:
+        return None
+    month_num = _MONTH_NAMES[m.group(1)]
+    year = _named_month_year(m, now)
+    start, end = _month_range(year, month_num)
+    if _RE_SINCE.search(q) is not None:
+        end = now
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_bare_year(q: str, now: datetime) -> TemporalReference | None:
+    """"in 2024", "since 2024" — must run AFTER ``_match_named_month``
+    so "in March 2024" doesn't get shadowed."""
+    m = _RE_BARE_YEAR.search(q)
+    if m is None:
+        return None
+    year = int(m.group(1))
+    start = datetime(year, 1, 1, tzinfo=UTC)
+    end = datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC)
+    if _RE_SINCE.search(q) is not None:
+        end = now
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_quarter(q: str, now: datetime) -> TemporalReference | None:
+    """Named quarter: "Q1 2026"."""
+    m = _RE_QUARTER.search(q)
+    if m is None:
+        return None
+    quarter = int(m.group(1))
+    year = int(m.group(2)) if m.group(2) else now.year
+    start, end = _quarter_range(year, quarter)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_this_quarter(q: str, now: datetime) -> TemporalReference | None:
+    if _RE_THIS_QUARTER.search(q) is None:
+        return None
+    quarter = (now.month - 1) // 3 + 1
+    start, end = _quarter_range(now.year, quarter)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_last_quarter(q: str, now: datetime) -> TemporalReference | None:
+    if _RE_LAST_QUARTER.search(q) is None:
+        return None
+    quarter = (now.month - 1) // 3 + 1
+    if quarter == 1:
+        quarter, year = 4, now.year - 1
+    else:
+        quarter, year = quarter - 1, now.year
+    start, end = _quarter_range(year, quarter)
+    return TemporalReference(range_start=start, range_end=end)
+
+
+def _match_last_n_days(q: str, now: datetime) -> TemporalReference | None:
+    """"last 7 days" / "past 14 days"."""
+    m = _RE_LAST_N_DAYS.search(q)
+    if m is None:
+        return None
+    n = _parse_number(m.group(1))
+    if n is None:
+        return None
+    start = (now - timedelta(days=n)).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    return TemporalReference(range_start=start, range_end=now)
+
+
+# Ordered list of matchers.  The dispatcher returns the first non-None.
+_MATCHERS: tuple = (
+    _match_recency,
+    _match_first,
+    _match_yesterday,
+    _match_today,
+    _match_days_ago,
+    _match_last_week,
+    _match_weeks_ago,
+    _match_last_month,
+    _match_months_ago,
+    _match_named_month,
+    _match_bare_year,
+    _match_quarter,
+    _match_this_quarter,
+    _match_last_quarter,
+    _match_last_n_days,
+)
+
+
 def parse_temporal_reference(
     query: str,
     now: datetime | None = None,
 ) -> TemporalReference | None:
-    """Extract temporal reference from a query string.
+    """Extract a :class:`TemporalReference` from ``query``.
 
-    Returns None if no temporal signal is detected.
+    Runs each pattern matcher in the documented order and returns the
+    first hit; returns ``None`` when no matcher fires.  Patterns
+    handled:
 
-    Pattern types handled:
     - Relative days: "yesterday", "3 days ago", "last week", "2 weeks ago"
-    - Relative months: "last month", "two months ago", "3 months ago"
+    - Relative months: "last month", "two months ago"
     - Named months: "in March", "in January 2026", "since April"
+    - Bare years: "in 2024", "since 2023"
     - Named quarters: "Q1 2026", "this quarter", "last quarter"
+    - Rolling windows: "last 7 days", "past 14 days"
     - Recency keywords: "latest", "most recent", "current", "newest"
-    - Ordinal/earliest: "first", "initial", "earliest", "original"
+    - Ordinal / earliest: "first", "initial", "earliest", "original"
     """
     if now is None:
         now = datetime.now(UTC)
-
     q = query.lower().strip()
-
-    # ── Recency keywords ─────────────────────────────────────────────
-    recency_pat = r"\b(latest|most\s+recent|current(?:ly)?|newest|up\s*to\s*date)\b"
-    if re.search(recency_pat, q):
-        return TemporalReference(
-            range_start=now - timedelta(hours=48),
-            range_end=now,
-            recency_bias=True,
-            ordinal="last",
-        )
-
-    # ── Ordinal: first/earliest ──────────────────────────────────────
-    first_pat = r"\b(first|initial|earliest|original)\b"
-    if re.search(first_pat, q):
-        return TemporalReference(ordinal="first")
-
-    # ── "yesterday" ──────────────────────────────────────────────────
-    if re.search(r"\byesterday\b", q):
-        day_start = (now - timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0,
-        )
-        day_end = day_start.replace(hour=23, minute=59, second=59)
-        return TemporalReference(range_start=day_start, range_end=day_end)
-
-    # ── "today" ──────────────────────────────────────────────────────
-    if re.search(r"\btoday\b", q):
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = now
-        return TemporalReference(range_start=day_start, range_end=day_end)
-
-    # ── "N days ago" / "N day ago" ───────────────────────────────────
-    m = re.search(r"\b(\d+|" + "|".join(_WORD_NUMBERS) + r")\s+days?\s+ago\b", q)
-    if m:
-        n = _parse_number(m.group(1))
-        if n is not None:
-            day_start = (now - timedelta(days=n)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
-            )
-            day_end = day_start.replace(hour=23, minute=59, second=59)
-            return TemporalReference(range_start=day_start, range_end=day_end)
-
-    # ── "last week" / "N weeks ago" ──────────────────────────────────
-    if re.search(r"\blast\s+week\b", q):
-        # Last week = 7-14 days ago
-        end = (now - timedelta(days=now.weekday() + 1)).replace(
-            hour=23, minute=59, second=59, microsecond=0,
-        )
-        start = (end - timedelta(days=6)).replace(
-            hour=0, minute=0, second=0, microsecond=0,
-        )
-        return TemporalReference(range_start=start, range_end=end)
-
-    m = re.search(
-        r"\b(\d+|" + "|".join(_WORD_NUMBERS) + r")\s+weeks?\s+ago\b", q,
-    )
-    if m:
-        n = _parse_number(m.group(1))
-        if n is not None:
-            center = now - timedelta(weeks=n)
-            start = (center - timedelta(days=center.weekday())).replace(
-                hour=0, minute=0, second=0, microsecond=0,
-            )
-            end = (start + timedelta(days=6)).replace(
-                hour=23, minute=59, second=59,
-            )
-            return TemporalReference(range_start=start, range_end=end)
-
-    # ── "last month" / "N months ago" ────────────────────────────────
-    if re.search(r"\blast\s+month\b", q):
-        if now.month == 1:
-            year, month = now.year - 1, 12
-        else:
-            year, month = now.year, now.month - 1
-        start, end = _month_range(year, month)
-        return TemporalReference(range_start=start, range_end=end)
-
-    m = re.search(
-        r"\b(\d+|" + "|".join(_WORD_NUMBERS) + r")\s+months?\s+ago\b", q,
-    )
-    if m:
-        n = _parse_number(m.group(1))
-        if n is not None:
-            # Walk back N months
-            year, month = now.year, now.month
-            for _ in range(n):
-                month -= 1
-                if month < 1:
-                    month = 12
-                    year -= 1
-            start, end = _month_range(year, month)
-            return TemporalReference(range_start=start, range_end=end)
-
-    # ── Named month: "in March", "in January 2026", "since April" ────
-    month_names_pat = "|".join(_MONTH_NAMES)
-    m = re.search(
-        r"\b(?:in|since|during|from)\s+(" + month_names_pat + r")"
-        r"(?:\s+(\d{4}))?\b",
-        q,
-    )
-    if m:
-        month_num = _MONTH_NAMES[m.group(1)]
-        year = int(m.group(2)) if m.group(2) else now.year
-        # If the named month is in the future this year, assume last year
-        if not m.group(2) and (
-            month_num > now.month
-            or (month_num == now.month and now.day < 15)
-        ):
-            year -= 1
-        start, end = _month_range(year, month_num)
-        # "since April" means from April start to now
-        if re.search(r"\bsince\b", q):
-            end = now
-        return TemporalReference(range_start=start, range_end=end)
-
-    # ── Bare year: "in 2024", "during 2024", "since 2024" ──────────
-    # Matches queries where a year stands alone after a range-opening
-    # preposition.  Must come after the named-month pattern (which
-    # consumes "in March 2024" etc.) but before quarter so "in Q1 2024"
-    # doesn't get swallowed as a bare-year match.
-    m = re.search(r"\b(?:in|during|from|since)\s+(\d{4})\b", q)
-    if m:
-        year = int(m.group(1))
-        start = datetime(year, 1, 1, tzinfo=UTC)
-        end = datetime(year, 12, 31, 23, 59, 59, tzinfo=UTC)
-        if re.search(r"\bsince\b", q):
-            end = now
-        return TemporalReference(range_start=start, range_end=end)
-
-    # ── Named quarter: "Q1 2026", "this quarter", "last quarter" ─────
-    m = re.search(r"\bq([1-4])\s*(\d{4})?\b", q)
-    if m:
-        quarter = int(m.group(1))
-        year = int(m.group(2)) if m.group(2) else now.year
-        start, end = _quarter_range(year, quarter)
-        return TemporalReference(range_start=start, range_end=end)
-
-    if re.search(r"\bthis\s+quarter\b", q):
-        quarter = (now.month - 1) // 3 + 1
-        start, end = _quarter_range(now.year, quarter)
-        return TemporalReference(range_start=start, range_end=end)
-
-    if re.search(r"\blast\s+quarter\b", q):
-        quarter = (now.month - 1) // 3 + 1
-        if quarter == 1:
-            quarter, year = 4, now.year - 1
-        else:
-            quarter, year = quarter - 1, now.year
-        start, end = _quarter_range(year, quarter)
-        return TemporalReference(range_start=start, range_end=end)
-
-    # ── "last N days" / "past N days" ────────────────────────────────
-    m = re.search(
-        r"\b(?:last|past)\s+(\d+|" + "|".join(_WORD_NUMBERS) + r")\s+days?\b",
-        q,
-    )
-    if m:
-        n = _parse_number(m.group(1))
-        if n is not None:
-            start = (now - timedelta(days=n)).replace(
-                hour=0, minute=0, second=0, microsecond=0,
-            )
-            return TemporalReference(range_start=start, range_end=now)
-
-    # No temporal signal detected
+    for matcher in _MATCHERS:
+        result = matcher(q, now)
+        if result is not None:
+            return result
     return None
 
 
