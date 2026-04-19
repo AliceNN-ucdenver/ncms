@@ -42,6 +42,20 @@ except ImportError as exc:  # pragma: no cover — experiment-only dep
 from experiments.intent_slot_distillation.methods.base import (
     IntentSlotExtractor,
 )
+
+
+def _pick_device() -> str:
+    """Prefer CUDA, then Apple Metal (MPS), finally CPU.
+
+    Apple Silicon users get GPU acceleration without extra flags —
+    BERT-base training on MPS is perfectly workable for the 10 k
+    SDG-per-domain runs the experiment targets.
+    """
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 from experiments.intent_slot_distillation.schemas import (
     INTENT_CATEGORIES,
     SLOT_TAXONOMY,
@@ -216,7 +230,7 @@ def train(
     chained scripts).
     """
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = device or _pick_device()
 
     slot_labels = _build_slot_labels(domain)
     intent_labels = list(INTENT_CATEGORIES)
@@ -308,7 +322,8 @@ class JointBert(IntentSlotExtractor):
         device: str | None = None,
     ) -> None:
         self._config = JointConfig.load(checkpoint_dir / "config.json")
-        self._device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = device or _pick_device()
+        logger.info("[joint-bert] inference device: %s", self._device)
         self._tokenizer = AutoTokenizer.from_pretrained(
             self._config.encoder, use_fast=True,
         )
