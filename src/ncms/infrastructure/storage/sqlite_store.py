@@ -812,6 +812,70 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [self._row_to_graph_edge(r) for r in rows]
 
+    async def list_graph_edges_by_type(
+        self, edge_types: list[str],
+    ) -> list[GraphEdge]:
+        """All edges of the given types, ordered newest-first.
+
+        Used by TLG L2 induction (``application/tlg/induction``) to
+        scan every supersession / refinement edge.  The result is
+        bounded by the number of state transitions — small in
+        practice compared to the memory corpus.
+        """
+        if not edge_types:
+            return []
+        placeholders = ",".join("?" * len(edge_types))
+        cursor = await self.db.execute(
+            f"""SELECT * FROM graph_edges
+                WHERE edge_type IN ({placeholders})
+                ORDER BY created_at DESC""",
+            tuple(edge_types),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_graph_edge(r) for r in rows]
+
+    # ── TLG Grammar Transition Markers (schema v12) ──────────────────────
+
+    async def save_transition_markers(
+        self, markers: dict[str, frozenset[str]],
+    ) -> None:
+        """Replace the entire ``grammar_transition_markers`` table.
+
+        Induction is a snapshot: the full L2 output for the current
+        corpus.  We clear the table and re-insert rather than
+        merging — a marker that is no longer distinctive after new
+        edges land must leave the table, not linger.
+
+        ``markers`` maps transition-type (e.g. ``"supersedes"``) to
+        the frozenset of distinctive verb heads for that bucket.
+        """
+        await self.db.execute("DELETE FROM grammar_transition_markers")
+        for transition, heads in markers.items():
+            for head in heads:
+                await self.db.execute(
+                    """INSERT INTO grammar_transition_markers
+                       (transition_type, marker_head, count)
+                       VALUES (?, ?, 1)""",
+                    (transition, head),
+                )
+        await self.db.commit()
+
+    async def load_transition_markers(self) -> dict[str, frozenset[str]]:
+        """Return the persisted marker table keyed by transition type.
+
+        Empty dict when induction hasn't run yet — callers that need
+        a seed (e.g. the reconciliation retirement extractor) should
+        fall back to :data:`SEED_RETIREMENT_VERBS` in that case.
+        """
+        cursor = await self.db.execute(
+            "SELECT transition_type, marker_head FROM grammar_transition_markers"
+        )
+        rows = await cursor.fetchall()
+        bucketed: dict[str, set[str]] = {}
+        for transition, head in rows:
+            bucketed.setdefault(transition, set()).add(head)
+        return {t: frozenset(heads) for t, heads in bucketed.items()}
+
     # ── Ephemeral Cache (Phase 1 — Admission Routing) ────────────────────
 
     async def save_ephemeral(self, entry: EphemeralEntry) -> None:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from ncms.application.tlg import load_retirement_verbs
 from ncms.config import NCMSConfig
 from ncms.domain.models import (
     EdgeType,
@@ -24,7 +25,7 @@ from ncms.domain.models import (
     ReconciliationResult,
     RelationType,
 )
-from ncms.domain.tlg import SEED_RETIREMENT_VERBS, extract_retired
+from ncms.domain.tlg import extract_retired
 from ncms.infrastructure.observability.event_log import NullEventLog
 
 logger = logging.getLogger(__name__)
@@ -270,14 +271,16 @@ class ReconciliationService:
             dst_entities = frozenset(
                 await self._store.get_memory_entities(new_node.memory_id)  # type: ignore[attr-defined]
             )
-            # Phase 1: seed retirement verbs only.  Phase 2 induction
-            # will replace this with the contents of
-            # ``grammar_transition_markers``.
+            # Prefer induced retirement verbs from
+            # ``grammar_transition_markers`` (populated by
+            # ``application.tlg.induction.induce_and_persist_markers``).
+            # Falls back to SEED_RETIREMENT_VERBS on a cold store.
+            verbs = await load_retirement_verbs(self._store)
             retired = extract_retired(
                 new_memory.content,
                 src_entities,
                 dst_entities,
-                retirement_verbs=SEED_RETIREMENT_VERBS,
+                retirement_verbs=verbs,
                 domain_entities=frozenset(),
             )
             return sorted(retired)
