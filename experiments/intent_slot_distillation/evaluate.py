@@ -28,9 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import statistics
 import time
-from collections import defaultdict
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -250,8 +248,14 @@ def _write_report(
         "",
         f"Timestamp: {datetime.now(UTC).isoformat()}",
         "",
-        "| Method | Domain | Split | N | Intent F1 | Slot F1 | Joint acc | p50 ms | p95 ms | Conf-wrong % |",
-        "|:-------|:-------|:------|--:|---------:|--------:|---------:|-------:|-------:|-------------:|",
+        (
+            "| Method | Domain | Split | N | Intent F1 | Slot F1 "
+            "| Joint acc | p50 ms | p95 ms | Conf-wrong % |"
+        ),
+        (
+            "|:-------|:-------|:------|--:|---------:|--------:"
+            "|---------:|-------:|-------:|-------------:|"
+        ),
     ]
     for r in results:
         lines.append(

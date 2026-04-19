@@ -42,20 +42,6 @@ except ImportError as exc:  # pragma: no cover — experiment-only dep
 from experiments.intent_slot_distillation.methods.base import (
     IntentSlotExtractor,
 )
-
-
-def _pick_device() -> str:
-    """Prefer CUDA, then Apple Metal (MPS), finally CPU.
-
-    Apple Silicon users get GPU acceleration without extra flags —
-    BERT-base training on MPS is perfectly workable for the 10 k
-    SDG-per-domain runs the experiment targets.
-    """
-    if torch.cuda.is_available():
-        return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
 from experiments.intent_slot_distillation.schemas import (
     INTENT_CATEGORIES,
     SLOT_TAXONOMY,
@@ -66,6 +52,26 @@ from experiments.intent_slot_distillation.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _pick_device() -> str:
+    """Pick the best available device.
+
+    Delegates to ``ncms.infrastructure.hardware.resolve_device`` when
+    NCMS is importable (production deployments reuse the shared
+    policy), falling back to an inline CUDA > MPS > CPU check when
+    this experiment is run in isolation (no NCMS install).
+    """
+    try:
+        from ncms.infrastructure.hardware import resolve_device
+        return resolve_device("NCMS_JOINT_BERT_DEVICE")
+    except ImportError:
+        pass
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +93,7 @@ class JointConfig:
         path.write_text(json.dumps(asdict(self), indent=2))
 
     @classmethod
-    def load(cls, path: Path) -> "JointConfig":
+    def load(cls, path: Path) -> JointConfig:
         data = json.loads(path.read_text())
         return cls(**data)
 

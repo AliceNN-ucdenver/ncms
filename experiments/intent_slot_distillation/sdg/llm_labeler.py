@@ -36,7 +36,6 @@ import argparse
 import json
 import logging
 import os
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +49,6 @@ from experiments.intent_slot_distillation.schemas import (
     SLOT_TAXONOMY,
     Domain,
     GoldExample,
-    Intent,
 )
 
 logger = logging.getLogger(__name__)

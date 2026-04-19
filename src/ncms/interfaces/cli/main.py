@@ -226,6 +226,18 @@ def info(db: str | None) -> None:
                         agents.add(m.source_agent)
                 click.echo(f"Domains: {', '.join(sorted(domains)) or 'none'}")
                 click.echo(f"Agents: {', '.join(sorted(agents)) or 'none'}")
+
+            # Hardware summary — which device ML-backed subsystems
+            # (GLiNER, SPLADE, cross-encoder) will load onto.
+            from ncms.infrastructure.hardware import summary as hw_summary
+            hw = hw_summary()
+            click.echo("")
+            click.echo("Hardware:")
+            click.echo(f"  selected device: {hw['selected']}")
+            click.echo(f"  CUDA available:  {hw.get('cuda_available')}")
+            if hw.get("cuda_available"):
+                click.echo(f"  CUDA devices:    {hw.get('cuda_device_count')}")
+            click.echo(f"  MPS available:   {hw.get('mps_available')}")
         finally:
             await store.close()
 

@@ -43,14 +43,24 @@ class CrossEncoderReranker:
 
                     from sentence_transformers import CrossEncoder
 
+                    from ncms.infrastructure.hardware import resolve_device
+
                     kwargs: dict = {}
                     if self._cache_dir:
                         kwargs["cache_folder"] = self._cache_dir
-                    logger.info("[CrossEncoder] Loading model: %s", self._model_name)
+                    device = resolve_device("NCMS_RERANKER_DEVICE")
+                    kwargs["device"] = device
+                    logger.info(
+                        "[CrossEncoder] Loading model: %s on %s",
+                        self._model_name, device,
+                    )
                     t0 = _time.perf_counter()
                     self._model = CrossEncoder(self._model_name, **kwargs)
                     load_ms = (_time.perf_counter() - t0) * 1000
-                    logger.info("[CrossEncoder] Model loaded (%.0fms)", load_ms)
+                    logger.info(
+                        "[CrossEncoder] Model loaded on %s (%.0fms)",
+                        device, load_ms,
+                    )
                 except Exception as e:
                     logger.warning(
                         "[CrossEncoder] Load failed (reranking disabled): %s", e,

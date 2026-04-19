@@ -61,25 +61,14 @@ def _is_junk_entity(name: str) -> bool:
 
 
 def _resolve_device() -> str:
-    """Pick the best available device: MPS > CUDA > CPU.
+    """Delegate to :func:`ncms.infrastructure.hardware.resolve_device`.
 
-    Override with ``NCMS_GLINER_DEVICE=cpu|mps|cuda`` env var.
+    Honours ``NCMS_GLINER_DEVICE`` then falls back to ``NCMS_DEVICE``
+    then to the CUDA > MPS > CPU auto-detect path.  Kept as a thin
+    wrapper so historical import sites continue to work.
     """
-    import os
-
-    override = os.environ.get("NCMS_GLINER_DEVICE", "").strip().lower()
-    if override in ("cpu", "mps", "cuda"):
-        return override
-
-    try:
-        import torch
-        if torch.backends.mps.is_available():
-            return "mps"
-        if torch.cuda.is_available():
-            return "cuda"
-    except Exception:
-        pass
-    return "cpu"
+    from ncms.infrastructure.hardware import resolve_device
+    return resolve_device("NCMS_GLINER_DEVICE")
 
 
 def _get_model(model_name: str, cache_dir: str | None = None) -> object:

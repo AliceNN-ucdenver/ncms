@@ -33,14 +33,12 @@ from experiments.intent_slot_distillation.methods.base import (
     IntentSlotExtractor,
 )
 from experiments.intent_slot_distillation.schemas import (
-    INTENT_CATEGORIES,
     INTENT_LABEL_DESCRIPTIONS,
     SLOT_TAXONOMY,
     Domain,
     ExtractedLabel,
     Intent,
 )
-
 
 # Simple frequency anchors for the habitual slot.
 _FREQ_PATTERNS = [

@@ -18,7 +18,6 @@ Disabled by default; enable via config.splade_enabled = True.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,24 +34,14 @@ _SPLADE_CHUNK_OVERLAP: int = 100
 
 
 def _resolve_device() -> str:
-    """Pick the best available device: MPS > CUDA > CPU.
+    """Delegate to :func:`ncms.infrastructure.hardware.resolve_device`.
 
-    Override with ``NCMS_SPLADE_DEVICE=cpu|mps|cuda`` env var.
+    Honours ``NCMS_SPLADE_DEVICE`` then ``NCMS_DEVICE`` then auto-
+    detects.  Kept as a wrapper so historical import sites continue
+    to work.
     """
-    override = os.environ.get("NCMS_SPLADE_DEVICE", "").strip().lower()
-    if override in ("cpu", "mps", "cuda"):
-        return override
-
-    try:
-        import torch
-
-        if torch.backends.mps.is_available():
-            return "mps"
-        if torch.cuda.is_available():
-            return "cuda"
-    except Exception:
-        pass
-    return "cpu"
+    from ncms.infrastructure.hardware import resolve_device
+    return resolve_device("NCMS_SPLADE_DEVICE")
 
 
 @dataclass
