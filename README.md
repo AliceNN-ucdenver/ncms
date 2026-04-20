@@ -277,7 +277,7 @@ Across 11 intent shapes on the hand-curated ADR / project / clinical corpus:
 | Entity-scoped + path-rerank | 14 / 32 (44 %) | 6 / 32 (19 %) |
 | **TLG grammar** | **32 / 32 (100 %)** | **32 / 32 (100 %)** |
 
-Every TLG answer comes with a readable syntactic proof ("successor = ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"). On LongMemEval's conversational subset the grammar correctly **abstains** (framing mismatch — LME isn't state-evolution content) and falls through to BM25+SPLADE unchanged. Full validation in [`docs/tlg-validation-findings.md`](docs/tlg-validation-findings.md); the reusable SWE state-evolution benchmark is planned at [`docs/p3-swe-state-benchmark.md`](docs/p3-swe-state-benchmark.md).
+Every TLG answer comes with a readable syntactic proof ("successor = ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"). On LongMemEval's conversational subset the grammar correctly **abstains** (framing mismatch — LME isn't state-evolution content) and falls through to BM25+SPLADE unchanged. Full validation in [`docs/tlg-validation-findings.md`](docs/tlg-validation-findings.md); the reusable SWE state-evolution benchmark is planned at [`docs/p3-state-evolution-benchmark.md`](docs/p3-state-evolution-benchmark.md).
 
 ### Intent-Slot SLM — ingest classifier (NEW, 2026-04)
 
@@ -458,7 +458,7 @@ Note: the ingest-side intent-slot SLM (`bert-base-uncased` + LoRA) runs happily 
 ## Roadmap (Post-v1)
 
 **P3 — SWE state-evolution benchmark** (planned)
-- [ ] SWE-bench Verified-derived state-evolution corpus (~500 issues, ~6k memories, ~100 gold queries across 11 intent shapes) — see [`docs/p3-swe-state-benchmark.md`](docs/p3-swe-state-benchmark.md)
+- [ ] SWE-bench Verified-derived state-evolution corpus (~500 issues, ~6k memories, ~100 gold queries across 11 intent shapes) — see [`docs/p3-state-evolution-benchmark.md`](docs/p3-state-evolution-benchmark.md)
 - [ ] Reusable JSONL artefact that other memory systems can consume without knowing NCMS internals
 - [ ] Gates paper milestone M3 ("confidently-wrong = 0 at scale")
 

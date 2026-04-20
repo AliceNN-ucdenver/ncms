@@ -264,7 +264,7 @@ and the P2 slot-induction line.
 2. **Paper revision** — rewrite §7.6 M1 and M2 with the shipped
    numbers; mark M3 in-progress.  Done in same commit.
 3. **Queue SWE benchmark curation** — 2-week budget, parked
-   under a new `docs/p3-swe-state-benchmark.md` planning doc.
+   under a new `docs/p3-state-evolution-benchmark.md` planning doc.
    Not started; tracked as follow-up.
 4. **Regression runs** — SciFact / NFCorpus / ArguAna /
    MemoryAgentBench with `--tlg`.  Low priority; single-afternoon.

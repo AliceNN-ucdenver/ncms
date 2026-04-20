@@ -386,7 +386,7 @@ LongMemEval doesn't measure.  Candidates in priority order:
    forgetting axes.  TTL and selective-forgetting should
    exercise the admission head more than LongMemEval does.
 3. **P3 SWE state-evolution corpus**
-   ([`docs/p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md))
+   ([`docs/p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md))
    — purpose-built state-change corpus, ~2-week build.  This
    is the headline benchmark where both TLG and the SLM
    should land real wins; deferred until SWE-bench Django +

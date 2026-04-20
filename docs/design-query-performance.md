@@ -14,7 +14,7 @@
 > |---|---|---|
 > | §4 Temporal Query Parsing + Proximity Boost | **TLG** — [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md), integration in [`p1-plan.md`](p1-plan.md) (closed 2026-04-19) | Regex proximity boost couldn't resolve intent (current / predecessor / causal / etc.); TLG's structural grammar hits 32/32 top-5 and rank-1 on the state-evolution axis. |
 > | §5 Preference Extraction (regex synthetic docs) | **Intent-Slot Distillation** — [`intent-slot-distillation.md`](intent-slot-distillation.md), sprints [`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md), integration [`p2-plan.md`](p2-plan.md) | Regex families fail on phrasing drift, quoted speech, negation scoping, and maintenance burden.  P2 is now a LoRA multi-head BERT classifier unifying admission + state-change + topic + domain tagging + preference into one 2.4 MB adapter per deployment.  All 5 heads gate-PASS at F1 = 1.000 on gold across 3 reference domains. |
-> | LongMemEval as headline benchmark | **SWE state-evolution benchmark** — [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md) | LongMemEval is conversational recall, not state evolution.  TLG is inactive on it (L1 induction finds 0 subjects); axis mismatch is documented in [`tlg-validation-findings.md`](tlg-validation-findings.md) §3. |
+> | LongMemEval as headline benchmark | **SWE state-evolution benchmark** — [`p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md) | LongMemEval is conversational recall, not state evolution.  TLG is inactive on it (L1 induction finds 0 subjects); axis mismatch is documented in [`tlg-validation-findings.md`](tlg-validation-findings.md) §3. |
 >
 > **Numbering note.**  "P1/P2/P3" in §9.1 below refers to the
 > *priority ordering within this document*, not to the current
@@ -179,7 +179,7 @@ When agents query NCMS, the query string sometimes contains system prompt fragme
 > baseline `tlg_enabled=false, temporal_range_filter_enabled=true`
 > deployment; slated for removal after TLG benchmark parity is
 > demonstrated on the SWE corpus (see
-> [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md)).
+> [`p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md)).
 > Retained in this document as historical record of the
 > priority rank and the original problem framing.
 
@@ -950,7 +950,7 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | P6 | Entity State False Positive Reduction | all | 500 | quality improvement | 4h | Targets existing regex in ingestion/, still open |
 | P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service, still open |
 | P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield, still open |
-| **PX-bench** | **SWE state-evolution benchmark** (reusable artifact) | state-evolution | ~6k memories / ~100 queries | measurement surface, not a retrieval feature | 2 weeks | **Planned.**  Curation plan: [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md).  Gates paper M3 ("confidently-wrong = 0 at scale"). |
+| **PX-bench** | **SWE state-evolution benchmark** (reusable artifact) | state-evolution | ~6k memories / ~100 queries | measurement surface, not a retrieval feature | 2 weeks | **Planned.**  Curation plan: [`p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md).  Gates paper M3 ("confidently-wrong = 0 at scale"). |
 
 **P1 status — twice revised based on empirical measurement.**  The
 original estimate (+0.42 to +0.57 on temporal-reasoning) assumed

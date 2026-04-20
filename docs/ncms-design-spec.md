@@ -244,7 +244,7 @@ subjects, TLG falls through, and retrieval runs unchanged
 through the Tier 1–3 pipeline.  LongMemEval therefore serves
 as a non-regression check, not a headline benchmark.  The
 at-scale benchmark on the state-evolution axis is the SWE
-state-evolution corpus planned in `docs/p3-swe-state-benchmark.md`.
+state-evolution corpus planned in `docs/p3-state-evolution-benchmark.md`.
 
 **Deprecated in favour of TLG.**  The following modules carry
 `DeprecationWarning` on use and will be removed one release

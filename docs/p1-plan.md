@@ -12,7 +12,7 @@
 > and [`docs/ncms-design-spec.md`](ncms-design-spec.md) §4 Tier 4.
 > Follow-ups (SWE state-evolution benchmark, regression guards)
 > are tracked in
-> [`docs/p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md).
+> [`docs/p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md).
 
 ### Terminology
 
@@ -981,7 +981,7 @@ confirmed deprecation markers on `classify_query_intent`,
 `apply_ordinal_ordering`, `apply_range_filter`, and
 `domain/tlg/query_classifier`.  Paper §7.6 M1 and M2 both marked
 SHIPPED; M3 gated on the SWE state-evolution benchmark
-(`docs/p3-swe-state-benchmark.md`).
+(`docs/p3-state-evolution-benchmark.md`).
 
 ### Phase 0 — Pre-flight (1–2 days)
 
@@ -1066,7 +1066,7 @@ SHIPPED; M3 gated on the SWE state-evolution benchmark
 - **Remaining regression checks (low priority, single
   afternoon):** SciFact / NFCorpus / ArguAna / MemoryAgentBench
   with `--tlg` — not expected to move; running as guard.
-- **Follow-up (new plan doc):** `docs/p3-swe-state-benchmark.md`
+- **Follow-up (new plan doc):** `docs/p3-state-evolution-benchmark.md`
   — 500-issue SWE-bench-Verified-derived state-evolution
   corpus, 100 gold queries, reusable artifact.  2-week budget.
 - PR: `validation: TLG benchmark results` — includes ADR
@@ -2166,7 +2166,7 @@ Phase 0 verification checklist (before starting Phase 1 PRs):
   mismatch confirmed (3/9 both on and off `--tlg`) — retained
   as non-regression check.
 * **Follow-ups (tracked separately, not P1 blockers).**
-  - `docs/p3-swe-state-benchmark.md` — SWE-bench-Verified-
+  - `docs/p3-state-evolution-benchmark.md` — SWE-bench-Verified-
     derived state-evolution benchmark (500 issues, ≈100 gold
     queries, reusable JSONL).  2-week budget.  Gates paper
     milestone M3 "confidently-wrong = 0 at scale."
