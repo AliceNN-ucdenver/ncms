@@ -16,7 +16,13 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Load .env early — HF_TOKEN must be in os.environ before any
+# HuggingFace / transformers import tries to resolve a gated model.
+# No-ops when .env is absent.
 from benchmarks.core.runner import log_run_header, run_async, setup_logging
+from benchmarks.env import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

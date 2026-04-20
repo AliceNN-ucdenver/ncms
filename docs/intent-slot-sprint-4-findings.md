@@ -298,18 +298,96 @@ to follow once the A/B run completes — that's the first real
 
 ---
 
-## 10. Ready for benchmark
+## 10. LongMemEval A/B result (2026-04-20)
 
-The A/B comparison is `--intent-slot-domain conversational`
-on vs. off against LongMemEval.  Expected result: no
-significant recall change (LongMemEval is conversational
-memory recall, not state evolution — TLG's axis mismatch
-applies here too), but possible small wins from better
-admission decisions (no false-positive ephemeral routing) and
-cleaner `Memory.domains` tagging (no user-supplied noise).
+Ran `--features-on` with and without `--intent-slot-domain
+conversational` on the full 500-question LongMemEval benchmark.
+Result: **bit-identical recall, ~5 % latency overhead** — the
+axis-mismatch thesis confirmed in production.
 
-The more interesting A/B is the SWE-bench state-evolution
-benchmark once it's stood up (P3) — that's where the
-classifier's admission/state-change heads directly feed TLG's
-ingest-side signal and the combined system should show real
-gains on state-change retrieval.
+| | Baseline | SLM (conversational) | Δ |
+|---|---:|---:|---:|
+| Recall@5 | 0.4680 | 0.4680 | **0.0000** |
+| Contains | 0.4680 | 0.4680 | 0.0000 |
+| F1 | 0.0130 | 0.0130 | 0.0000 |
+| Questions | 500 | 500 | — |
+| Total memories | 10,960 | 10,960 | — |
+| Elapsed | 10,562 s | 11,099 s | +537 s |
+| Per-memory SLM overhead | — | — | ~48 ms avg |
+
+Per-category breakdown: **bit-identical** across all six
+(`knowledge-update 0.7436`, `single-session-user 0.8429`,
+`single-session-assistant 0.6429`, `multi-session 0.3308`,
+`temporal-reasoning 0.2782`, `single-session-preference
+0.0000`).  Adapter verified once at startup, zero extraction
+failures, zero tracebacks, zero HTTP 401/403 across both runs.
+
+### Why bit-identical?
+
+The result is what the pre-paper and `docs/p2-plan.md` §10
+predicted:
+
+* **admission head** — LongMemEval turns are overwhelmingly
+  persist-worthy conversational content.  SLM and regex
+  agree; no diff in admitted memories.
+* **state-change head** — Conversational content has near-
+  zero state declarations or retirements.  Both return
+  `state_change="none"`.  No L2 ENTITY_STATE nodes build
+  either way.
+* **topic head auto-populate** — Tags land in
+  `Memory.domains`, but LongMemEval's retrieval uses BM25 +
+  SPLADE + graph on the `content` field.  Domain tags don't
+  shift ranking on these queries.
+* **intent / slot heads** — Emit per-memory preference
+  metadata that ends up in `memories.intent` and
+  `memory_slots`, but the retrieval pipeline doesn't consume
+  those columns yet on LongMemEval's retrieval path.
+
+### What this confirms
+
+1. **No regression.**  The SLM does not break any category.
+2. **Latency is in budget.**  48 ms/memory × ~22 memories per
+   question ≈ 1 s/question overhead.  Well within
+   `NCMS_INTENT_SLOT_LATENCY_BUDGET_MS=200` per-memory soft
+   limit.
+3. **Adapter loads once + survives.**  10,960 classifier
+   forward passes without a failure; MPS stayed stable; no
+   re-load churn between questions.
+4. **Pipeline plumbing is sound.**  `.env` auto-load works,
+   `--intent-slot-domain` routes to the right
+   `~/.ncms/adapters/conversational/v4/`, output goes to the
+   right sub-directory, schema v13 columns populate.
+
+### Artifacts
+
+* `benchmarks/results/longmemeval/features_on/longmemeval_20260420T150644Z.{md,json}`
+  — baseline
+* `benchmarks/results/longmemeval/features_on/conversational_slm/longmemeval_20260420T152653Z.{md,json}`
+  — SLM
+* `benchmarks/run-logs/baseline-20260420T061004.log` +
+  `benchmarks/run-logs/slm-conversational-20260420T062152.log`
+  — durable full-logs
+
+### Next benchmark
+
+The interesting axis is state-evolution retrieval, which
+LongMemEval doesn't measure.  Candidates in priority order:
+
+1. **SWE-bench Django** (`benchmarks/swebench/`) — existing
+   retrieval benchmark with AR / TTL / LRU / CR metrics.
+   Covers software-dev content with more declaration /
+   retirement / supersession patterns than LongMemEval.
+   Published baselines already comparable with Mem0 + Letta
+   (NCMS wins 3 of 4).  Wiring `--intent-slot-domain
+   software_dev` through its 9 `MemoryService` instantiation
+   sites is the natural next A/B.
+2. **MemoryAgentBench** (`benchmarks/memoryagentbench/`) —
+   existing harness with AR / TTL / LRU / selective-
+   forgetting axes.  TTL and selective-forgetting should
+   exercise the admission head more than LongMemEval does.
+3. **P3 SWE state-evolution corpus**
+   ([`docs/p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md))
+   — purpose-built state-change corpus, ~2-week build.  This
+   is the headline benchmark where both TLG and the SLM
+   should land real wins; deferred until SWE-bench Django +
+   MAB A/B data is in hand.

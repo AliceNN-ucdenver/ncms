@@ -293,6 +293,19 @@ Three reference adapters trained on 27-42 gold examples per domain plus ~400 SDG
 
 Compare to zero-shot baselines: E5 label-similarity hits intent F1 0.347–0.612 on the same gold — the LoRA adapters gain **+0.22 to +0.49 absolute intent F1** while eliminating the 26.7–56.7% confidently-wrong rate.
 
+### LongMemEval A/B (500-question non-regression check, 2026-04-20)
+
+The SLM on vs. off on LongMemEval is an **axis-mismatch test** — conversational memory recall isn't the axis the SLM was built for, so the point of this run is confirming zero regression + acceptable latency, not headline accuracy:
+
+| | Baseline (`--features-on`) | SLM (`--intent-slot-domain conversational`) | Δ |
+|---|---:|---:|---:|
+| Recall@5 | 0.4680 | 0.4680 | **0.0000** (bit-identical across all 6 categories) |
+| Elapsed | 10,562 s | 11,099 s | +537 s (~48 ms / memory overhead) |
+| Memories stored | 10,960 | 10,960 | — |
+| Errors / tracebacks / HTTP 4xx | 0 | 0 | — |
+
+The classifier ran ~11k forward passes cleanly; it just didn't move the number because LongMemEval's retrieval path doesn't consume the SLM's outputs on the axes it classifies. **Expected and desired** — the real benchmark for the SLM's admission + state_change + topic heads is state-evolution retrieval, not conversational recall.  See [`docs/intent-slot-sprint-4-findings.md`](docs/intent-slot-sprint-4-findings.md) §10 for the full A/B breakdown.
+
 ### Baseline Comparison (SWE-bench Django)
 
 Compared against [Mem0](https://github.com/mem0ai/mem0) and [Letta](https://github.com/letta-ai/letta) on SWE-bench Django (850 issues, 80/20 chronological split). NCMS wins 3 of 4 metrics with zero OpenAI API calls &mdash; Mem0 and Letta both use OpenAI `text-embedding-3-small` dense vectors.

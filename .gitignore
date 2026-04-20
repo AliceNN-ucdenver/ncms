@@ -47,3 +47,6 @@ experiments/intent_slot_distillation/adapters/*/v2/
 experiments/intent_slot_distillation/adapters/*/v3/
 experiments/intent_slot_distillation/adapters/*/v3_final/
 *.bak
+
+# Benchmark durable run-logs (~30 MB each from verbose runs; regeneratable)
+benchmarks/run-logs/
