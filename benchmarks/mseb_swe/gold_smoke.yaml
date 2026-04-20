@@ -1,0 +1,43 @@
+# MSEB-SWE smoke gold.yaml — 6 queries for end-to-end harness test.
+# Not representative; just enough to prove the pipeline runs on real
+# mined memories and produces shape/rank-1 numbers.  The full gold
+# set will be authored as a separate sprint, 300 queries.
+
+- qid: swe-origin-001
+  shape: origin
+  text: "Where was the separability_matrix bug for nested CompoundModels first reported?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: swe-astropy-astropy-12907-problem_statement
+
+- qid: swe-ordinal_first-001
+  shape: ordinal_first
+  text: "What was the first report about astropy separability_matrix on nested CompoundModels?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: swe-astropy-astropy-12907-problem_statement
+
+- qid: swe-retirement-001
+  shape: retirement
+  text: "Which patch replaced the old _cstack implementation in astropy.modeling.separable?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: swe-astropy-astropy-12907-patch
+
+- qid: swe-current_state-001
+  shape: current_state
+  text: "What's the current behaviour of separability_matrix for nested CompoundModels in astropy?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: swe-astropy-astropy-12907-patch
+  gold_alt:
+    - swe-astropy-astropy-12907-test_patch
+
+- qid: swe-predecessor-001
+  shape: predecessor
+  text: "What was the behaviour of separability_matrix before the nested-CompoundModels fix?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: swe-astropy-astropy-12907-problem_statement
+
+- qid: swe-noise-001
+  shape: noise
+  text: "What is the current recommended way to configure a Redis cluster?"
+  subject: swe-astropy-astropy-12907
+  gold_mid: ""
+  note: "Adversarial: unrelated domain, all top-5 should be rejected or wrong."

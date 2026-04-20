@@ -4,3 +4,18 @@ __pycache__/
 .DS_Store
 # Cached datasets (downloaded at runtime, not committed)
 results/.cache/
+
+# MSEB pilot + full-scale artefacts — regeneratable via mine.py / label.py / build.py.
+# Commit schema, harness, labelers, READMEs, and gold.yaml; NOT the mined/labeled JSONL.
+mseb_swe/raw/
+mseb_swe/raw_labeled/
+mseb_swe/build/
+mseb_swe/build_smoke/
+mseb_clinical/raw/
+mseb_clinical/raw_labeled/
+mseb_clinical/build/
+mseb_convo/raw/
+mseb_convo/raw_labeled/
+mseb_convo/build/
+mseb/run-logs/
+results/mseb/
