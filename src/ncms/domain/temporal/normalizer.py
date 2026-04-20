@@ -16,7 +16,9 @@ Why a dedicated module:
   date`` labels.
 * The rules must be unit-testable in isolation.
 
-See ``docs/p1-temporal-experiment.md`` §3 for the design rationale.
+See ``docs/retired/p1-temporal-experiment.md`` §3 for the design rationale
+(retired 2026-04-19; superseded by TLG — normalizer primitives are kept
+and consumed by ``domain/tlg/query_parser.py``).
 
 Zero infrastructure dependencies — this module imports only stdlib
 and ``dateparser``.

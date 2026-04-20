@@ -1,7 +1,32 @@
 # NCMS Query Performance: LongMemEval Improvement Plan
 
-**Status:** P0 complete; P1a shipped (zero LongMemEval impact); P1b retired; P1-temporal-experiment is the new direction; P1c cut
-**Date:** 2026-04-12 (initial); **updated 2026-04-18** after direct LongMemEval paper study
+> **⚠️  Partially superseded 2026-04-19.**  The P1 temporal
+> track and the P2 preference track in this document have
+> been replaced.  Retained here in-place because §6 (session
+> storage), §7 (dense embedding), §8 (query sanitization), and
+> the P6/P7/P8 ingestion-quality items are still the
+> authoritative designs for those features.  See the banners
+> on §4 and §5 for the redirects.
+>
+> **What superseded what:**
+>
+> | Old (this doc) | Superseded by | Why |
+> |---|---|---|
+> | §4 Temporal Query Parsing + Proximity Boost | **TLG** — [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md), integration in [`p1-plan.md`](p1-plan.md) (closed 2026-04-19) | Regex proximity boost couldn't resolve intent (current / predecessor / causal / etc.); TLG's structural grammar hits 32/32 top-5 and rank-1 on the state-evolution axis. |
+> | §5 Preference Extraction (regex synthetic docs) | **Intent-Slot Distillation** — [`intent-slot-distillation.md`](intent-slot-distillation.md), sprints [`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md), integration [`p2-plan.md`](p2-plan.md) | Regex families fail on phrasing drift, quoted speech, negation scoping, and maintenance burden.  P2 is now a LoRA multi-head BERT classifier unifying admission + state-change + topic + domain tagging + preference into one 2.4 MB adapter per deployment.  All 5 heads gate-PASS at F1 = 1.000 on gold across 3 reference domains. |
+> | LongMemEval as headline benchmark | **SWE state-evolution benchmark** — [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md) | LongMemEval is conversational recall, not state evolution.  TLG is inactive on it (L1 induction finds 0 subjects); axis mismatch is documented in [`tlg-validation-findings.md`](tlg-validation-findings.md) §3. |
+>
+> **Numbering note.**  "P1/P2/P3" in §9.1 below refers to the
+> *priority ordering within this document*, not to the current
+> project-level phase numbering.  Project-level P1 is TLG (closed);
+> project-level P2 is intent-slot distillation (experiment live,
+> integration pending); project-level P3 is the SWE benchmark
+> curation.
+
+---
+
+**Status:** P0 complete; P1a shipped (zero LongMemEval impact); P1b retired; **P1-temporal-experiment retired (superseded by TLG)**; P1c cut.  P2 regex-preference retired (superseded by intent-slot distillation).  Features 3/4/5 and P6/P7/P8 still open.
+**Date:** 2026-04-12 (initial); **updated 2026-04-19** after TLG ship + P2 pivot.
 **Authors:** Shawn McCarthy, with analysis assistance from Claude (Anthropic)
 **Context:** NCMS scores Recall@5=0.4680 on LongMemEval (500 questions across 6 categories). Competitive analysis of MemPalace (96-99% on this benchmark) identified five targeted improvements to close the gap. Each feature addresses a specific category weakness with measurable expected impact.
 
@@ -12,38 +37,55 @@
    pipeline packages (`scoring`, `retrieval`, `enrichment`, `ingestion`,
    `traversal`).  Three architectural fitness functions lock the
    structure against regression.  Details in `docs/fitness-functions.md`.
-2. **P1 redesigned based on measurement — twice.**  The original
-   "+0.42 to +0.57 delta" projection assumed LongMemEval's temporal
-   category needed range-filter retrieval.  It doesn't — 68% of the
-   category's 133 questions are arithmetic with a hard Recall@K
-   ceiling.
+2. **P1 redesigned three times; final answer is TLG.**  The
+   original "+0.42 to +0.57 delta" projection assumed LongMemEval's
+   temporal category needed range-filter retrieval.  It doesn't —
+   68% of the category's 133 questions are arithmetic with a hard
+   Recall@K ceiling, and even the non-arithmetic ones need
+   *structural* temporal understanding (current / predecessor /
+   causal / sequence), not a scalar proximity boost.
    - **P1a** (range-filter scoring + bitemporal `observed_at`
      end-to-end) shipped cleanly.  LongMemEval delta: 0.0000.
-   - **P1b** (ordinal rerank over the candidate pool) was built,
-     measured, and **retired**.  Both a pool-wide and a subject-
-     scoped variant regressed the benchmark.  Root cause: the
-     LongMemEval paper (arXiv 2410.10813 §5.4) does not rerank the
-     retrieval pool by `observed_at` for ordinal queries — that's
-     a design NCMS invented on its own that does not match how
-     the benchmark's temporal-reasoning questions are constructed.
-     Dead code has been removed. Full analysis in
-     `docs/research-longmemeval-temporal.md` (§6).
-   - **P1c** (multi-anchor retrieval) cut — the diagnostic found zero
+     Infrastructure kept and consumed by TLG.
+   - **P1b** (ordinal rerank over the candidate pool) built,
+     measured, and **retired**.  Both pool-wide and subject-scoped
+     variants regressed the benchmark.  Dead code removed.
+   - **P1c** (multi-anchor retrieval) cut — diagnostic showed zero
      candidate-generation gap on LongMemEval.
-   - **P1-temporal-experiment** (new) — port the paper's §5.4 recipe
-     (time-aware indexing + hard-filter range query) using our existing
-     SLM stack (GLiNER + regex/dateparser).  Zero LLM at query time.
-     Design in `docs/p1-temporal-experiment.md`.
-3. **Landing zones added.**  §9.5 maps each feature to its owning
+   - **P1-temporal-experiment** (regex intent-router + hard-filter
+     range query) built into `domain/temporal/` + `apply_range_filter`,
+     then **retired 2026-04-19**.  The research follow-up (TLG) gave
+     a strictly stronger structural framework.  The experiment's
+     normalizer + range primitives are kept as the baseline
+     `temporal_range_filter_enabled=true, tlg_enabled=false` path
+     and consumed by TLG itself.  Doc is at
+     [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).
+   - **TLG (Temporal Linguistic Geometry)** — shipped 2026-04-19.
+     Structural-proof retrieval over subject chains with 11 intent
+     shapes and a zero-confidently-wrong composition invariant.
+     32/32 top-5 and rank-1 on the ADR state-evolution corpus vs.
+     BM25 41%/16%.  Integration plan closed in
+     [`docs/p1-plan.md`](p1-plan.md).
+3. **P2 regex preference extraction retired.**  Pattern families
+   (§5 below) fail on phrasing drift, quoted speech ("I love it
+   when someone says 'I hate sprouts'"), negation scoping ("I used
+   to love X, now I prefer Y"), and on any domain outside
+   conversational English.  Replaced by the intent-slot
+   distillation experiment, which trains a BERT joint classifier
+   (intent + BIO slot) per-domain with synthetic data from
+   template expansion + LLM labeling.  See
+   [`docs/intent-slot-distillation.md`](intent-slot-distillation.md)
+   + `experiments/intent_slot_distillation/`.
+4. **Landing zones added.**  §9.5 maps each feature to its owning
    pipeline package, with a fitness-function checklist for PRs.
-4. **Implementation plans refer to pipeline packages, not
+5. **Implementation plans refer to pipeline packages, not
    `memory_service.py`.**  Post-Phase 0, feature code lives in the
    matching pipeline; `memory_service.py` changes minimally.
-5. **The "LLM-free at query time" pitch is a hard constraint, not a
+6. **The "LLM-free at query time" pitch is a hard constraint, not a
    preference.**  Any design that needs an LLM at query time gets
-   rejected at gate; the temporal experiment must deliver its
-   gains through SLMs we already load (GLiNER, SPLADE, the
-   cross-encoder reranker, planned E5-small-v2) plus rules.
+   rejected at gate.  TLG respects this (pure grammar + L1/L2 index
+   lookup).  Intent-slot distillation also respects this (inference
+   against a fine-tuned BERT runs in ~5ms on MPS/CUDA).
 
 ---
 
@@ -115,9 +157,36 @@ When agents query NCMS, the query string sometimes contains system prompt fragme
 
 ## 4. Feature 1: Temporal Query Parsing & Proximity Boost
 
-**Priority: 1 (highest)**
+> **⚠️  Superseded 2026-04-19 by Temporal Linguistic Geometry (TLG).**
+> The regex temporal parser + Gaussian proximity boost described
+> in this section was implemented as `domain/temporal/parser.py`
+> + `apply_range_filter` + `apply_ordinal_ordering`; it shipped
+> as the `temporal_range_filter_enabled` path but delivered 0.0
+> LongMemEval delta and could never resolve intent (current /
+> predecessor / causal / sequence), only proximity.
+>
+> The current design is **TLG** — see
+> [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md)
+> for the grammar architecture and
+> [`p1-plan.md`](p1-plan.md) for the integration history (closed
+> 2026-04-19).  TLG's grammar layer consumes the normalizer
+> primitives from the retired experiment (kept active) and
+> replaces the scoring boost with a structural dispatcher that
+> hits 32/32 top-5 and rank-1 on the ADR state-evolution
+> corpus.
+>
+> The normalizer + range filter remain in the codebase as the
+> baseline `tlg_enabled=false, temporal_range_filter_enabled=true`
+> deployment; slated for removal after TLG benchmark parity is
+> demonstrated on the SWE corpus (see
+> [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md)).
+> Retained in this document as historical record of the
+> priority rank and the original problem framing.
+
+**Priority: 1 (highest, original ranking)**
 **Target category:** temporal-reasoning (0.2782 -> 0.80+)
 **Estimated effort:** 3-4 days
+**Status:** retired, superseded by TLG
 
 ### 4.1 Problem
 
@@ -264,9 +333,41 @@ Overall Recall@5 impact: +0.11 to +0.15 (133 questions * delta / 500).
 
 ## 5. Feature 2: Preference Extraction & Synthetic Documents
 
-**Priority: 2**
+> **⚠️  Superseded 2026-04-19 by Intent-Slot Distillation (P2 pivot).**
+> The regex pattern families described below (positive /
+> negative / habitual / difficulty / choice) fail on phrasing
+> drift ("I've grown fond of X"), quoted speech ("I love it when
+> someone tells me 'I hate X'"), negation scoping ("I used to
+> love X, now I prefer Y"), third-person ("my sister prefers
+> X"), double negation, sarcasm, and on any domain outside
+> conversational English.  Maintenance burden scales linearly
+> with every new phrasing a user invents.
+>
+> The replacement is an **intent + slot classifier per domain**,
+> trained via BERT joint intent-head + BIO slot-head with
+> synthetic data from template expansion plus LLM labeling.
+> Three-tier design (E5 zero-shot / BERT pre-trained on SNIPS /
+> user-fine-tuned) so teams can pick the accuracy / training-
+> cost trade-off that matches their domain.
+>
+> - **Research plan:** [`docs/intent-slot-distillation.md`](intent-slot-distillation.md)
+> - **Experiment code:** `experiments/intent_slot_distillation/`
+>   (schemas, gold corpora across conversational / software_dev /
+>   clinical domains, template expander, LLM labeler, four
+>   methods: E5 zero-shot, GLiNER+E5, Joint BERT pre-trained,
+>   Joint BERT fine-tuned, evaluation harness with intent F1 /
+>   slot F1 / joint accuracy / latency / confidently-wrong rate).
+>
+> P2 status: experiment live, integration into
+> `IntentSlotExtractor` protocol in `application/ingestion/`
+> pending selection of the best method from the evaluation
+> matrix.  Regex-preference code is **not shipped** — this
+> section is historical only.
+
+**Priority: 2 (original ranking)**
 **Target category:** single-session-preference (0.0000 -> 0.90+)
 **Estimated effort:** 2-3 days
+**Status:** retired, superseded by intent-slot distillation
 
 ### 5.1 Problem
 
@@ -838,15 +939,18 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (Phase 0 complete) |
 | P1a | Range-filter temporal + bitemporal model | temporal-reasoning | 133 | 0.000 | **Done** | Shipped; infrastructure only (observed_at/reference_time), no LongMemEval gain. |
 | ~~P1b~~ | ~~Ordinal rerank (post-retrieval)~~ | ~~temporal-reasoning~~ | — | ~~negative~~ | ~~Retired~~ | Both variants (pool-wide and subject-scoped) regressed LongMemEval; paper §5.4 does not rerank the retrieval pool. Dead code removed. |
-| P1-exp | Time-aware indexing + hard-filter range query | temporal-reasoning | 133 | **+10 to +23 pts R@5** (paper §5.4, Table 4) | **3-5 days** | Next build — see `docs/p1-temporal-experiment.md`. Zero LLM at query time — GLiNER date label + regex/dateparser. |
+| ~~P1-exp~~ | ~~Time-aware indexing + hard-filter range query~~ | ~~temporal-reasoning~~ | ~~133~~ | ~~(not measured in isolation)~~ | ~~3-5 days~~ | **Retired 2026-04-19** — superseded by TLG.  Doc moved to [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).  The normalizer + `apply_range_filter` primitives remain in tree as the baseline `tlg_enabled=false` path. |
+| **P1-TLG** | **Temporal Linguistic Geometry** | **state-evolution (on-axis)** | **32** (ADR corpus) | **32/32 top-5 and rank-1** vs. BM25 41%/16% | **2 weeks** | **✅ Shipped 2026-04-19.**  11-intent structural grammar, zero-confidently-wrong composition invariant, scale curve ≤50 ms through 10 k memories.  See [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md), [`p1-plan.md`](p1-plan.md), [`tlg-validation-findings.md`](tlg-validation-findings.md). |
 | ~~P1c~~ | ~~Multi-anchor retrieval~~ | ~~arithmetic~~ | — | ~~0~~ | ~~Cut — diagnostic showed zero Recall@K upside~~ | Not pursuing |
-| P2 | Preference Extraction | single-session-preference | 30 | +0.70 to +0.95 | 2-3 days | Greenfield |
-| P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days | Greenfield |
-| P4 | Dense Embedding Signal | all | 500 | +0.02 to +0.08 | 5-7 days | Greenfield (research + build) |
-| P5 | Query Sanitization | all | 500 | +0.01 to +0.05 | 1-2 days | Greenfield |
-| P6 | Entity State False Positive Reduction | all | 500 | quality improvement | 4h | Targets existing regex in ingestion/ |
-| P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service |
-| P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield |
+| ~~P2 (regex)~~ | ~~Regex Preference Extraction + synthetic docs~~ | ~~single-session-preference~~ | ~~30~~ | ~~+0.70 to +0.95~~ | ~~2-3 days~~ | **Retired 2026-04-19** — superseded by intent-slot distillation.  Pattern families don't generalize across phrasing drift / quoted speech / negation scope / non-English domains. |
+| **P2-IS** | **Intent-Slot Distillation** (LoRA multi-head BERT classifier) | preference + domain intent + admission + state-change + topic | per-domain (3 reference domains) | **F1 = 1.000 on gold across all 5 heads; adversarial intent +0.33 vs baseline** | ~12 working days (sprints 0–3 shipped); Sprint 4 integration ~2 weeks | **Experiment complete — 3 gate-PASS adapters shipped.**  Research: [`intent-slot-distillation.md`](intent-slot-distillation.md).  Sprint findings: [`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md).  Integration plan: [`p2-plan.md`](p2-plan.md).  Code: `experiments/intent_slot_distillation/`.  Architecture: one forward pass → {intent, slot, topic, admission, state_change} with confidence gating.  Replaces five brittle code paths (admission regex, state-change regex, LLM topic labeller, user-supplied `Memory.domains`, regex preference extractor) with one 2.4 MB LoRA adapter per deployment. |
+| P3 | Session-Level Storage | multi-session | 133 | +0.17 to +0.37 | 4-5 days | Greenfield, still open |
+| P4 | Dense Embedding Signal | all | 500 | +0.02 to +0.08 | 5-7 days | Greenfield (research + build), still open |
+| P5 | Query Sanitization | all | 500 | +0.01 to +0.05 | 1-2 days | Greenfield, still open |
+| P6 | Entity State False Positive Reduction | all | 500 | quality improvement | 4h | Targets existing regex in ingestion/, still open |
+| P7 | Admission Content-Type Prefix Classifier | all | 500 | quality improvement | 3h + 4h dataset | Extends existing admission_service, still open |
+| P8 | User/Assistant Retrieval Asymmetry | single-session-assistant | 56 | +0.05 to +0.15 | 3h | Greenfield, still open |
+| **PX-bench** | **SWE state-evolution benchmark** (reusable artifact) | state-evolution | ~6k memories / ~100 queries | measurement surface, not a retrieval feature | 2 weeks | **Planned.**  Curation plan: [`p3-swe-state-benchmark.md`](p3-swe-state-benchmark.md).  Gates paper M3 ("confidently-wrong = 0 at scale"). |
 
 **P1 status — twice revised based on empirical measurement.**  The
 original estimate (+0.42 to +0.57 on temporal-reasoning) assumed
@@ -879,20 +983,32 @@ Timeline:
 3. **P1c — multi-anchor retrieval (cut).**  Every retrievable
    LongMemEval answer already lands in top-50 today; there is no
    candidate-generation gap to close.
-4. **P1-temporal-experiment (next build).**  Implements the paper's
-   §5.4 recipe under NCMS's zero-LLM-at-query-time constraint: add a
-   GLiNER `date` label to ingest-side entity extraction (already
-   loaded, zero marginal model cost); extend `temporal_parser.py` +
-   `dateparser` (pure Python) for query-side range extraction; apply
-   the range as a hard candidate filter (not a soft boost).  Design:
-   `docs/p1-temporal-experiment.md`.
-5. **Arithmetic questions (~90 of 133).**  Answer strings absent from
+4. **P1-temporal-experiment (built, shipped as baseline, then
+   superseded by TLG 2026-04-19).**  Implemented the paper's
+   §5.4 recipe under NCMS's zero-LLM-at-query-time constraint:
+   GLiNER `date` label ingest-side, `temporal_parser.py` +
+   `dateparser` query-side, hard range filter
+   (`apply_range_filter`).  Kept in-tree as the
+   `temporal_range_filter_enabled=true, tlg_enabled=false`
+   baseline; consumed as a primitive by TLG's `range` intent.
+   Design doc retired to
+   [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).
+5. **P1-TLG (shipped 2026-04-19).**  Structural grammar over
+   subject chains with 11 intent shapes; zero-confidently-wrong
+   composition invariant with BM25.  32/32 top-5 and rank-1 on
+   the ADR state-evolution corpus.  See
+   [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md)
+   and the closed [`p1-plan.md`](p1-plan.md).
+6. **Arithmetic questions (~90 of 133).**  Answer strings absent from
    every source memory — a retrieval-only ceiling at Recall@K = 0.
    Scoring these requires RAG + LLM judge; parked as a
    measurement-stack concern, not a retrieval one.
 
-§4.3 below retains the original P1a design for reference; the new
-temporal experiment is described in `docs/p1-temporal-experiment.md`.
+§4.3 below retains the original P1a design for reference; the
+retired temporal experiment is at
+[`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md);
+the current temporal path is TLG — see
+[`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md).
 
 ### 9.2 Items Adopted from Resilience Doc Phase 7
 
@@ -1017,8 +1133,10 @@ minimally (only to wire a new constructor arg or emit a new config).
 |---------|----------------------|----------------------------|
 | P1a Range-filter temporal | **scoring/pipeline.py** + **domain/temporal_parser.py** — shipped | `_compute_raw_signals` (temporal_raw), `_normalize_and_combine` (max_temporal). Also landed the bitemporal `observed_at` / `reference_time` wiring end-to-end. Ships the infrastructure; no LongMemEval delta. |
 | ~~P1b Ordinal rerank~~ | **retired** | Both variants (`apply_ordinal_rerank`, `apply_subject_scoped_ordinal_rerank`) regressed LongMemEval. Paper §5.4 uses time-aware indexing + hard-filter range query rather than post-retrieval rerank. All rerank code and tests removed 2026-04-18. |
-| P1-temporal-experiment | **infrastructure/extraction/gliner_extractor.py** (add `date` label at query+ingest) + **domain/temporal_parser.py** (extend with dateparser-backed range extraction) + **scoring/pipeline.py** OR **retrieval/pipeline.py** (hard range filter — pre-scoring candidate filter) + **infrastructure/storage/migrations.py** (store extracted content dates) | See `docs/p1-temporal-experiment.md`. Zero LLM at query time — leverages already-loaded GLiNER (209M) and pure-Python regex+dateparser. |
-| P2 Preference | **infrastructure/extraction/preference_extractor.py** (new); **ingestion/pipeline.py** (call site in `run_inline_indexing`) | Add `extract_preferences()` call after GLiNER; spawn synthetic `preference` memory through the same `store_memory` path. |
+| ~~P1-temporal-experiment~~ (shipped, superseded) | **infrastructure/extraction/gliner_extractor.py** (`date` label), **domain/temporal/** (normalizer + intent classifier), **retrieval/pipeline.py::apply_range_filter**, **infrastructure/storage/migrations.py** (content-range table) | Shipped as the baseline `temporal_range_filter_enabled=true` path; retired from the primary retrieval flow on 2026-04-19 when TLG landed.  See [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md). |
+| **P1-TLG** (current temporal path) | **domain/tlg/** (grammar layer — retirement extractor, L1 vocab, L2 markers, content markers, aliases, zones, query parser, shape cache), **application/tlg/** (dispatch, VocabularyCache, ShapeCacheStore, induction), **application/memory_service.search** (composition hook), **infrastructure/storage/sqlite_store.py** (`find_memory_ids_by_entity`, schema v12 `grammar_shape_cache`) | See [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md). |
+| ~~P2 Preference (regex)~~ | ~~`preference_extractor.py` regex families~~ | **Retired 2026-04-19** — superseded by P2-IS (intent-slot distillation).  No regex extractor was ever shipped. |
+| **P2-IS** Intent-Slot Distillation | `experiments/intent_slot_distillation/` (**shipped**, 3 gate-PASS adapters); Sprint 4 integration lands in **domain/protocols.py** (`IntentSlotExtractor`), **infrastructure/extraction/intent_slot/** (3 backends + adapter loader), **application/ingestion/pipeline.py** (extractor call after content classification), schema v13 (5 new `memories` columns + `memory_slots` + `intent_slot_adapters`), new `ncms train-adapter` / `adapter-promote` CLIs, dashboard `intent_slot.extracted` event. | LoRA multi-head BERT; unifies admission scoring + state-change detection + topic labelling + domain tagging + preference extraction.  Plan: [`p2-plan.md`](p2-plan.md). |
 | P3 Session Storage | **application/session_service.py** (new, follow `section_service.py` pattern); **ingestion/pipeline.py** (session entry point) | New `store_session()` on `MemoryService`, delegates to `session_service.build_session_profile()`, which calls `document_service.publish_document` under the hood. |
 | P4 Dense Embeddings | **infrastructure/indexing/dense_engine.py** (new); **retrieval/pipeline.py** (`retrieve_candidates` — add parallel retriever); **scoring/pipeline.py** (new signal in raw + combine) | Three touchpoints: index writer in ingestion's `run_inline_indexing`, parallel retriever in retrieval, signal term in scoring. |
 | P5 Query Sanitization | **domain/query_sanitizer.py** (new); **memory_service.search / recall** (preprocessing) | Single pure function called at top of `search()` and `recall()`. No pipeline internals touched. |

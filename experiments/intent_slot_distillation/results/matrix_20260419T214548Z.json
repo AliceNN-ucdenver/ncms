@@ -1,0 +1,42 @@
+[
+  {
+    "method": "joint_bert_lora",
+    "domain": "clinical",
+    "split": "gold",
+    "n_examples": 15,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 0.9744,
+    "joint_accuracy": 0.9333,
+    "latency_p50_ms": 25.85,
+    "latency_p95_ms": 30.02,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    }
+  },
+  {
+    "method": "joint_bert_lora",
+    "domain": "clinical",
+    "split": "adversarial",
+    "n_examples": 4,
+    "intent_f1_macro": 0.1944,
+    "slot_f1_macro": 0.4444,
+    "joint_accuracy": 0.25,
+    "latency_p50_ms": 30.3,
+    "latency_p95_ms": 30.3,
+    "confidently_wrong_rate": 0.25,
+    "per_intent_f1": {
+      "positive": 0.0,
+      "negative": 0.5,
+      "habitual": 0.0,
+      "difficulty": 0.0,
+      "choice": 0.6667,
+      "none": 0.0
+    }
+  }
+]

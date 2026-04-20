@@ -63,12 +63,25 @@ class SQLiteStore:
     # ── Memory CRUD ──────────────────────────────────────────────────────
 
     async def save_memory(self, memory: Memory) -> None:
+        """Insert-or-replace a ``Memory`` row.
+
+        Schema v13: reads intent-slot classifier outputs from
+        ``memory.structured["intent_slot"]`` (the convention the
+        :class:`IngestionPipeline` follows post-P2) and persists
+        them to dedicated columns so dashboard / analytics queries
+        can filter without JSON parsing.  When the key is absent
+        (pre-P2 ingest or feature flag off) the columns stay NULL.
+        """
+        intent_slot = (memory.structured or {}).get("intent_slot") or {}
         await self.db.execute(
             """INSERT OR REPLACE INTO memories
                (id, content, structured, type, importance, content_hash,
                 created_at, updated_at, observed_at, source_agent,
-                project, domains, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                project, domains, tags,
+                intent, intent_confidence, topic, topic_confidence,
+                admission_decision, state_change, intent_slot_method)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       ?, ?, ?, ?, ?, ?, ?)""",
             (
                 memory.id,
                 memory.content,
@@ -84,6 +97,13 @@ class SQLiteStore:
                 memory.project,
                 json.dumps(memory.domains),
                 json.dumps(memory.tags),
+                intent_slot.get("intent"),
+                intent_slot.get("intent_confidence"),
+                intent_slot.get("topic"),
+                intent_slot.get("topic_confidence"),
+                intent_slot.get("admission"),
+                intent_slot.get("state_change"),
+                intent_slot.get("method"),
             ),
         )
         await self.db.commit()
@@ -1252,3 +1272,182 @@ class SQLiteStore:
             timestamp=datetime.fromisoformat(row["timestamp"]),
             agent_id=row["agent_id"],
         )
+
+    # ── Intent-Slot integration (Schema v13, P2) ────────────────────
+
+    async def save_memory_slots(
+        self,
+        memory_id: str,
+        slots: dict[str, str],
+        confidences: dict[str, float] | None = None,
+    ) -> None:
+        """Persist per-memory slot surface forms from the classifier.
+
+        Replaces any existing slot rows for ``memory_id``.  Empty
+        ``slots`` dict → deletes all rows and returns.
+        """
+        await self.db.execute(
+            "DELETE FROM memory_slots WHERE memory_id = ?", (memory_id,),
+        )
+        if not slots:
+            await self.db.commit()
+            return
+        confidences = confidences or {}
+        await self.db.executemany(
+            """INSERT OR REPLACE INTO memory_slots
+               (memory_id, slot_name, slot_value, slot_confidence)
+               VALUES (?, ?, ?, ?)""",
+            [
+                (memory_id, name, value, confidences.get(name))
+                for name, value in slots.items()
+                if value
+            ],
+        )
+        await self.db.commit()
+
+    async def get_memory_slots(
+        self, memory_id: str,
+    ) -> dict[str, str]:
+        """Return ``{slot_name: slot_value}`` for a given memory."""
+        cursor = await self.db.execute(
+            "SELECT slot_name, slot_value FROM memory_slots "
+            "WHERE memory_id = ?",
+            (memory_id,),
+        )
+        rows = await cursor.fetchall()
+        return {row["slot_name"]: row["slot_value"] for row in rows}
+
+    async def save_intent_slot_adapter(
+        self,
+        *,
+        adapter_id: str,
+        domain: str,
+        version: str,
+        adapter_path: str,
+        encoder: str,
+        corpus_hash: str,
+        gate_passed: bool,
+        gate_metrics_json: str | None,
+        promoted_at: str,
+        active: bool = False,
+    ) -> None:
+        """Insert/update a row in the adapter registry.
+
+        Called by ``ncms adapter-promote``.  Does NOT flip the
+        active bit — that's a separate op via
+        :meth:`set_active_intent_slot_adapter` so promotion and
+        activation can be audited separately.
+        """
+        await self.db.execute(
+            """INSERT OR REPLACE INTO intent_slot_adapters
+               (adapter_id, domain, version, adapter_path, encoder,
+                corpus_hash, gate_passed, gate_metrics_json,
+                promoted_at, active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                adapter_id, domain, version, adapter_path, encoder,
+                corpus_hash, 1 if gate_passed else 0, gate_metrics_json,
+                promoted_at, 1 if active else 0,
+            ),
+        )
+        await self.db.commit()
+
+    async def set_active_intent_slot_adapter(
+        self, adapter_id: str,
+    ) -> None:
+        """Flip the ``active`` bit to 1 for exactly one adapter.
+
+        Clears ``active=1`` on any other adapter for the same
+        domain.  A service restart is required for the ingest
+        pipeline to pick up the new checkpoint path.
+        """
+        cursor = await self.db.execute(
+            "SELECT domain FROM intent_slot_adapters WHERE adapter_id = ?",
+            (adapter_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise ValueError(f"unknown adapter_id {adapter_id!r}")
+        domain = row["domain"]
+        await self.db.execute(
+            "UPDATE intent_slot_adapters SET active = 0 WHERE domain = ?",
+            (domain,),
+        )
+        await self.db.execute(
+            "UPDATE intent_slot_adapters SET active = 1 WHERE adapter_id = ?",
+            (adapter_id,),
+        )
+        await self.db.commit()
+
+    async def get_active_intent_slot_adapter(
+        self, domain: str | None = None,
+    ) -> dict[str, object] | None:
+        """Return the currently-active adapter row, optionally scoped.
+
+        When ``domain`` is given returns the active adapter for that
+        domain.  Otherwise returns the first active adapter across
+        all domains (useful for single-domain deployments).
+        """
+        if domain is not None:
+            cursor = await self.db.execute(
+                "SELECT * FROM intent_slot_adapters "
+                "WHERE domain = ? AND active = 1 LIMIT 1",
+                (domain,),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT * FROM intent_slot_adapters "
+                "WHERE active = 1 LIMIT 1",
+            )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return dict(row)
+
+    async def list_intent_slot_adapters(
+        self, domain: str | None = None,
+    ) -> list[dict[str, object]]:
+        """List all registered adapters, newest first."""
+        if domain is not None:
+            cursor = await self.db.execute(
+                "SELECT * FROM intent_slot_adapters WHERE domain = ? "
+                "ORDER BY promoted_at DESC",
+                (domain,),
+            )
+        else:
+            cursor = await self.db.execute(
+                "SELECT * FROM intent_slot_adapters "
+                "ORDER BY promoted_at DESC",
+            )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    async def list_topics_seen(
+        self, domain: str | None = None,
+    ) -> list[dict[str, object]]:
+        """Enumerate topics that have actually been persisted.
+
+        Reads from the memories table — no coupling to the adapter
+        manifest.  Dashboard uses this to render the topic-
+        distribution view without knowing the trained taxonomy
+        ahead of time (honours the "dynamic topics" design).
+        """
+        sql = (
+            "SELECT topic, COUNT(*) AS n, MAX(updated_at) AS last_seen "
+            "FROM memories WHERE topic IS NOT NULL"
+        )
+        params: list[object] = []
+        if domain is not None:
+            sql += " AND domains LIKE ?"
+            params.append(f'%"{domain}"%')
+        sql += " GROUP BY topic ORDER BY n DESC"
+        cursor = await self.db.execute(sql, params)
+        rows = await cursor.fetchall()
+        return [
+            {
+                "topic": row["topic"],
+                "count": row["n"],
+                "last_seen": row["last_seen"],
+            }
+            for row in rows
+        ]

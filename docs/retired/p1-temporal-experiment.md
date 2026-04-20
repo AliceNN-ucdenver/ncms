@@ -1,5 +1,18 @@
 # P1-Temporal Experiment — Zero-LLM Time-Aware Retrieval
 
+> **⚠️  RETIRED 2026-04-19.**  This document described the
+> metadata-anchored + intent-router approach to temporal
+> retrieval.  It is **superseded by Temporal Linguistic
+> Geometry** — see
+> [`docs/temporal-linguistic-geometry.md`](../temporal-linguistic-geometry.md)
+> for the current architecture and
+> [`docs/p1-plan.md`](../p1-plan.md) for the integration plan.
+> Retained here as a historical record only.  TLG replaces
+> every design decision in §0–§15 below; do not build against
+> this document.
+
+---
+
 **Status:** Phase A instrumentation shipped (2026-04-18). **Architecture revised** based on Phase A coverage measurement — see §13–§15 for the current design. §0–§12 below document the original design; they're retained for context but **§13–§15 supersede where they conflict**.
 **Date:** 2026-04-18 (initial); 2026-04-18 revised after Phase A
 **Prerequisite reads:** `docs/research-longmemeval-temporal.md` (paper evidence), `docs/design-query-performance.md` §9.1 (P1 status history)

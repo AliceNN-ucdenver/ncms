@@ -596,6 +596,54 @@ class EventLog:
             },
         ))
 
+    def intent_slot_extracted(
+        self,
+        *,
+        memory_id: str,
+        label: object,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit an intent-slot classifier dispatch event.
+
+        Fires once per ``store_memory`` call when the SLM runs.
+        Dashboards can watch ``intent_slot.*`` to visualise:
+        per-head confidence distributions, fallback-chain
+        invocation counts, confidently-wrong flags (intent_conf
+        ≥ 0.7 AND human-corrected), and the per-topic ingest
+        distribution (populates the dashboard's dynamic topic
+        view without requiring config-side enumeration).
+
+        ``label`` is duck-typed as ``ExtractedLabel``; accepted as
+        ``object`` here so this module doesn't import from the
+        domain layer at module load (keeps the dashboard deployable
+        without torch in minimal-deps mode).
+        """
+        intent = getattr(label, "intent", None)
+        method = getattr(label, "method", None) or "heuristic"
+        event_type = f"intent_slot.{intent or 'none'}"
+        self.emit(DashboardEvent(
+            type=event_type,
+            agent_id=agent_id,
+            data={
+                "memory_id": memory_id,
+                "intent": intent,
+                "intent_confidence": getattr(label, "intent_confidence", 0.0),
+                "topic": getattr(label, "topic", None),
+                "topic_confidence": getattr(label, "topic_confidence", None),
+                "admission": getattr(label, "admission", None),
+                "admission_confidence": getattr(
+                    label, "admission_confidence", None,
+                ),
+                "state_change": getattr(label, "state_change", None),
+                "state_change_confidence": getattr(
+                    label, "state_change_confidence", None,
+                ),
+                "slots": dict(getattr(label, "slots", {}) or {}),
+                "method": method,
+                "latency_ms": getattr(label, "latency_ms", 0.0),
+            },
+        ))
+
     def episode_created(
         self,
         episode_id: str,

@@ -282,7 +282,7 @@
   <rect x="12" y="508" width="936" height="50" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
   <text x="32" y="529" fill="#e2e8f0" font-size="11" font-weight="500">Scoring:</text>
   <text x="95" y="529" fill="#7dd3fc" font-size="10" font-family="'Fira Code', monospace">combined = norm(bm25)*w_bm25 + norm(splade)*w_splade + norm(graph)*w_graph + act_r*w_actr + norm(ce)*w_ce</text>
-  <text x="32" y="547" fill="#94a3b8" font-size="9">Intent-classified | Dream-learned PMI | Supersession/conflict penalties | Per-query normalization | Selective CE reranking | Zero LLM at query time</text>
+  <text x="32" y="547" fill="#94a3b8" font-size="9">Intent-classified | Dream-learned PMI | Supersession/conflict penalties | Per-query normalization | Selective CE reranking | TLG grammar composition | Zero LLM at query time</text>
 
   <!-- ═══════════════════ FEATURE STATUS BAR ═══════════════════ -->
   <rect x="12" y="575" width="936" height="56" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
@@ -314,4 +314,6 @@
   <text x="508" y="618" fill="#94a3b8" font-size="9">Cross-Encoder Reranking</text>
   <rect x="670" y="610" width="8" height="8" rx="2" fill="#f59e0b"/>
   <text x="683" y="618" fill="#94a3b8" font-size="9">Structured Recall</text>
+  <rect x="785" y="610" width="8" height="8" rx="2" fill="#8b5cf6"/>
+  <text x="798" y="618" fill="#c4b5fd" font-size="9" font-weight="600">TLG Grammar (state-evolution)</text>
 </svg>

@@ -169,6 +169,12 @@ def _bio_tags_for_example(
     pipeline would align via char-span offsets from the tokenizer
     (``return_offsets_mapping=True``); this experiment keeps it
     simple — if greedy match fails we label the whole example ``O``.
+
+    **Loss-masking convention.**  Padding positions and special
+    tokens get tag ``-100`` so :class:`torch.nn.CrossEntropyLoss`
+    skips them via its default ``ignore_index=-100``.  Without this
+    mask the O-tokens-on-pad dominate the loss and the model
+    collapses to predicting O everywhere.
     """
     encoded = tokenizer(
         text,
@@ -181,7 +187,13 @@ def _bio_tags_for_example(
     offsets: list[tuple[int, int]] = encoded["offset_mapping"]
 
     label_to_id = {label: i for i, label in enumerate(slot_labels)}
-    tags = [label_to_id["O"]] * len(input_ids)
+    # -100 = ignore in CrossEntropyLoss; overwritten to O (0) for
+    # real content tokens and to B-/I- tags where slots matched.
+    tags: list[int] = [-100] * len(input_ids)
+    for idx, (tok_start, tok_end) in enumerate(offsets):
+        if tok_start == 0 and tok_end == 0:
+            continue  # special token or pad — leave as -100
+        tags[idx] = label_to_id["O"]
 
     text_lower = text.lower()
     for slot_name, surface in slots.items():
@@ -276,7 +288,20 @@ def train(
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     intent_loss_fn = nn.CrossEntropyLoss()
-    slot_loss_fn = nn.CrossEntropyLoss()
+
+    # Class weights: upweight non-O tags so the slot head sees
+    # gradient signal for rare tokens.  With ~2-4 B-/I- tokens per
+    # ~10-20 content tokens, uniform CE collapses to predicting O
+    # everywhere even after the pad-position mask lands.  Weight O
+    # at 1.0 and everything else at 5.0 — coarse but effective on
+    # sub-100-example gold corpora.
+    slot_class_weights = torch.ones(len(slot_labels), device=device)
+    for i, label in enumerate(slot_labels):
+        if label != "O":
+            slot_class_weights[i] = 5.0
+    slot_loss_fn = nn.CrossEntropyLoss(
+        weight=slot_class_weights, ignore_index=-100,
+    )
 
     n = ids_t.size(0)
     model.train()

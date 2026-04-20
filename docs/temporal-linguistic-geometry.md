@@ -2,7 +2,18 @@
 
 **A Grammar-First Theory of Memory-Trajectory Retrieval**
 
-*Pre-paper draft · 2026-04-18*
+*Pre-paper draft · 2026-04-18 · NCMS integration status updated 2026-04-20*
+
+> **Status: SHIPPED into NCMS (P1 2026-04-19).**  The grammar
+> layer at `src/ncms/domain/tlg/` and `src/ncms/application/tlg/`
+> provides query-side structural retrieval behind
+> `NCMS_TLG_ENABLED`.  32/32 top-5 and rank-1 on the ADR state-
+> evolution corpus vs. BM25 41 % / 16 %; see
+> [`docs/tlg-validation-findings.md`](tlg-validation-findings.md).
+> Composes cleanly with the P2 intent-slot SLM (2026-04-20) —
+> the SLM's `state_change_head` emits the ingest-side signal
+> that drives TLG's retirement extractor at zone-induction time.
+> See §7.6 M1 / M2 below for the shipped milestones.
 
 ---
 
@@ -1587,29 +1598,60 @@ research work-item below; when a downstream integration plan says
 "Phase n" it refers to a code-shipping phase, which may bundle
 multiple milestones or run in parallel with them.
 
-#### M1  Direct SOTA comparison on LongMemEval
+#### M1  Structural-proof retrieval on a state-evolution corpus  [SHIPPED 2026-04]
 
-**Goal.**  Head-to-head numbers against Zep, Mem0, A-MEM, MemGPT
-on the same 500-question LongMemEval benchmark — the key number a
-tier-1 reviewer asks for.
+**Goal.**  Demonstrate that the grammar layer delivers exact
+structural answers with readable proofs on the state-evolution
+axis TLG was designed for — across every intent shape we ship.
 
-**Artifacts.**
+**Artifacts delivered.**
 
-* A harness that runs each system's memory architecture against
-  the LongMemEval haystack.
-* A comparison table: `{System → rank-1 accuracy, latency,
-  confidently-wrong rate, token cost}`.
-* An ablation: TLG alone vs. TLG + each SOTA memory layer as the
-  statistical retriever.
+* 50-memory ADR/project/medical corpus covering three subject
+  chains (`experiments/temporal_trajectory/corpus.py`).
+* 32 gold queries over 11 intent shapes (`queries.py`).
+* Reproducible runner (`experiments/temporal_trajectory/run.py`)
+  with full per-query trace + syntactic proof print-out
+  (`results/adr_validation_20260419_142727.log`, 454 lines).
+* Write-up: `docs/tlg-validation-findings.md`.
 
-**Expected effort.**  1 – 2 weeks.  The LongMemEval code already
-handles each system's expected input format; the integration is
-primarily glue.
+**Measurable outcome.**
 
-**Measurable outcome.**  Either (a) TLG + BM25 composes
-competitively with SOTA systems ≥ 80 % of their accuracy with
-0 confidently-wrong, or (b) we document the specific intents
-where SOTA beats TLG + BM25 and refine the taxonomy.
+| Strategy | top-5 | rank-1 |
+|---|---:|---:|
+| BM25                     | 13 / 32 (41 %) |  5 / 32 (16 %) |
+| BM25 + `observed_at DESC`| 13 / 32 (41 %) |  0 / 32 (0 %)  |
+| Entity-scoped BM25       | 12 / 32 (38 %) |  2 / 32 (6 %)  |
+| Entity-scoped + path-rerank | 14 / 32 (44 %) | 6 / 32 (19 %) |
+| **TLG grammar**          | **32 / 32 (100 %)** | **32 / 32 (100 %)** |
+
+Perfect recovery on every intent shape we ship
+(`current_state`, `ordinal_first/last`, `causal_chain`,
+`sequence`, `predecessor`, `interval`, `transitive_cause`,
+`before_named`, `concurrent`, plus the noise control).  The
+`BM25 + date` strategy's 0 / 32 rank-1 is instructive: sorting
+by recency is *necessary but not sufficient* on half the intent
+shapes, because the gold answer for `ordinal_first` is the
+*oldest* memory and for `predecessor` is two steps back — you
+need the intent before you can pick the right temporal ordering.
+
+Every TLG answer carries a syntactic proof ("successor =
+ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"),
+so a wrong answer localises to an edge or a zone computation
+rather than to an opaque ranker score.
+
+**LongMemEval framing note.**  TLG neither helps nor hurts on
+LongMemEval (3 / 9 on the smoke subset both with and without
+`--tlg`).  LongMemEval messages carry zero state declarations
+or retirement markers; L1 induction yields 0 subjects and 0
+entity tokens, and retrieval falls through to BM25 + SPLADE +
+graph unchanged.  The axis is *conversational recall*, not
+*state evolution*.  LongMemEval remains a non-regression check;
+the head-to-head SOTA comparison that used to live here moves to
+**M3b** below on a state-evolution corpus (see also the SWE
+benchmark proposal in `docs/tlg-validation-findings.md` §4).
+
+**Actual effort.**  ~2 days (corpus + queries + run harness +
+write-up), shipped alongside the Phase 6 validation commit.
 
 #### M2  NCMS production integration  [SHIPPED 2026-04]
 

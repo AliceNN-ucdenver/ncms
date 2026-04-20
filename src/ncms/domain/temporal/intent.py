@@ -9,7 +9,7 @@
    =false`` path; slated for removal after TLG benchmark parity.
 
 Classifies a user query into one of the six LLM-free retrieval routes
-defined in ``docs/p1-temporal-experiment.md`` §17.2.  The three
+defined in ``docs/retired/p1-temporal-experiment.md`` §17.2.  The three
 primitive families are:
 
 * **Ordinal** — "first X" / "last X" / "which came first, A or B" /

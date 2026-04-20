@@ -25,7 +25,7 @@ UNIVERSAL_LABELS: list[str] = [
 # Temporal-extraction labels.  Orthogonal to entity labels — answer
 # "when is this about" rather than "what is this about".  Attached to
 # the GLiNER call only when the temporal range-filter feature is
-# enabled.  See docs/p1-temporal-experiment.md §2.1.
+# enabled.  See docs/retired/p1-temporal-experiment.md §2.1 (historical).
 TEMPORAL_LABELS: list[str] = [
     "date",            # Absolute calendar dates: "April 18, 2026"
     "relative date",   # "yesterday", "last Thursday", "next Monday"

@@ -33,6 +33,14 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
+# Load .env (HF_TOKEN, device overrides) before any method imports
+# pull in transformers/gliner/torch.  Noop outside a .env checkout.
+try:
+    from benchmarks.env import load_dotenv
+    load_dotenv()
+except ImportError:  # pragma: no cover — experiment may run outside repo
+    pass
+
 from experiments.intent_slot_distillation.corpus.loader import (
     load_all,
     load_jsonl,
@@ -41,8 +49,10 @@ from experiments.intent_slot_distillation.methods.base import (
     IntentSlotExtractor,
 )
 from experiments.intent_slot_distillation.schemas import (
+    ADMISSION_DECISIONS,
     DOMAINS,
     INTENT_CATEGORIES,
+    STATE_CHANGES,
     Domain,
     ExtractedLabel,
     GoldExample,
@@ -174,6 +184,25 @@ def _evaluate_method_on_split(
     p95_idx = max(0, int(len(timings_sorted) * 0.95) - 1)
     p95 = timings_sorted[p95_idx] if timings_sorted else 0.0
 
+    # Multi-head scoring — only rows where both the prediction and the
+    # gold carry a label contribute.  Produces ``None`` for a head
+    # when either the gold has no labels for it (legacy corpus) or
+    # the method doesn't produce it (zero-shot baselines).
+    topic_f1, n_topic = _head_macro_f1(
+        [p.topic for p in predictions],
+        [ex.topic for ex in examples],
+    )
+    admission_f1, n_admit = _head_macro_f1(
+        [p.admission for p in predictions],
+        [ex.admission for ex in examples],
+        label_vocab=list(ADMISSION_DECISIONS),
+    )
+    state_f1, n_state = _head_macro_f1(
+        [p.state_change for p in predictions],
+        [ex.state_change for ex in examples],
+        label_vocab=list(STATE_CHANGES),
+    )
+
     return MethodResult(
         method=extractor.name,
         domain=domain,
@@ -191,7 +220,48 @@ def _evaluate_method_on_split(
             intent: round(per_intent.get(intent, 0.0), 4)
             for intent in INTENT_CATEGORIES
         },
+        topic_f1_macro=(
+            round(topic_f1, 4) if topic_f1 is not None else None
+        ),
+        admission_f1_macro=(
+            round(admission_f1, 4) if admission_f1 is not None else None
+        ),
+        state_change_f1_macro=(
+            round(state_f1, 4) if state_f1 is not None else None
+        ),
+        n_topic_labeled=n_topic,
+        n_admission_labeled=n_admit,
+        n_state_change_labeled=n_state,
     )
+
+
+def _head_macro_f1(
+    predictions: list[str | None],
+    gold: list[str | None],
+    *,
+    label_vocab: list[str] | None = None,
+) -> tuple[float | None, int]:
+    """Macro F1 for a multi-head classifier against optional labels.
+
+    Only rows where both ``predictions[i]`` and ``gold[i]`` are not
+    ``None`` contribute.  Returns ``(None, 0)`` when no paired labels
+    exist — the head is effectively unscored against this split.
+
+    ``label_vocab`` defaults to the set of non-None gold labels
+    present (open-vocab for topic heads with user taxonomies); pass
+    an explicit vocab for closed enums like admission / state_change
+    to keep the denominator stable across runs.
+    """
+    pairs = [
+        (p, g) for p, g in zip(predictions, gold, strict=False)
+        if g is not None and p is not None
+    ]
+    if not pairs:
+        return None, 0
+    preds, gs = zip(*pairs, strict=True)
+    vocab = label_vocab or sorted({*preds, *gs})
+    macro, _ = _macro_f1(list(preds), list(gs), list(vocab))
+    return macro, len(pairs)
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +273,7 @@ def _build_method(
     name: str,
     *,
     joint_checkpoint_dir: Path | None = None,
+    adapter_dir: Path | None = None,
 ) -> IntentSlotExtractor:
     if name == "e5_zero_shot":
         from experiments.intent_slot_distillation.methods.e5_zero_shot import (
@@ -223,6 +294,15 @@ def _build_method(
             JointBert,
         )
         return JointBert(joint_checkpoint_dir)
+    if name == "joint_bert_lora":
+        if adapter_dir is None:
+            raise ValueError(
+                "--adapter-dir required for method=joint_bert_lora"
+            )
+        from experiments.intent_slot_distillation.methods.joint_bert_lora import (
+            LoraJointBert,
+        )
+        return LoraJointBert(adapter_dir)
     raise ValueError(f"unknown method {name!r}")
 
 
@@ -248,6 +328,8 @@ def _write_report(
         "",
         f"Timestamp: {datetime.now(UTC).isoformat()}",
         "",
+        "## Core heads (intent + slot + joint)",
+        "",
         (
             "| Method | Domain | Split | N | Intent F1 | Slot F1 "
             "| Joint acc | p50 ms | p95 ms | Conf-wrong % |"
@@ -265,6 +347,42 @@ def _write_report(
             f"| {r.latency_p50_ms:.1f} | {r.latency_p95_ms:.1f} "
             f"| {r.confidently_wrong_rate * 100:.2f}% |"
         )
+
+    # Multi-head table — only emit when at least one row has a
+    # non-null multi-head metric, to keep the single-head matrix
+    # readable for zero-shot-only runs.
+    has_multi = any(
+        r.topic_f1_macro is not None
+        or r.admission_f1_macro is not None
+        or r.state_change_f1_macro is not None
+        for r in results
+    )
+    if has_multi:
+        lines.extend([
+            "",
+            "## Multi-head (topic / admission / state_change)",
+            "",
+            (
+                "| Method | Domain | Split "
+                "| Topic F1 (N) | Admission F1 (N) | State-change F1 (N) |"
+            ),
+            (
+                "|:-------|:-------|:------"
+                "|-------------:|-----------------:|--------------------:|"
+            ),
+        ])
+        for r in results:
+            def _fmt(f1: float | None, n: int) -> str:
+                if f1 is None or n == 0:
+                    return "—"
+                return f"{f1:.3f} ({n})"
+            lines.append(
+                f"| {r.method} | {r.domain} | {r.split} "
+                f"| {_fmt(r.topic_f1_macro, r.n_topic_labeled)} "
+                f"| {_fmt(r.admission_f1_macro, r.n_admission_labeled)} "
+                f"| {_fmt(r.state_change_f1_macro, r.n_state_change_labeled)} |"
+            )
+
     md_path.write_text("\n".join(lines) + "\n")
     return md_path, json_path
 
@@ -329,6 +447,14 @@ def main() -> None:
         type=Path,
         help="Directory holding model.pt + config.json (joint_bert only).",
     )
+    parser.add_argument(
+        "--adapter-dir",
+        type=Path,
+        help=(
+            "Adapter artifact directory (joint_bert_lora only): "
+            "holds lora_adapter/ + heads.safetensors + manifest.json."
+        ),
+    )
     args = parser.parse_args()
 
     method_names = [m.strip() for m in args.methods.split(",") if m.strip()]
@@ -350,7 +476,9 @@ def main() -> None:
     for name in method_names:
         print(f"[evaluate] loading method {name}...")
         method_cache[name] = _build_method(
-            name, joint_checkpoint_dir=args.joint_checkpoint_dir,
+            name,
+            joint_checkpoint_dir=args.joint_checkpoint_dir,
+            adapter_dir=args.adapter_dir,
         )
 
     for method_name, extractor in method_cache.items():

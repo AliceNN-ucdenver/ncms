@@ -73,6 +73,8 @@ LLM_MODEL=ollama_chat/qwen3.5:35b-a3b LLM_API_BASE="" ./benchmarks/run_dream.sh 
 uv run python -m benchmarks longmemeval                       # Baseline (BM25+SPLADE+Graph)
 uv run python -m benchmarks longmemeval --features-on         # All features enabled
 uv run python -m benchmarks longmemeval --test                # Quick test (3 questions)
+uv run python -m benchmarks longmemeval --features-on \
+  --intent-slot-domain conversational                         # P2 SLM on (admission/state/topic replaced by classifier)
 
 # Benchmarks (MemoryAgentBench — AR, TTL, LRU, selective forgetting)
 uv run python -m benchmarks mab                               # Full MAB benchmark
@@ -125,7 +127,7 @@ src/ncms/
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
 │   ├── storage/sqlite_store.py  # aiosqlite — 27 tables, WAL mode, parameterized SQL
-│   ├── storage/migrations.py    # DDL for schema creation (single-pass, schema version 9)
+│   ├── storage/migrations.py    # DDL for schema creation (single-pass, schema version 13)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
 │   ├── indexing/splade_engine.py  # SPLADE v3 sparse neural retrieval (sentence-transformers)
 │   ├── indexing/exemplar_intent_index.py # BM25 exemplar intent classifier (Phase 4)
@@ -139,8 +141,15 @@ src/ncms/
 │   ├── llm/intent_classifier_llm.py  # LLM intent classification fallback (Phase 4)
 │   ├── llm/episode_linker_llm.py     # LLM episode linking fallback (Phase 3)
 │   ├── text/chunking.py         # Sentence-boundary text chunking (shared by GLiNER + SPLADE)
-│   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (required dependency)
-│   ├── extraction/label_detector.py   # LLM-based domain label detection
+│   ├── extraction/gliner_extractor.py  # GLiNER zero-shot NER (for knowledge-graph entity extraction)
+│   ├── extraction/label_detector.py   # LLM-based domain label detection (legacy — SLM topic_head preferred)
+│   ├── extraction/intent_slot/        # P2 ingest-side classifier: LoRA adapter + E5 fallback + heuristic
+│   │   ├── lora_model.py              # BERT + LoRA + 5 heads (intent/slot/topic/admission/state_change)
+│   │   ├── lora_adapter.py            # IntentSlotExtractor wrapper
+│   │   ├── e5_zero_shot.py            # Cold-start intent-only fallback
+│   │   ├── heuristic_fallback.py      # Always-available null output
+│   │   ├── adapter_loader.py          # AdapterManifest + verify_adapter_dir
+│   │   └── factory.py                 # build_extractor_chain + ChainedExtractor
 │   ├── consolidation/clusterer.py  # Entity co-occurrence clustering
 │   ├── consolidation/synthesizer.py # LLM insight synthesis
 │   ├── consolidation/abstract_synthesizer.py # LLM episode/trajectory/pattern synthesis (Phase 5)
@@ -198,6 +207,7 @@ src/ncms/
 24. **Maintenance scheduler** — Background asyncio scheduler runs consolidation, dream cycles, episode closure, and decay passes on configurable intervals. CLI: `ncms maintenance status|run`. Feature-flagged via `NCMS_MAINTENANCE_ENABLED`.
 25. **Wiki export** — `ncms export` generates a linked markdown wiki with pages for entities, episodes, agents, and insights. Suitable for human audit or Obsidian import. Implementation in `cli/export.py`.
 26. **Bus heartbeat + offline detection** — HTTP transport tracks agent heartbeats via SSE stream. When an agent disconnects, auto-publishes a snapshot if `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT=true`. Enables surrogate responses for offline agents.
+27. **Intent-slot SLM (P2)** — LoRA multi-head BERT classifier that runs at `store_memory()` time BEFORE admission and replaces five brittle pattern-matching code paths with one forward pass: `admission_head` (persist/ephemeral/discard) replaces the 4-feature regex admission scorer; `state_change_head` (declaration/retirement/none) replaces the YAML/status regex; `topic_head` auto-populates `Memory.domains` from the adapter's learned taxonomy (replacing the "caller hands us a domain string" flow); `intent_head` extracts preference type; `slot_head` (BIO) extracts typed domain-specific surface forms.  3-tier SLM-first fallback chain: per-deployment LoRA adapter → E5 zero-shot intent-only → heuristic null-output (admission=persist).  GLiNER is NOT in this chain — it remains for NER entity extraction (separate concern).  Adapters ship at `~/.ncms/adapters/<domain>/<version>/` (~2.4 MB each); operators train their own with the experiment's `train_adapter.py`.  Benchmark hook: `benchmarks/intent_slot_adapter.py::get_intent_slot_chain(domain=...)`.  Feature-flagged via `NCMS_INTENT_SLOT_ENABLED=false` by default.  Design: `docs/p2-plan.md`, sprint-4 findings: `docs/intent-slot-sprint-4-findings.md`.
 
 ## Text Chunking & LLM Prompt Limits
 
@@ -235,7 +245,7 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 5. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 6. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
 
-## Database Schema (27 tables, schema version 9)
+## Database Schema (27 tables, schema version 13)
 
 Single-pass creation in `migrations.py`. All tables created together.
 
@@ -394,6 +404,13 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT` | `false` | Auto-publish snapshot when agent disconnects |
 | `NCMS_SCALE_AWARE_FLAGS_ENABLED` | `false` | Enable memory-count-based feature activation |
 | `NCMS_MAINTENANCE_ENABLED` | `false` | Enable background maintenance scheduler |
+| `NCMS_INTENT_SLOT_ENABLED` | `false` | Enable P2 intent-slot SLM ingest-side classifier (replaces admission / state-change / topic regex when confident) |
+| `NCMS_INTENT_SLOT_CHECKPOINT_DIR` | *(none)* | Adapter artifact path (e.g. `~/.ncms/adapters/conversational/v4/`) |
+| `NCMS_INTENT_SLOT_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor — below this the chain falls to the next backend |
+| `NCMS_INTENT_SLOT_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` |
+| `NCMS_INTENT_SLOT_E5_FALLBACK_ENABLED` | `true` | Include E5 zero-shot intent classifier in the fallback chain |
+| `NCMS_INTENT_SLOT_DEVICE` | *(auto)* | Device override for SLM forward pass (cuda / mps / cpu) |
+| `NCMS_INTENT_SLOT_LATENCY_BUDGET_MS` | `200.0` | Soft limit on forward-pass latency — exceeding logs a warning |
 | `NCMS_BULK_IMPORT_QUEUE_SIZE` | `10000` | Queue size for bulk import mode |
 
 ## Local LLM Development

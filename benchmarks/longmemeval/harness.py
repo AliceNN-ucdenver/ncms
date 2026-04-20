@@ -58,6 +58,9 @@ def _parse_lme_date(raw: str | None) -> datetime | None:
 async def _create_ncms_instance(
     config: object | None = None,
     shared_splade: object | None = None,
+    *,
+    intent_slot_domain: str | None = None,
+    shared_intent_slot: object | None = None,
 ):
     """Create a fresh in-memory NCMS instance.
 
@@ -66,6 +69,15 @@ async def _create_ncms_instance(
         shared_splade: Pre-loaded SpladeEngine to reuse across questions
             (avoids 1s model reload per question). Created once by the
             benchmark runner and passed to each question's instance.
+        intent_slot_domain: Adapter domain to load for P2 ingest-side
+            classification (e.g. ``"conversational"``).  Resolves to the
+            v4 adapter at ``~/.ncms/adapters/<domain>/v4/`` via the
+            benchmark helper.  Skipped when ``None`` — matches legacy
+            behaviour (no SLM, regex admission / state_change paths run
+            as before).
+        shared_intent_slot: Pre-loaded extractor chain — pass once so
+            the ~20-65 ms BERT+LoRA load doesn't repeat per question.
+            Takes precedence over ``intent_slot_domain`` when given.
 
     Returns:
         Tuple of (store, index, graph, splade, config, svc).
@@ -86,6 +98,20 @@ async def _create_ncms_instance(
     graph = NetworkXGraph()
     splade = shared_splade if shared_splade is not None else SpladeEngine()
 
+    # Resolve the intent-slot extractor.  Reuse ``shared_intent_slot``
+    # when the caller has already loaded one — avoids reloading BERT
+    # per question.  ``intent_slot_enabled`` in the config governs
+    # whether the pipeline actually runs it; we flip it on here when
+    # either an extractor or a domain was provided.
+    intent_slot = shared_intent_slot
+    if intent_slot is None and intent_slot_domain is not None:
+        from benchmarks.intent_slot_adapter import get_intent_slot_chain
+
+        intent_slot = get_intent_slot_chain(
+            domain=intent_slot_domain,
+            include_e5_fallback=False,  # deterministic benchmarks
+        )
+
     if config is None:
         config = NCMSConfig(
             db_path=":memory:",
@@ -96,6 +122,8 @@ async def _create_ncms_instance(
             scoring_weight_splade=0.3,
             scoring_weight_graph=0.3,
             contradiction_detection_enabled=False,
+            intent_slot_enabled=intent_slot is not None,
+            intent_slot_populate_domains=True,
         )
 
     # Seed domain-specific topics for GLiNER entity extraction
@@ -112,6 +140,7 @@ async def _create_ncms_instance(
 
     svc = MemoryService(
         store=store, index=index, graph=graph, config=config, splade=splade,
+        intent_slot=intent_slot,
     )
     await svc.start_index_pool()
 
@@ -275,6 +304,7 @@ async def run_longmemeval_benchmark(
     judge_model: str = DEFAULT_MODEL,
     judge_api_base: str = DEFAULT_API_BASE,
     config: object | None = None,
+    intent_slot_domain: str | None = None,
 ) -> dict:
     """Run the full LongMemEval benchmark.
 
@@ -321,6 +351,24 @@ async def run_longmemeval_benchmark(
     shared_splade = SpladeEngine()
     logger.info("Shared SPLADE engine created (model loads on first use)")
 
+    # P2 intent-slot SLM: load the adapter once, share across all
+    # questions — BERT+LoRA is ~20-65ms per question × 500 = too
+    # expensive to reload.  When --intent-slot-domain isn't set the
+    # extractor stays None and the ingest path runs the legacy
+    # regex admission / state_change gates.
+    shared_intent_slot = None
+    if intent_slot_domain is not None:
+        from benchmarks.intent_slot_adapter import get_intent_slot_chain
+
+        shared_intent_slot = get_intent_slot_chain(
+            domain=intent_slot_domain,
+            include_e5_fallback=False,
+        )
+        logger.info(
+            "Shared intent-slot adapter loaded: domain=%s",
+            intent_slot_domain,
+        )
+
     for qi, q in enumerate(questions):
         q_sessions = sessions_by_question.get(q.question_id, [])
 
@@ -336,6 +384,7 @@ async def run_longmemeval_benchmark(
         store, _index, _graph, _splade, _config, svc = await _create_ncms_instance(
             config=config,
             shared_splade=shared_splade,
+            shared_intent_slot=shared_intent_slot,
         )
 
         try:

@@ -158,7 +158,7 @@
 - B.4 — explicit-range primitive on production fixture (not LongMemEval)
 - B.5 — arithmetic resolver (deterministic Python date math on `observed_at`
   timestamps; product-facing, not a LongMemEval R@K lever — see
-  `docs/p1-temporal-experiment.md` §17.5)
+  `docs/retired/p1-temporal-experiment.md` §17.5)
 
 **Scope decision 2026-04-18:** B.5 is in scope because the LLM-free temporal story is incomplete without a way to answer arithmetic temporal questions deterministically. It doesn't help Recall@K, but it closes the story for MCP/API consumers and for RAG-mode evaluation where the resolver's output can ground the LLM judge.
 

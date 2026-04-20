@@ -334,7 +334,7 @@ class RetrievalPipeline:
            deployment path; slated for removal once benchmark parity
            is demonstrated.
 
-        Phase B.2 primitive (see ``docs/p1-temporal-experiment.md``
+        Phase B.2 primitive (see ``docs/retired/p1-temporal-experiment.md``
         §17.2 and §14.3).  Invoked by the search pipeline ONLY when
         the temporal-intent classifier has emitted one of
         ``ORDINAL_SINGLE`` / ``ORDINAL_COMPARE`` / ``ORDINAL_ORDER``

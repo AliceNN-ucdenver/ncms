@@ -19,9 +19,11 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from experiments.intent_slot_distillation.schemas import (
+    ADMISSION_DECISIONS,
     DOMAINS,
     INTENT_CATEGORIES,
     SLOT_TAXONOMY,
+    STATE_CHANGES,
     GoldExample,
 )
 
@@ -67,11 +69,33 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         raise CorpusValidationError(
             f"{path}:{line_no} unknown split {split!r}"
         )
+
+    # Multi-head optional labels — validate the vocabulary when
+    # provided, admit as None when absent.
+    admission = row.get("admission")
+    if admission is not None and admission not in ADMISSION_DECISIONS:
+        raise CorpusValidationError(
+            f"{path}:{line_no} unknown admission {admission!r}"
+        )
+    state_change = row.get("state_change")
+    if state_change is not None and state_change not in STATE_CHANGES:
+        raise CorpusValidationError(
+            f"{path}:{line_no} unknown state_change {state_change!r}"
+        )
+    topic = row.get("topic")
+    if topic is not None and not isinstance(topic, str):
+        raise CorpusValidationError(
+            f"{path}:{line_no} topic must be a string, got {type(topic)!r}"
+        )
+
     return GoldExample(
         text=row["text"],
         domain=domain,
         intent=intent,
         slots={str(k): str(v) for k, v in slots.items()},
+        topic=topic,
+        admission=admission,
+        state_change=state_change,
         split=split,
         source=row.get("source", ""),
         note=row.get("note", ""),
@@ -115,12 +139,16 @@ def load_all(
 def dump_jsonl(
     examples: Iterable[GoldExample], path: str | Path,
 ) -> None:
-    """Write examples back to JSONL (for LLM-labeled + SDG outputs)."""
+    """Write examples back to JSONL (for LLM-labeled + SDG outputs).
+
+    Multi-head optional labels are emitted only when present so
+    legacy corpora round-trip byte-identically.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as fh:
         for ex in examples:
-            fh.write(json.dumps({
+            row: dict = {
                 "text": ex.text,
                 "domain": ex.domain,
                 "intent": ex.intent,
@@ -128,4 +156,11 @@ def dump_jsonl(
                 "split": ex.split,
                 "source": ex.source,
                 "note": ex.note,
-            }) + "\n")
+            }
+            if ex.topic is not None:
+                row["topic"] = ex.topic
+            if ex.admission is not None:
+                row["admission"] = ex.admission
+            if ex.state_change is not None:
+                row["state_change"] = ex.state_change
+            fh.write(json.dumps(row) + "\n")

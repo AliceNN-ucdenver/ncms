@@ -1,0 +1,360 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="isInputGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6"/><stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="isEncoderGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <linearGradient id="isLoraGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ec4899"/><stop offset="100%" stop-color="#be185d"/>
+    </linearGradient>
+    <linearGradient id="isIntentHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="isSlotHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="isTopicHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="isAdmitHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f97316"/><stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="isStateHead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0ea5e9"/><stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <linearGradient id="isTrainGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14b8a6"/><stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="isFallback" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#475569"/><stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <filter id="isShadow" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.18"/>
+    </filter>
+    <marker id="isArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="isArrowDashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <marker id="isArrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#14b8a6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1120" height="720" rx="12" fill="#0f172a"/>
+
+  <!-- Title -->
+  <text x="560" y="32" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">Intent-Slot SLM — 5-Head Ingest Classifier</text>
+  <text x="560" y="52" text-anchor="middle" fill="#94a3b8" font-size="12">One forward pass per memory → five classification outputs. Per-deployment LoRA adapter over frozen BERT-base. 2.4 MB per adapter. F1 = 1.000 on gold.</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- LEFT: inference flow                                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Input text -->
+  <g filter="url(#isShadow)">
+    <rect x="20" y="88" width="180" height="58" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="1.5"/>
+    <rect x="20" y="88" width="180" height="22" rx="8" fill="url(#isInputGrad)"/>
+    <rect x="20" y="102" width="180" height="8" fill="url(#isInputGrad)"/>
+    <text x="110" y="104" text-anchor="middle" fill="white" font-size="11" font-weight="600">Memory Content</text>
+    <text x="110" y="124" text-anchor="middle" fill="#a5b4fc" font-size="9">"I prefer pytest before</text>
+    <text x="110" y="137" text-anchor="middle" fill="#a5b4fc" font-size="9">every commit"</text>
+  </g>
+
+  <!-- Arrow: input → encoder -->
+  <line x1="200" y1="117" x2="235" y2="117" stroke="#94a3b8" stroke-width="2" marker-end="url(#isArrow)"/>
+
+  <!-- BERT + LoRA stack -->
+  <g filter="url(#isShadow)">
+    <rect x="240" y="72" width="260" height="200" rx="10" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+    <rect x="240" y="72" width="260" height="26" rx="10" fill="url(#isEncoderGrad)"/>
+    <rect x="240" y="88" width="260" height="10" fill="url(#isEncoderGrad)"/>
+    <text x="370" y="90" text-anchor="middle" fill="white" font-size="12" font-weight="600">Shared Encoder + LoRA Adapter</text>
+
+    <!-- Inner box: Frozen BERT -->
+    <g>
+      <rect x="258" y="112" width="225" height="60" rx="6" fill="#111827" stroke="#334155" stroke-width="1"/>
+      <text x="370" y="130" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="500">bert-base-uncased · FROZEN</text>
+      <text x="370" y="147" text-anchor="middle" fill="#64748b" font-size="9">110M params · loaded once per deployment</text>
+      <text x="370" y="162" text-anchor="middle" fill="#64748b" font-size="9">No gradient updates at inference</text>
+    </g>
+
+    <!-- LoRA badge (overlapping) -->
+    <g filter="url(#isShadow)">
+      <rect x="268" y="176" width="205" height="50" rx="6" fill="url(#isLoraGrad)" opacity="0.95"/>
+      <text x="370" y="196" text-anchor="middle" fill="white" font-size="11" font-weight="700">LoRA Adapter (per deployment)</text>
+      <text x="370" y="212" text-anchor="middle" fill="#fce7f3" font-size="9">r=16, α=32 · ~10 MB · adapter_config.json</text>
+      <text x="370" y="223" text-anchor="middle" fill="#fce7f3" font-size="9">query + value projection matrices only</text>
+    </g>
+
+    <text x="370" y="250" text-anchor="middle" fill="#94a3b8" font-size="9">→ contextualised token embeddings (H=768)</text>
+    <text x="370" y="262" text-anchor="middle" fill="#64748b" font-size="8">20-65 ms p95 on Apple Silicon MPS</text>
+  </g>
+
+  <!-- Arrow: encoder → heads -->
+  <line x1="500" y1="170" x2="540" y2="170" stroke="#94a3b8" stroke-width="2" marker-end="url(#isArrow)"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- FIVE HEADS (stacked vertically)                                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Heads container -->
+  <g>
+    <!-- Head 1: intent -->
+    <g filter="url(#isShadow)">
+      <rect x="545" y="68" width="250" height="48" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1.5"/>
+      <rect x="545" y="68" width="72" height="48" rx="8" fill="url(#isIntentHead)"/>
+      <rect x="609" y="68" width="8" height="48" fill="url(#isIntentHead)"/>
+      <text x="581" y="85" text-anchor="middle" fill="white" font-size="10" font-weight="700">intent</text>
+      <text x="581" y="99" text-anchor="middle" fill="#fde68a" font-size="8">[CLS] →</text>
+      <text x="581" y="110" text-anchor="middle" fill="#fde68a" font-size="8">6-way</text>
+      <text x="625" y="88" fill="#94a3b8" font-size="9" font-weight="500">positive / negative / habitual /</text>
+      <text x="625" y="101" fill="#94a3b8" font-size="9" font-weight="500">difficulty / choice / none</text>
+      <text x="625" y="112" fill="#64748b" font-size="7">replaces: never-shipped regex preference extractor</text>
+    </g>
+
+    <!-- Head 2: slot (BIO) -->
+    <g filter="url(#isShadow)">
+      <rect x="545" y="124" width="250" height="48" rx="8" fill="#1e293b" stroke="#a855f7" stroke-width="1.5"/>
+      <rect x="545" y="124" width="72" height="48" rx="8" fill="url(#isSlotHead)"/>
+      <rect x="609" y="124" width="8" height="48" fill="url(#isSlotHead)"/>
+      <text x="581" y="141" text-anchor="middle" fill="white" font-size="10" font-weight="700">slot</text>
+      <text x="581" y="155" text-anchor="middle" fill="#e9d5ff" font-size="8">per-token</text>
+      <text x="581" y="166" text-anchor="middle" fill="#e9d5ff" font-size="8">BIO tags</text>
+      <text x="625" y="144" fill="#94a3b8" font-size="9" font-weight="500">{library: FastAPI, pattern: async,</text>
+      <text x="625" y="157" fill="#94a3b8" font-size="9" font-weight="500">medication: metformin, object: sushi}</text>
+      <text x="625" y="168" fill="#64748b" font-size="7">replaces: regex slot-pattern matchers</text>
+    </g>
+
+    <!-- Head 3: topic -->
+    <g filter="url(#isShadow)">
+      <rect x="545" y="180" width="250" height="48" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="1.5"/>
+      <rect x="545" y="180" width="72" height="48" rx="8" fill="url(#isTopicHead)"/>
+      <rect x="609" y="180" width="8" height="48" fill="url(#isTopicHead)"/>
+      <text x="581" y="197" text-anchor="middle" fill="white" font-size="10" font-weight="700">topic</text>
+      <text x="581" y="211" text-anchor="middle" fill="#a7f3d0" font-size="8">[CLS] →</text>
+      <text x="581" y="222" text-anchor="middle" fill="#a7f3d0" font-size="8">dynamic</text>
+      <text x="625" y="200" fill="#94a3b8" font-size="9" font-weight="500">food_pref / framework / medication /</text>
+      <text x="625" y="213" fill="#94a3b8" font-size="9" font-weight="500">domain-taxonomy-specific</text>
+      <text x="625" y="224" fill="#64748b" font-size="7">replaces: LLM `label_detector.py` + manual `Memory.domains`</text>
+    </g>
+
+    <!-- Head 4: admission -->
+    <g filter="url(#isShadow)">
+      <rect x="545" y="236" width="250" height="48" rx="8" fill="#1e293b" stroke="#f97316" stroke-width="1.5"/>
+      <rect x="545" y="236" width="72" height="48" rx="8" fill="url(#isAdmitHead)"/>
+      <rect x="609" y="236" width="8" height="48" fill="url(#isAdmitHead)"/>
+      <text x="581" y="253" text-anchor="middle" fill="white" font-size="10" font-weight="700">admission</text>
+      <text x="581" y="267" text-anchor="middle" fill="#fed7aa" font-size="8">[CLS] →</text>
+      <text x="581" y="278" text-anchor="middle" fill="#fed7aa" font-size="8">3-way</text>
+      <text x="625" y="256" fill="#94a3b8" font-size="9" font-weight="500">persist / ephemeral / discard</text>
+      <text x="625" y="269" fill="#94a3b8" font-size="9" font-weight="500">calibrated softmax confidence</text>
+      <text x="625" y="280" fill="#64748b" font-size="7">replaces: 4-feature regex admission heuristic (65.9% acc)</text>
+    </g>
+
+    <!-- Head 5: state_change -->
+    <g filter="url(#isShadow)">
+      <rect x="545" y="292" width="250" height="48" rx="8" fill="#1e293b" stroke="#0ea5e9" stroke-width="1.5"/>
+      <rect x="545" y="292" width="72" height="48" rx="8" fill="url(#isStateHead)"/>
+      <rect x="609" y="292" width="8" height="48" fill="url(#isStateHead)"/>
+      <text x="581" y="309" text-anchor="middle" fill="white" font-size="10" font-weight="700">state_change</text>
+      <text x="581" y="323" text-anchor="middle" fill="#bae6fd" font-size="8">[CLS] →</text>
+      <text x="581" y="334" text-anchor="middle" fill="#bae6fd" font-size="8">3-way</text>
+      <text x="625" y="312" fill="#94a3b8" font-size="9" font-weight="500">declaration / retirement / none</text>
+      <text x="625" y="325" fill="#94a3b8" font-size="9" font-weight="500">→ feeds TLG zone induction</text>
+      <text x="625" y="336" fill="#64748b" font-size="7">replaces: 3-pattern state-declaration regex</text>
+    </g>
+  </g>
+
+  <!-- Single-forward-pass note -->
+  <g>
+    <rect x="820" y="68" width="280" height="272" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="960" y="88" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="700">One Forward Pass</text>
+    <text x="960" y="105" text-anchor="middle" fill="#94a3b8" font-size="9">All five heads share the encoder.</text>
+    <text x="960" y="119" text-anchor="middle" fill="#94a3b8" font-size="9">Single batch through BERT+LoRA,</text>
+    <text x="960" y="133" text-anchor="middle" fill="#94a3b8" font-size="9">five classification decisions out.</text>
+
+    <line x1="840" y1="148" x2="1080" y2="148" stroke="#334155" stroke-width="0.5"/>
+
+    <text x="960" y="167" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="600">Per-head confidence</text>
+    <text x="840" y="185" fill="#94a3b8" font-size="8">Every head emits a softmax distribution.</text>
+    <text x="840" y="198" fill="#94a3b8" font-size="8">Below `intent_slot_confidence_threshold`</text>
+    <text x="840" y="211" fill="#94a3b8" font-size="8">(default 0.7), the chain falls through to</text>
+    <text x="840" y="224" fill="#94a3b8" font-size="8">the next backend on that head only.</text>
+
+    <line x1="840" y1="239" x2="1080" y2="239" stroke="#334155" stroke-width="0.5"/>
+
+    <text x="960" y="258" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="600">Dynamic topics</text>
+    <text x="840" y="276" fill="#94a3b8" font-size="8">Topic vocabulary lives in the adapter's</text>
+    <text x="840" y="289" fill="#94a3b8" font-size="8">`manifest.json` + `taxonomy.yaml`. No</text>
+    <text x="840" y="302" fill="#94a3b8" font-size="8">closed-vocab enum in the codebase.</text>
+    <text x="840" y="315" fill="#94a3b8" font-size="8">Swap adapter → swap topics. Dashboard</text>
+    <text x="840" y="328" fill="#94a3b8" font-size="8">reads topics from DB via `list_topics_seen()`.</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- DIVIDER                                                             -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <line x1="20" y1="375" x2="1100" y2="375" stroke="#334155" stroke-width="1"/>
+  <text x="40" y="370" fill="#64748b" font-size="10" font-weight="500" letter-spacing="1">FALLBACK CHAIN (inference)</text>
+  <text x="720" y="370" fill="#64748b" font-size="10" font-weight="500" letter-spacing="1">TRAINING PIPELINE (one-command)</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- FALLBACK CHAIN (below divider, left)                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#isShadow)">
+    <rect x="30" y="395" width="170" height="86" rx="8" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
+    <rect x="30" y="395" width="170" height="22" rx="8" fill="url(#isLoraGrad)"/>
+    <rect x="30" y="409" width="170" height="8" fill="url(#isLoraGrad)"/>
+    <text x="115" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="600">1. LoRA Adapter</text>
+    <text x="115" y="433" text-anchor="middle" fill="#fce7f3" font-size="8" font-weight="600">primary</text>
+    <text x="115" y="447" text-anchor="middle" fill="#94a3b8" font-size="8">Per-deployment</text>
+    <text x="115" y="459" text-anchor="middle" fill="#94a3b8" font-size="8">F1 = 1.000 on gold</text>
+    <text x="115" y="471" text-anchor="middle" fill="#64748b" font-size="7">~/.ncms/adapters/&lt;domain&gt;/v4/</text>
+  </g>
+
+  <line x1="200" y1="438" x2="230" y2="438" stroke="#94a3b8" stroke-width="2" marker-end="url(#isArrow)"/>
+  <text x="215" y="431" text-anchor="middle" fill="#64748b" font-size="7">abstain</text>
+
+  <g filter="url(#isShadow)">
+    <rect x="235" y="395" width="170" height="86" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="1.5"/>
+    <rect x="235" y="395" width="170" height="22" rx="8" fill="url(#isEncoderGrad)"/>
+    <rect x="235" y="409" width="170" height="8" fill="url(#isEncoderGrad)"/>
+    <text x="320" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="600">2. E5 Zero-Shot</text>
+    <text x="320" y="433" text-anchor="middle" fill="#a5b4fc" font-size="8" font-weight="600">cold-start</text>
+    <text x="320" y="447" text-anchor="middle" fill="#94a3b8" font-size="8">Intent head only</text>
+    <text x="320" y="459" text-anchor="middle" fill="#94a3b8" font-size="8">Label-description E5</text>
+    <text x="320" y="471" text-anchor="middle" fill="#64748b" font-size="7">No training required</text>
+  </g>
+
+  <line x1="405" y1="438" x2="435" y2="438" stroke="#94a3b8" stroke-width="2" marker-end="url(#isArrow)"/>
+  <text x="420" y="431" text-anchor="middle" fill="#64748b" font-size="7">abstain</text>
+
+  <g filter="url(#isShadow)">
+    <rect x="440" y="395" width="170" height="86" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+    <rect x="440" y="395" width="170" height="22" rx="8" fill="url(#isFallback)"/>
+    <rect x="440" y="409" width="170" height="8" fill="url(#isFallback)"/>
+    <text x="525" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="600">3. Heuristic</text>
+    <text x="525" y="433" text-anchor="middle" fill="#cbd5e1" font-size="8" font-weight="600">always</text>
+    <text x="525" y="447" text-anchor="middle" fill="#94a3b8" font-size="8">intent=none</text>
+    <text x="525" y="459" text-anchor="middle" fill="#94a3b8" font-size="8">admission=persist</text>
+    <text x="525" y="471" text-anchor="middle" fill="#64748b" font-size="7">Null-output fallback</text>
+  </g>
+
+  <!-- Note under fallback chain -->
+  <text x="320" y="503" text-anchor="middle" fill="#64748b" font-size="9">GLiNER is NOT in this chain — it runs in parallel for entity NER (knowledge-graph population).</text>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- FINE-TUNING PIPELINE (below divider, right)                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Phase 1 -->
+  <g filter="url(#isShadow)">
+    <rect x="640" y="395" width="100" height="86" rx="8" fill="#1e293b" stroke="#14b8a6" stroke-width="1.5"/>
+    <rect x="640" y="395" width="100" height="22" rx="8" fill="url(#isTrainGrad)"/>
+    <rect x="640" y="409" width="100" height="8" fill="url(#isTrainGrad)"/>
+    <text x="690" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="700">Phase 1</text>
+    <text x="690" y="434" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="600">Bootstrap</text>
+    <text x="690" y="451" text-anchor="middle" fill="#94a3b8" font-size="7">Hand-label gold</text>
+    <text x="690" y="462" text-anchor="middle" fill="#94a3b8" font-size="7">(~75 rows total)</text>
+    <text x="690" y="473" text-anchor="middle" fill="#64748b" font-size="7">+ mixed seeds</text>
+  </g>
+
+  <line x1="740" y1="438" x2="765" y2="438" stroke="#14b8a6" stroke-width="2" marker-end="url(#isArrowTeal)"/>
+
+  <!-- Phase 2 -->
+  <g filter="url(#isShadow)">
+    <rect x="770" y="395" width="100" height="86" rx="8" fill="#1e293b" stroke="#14b8a6" stroke-width="1.5"/>
+    <rect x="770" y="395" width="100" height="22" rx="8" fill="url(#isTrainGrad)"/>
+    <rect x="770" y="409" width="100" height="8" fill="url(#isTrainGrad)"/>
+    <text x="820" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="700">Phase 2</text>
+    <text x="820" y="434" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="600">Expand (SDG)</text>
+    <text x="820" y="451" text-anchor="middle" fill="#94a3b8" font-size="7">Template SDG →</text>
+    <text x="820" y="462" text-anchor="middle" fill="#94a3b8" font-size="7">500+ rows with</text>
+    <text x="820" y="473" text-anchor="middle" fill="#64748b" font-size="7">topic labels</text>
+  </g>
+
+  <line x1="870" y1="438" x2="895" y2="438" stroke="#14b8a6" stroke-width="2" marker-end="url(#isArrowTeal)"/>
+
+  <!-- Phase 3 -->
+  <g filter="url(#isShadow)">
+    <rect x="900" y="395" width="100" height="86" rx="8" fill="#1e293b" stroke="#14b8a6" stroke-width="1.5"/>
+    <rect x="900" y="395" width="100" height="22" rx="8" fill="url(#isTrainGrad)"/>
+    <rect x="900" y="409" width="100" height="8" fill="url(#isTrainGrad)"/>
+    <text x="950" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="700">Phase 3</text>
+    <text x="950" y="434" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="600">Adversarial</text>
+    <text x="950" y="451" text-anchor="middle" fill="#94a3b8" font-size="7">7-mode generator</text>
+    <text x="950" y="462" text-anchor="middle" fill="#94a3b8" font-size="7">(quoted speech,</text>
+    <text x="950" y="473" text-anchor="middle" fill="#64748b" font-size="7">negation, past-flip…)</text>
+  </g>
+
+  <line x1="1000" y1="438" x2="1025" y2="438" stroke="#14b8a6" stroke-width="2" marker-end="url(#isArrowTeal)"/>
+
+  <!-- Phase 4 -->
+  <g filter="url(#isShadow)">
+    <rect x="1030" y="395" width="80" height="86" rx="8" fill="#1e293b" stroke="#14b8a6" stroke-width="2"/>
+    <rect x="1030" y="395" width="80" height="22" rx="8" fill="url(#isTrainGrad)"/>
+    <rect x="1030" y="409" width="80" height="8" fill="url(#isTrainGrad)"/>
+    <text x="1070" y="411" text-anchor="middle" fill="white" font-size="10" font-weight="700">Phase 4</text>
+    <text x="1070" y="434" text-anchor="middle" fill="#5eead4" font-size="9" font-weight="600">Train + Gate</text>
+    <text x="1070" y="451" text-anchor="middle" fill="#94a3b8" font-size="7">LoRA r=16</text>
+    <text x="1070" y="462" text-anchor="middle" fill="#94a3b8" font-size="7">6 epochs</text>
+    <text x="1070" y="473" text-anchor="middle" fill="#64748b" font-size="7">gate pass/fail</text>
+  </g>
+
+  <!-- Command box -->
+  <g filter="url(#isShadow)">
+    <rect x="640" y="500" width="470" height="58" rx="8" fill="#0b1220" stroke="#14b8a6" stroke-width="1"/>
+    <text x="655" y="520" fill="#5eead4" font-size="10" font-family="'SFMono-Regular', Consolas, monospace">$ uv run python -m experiments.intent_slot_distillation.train_adapter \</text>
+    <text x="675" y="536" fill="#94a3b8" font-size="10" font-family="'SFMono-Regular', Consolas, monospace">--domain my_domain --taxonomy my_topics.yaml \</text>
+    <text x="675" y="550" fill="#94a3b8" font-size="10" font-family="'SFMono-Regular', Consolas, monospace">--adapter-dir ./adapters/my_domain/v1/ --version v1</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ARTIFACT BOX (bottom-center)                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+  <g filter="url(#isShadow)">
+    <rect x="30" y="582" width="580" height="120" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="320" y="604" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Adapter Artifact Layout — 2.4 MB per deployment</text>
+
+    <text x="60" y="630" fill="#e2e8f0" font-size="10" font-weight="600" font-family="'SFMono-Regular', Consolas, monospace">~/.ncms/adapters/&lt;domain&gt;/v4/</text>
+    <text x="80" y="648" fill="#94a3b8" font-size="9" font-family="'SFMono-Regular', Consolas, monospace">├── lora_adapter/       ← peft save_pretrained dir (~2.3 MB)</text>
+    <text x="80" y="661" fill="#94a3b8" font-size="9" font-family="'SFMono-Regular', Consolas, monospace">├── heads.safetensors   ← 5 head weights (~64 KB)</text>
+    <text x="80" y="674" fill="#94a3b8" font-size="9" font-family="'SFMono-Regular', Consolas, monospace">├── manifest.json       ← encoder, label vocabs, gate metrics</text>
+    <text x="80" y="687" fill="#94a3b8" font-size="9" font-family="'SFMono-Regular', Consolas, monospace">├── taxonomy.yaml       ← human-readable topic vocab snapshot</text>
+    <text x="80" y="700" fill="#94a3b8" font-size="9" font-family="'SFMono-Regular', Consolas, monospace">└── eval_report.md      ← PASS/FAIL gate + per-head F1 table</text>
+  </g>
+
+  <!-- Replaces block on the right -->
+  <g filter="url(#isShadow)">
+    <rect x="630" y="582" width="480" height="120" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="1.5"/>
+    <text x="870" y="604" text-anchor="middle" fill="#fce7f3" font-size="12" font-weight="700">Replaces Five Brittle Code Paths</text>
+
+    <text x="650" y="625" fill="#94a3b8" font-size="9">✗</text>
+    <text x="665" y="625" fill="#e2e8f0" font-size="9">admission_service.score_admission</text>
+    <text x="888" y="625" fill="#64748b" font-size="9">→ admission_head</text>
+
+    <text x="650" y="640" fill="#94a3b8" font-size="9">✗</text>
+    <text x="665" y="640" fill="#e2e8f0" font-size="9">_has_state_declaration regex</text>
+    <text x="888" y="640" fill="#64748b" font-size="9">→ state_change_head</text>
+
+    <text x="650" y="655" fill="#94a3b8" font-size="9">✗</text>
+    <text x="665" y="655" fill="#e2e8f0" font-size="9">LLM-based `label_detector.py`</text>
+    <text x="888" y="655" fill="#64748b" font-size="9">→ topic_head</text>
+
+    <text x="650" y="670" fill="#94a3b8" font-size="9">✗</text>
+    <text x="665" y="670" fill="#e2e8f0" font-size="9">Manual `Memory.domains` tagging</text>
+    <text x="888" y="670" fill="#64748b" font-size="9">→ topic_head auto-populate</text>
+
+    <text x="650" y="685" fill="#94a3b8" font-size="9">✗</text>
+    <text x="665" y="685" fill="#e2e8f0" font-size="9">Never-shipped regex preference extractor</text>
+    <text x="888" y="685" fill="#64748b" font-size="9">→ intent + slot heads</text>
+  </g>
+
+</svg>

@@ -1,0 +1,42 @@
+[
+  {
+    "method": "joint_bert",
+    "domain": "conversational",
+    "split": "gold",
+    "n_examples": 30,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 0.0,
+    "joint_accuracy": 0.0,
+    "latency_p50_ms": 31.56,
+    "latency_p95_ms": 64.39,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    }
+  },
+  {
+    "method": "joint_bert",
+    "domain": "conversational",
+    "split": "adversarial",
+    "n_examples": 12,
+    "intent_f1_macro": 0.2381,
+    "slot_f1_macro": 0.0,
+    "joint_accuracy": 0.0,
+    "latency_p50_ms": 76.1,
+    "latency_p95_ms": 79.17,
+    "confidently_wrong_rate": 0.0833,
+    "per_intent_f1": {
+      "positive": 0.8571,
+      "negative": 0.5714,
+      "habitual": 0.0,
+      "difficulty": 0.0,
+      "choice": 0.0,
+      "none": 0.0
+    }
+  }
+]

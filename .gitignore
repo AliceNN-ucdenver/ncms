@@ -32,3 +32,18 @@ openapi_letta.json
 
 # AI assistant session data (local only — contains conversation transcripts)
 .claude/
+
+# P2 intent-slot experiment artefacts.
+#
+# Full fine-tune checkpoints (~400 MB each) and autolabeler backups
+# are regeneratable and excluded.  Only the v4 adapter is kept in git
+# as the authoritative reference — earlier iteration runs (v1 / v2 /
+# v3 / v3_final / v1_multihead) are historical and reproducible via
+# `experiments/intent_slot_distillation/train_adapter.py`.
+experiments/intent_slot_distillation/checkpoints/
+experiments/intent_slot_distillation/adapters/*/v1/
+experiments/intent_slot_distillation/adapters/*/v1_multihead/
+experiments/intent_slot_distillation/adapters/*/v2/
+experiments/intent_slot_distillation/adapters/*/v3/
+experiments/intent_slot_distillation/adapters/*/v3_final/
+*.bak

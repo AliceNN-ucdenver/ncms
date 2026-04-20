@@ -88,6 +88,7 @@ SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
         "symptom",      # nausea, headache
         "severity",     # mild, severe
         "alternative",  # "X instead of Y" choices
+        "frequency",    # "every 6 hours", "twice daily"
     ),
 }
 
@@ -113,20 +114,54 @@ class ExtractedLabel:
     slot_confidences: dict[str, float] = field(default_factory=dict)
     method: str = ""          # name of the method that produced it (for logs)
 
+    # Multi-head outputs (Sprint 2).  ``None`` when the extractor
+    # doesn't produce that head (e.g. zero-shot baselines).
+    topic: str | None = None
+    topic_confidence: float | None = None
+    admission: AdmissionDecision | None = None
+    admission_confidence: float | None = None
+    state_change: StateChange | None = None
+    state_change_confidence: float | None = None
+
     def is_confident(self, threshold: float = 0.7) -> bool:
         return self.intent_confidence >= threshold
+
+
+#: Admission routing decision — coarse content-worthiness gate.
+AdmissionDecision = Literal["persist", "ephemeral", "discard"]
+ADMISSION_DECISIONS: tuple[AdmissionDecision, ...] = (
+    "persist", "ephemeral", "discard",
+)
+
+#: State-change classification for ingest-time zone building.
+#: Feeds TLG's L2 node induction + retirement extractor.
+StateChange = Literal[
+    "declaration",  # "Auth-svc: method = OAuth" — new state
+    "retirement",   # "Deprecated X in favor of Y" — retires prior state
+    "none",         # no state transition
+]
+STATE_CHANGES: tuple[StateChange, ...] = ("declaration", "retirement", "none")
 
 
 @dataclass
 class GoldExample:
     """One labelled example from gold, LLM-labelled, or SDG.
 
-    Serialises to JSONL:
+    Multi-head labels (``topic``, ``admission``, ``state_change``) are
+    optional — old gold files that only carry intent/slots still
+    validate.  The training loop computes losses only on heads that
+    have labels (per-example label masking), so you can scale up the
+    label set without reflowing the whole corpus.
+
+    Serialises to JSONL::
 
         {"text": "I love sushi.",
          "domain": "conversational",
          "intent": "positive",
          "slots": {"object": "sushi"},
+         "topic": "food_pref",
+         "admission": "persist",
+         "state_change": "none",
          "split": "gold",
          "source": "hand-labeled"}
     """
@@ -135,6 +170,13 @@ class GoldExample:
     domain: Domain
     intent: Intent
     slots: dict[str, str] = field(default_factory=dict)
+
+    # Multi-head optional labels (Sprint 2).  None means "unlabeled";
+    # training skips loss contribution for unlabeled heads.
+    topic: str | None = None
+    admission: AdmissionDecision | None = None
+    state_change: StateChange | None = None
+
     # Which data tier this came from.
     split: Literal["gold", "llm", "sdg", "adversarial"] = "gold"
     # Free-form provenance string ("hand-labeled 2026-04-19",
@@ -152,7 +194,14 @@ class GoldExample:
 
 @dataclass
 class MethodResult:
-    """One cell of the 3 × 3 × 2 evaluation matrix."""
+    """One cell of the evaluation matrix.
+
+    Intent + slot + joint are reported for every method.  Topic /
+    admission / state-change are reported as ``None`` when the
+    corresponding head is absent from the method's output (e.g. all
+    zero-shot baselines) OR when the gold split has no labels for
+    that head (e.g. legacy gold without multi-head tags).
+    """
 
     method: str
     domain: Domain
@@ -166,3 +215,12 @@ class MethodResult:
     confidently_wrong_rate: float
     # Optional per-intent breakdown for deeper reporting.
     per_intent_f1: dict[Intent, float] = field(default_factory=dict)
+
+    # Sprint 2 multi-head metrics.  None = head absent or not scored
+    # (gold rows lacked labels for that head).
+    topic_f1_macro: float | None = None
+    admission_f1_macro: float | None = None
+    state_change_f1_macro: float | None = None
+    n_topic_labeled: int = 0
+    n_admission_labeled: int = 0
+    n_state_change_labeled: int = 0

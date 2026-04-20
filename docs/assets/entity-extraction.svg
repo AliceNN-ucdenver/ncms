@@ -71,7 +71,7 @@
 
   <!-- Title -->
   <text x="480" y="30" text-anchor="middle" fill="#e2e8f0" font-size="18" font-weight="700">Memory Ingestion Pipeline</text>
-  <text x="480" y="48" text-anchor="middle" fill="#94a3b8" font-size="11">Content dedup, two-class classification, entity extraction, admission, reconciliation, and episode linking</text>
+  <text x="480" y="48" text-anchor="middle" fill="#94a3b8" font-size="11">Content dedup → classify → intent-slot SLM (5 heads, SLM-first) → GLiNER NER (parallel) → admission / reconciliation / episodes</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
   <!-- ROW 1: Content Input → Dedup → Classification (left to right)     -->
@@ -270,25 +270,26 @@
     <rect x="20" y="330" width="220" height="130" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
     <rect x="20" y="330" width="220" height="26" rx="10" fill="url(#eeAdmitGrad)"/>
     <rect x="20" y="346" width="220" height="10" fill="url(#eeAdmitGrad)"/>
-    <text x="130" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="600">Admission Scoring</text>
-    <text x="130" y="372" text-anchor="middle" fill="#fdba74" font-size="9" font-weight="500">4-Feature Heuristic Gate</text>
+    <text x="130" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="600">Admission Routing</text>
 
-    <!-- Feature list (2-column) -->
-    <text x="40" y="392" fill="#94a3b8" font-size="8">utility</text>
-    <text x="40" y="407" fill="#94a3b8" font-size="8">persistence</text>
+    <!-- SLM-first badge -->
+    <rect x="30" y="365" width="200" height="16" rx="4" fill="#831843" stroke="#ec4899" stroke-width="0.6"/>
+    <text x="130" y="376" text-anchor="middle" fill="#f9a8d4" font-size="8" font-weight="600">SLM admission_head wins when confident ≥ 0.7</text>
 
-    <text x="140" y="392" fill="#94a3b8" font-size="8">temporal salience</text>
-    <text x="140" y="407" fill="#94a3b8" font-size="8">state change signal</text>
+    <!-- Fallback -->
+    <text x="130" y="395" text-anchor="middle" fill="#fdba74" font-size="8" font-weight="500">Fallback: 4-Feature Heuristic Gate</text>
+    <text x="40" y="409" fill="#94a3b8" font-size="7">utility · persistence ·</text>
+    <text x="40" y="419" fill="#94a3b8" font-size="7">temporal salience · state change</text>
 
     <!-- Output route pills -->
-    <rect x="35" y="420" width="45" height="14" rx="7" fill="#7f1d1d" stroke="#ef4444" stroke-width="0.5"/>
-    <text x="57" y="430" text-anchor="middle" fill="#fca5a5" font-size="6">discard</text>
-    <rect x="84" y="420" width="55" height="14" rx="7" fill="#78350f" stroke="#f59e0b" stroke-width="0.5"/>
-    <text x="111" y="430" text-anchor="middle" fill="#fcd34d" font-size="6">ephemeral</text>
-    <rect x="143" y="420" width="42" height="14" rx="7" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
-    <text x="164" y="430" text-anchor="middle" fill="#6ee7b7" font-size="6">persist</text>
+    <rect x="35" y="428" width="45" height="14" rx="7" fill="#7f1d1d" stroke="#ef4444" stroke-width="0.5"/>
+    <text x="57" y="438" text-anchor="middle" fill="#fca5a5" font-size="6">discard</text>
+    <rect x="84" y="428" width="55" height="14" rx="7" fill="#78350f" stroke="#f59e0b" stroke-width="0.5"/>
+    <text x="111" y="438" text-anchor="middle" fill="#fcd34d" font-size="6">ephemeral</text>
+    <rect x="143" y="428" width="42" height="14" rx="7" fill="#064e3b" stroke="#10b981" stroke-width="0.5"/>
+    <text x="164" y="438" text-anchor="middle" fill="#6ee7b7" font-size="6">persist</text>
 
-    <text x="130" y="453" text-anchor="middle" fill="#64748b" font-size="7">importance &gt;= 8.0 bypasses admission</text>
+    <text x="130" y="455" text-anchor="middle" fill="#64748b" font-size="7">importance &gt;= 8.0 bypasses</text>
   </g>
 
   <!-- Arrow: Admission → Reconciliation -->
@@ -391,7 +392,7 @@
   <text x="480" y="580" text-anchor="middle" fill="#64748b" font-size="9">publish_document() path: Dedup → Classify (forced NAVIGABLE via source_format) → Document Profile → Background Index → Entity Link → Episode</text>
 
   <!-- Feature flag note -->
-  <text x="480" y="602" text-anchor="middle" fill="#475569" font-size="8">All gates feature-flagged. Content classification: NCMS_CONTENT_CLASSIFICATION_ENABLED. Admission: NCMS_ADMISSION_ENABLED.</text>
-  <text x="480" y="616" text-anchor="middle" fill="#475569" font-size="8">Reconciliation: NCMS_RECONCILIATION_ENABLED. Episodes: NCMS_EPISODES_ENABLED. Contradiction: NCMS_CONTRADICTION_DETECTION_ENABLED.</text>
+  <text x="480" y="602" text-anchor="middle" fill="#475569" font-size="8">Feature flags: NCMS_CONTENT_CLASSIFICATION_ENABLED · NCMS_INTENT_SLOT_ENABLED (SLM-first admission / state / topic) · NCMS_ADMISSION_ENABLED (regex fallback)</text>
+  <text x="480" y="616" text-anchor="middle" fill="#475569" font-size="8">NCMS_RECONCILIATION_ENABLED · NCMS_EPISODES_ENABLED · NCMS_TLG_ENABLED (query-side grammar; consumes state_change_head output) · NCMS_CONTRADICTION_DETECTION_ENABLED</text>
 
 </svg>

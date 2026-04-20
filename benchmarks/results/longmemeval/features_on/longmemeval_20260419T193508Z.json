@@ -1,0 +1,14 @@
+{
+  "overall": {
+    "Recall@5": 0.3333333333333333,
+    "Contains": 0.3333333333333333,
+    "F1": 0.005998137612673495,
+    "num_questions": 3.0,
+    "Recall@5_temporal-reasoning": 0.3333333333333333,
+    "num_temporal-reasoning": 3.0
+  },
+  "questions_count": 3,
+  "total_sessions": 7,
+  "total_memories": 84,
+  "elapsed_seconds": 114.6
+}

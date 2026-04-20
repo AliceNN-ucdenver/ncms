@@ -883,3 +883,77 @@ class PipelineEvent(BaseModel):
     detail: str = ""
     event_subtype: str = ""  # research_plan | research_results | ""
     timestamp: datetime = Field(default_factory=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Intent-Slot Extraction (P2 ingest-side content understanding)
+# ---------------------------------------------------------------------------
+
+
+IntentLabel = Literal[
+    "positive", "negative", "habitual", "difficulty", "choice", "none",
+]
+
+AdmissionDecision = Literal["persist", "ephemeral", "discard"]
+
+StateChange = Literal["declaration", "retirement", "none"]
+
+
+class ExtractedLabel(BaseModel):
+    """Output of an :class:`IntentSlotExtractor`.
+
+    Five heads in one dataclass.  Per-head confidence is present so
+    callers can gate admission / state-change / topic decisions on
+    calibrated thresholds.  Backends that don't produce a given
+    head (e.g. zero-shot baselines that score only intent) return
+    ``None`` for the unavailable fields; ingest code treats ``None``
+    as "abstain" and falls through to the next backend.
+
+    The ``slots`` dict maps slot-name (domain taxonomy) to surface
+    form extracted from the input text.  ``slot_confidences`` is
+    per-slot when the backend exposes it.
+
+    Topics are **dynamic per adapter** — no closed-vocabulary
+    enum in this class.  The topic vocabulary lives in the adapter
+    manifest at runtime, not in the codebase.  This lets each
+    deployment ship its own taxonomy without code changes.
+    """
+
+    intent: IntentLabel = "none"
+    intent_confidence: float = 0.0
+
+    slots: dict[str, str] = Field(default_factory=dict)
+    slot_confidences: dict[str, float] = Field(default_factory=dict)
+
+    topic: str | None = None
+    topic_confidence: float | None = None
+
+    admission: AdmissionDecision | None = None
+    admission_confidence: float | None = None
+
+    state_change: StateChange | None = None
+    state_change_confidence: float | None = None
+
+    method: str = ""           # backend name that produced this label
+    latency_ms: float = 0.0    # inference wall-time (populated by caller)
+
+    def is_intent_confident(self, threshold: float = 0.7) -> bool:
+        return self.intent_confidence >= threshold
+
+    def is_topic_confident(self, threshold: float = 0.7) -> bool:
+        return (
+            self.topic_confidence is not None
+            and self.topic_confidence >= threshold
+        )
+
+    def is_admission_confident(self, threshold: float = 0.7) -> bool:
+        return (
+            self.admission_confidence is not None
+            and self.admission_confidence >= threshold
+        )
+
+    def is_state_change_confident(self, threshold: float = 0.7) -> bool:
+        return (
+            self.state_change_confidence is not None
+            and self.state_change_confidence >= threshold
+        )

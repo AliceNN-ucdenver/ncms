@@ -159,7 +159,7 @@ class NCMSConfig(BaseSettings):
     scoring_weight_temporal: float = 0.2  # Additive weight when temporal ref detected
 
     # P1-temporal-experiment: GLiNER-extracted date ranges + hard-filter
-    # retrieval.  See docs/p1-temporal-experiment.md.
+    # retrieval.  See docs/retired/p1-temporal-experiment.md (historical).
     temporal_range_filter_enabled: bool = False
     # Policy for memories with no extracted content range when the query
     # produces one.  "include" = recall-safe (pass filter), "exclude" =
@@ -173,6 +173,34 @@ class NCMSConfig(BaseSettings):
     # ingest (Phase 2), grammar dispatch runs at query time (Phase 3).
     # Default off until integration stabilizes — see docs/p1-plan.md.
     tlg_enabled: bool = False
+
+    # P2 — Intent-slot SLM (ingest-side classifier).  When True,
+    # ``IngestionPipeline`` runs the multi-head classifier on every
+    # store_memory call and persists {intent, slot, topic, admission,
+    # state_change} to the ``memories`` columns + ``memory_slots``
+    # table.  Replaces the regex-based admission scorer, the
+    # state-change regex in index_worker, and the LLM topic labeller.
+    # Default off until the adapter registry is populated.  See
+    # docs/p2-plan.md for the integration design.
+    intent_slot_enabled: bool = False
+    # Adapter artifact path (lora_adapter/ + heads.safetensors +
+    # manifest.json).  None → skip the custom primary and fall
+    # through to the generic/zero-shot chain.
+    intent_slot_checkpoint_dir: str | None = None
+    # Confidence floor for head-by-head fallback — below this value
+    # the chain moves to the next backend's output for that head.
+    intent_slot_confidence_threshold: float = 0.7
+    # When True, append the topic-head label to Memory.domains
+    # automatically.  Set False during migration to keep callers
+    # explicitly controlling the domain tag set.
+    intent_slot_populate_domains: bool = True
+    # Include the E5-small-v2 zero-shot learned fallback in the
+    # chain.  Set False for minimal-dependency deployments that
+    # only ship the heuristic fallback.
+    intent_slot_e5_fallback_enabled: bool = True
+    # Soft latency limit on the SLM forward pass.  Exceeding it
+    # emits a warning but does not block ingest.
+    intent_slot_latency_budget_ms: float = 200.0
 
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False

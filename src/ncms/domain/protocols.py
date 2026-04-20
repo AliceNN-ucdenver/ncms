@@ -22,6 +22,7 @@ from ncms.domain.models import (
     DocumentLink,
     Entity,
     EphemeralEntry,
+    ExtractedLabel,
     GraphEdge,
     GroundingLogEntry,
     GuardrailViolation,
@@ -387,3 +388,49 @@ class DocumentStore(Protocol):
     async def save_llm_call(self, record: LLMCallRecord) -> None: ...
     async def save_config_snapshot(self, snapshot: AgentConfigSnapshot) -> None: ...
     async def save_bus_conversation(self, convo: BusConversation) -> None: ...
+
+
+# ── Intent-Slot Extraction (P2, ingest-side content understanding) ─────
+
+
+class IntentSlotExtractor(Protocol):
+    """Ingest-side content-understanding classifier.
+
+    One forward pass → five classification outputs (intent + slot +
+    topic + admission + state_change) per memory.  Implementations
+    ship as either a zero-shot fallback (no training required) or a
+    LoRA adapter artifact fine-tuned for a specific domain.
+
+    The protocol is synchronous — inference runs on the same event
+    loop as the ingest pipeline so the orchestrator can await it
+    inline.  Backends that need GPU offload should wrap their
+    forward pass in ``asyncio.get_running_loop().run_in_executor``
+    internally and await that.
+
+    Implementations MUST be side-effect-free: calling ``extract``
+    must not write state or mutate the model's parameters.
+    """
+
+    name: str
+    """Short identifier for logs and dashboard events — e.g.
+    ``"joint_bert_lora"`` or ``"gliner_plus_e5"``."""
+
+    def extract(
+        self, text: str, *, domain: str,
+    ) -> ExtractedLabel:
+        """Classify ``text`` into the five-head label space.
+
+        ``domain`` is a free-form string routing hint; backends
+        with per-domain adapters use it to pick the right adapter,
+        while zero-shot backends may ignore it entirely.
+        """
+        ...
+
+    def describe(self) -> dict[str, object]:
+        """Return a dict describing the extractor for audit logs.
+
+        Required keys: ``name`` (short id), ``backend`` (class
+        name), ``version`` (e.g. adapter version or "zero_shot").
+        Additional keys are backend-specific.
+        """
+        ...

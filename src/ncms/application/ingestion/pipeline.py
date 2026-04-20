@@ -83,6 +83,7 @@ class IngestionPipeline:
         add_entity: (
             Callable[..., Awaitable[Any]] | None
         ) = None,
+        intent_slot: Any | None = None,
     ) -> None:
         self._store = store
         self._index = index
@@ -95,6 +96,10 @@ class IngestionPipeline:
         self._episode = episode
         self._section_svc = section_service
         self._add_entity = add_entity
+        # P2 intent-slot SLM — optional per-deployment classifier
+        # unifying admission / state-change / topic / preference.
+        # ``None`` → pipeline runs without SLM (pre-P2 behaviour).
+        self._intent_slot = intent_slot
 
     # ── Entity State Extraction (shared with index_worker) ──────────────
 
@@ -402,8 +407,16 @@ class IngestionPipeline:
         structured: dict | None,
         emit_stage: Callable,
         pipeline_start: float,
+        intent_slot_label: Any | None = None,
     ) -> Memory | tuple[str | None, object | None, dict | None]:
         """Run admission scoring.
+
+        When ``intent_slot_label`` is supplied and its
+        ``admission_head`` is confident (by the configured
+        threshold), the SLM's decision replaces the 4-feature
+        regex heuristic entirely — features are still computed
+        (cheap) for logging / admission_scored event, but the
+        routing decision comes from the classifier.
 
         Returns a ``Memory`` for early exit (discard / ephemeral) or
         ``(route, features, structured)`` to continue the persist path.
@@ -423,11 +436,33 @@ class IngestionPipeline:
                 content, domains=domains, source_agent=source_agent,
             )
             score = score_admission(features)
-            route = route_memory(features, score)
+
+            # SLM-first routing.  When the classifier is confident
+            # on the admission head we trust its output; otherwise
+            # fall through to the regex-based ``route_memory``.
+            # This replaces the 4-feature heuristic on the hot path
+            # while keeping it available for cold-start fallback.
+            slm_route: str | None = None
+            if intent_slot_label is not None and getattr(
+                intent_slot_label, "admission", None,
+            ) is not None and intent_slot_label.is_admission_confident(
+                self._config.intent_slot_confidence_threshold,
+            ):
+                # Normalise label values ("ephemeral" ↔ "ephemeral_cache")
+                raw = intent_slot_label.admission
+                slm_route = (
+                    "ephemeral_cache" if raw == "ephemeral" else raw
+                )
+            route = slm_route if slm_route is not None else route_memory(
+                features, score,
+            )
 
             feature_dict = _asdict(features)
             emit_stage("admission", (time.perf_counter() - t0) * 1000, {
                 "score": round(score, 3), "route": route,
+                "route_source": (
+                    "intent_slot" if slm_route is not None else "regex"
+                ),
                 "features": {
                     k: round(v, 3) for k, v in feature_dict.items()
                 },
@@ -519,6 +554,59 @@ class IngestionPipeline:
 
     # ── Stage 3: Inline Indexing ────────────────────────────────────────
 
+    async def run_intent_slot_extraction(
+        self,
+        content: str,
+        *,
+        domain: str = "",
+    ) -> Any | None:
+        """Run the SLM on ``content`` and return the ExtractedLabel.
+
+        **Pure function** — no side effects.  The caller
+        (:meth:`MemoryService.store_memory`) is responsible for:
+
+        * Baking the label into ``memory.structured["intent_slot"]``
+          BEFORE ``save_memory`` so the column-persistence path
+          writes everything in one pass.
+        * Passing the label into the admission gate so the SLM's
+          ``admission_head`` replaces the regex heuristic when
+          confident.
+        * Appending ``topic`` to ``Memory.domains`` when
+          ``is_topic_confident`` + ``intent_slot_populate_domains``.
+        * Calling :meth:`MemoryStore.save_memory_slots` after
+          ``save_memory`` to persist slot surface forms.
+        * Emitting the ``intent_slot.extracted`` dashboard event.
+
+        Returns ``None`` when the feature flag is off, no
+        extractor is wired, or the extractor raises.  Callers
+        treat ``None`` as "no SLM signal — use legacy regex paths".
+
+        Runs the classifier on a thread pool so async callers
+        don't block the event loop on a ~20-65ms forward pass.
+        """
+        if self._intent_slot is None or not getattr(
+            self._config, "intent_slot_enabled", False,
+        ):
+            return None
+
+        t0 = time.perf_counter()
+        try:
+            label = await asyncio.to_thread(
+                self._intent_slot.extract,
+                content, domain=domain,
+            )
+        except Exception:
+            logger.warning(
+                "[intent_slot] extraction failed — continuing without labels",
+                exc_info=True,
+            )
+            return None
+        # Annotate latency on the label so downstream persistence
+        # captures the wall-time of THIS backend's forward pass
+        # (distinct from the pipeline stage emit timing).
+        label.latency_ms = (time.perf_counter() - t0) * 1000.0
+        return label
+
     async def run_inline_indexing(
         self,
         memory: Memory,
@@ -575,12 +663,17 @@ class IngestionPipeline:
             )
             return result, (time.perf_counter() - t) * 1000
 
+        # Intent-slot SLM is NOT invoked here — it runs earlier in
+        # MemoryService.store_memory so its admission + state-change
+        # heads can gate the ingest path.  Indexing only cares about
+        # BM25 / SPLADE / GLiNER, which remain parallel.
         logger.info(
-            "[store] Starting parallel indexing: "
-            "BM25 + SPLADE + GLiNER",
+            "[store] Starting parallel indexing: BM25 + SPLADE + GLiNER",
         )
         bm25_ms, splade_ms, (auto_entities, extract_ms) = (
-            await asyncio.gather(_do_bm25(), _do_splade(), _do_gliner())
+            await asyncio.gather(
+                _do_bm25(), _do_splade(), _do_gliner(),
+            )
         )
         logger.info(
             "[store] Parallel indexing complete: "
@@ -668,7 +761,7 @@ class IngestionPipeline:
              treat the memory as range-unknown.
 
         P1-temporal-experiment, Phase A (revised).  See
-        ``docs/p1-temporal-experiment.md`` §14.
+        ``docs/retired/p1-temporal-experiment.md`` §14.
         """
         if not self._config.temporal_range_filter_enabled:
             return auto_entities
@@ -866,24 +959,42 @@ class IngestionPipeline:
             NodeType,
         )
 
-        _has_state_change = (
-            admission_features is not None
-            and hasattr(admission_features, "state_change_signal")
-            and admission_features.state_change_signal >= 0.35
+        # SLM-first: when the intent-slot classifier is confident on
+        # the state_change head, its prediction wins.  Falls through
+        # to the regex path only when the SLM abstained or the flag
+        # is off.  This replaces brittle YAML-frontmatter detection
+        # (which false-positives on ADR templates) with the learned
+        # classifier.
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        slm_state = slm_label.get("state_change")
+        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
+        slm_confident = (
+            slm_state in {"declaration", "retirement"}
+            and slm_state_conf
+            >= self._config.intent_slot_confidence_threshold
         )
-        _has_state_declaration = bool(
-            re.search(
-                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                content, re.MULTILINE,
+        if slm_confident:
+            _has_state_change = True
+            _has_state_declaration = False  # SLM already decided
+        else:
+            _has_state_change = (
+                admission_features is not None
+                and hasattr(admission_features, "state_change_signal")
+                and admission_features.state_change_signal >= 0.35
             )
-            or re.search(
-                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
+            _has_state_declaration = bool(
+                re.search(
+                    r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                    content, re.MULTILINE,
+                )
+                or re.search(
+                    r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
+                )
+                or re.search(
+                    r"^\s*status\s*:\s*\w+",
+                    content, re.MULTILINE | re.IGNORECASE,
+                )
             )
-            or re.search(
-                r"^\s*status\s*:\s*\w+",
-                content, re.MULTILINE | re.IGNORECASE,
-            )
-        )
 
         if not (_has_state_change or _has_state_declaration):
             return None

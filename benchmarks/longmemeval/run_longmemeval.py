@@ -32,6 +32,8 @@ async def _run(args: argparse.Namespace) -> None:
         output_dir = output_dir / "features_on"
     if args.tlg:
         output_dir = output_dir / "tlg"
+    if args.intent_slot_domain:
+        output_dir = output_dir / f"{args.intent_slot_domain}_slm"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load dataset
@@ -107,6 +109,11 @@ async def _run(args: argparse.Namespace) -> None:
             trajectory_consolidation_enabled=False,
             pattern_consolidation_enabled=False,
             synthesis_enabled=False,
+            # P2: intent-slot SLM — flipped on when --intent-slot-domain
+            # is supplied so the SLM's admission / state-change / topic
+            # heads replace the regex gates at ingest time.
+            intent_slot_enabled=bool(args.intent_slot_domain),
+            intent_slot_populate_domains=True,
         )
         logger.info("Features ON: production retrieval bundle enabled")
 
@@ -134,6 +141,7 @@ async def _run(args: argparse.Namespace) -> None:
         judge_model=args.judge_model,
         judge_api_base=args.judge_api_base,
         config=ncms_config,
+        intent_slot_domain=args.intent_slot_domain,
     )
 
     # Save results
@@ -265,6 +273,19 @@ def main() -> None:
         help=(
             "Enable Temporal Linguistic Geometry (NCMS_TLG_ENABLED). "
             "May be combined with --features-on; implies reconciliation."
+        ),
+    )
+    parser.add_argument(
+        "--intent-slot-domain",
+        type=str,
+        default=None,
+        help=(
+            "Enable the P2 intent-slot SLM using the adapter at "
+            "~/.ncms/adapters/<domain>/v4/.  Choices: conversational, "
+            "software_dev, clinical (or any custom adapter you've "
+            "published).  When set, the SLM's admission / state-change / "
+            "topic heads replace the regex gates at ingest.  Output dir "
+            "gets a /<domain>_slm/ suffix so results don't collide."
         ),
     )
     parser.add_argument(

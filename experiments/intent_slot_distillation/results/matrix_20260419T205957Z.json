@@ -1,0 +1,42 @@
+[
+  {
+    "method": "joint_bert",
+    "domain": "software_dev",
+    "split": "gold",
+    "n_examples": 30,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 0.9592,
+    "joint_accuracy": 0.9,
+    "latency_p50_ms": 24.92,
+    "latency_p95_ms": 65.06,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    }
+  },
+  {
+    "method": "joint_bert",
+    "domain": "software_dev",
+    "split": "adversarial",
+    "n_examples": 4,
+    "intent_f1_macro": 0.0,
+    "slot_f1_macro": 0.2857,
+    "joint_accuracy": 0.0,
+    "latency_p50_ms": 185.39,
+    "latency_p95_ms": 185.39,
+    "confidently_wrong_rate": 0.5,
+    "per_intent_f1": {
+      "positive": 0.0,
+      "negative": 0.0,
+      "habitual": 0.0,
+      "difficulty": 0.0,
+      "choice": 0.0,
+      "none": 0.0
+    }
+  }
+]

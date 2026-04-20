@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -30,13 +30,29 @@ CREATE TABLE IF NOT EXISTS memories (
     source_agent TEXT,
     project TEXT,
     domains TEXT NOT NULL DEFAULT '[]',
-    tags TEXT NOT NULL DEFAULT '[]'
+    tags TEXT NOT NULL DEFAULT '[]',
+    -- Schema v13 (P2 intent-slot integration): per-memory
+    -- classifier outputs.  All nullable — pre-P2 memories have
+    -- NULLs and new memories get populated when
+    -- NCMS_INTENT_SLOT_ENABLED=true.  Topics are stored as free-
+    -- form strings so the dashboard can surface them without
+    -- knowing the adapter's taxonomy ahead of time.
+    intent TEXT,
+    intent_confidence REAL,
+    topic TEXT,
+    topic_confidence REAL,
+    admission_decision TEXT,              -- persist | ephemeral | discard
+    state_change TEXT,                    -- declaration | retirement | none
+    intent_slot_method TEXT               -- backend name that emitted the labels
 );
 CREATE INDEX IF NOT EXISTS idx_memories_domains ON memories(domains);
 CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(source_agent);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type);
 CREATE INDEX IF NOT EXISTS idx_memories_content_hash ON memories(content_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_observed_at ON memories(observed_at);
+-- Schema v13: per-topic lookups for dashboard + analytics.
+CREATE INDEX IF NOT EXISTS idx_memories_topic ON memories(topic);
+CREATE INDEX IF NOT EXISTS idx_memories_state_change ON memories(state_change);
 
 -- Entity registry (knowledge graph nodes)
 CREATE TABLE IF NOT EXISTS entities (
@@ -71,6 +87,43 @@ CREATE TABLE IF NOT EXISTS memory_entities (
     entity_id TEXT NOT NULL REFERENCES entities(id),
     PRIMARY KEY (memory_id, entity_id)
 );
+
+-- Schema v13 (P2 intent-slot integration): per-memory slot surface
+-- forms from the intent-slot classifier's slot head.  Sibling to
+-- memory_entities but keyed on the classifier's BIO output rather
+-- than GLiNER's NER entities.  Slot values are domain-specific
+-- (e.g. "library", "medication") per the adapter's taxonomy.
+CREATE TABLE IF NOT EXISTS memory_slots (
+    memory_id TEXT NOT NULL REFERENCES memories(id),
+    slot_name TEXT NOT NULL,
+    slot_value TEXT NOT NULL,
+    slot_confidence REAL,
+    PRIMARY KEY (memory_id, slot_name)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_slots_value
+    ON memory_slots(slot_value);
+CREATE INDEX IF NOT EXISTS idx_memory_slots_name
+    ON memory_slots(slot_name);
+
+-- Schema v13 (P2 intent-slot integration): per-deployment adapter
+-- registry.  One row per promoted adapter.  `active=1` on exactly
+-- one row at a time per domain.  Written by `ncms adapter-promote`,
+-- read by the ingest pipeline at service startup to resolve the
+-- checkpoint directory.
+CREATE TABLE IF NOT EXISTS intent_slot_adapters (
+    adapter_id TEXT PRIMARY KEY,         -- "<domain>/<version>"
+    domain TEXT NOT NULL,
+    version TEXT NOT NULL,
+    adapter_path TEXT NOT NULL,
+    encoder TEXT NOT NULL,
+    corpus_hash TEXT NOT NULL,
+    gate_passed INTEGER NOT NULL,        -- 0 | 1
+    gate_metrics_json TEXT,              -- full eval_outcome.json blob
+    promoted_at TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_intent_slot_adapters_domain
+    ON intent_slot_adapters(domain, active DESC);
 
 -- ACT-R access history
 CREATE TABLE IF NOT EXISTS access_log (

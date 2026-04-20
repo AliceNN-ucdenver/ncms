@@ -245,7 +245,7 @@ def extract_with_label_budget(
     unavoidable and splitting further would only add overhead.
 
     Rationale is documented in ``docs/p1-experiment-diary.md``
-    (Phase A ablation) and ``docs/p1-temporal-experiment.md`` §17.4.
+    (Phase A ablation) and ``docs/retired/p1-temporal-experiment.md`` §17.4.
     """
     if len(labels) <= max_labels_per_call:
         return extract_entities_gliner(

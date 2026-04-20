@@ -5,7 +5,7 @@ memories with dates embedded in content and observed_at on the session
 envelope.  Confirms that calendar-referenced queries hard-filter the
 candidate pool to the right time window.
 
-Per ``docs/p1-temporal-experiment.md`` §17.3, LongMemEval is NOT the
+Per ``docs/retired/p1-temporal-experiment.md`` §17.3, LongMemEval is NOT the
 measurement surface for this primitive — these tests are the
 production-style benchmark it's designed for.
 

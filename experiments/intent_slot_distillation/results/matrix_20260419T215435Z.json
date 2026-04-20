@@ -1,0 +1,80 @@
+[
+  {
+    "method": "joint_bert_lora",
+    "domain": "conversational",
+    "split": "gold",
+    "n_examples": 30,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 0.6753,
+    "joint_accuracy": 0.6,
+    "latency_p50_ms": 21.59,
+    "latency_p95_ms": 34.0,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    },
+    "topic_f1_macro": null,
+    "admission_f1_macro": null,
+    "state_change_f1_macro": null,
+    "n_topic_labeled": 0,
+    "n_admission_labeled": 0,
+    "n_state_change_labeled": 0
+  },
+  {
+    "method": "joint_bert_lora",
+    "domain": "conversational",
+    "split": "sdg",
+    "n_examples": 390,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 1.0,
+    "joint_accuracy": 1.0,
+    "latency_p50_ms": 69.64,
+    "latency_p95_ms": 116.18,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    },
+    "topic_f1_macro": 1.0,
+    "admission_f1_macro": 0.3333,
+    "state_change_f1_macro": 0.3333,
+    "n_topic_labeled": 390,
+    "n_admission_labeled": 390,
+    "n_state_change_labeled": 390
+  },
+  {
+    "method": "joint_bert_lora",
+    "domain": "conversational",
+    "split": "adversarial",
+    "n_examples": 12,
+    "intent_f1_macro": 0.1574,
+    "slot_f1_macro": 0.5882,
+    "joint_accuracy": 0.3333,
+    "latency_p50_ms": 87.13,
+    "latency_p95_ms": 100.84,
+    "confidently_wrong_rate": 0.3333,
+    "per_intent_f1": {
+      "positive": 0.4444,
+      "negative": 0.5,
+      "habitual": 0.0,
+      "difficulty": 0.0,
+      "choice": 0.0,
+      "none": 0.0
+    },
+    "topic_f1_macro": null,
+    "admission_f1_macro": null,
+    "state_change_f1_macro": null,
+    "n_topic_labeled": 0,
+    "n_admission_labeled": 0,
+    "n_state_change_labeled": 0
+  }
+]

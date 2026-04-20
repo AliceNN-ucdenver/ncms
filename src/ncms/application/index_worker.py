@@ -598,28 +598,47 @@ class IndexWorkerPool:
             "document_section", "document_chunk",
             "section_index", "document",
         )
-        _has_state_change = (
-            not _is_section_content
-            and admission_features is not None
-            and hasattr(admission_features, "state_change_signal")
-            and admission_features.state_change_signal >= 0.35
+
+        # SLM-first: the memory carries the intent-slot classifier's
+        # state_change_head output on ``structured["intent_slot"]``
+        # (populated by ``MemoryService.store_memory`` before this
+        # worker runs).  When the classifier is confident its
+        # prediction replaces the regex-based detection.  Falls
+        # through to regex only on abstain / flag-off.
+        _slm_label = (memory.structured or {}).get("intent_slot") or {}
+        _slm_state = _slm_label.get("state_change")
+        _slm_state_conf = _slm_label.get("state_change_confidence") or 0.0
+        _slm_confident = (
+            _slm_state in {"declaration", "retirement"}
+            and _slm_state_conf
+            >= self._svc._config.intent_slot_confidence_threshold
         )
-        _has_state_declaration = not _is_section_content and bool(
-            re.search(
-                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                memory.content,
-                re.MULTILINE,
+        if _slm_confident and not _is_section_content:
+            _has_state_change = True
+            _has_state_declaration = False
+        else:
+            _has_state_change = (
+                not _is_section_content
+                and admission_features is not None
+                and hasattr(admission_features, "state_change_signal")
+                and admission_features.state_change_signal >= 0.35
             )
-            or re.search(
-                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
-                memory.content,
+            _has_state_declaration = not _is_section_content and bool(
+                re.search(
+                    r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                    memory.content,
+                    re.MULTILINE,
+                )
+                or re.search(
+                    r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
+                    memory.content,
+                )
+                or re.search(
+                    r"^\s*status\s*:\s*\w+",
+                    memory.content,
+                    re.MULTILINE | re.IGNORECASE,
+                )
             )
-            or re.search(
-                r"^\s*status\s*:\s*\w+",
-                memory.content,
-                re.MULTILINE | re.IGNORECASE,
-            )
-        )
 
         if not (_has_state_change or _has_state_declaration):
             return

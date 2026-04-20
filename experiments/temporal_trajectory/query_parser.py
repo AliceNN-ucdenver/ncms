@@ -830,7 +830,7 @@ def _detect_range(query: str) -> tuple[str, str] | None:
       X and Y" over ≥ 7 days).
     """
     from datetime import timedelta
-    from ncms.domain.temporal_parser import parse_temporal_reference
+    from ncms.domain.temporal import parse_temporal_reference
     ref = parse_temporal_reference(query)
     if ref is None:
         return None

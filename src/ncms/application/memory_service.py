@@ -121,6 +121,7 @@ class MemoryService:
         reranker: CrossEncoderReranker | None = None,
         section_service: SectionService | None = None,
         document_service: DocumentService | None = None,
+        intent_slot: Any | None = None,
     ):
         self._store = store
         self._index = index
@@ -144,6 +145,10 @@ class MemoryService:
         self._section_svc = section_service
         # Optional DocumentService for document profile expansion
         self._document_service = document_service
+        # P2 intent-slot SLM (optional).  Built by the caller so
+        # benchmarks can swap adapters without rebuilding the
+        # whole MemoryService.
+        self._intent_slot = intent_slot
         # Background indexing worker pool (Phase 2 performance)
         self._index_pool: IndexWorkerPool | None = None
 
@@ -192,6 +197,7 @@ class MemoryService:
             episode=self._episode,
             section_service=self._section_svc,
             add_entity=self.add_entity,
+            intent_slot=self._intent_slot,
         )
 
         # TLG L1 vocabulary cache — lazy; rebuilt on first use after
@@ -335,7 +341,43 @@ class MemoryService:
             return gate_result  # dedup hit or navigable classification
         content_hash, tags = gate_result
 
-        # ── Admission scoring (Phase 1, optional) ────────────────────────
+        # ── Intent-slot SLM extraction (P2) ───────────────────────────────
+        # Runs BEFORE admission + state-change checks so the SLM's
+        # admission_head / state_change_head replace the regex paths
+        # when confident.  Returns None when the flag is off or no
+        # extractor is wired — downstream code treats None as "use
+        # legacy regex paths".
+        domain_hint = (domains or [""])[0]
+        intent_slot_label = await self._ingestion.run_intent_slot_extraction(
+            content, domain=domain_hint,
+        )
+        if intent_slot_label is not None:
+            _emit_stage(
+                "intent_slot", intent_slot_label.latency_ms,
+                {
+                    "method": intent_slot_label.method,
+                    "intent": intent_slot_label.intent,
+                    "topic": intent_slot_label.topic,
+                    "admission": intent_slot_label.admission,
+                    "state_change": intent_slot_label.state_change,
+                    "n_slots": len(intent_slot_label.slots),
+                },
+            )
+            # Auto-populate Memory.domains from the SLM topic head
+            # when the operator opted in via intent_slot_populate_domains.
+            # This replaces the "user hands us a domain string" flow.
+            if (
+                intent_slot_label.topic is not None
+                and intent_slot_label.is_topic_confident(
+                    self._config.intent_slot_confidence_threshold,
+                )
+                and self._config.intent_slot_populate_domains
+            ):
+                domains = list(domains or [])
+                if intent_slot_label.topic not in domains:
+                    domains.append(intent_slot_label.topic)
+
+        # ── Admission scoring — SLM-first, regex fallback ────────────────
         admission_route: str | None = None
         admission_features: object | None = None
         if self._admission is not None and self._config.admission_enabled:
@@ -344,11 +386,32 @@ class MemoryService:
                 source_agent=source_agent, project=project,
                 memory_type=memory_type, importance=importance,
                 structured=structured,
+                intent_slot_label=intent_slot_label,
                 emit_stage=_emit_stage, pipeline_start=pipeline_start,
             )
             if isinstance(result, Memory):
                 return result  # discard or ephemeral — early exit
             admission_route, admission_features, structured = result
+
+        # Bake the SLM outputs into structured BEFORE save_memory so
+        # the ``memories`` columns (intent / topic / admission /
+        # state_change / intent_slot_method) land in the single INSERT.
+        if intent_slot_label is not None:
+            structured = dict(structured or {})
+            structured["intent_slot"] = {
+                "intent": intent_slot_label.intent,
+                "intent_confidence": intent_slot_label.intent_confidence,
+                "topic": intent_slot_label.topic,
+                "topic_confidence": intent_slot_label.topic_confidence,
+                "admission": intent_slot_label.admission,
+                "admission_confidence": intent_slot_label.admission_confidence,
+                "state_change": intent_slot_label.state_change,
+                "state_change_confidence": (
+                    intent_slot_label.state_change_confidence
+                ),
+                "method": intent_slot_label.method,
+                "latency_ms": intent_slot_label.latency_ms,
+            }
 
         memory = Memory(
             content=content,
@@ -367,6 +430,35 @@ class MemoryService:
         t0 = time.perf_counter()
         await self._store.save_memory(memory)
         _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
+
+        # ── Intent-slot side-effects (post-save) ─────────────────────────
+        # Slot surface-forms + dashboard event.  Deferred until after
+        # save_memory because memory_slots has a FK on memories(id).
+        if intent_slot_label is not None:
+            try:
+                if hasattr(self._store, "save_memory_slots"):
+                    await self._store.save_memory_slots(
+                        memory.id,
+                        slots=intent_slot_label.slots,
+                        confidences=intent_slot_label.slot_confidences,
+                    )
+            except Exception:
+                logger.warning(
+                    "[intent_slot] save_memory_slots failed for %s",
+                    memory.id, exc_info=True,
+                )
+            try:
+                if hasattr(self._event_log, "intent_slot_extracted"):
+                    self._event_log.intent_slot_extracted(
+                        memory_id=memory.id,
+                        label=intent_slot_label,
+                        agent_id=source_agent,
+                    )
+            except Exception:
+                logger.debug(
+                    "[intent_slot] dashboard event emit failed for %s",
+                    memory.id, exc_info=True,
+                )
 
         # ── Background indexing (fast path) ─────────────────────────────
         # If the async index pool accepts the task, return immediately.

@@ -32,8 +32,8 @@ async def store() -> SQLiteStore:
 
 
 class TestSchemaVersion:
-    async def test_schema_version_is_12(self) -> None:
-        assert SCHEMA_VERSION == 12
+    async def test_schema_version_is_13(self) -> None:
+        assert SCHEMA_VERSION == 13
 
     async def test_persisted_version_matches(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute(
@@ -41,7 +41,7 @@ class TestSchemaVersion:
         )
         row = await cursor.fetchone()
         assert row is not None
-        assert row[0] == 12
+        assert row[0] == 13
 
 
 class TestGraphEdgesRetiresColumn:

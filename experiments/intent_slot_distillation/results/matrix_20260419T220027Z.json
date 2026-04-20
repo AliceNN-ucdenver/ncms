@@ -1,0 +1,54 @@
+[
+  {
+    "method": "joint_bert_lora",
+    "domain": "conversational",
+    "split": "gold",
+    "n_examples": 30,
+    "intent_f1_macro": 0.8333,
+    "slot_f1_macro": 0.8052,
+    "joint_accuracy": 0.8,
+    "latency_p50_ms": 57.41,
+    "latency_p95_ms": 109.29,
+    "confidently_wrong_rate": 0.0,
+    "per_intent_f1": {
+      "positive": 1.0,
+      "negative": 1.0,
+      "habitual": 1.0,
+      "difficulty": 1.0,
+      "choice": 1.0,
+      "none": 0.0
+    },
+    "topic_f1_macro": 0.5216,
+    "admission_f1_macro": 0.3333,
+    "state_change_f1_macro": 0.3333,
+    "n_topic_labeled": 30,
+    "n_admission_labeled": 30,
+    "n_state_change_labeled": 30
+  },
+  {
+    "method": "joint_bert_lora",
+    "domain": "conversational",
+    "split": "adversarial",
+    "n_examples": 12,
+    "intent_f1_macro": 0.3778,
+    "slot_f1_macro": 0.7059,
+    "joint_accuracy": 0.4167,
+    "latency_p50_ms": 111.5,
+    "latency_p95_ms": 134.44,
+    "confidently_wrong_rate": 0.4167,
+    "per_intent_f1": {
+      "positive": 0.6,
+      "negative": 0.6667,
+      "habitual": 1.0,
+      "difficulty": 0.0,
+      "choice": 0.0,
+      "none": 0.0
+    },
+    "topic_f1_macro": null,
+    "admission_f1_macro": null,
+    "state_change_f1_macro": null,
+    "n_topic_labeled": 0,
+    "n_admission_labeled": 0,
+    "n_state_change_labeled": 0
+  }
+]

@@ -171,6 +171,168 @@ The retrieval pipeline as implemented differs from the original design in severa
 
 See `CLAUDE.md` Key Design Decisions #1-26 and `docs/ncms-resilience-update.md` for full implementation details.
 
+### Tier 4 (optional): Temporal Linguistic Geometry
+
+Added in P1 (2026-04), Temporal Linguistic Geometry (TLG)
+provides a **structural-proof retrieval layer** that composes
+with Tiers 1–3.  It is the canonical path for state-change /
+temporal queries where lexical + semantic + graph scoring
+cannot recover the correct answer — e.g. "what is the current
+authentication scheme?", "what came before MFA?", "what
+eventually led to passkeys?".  On a 32-query validation
+corpus spanning 11 intent shapes, TLG delivers 32/32 top-5
+and rank-1 vs. BM25's 41%/16%; see
+`docs/tlg-validation-findings.md`.
+
+Gated behind `NCMS_TLG_ENABLED` (default `False`).
+
+**Architecture.**
+
+- **Grammar layer** (`domain/tlg/`) — pure, infrastructure-free.
+  Retirement extractor, L1 vocabulary induction, L2 state-change
+  markers, content markers, aliases, zones, structural query
+  parser, shape cache, composition rules, four-level confidence
+  label.  No dependencies beyond stdlib.
+- **Application wiring** (`application/tlg/`) — `VocabularyCache`
+  (L1 + aliases + domain nouns + content markers),
+  `ShapeCacheStore` (persistent skeleton memo in
+  `grammar_shape_cache` table, schema v12), `dispatch.retrieve_lg`
+  (12-intent switch), `induction` (L2 marker pipeline).
+- **O(1) entity index.**
+  `SQLiteStore.find_memory_ids_by_entity` plus a stem-index in
+  `InducedVocabulary` shrinks the `lookup_subject` /
+  `lookup_entity` fast path from O(|vocab|) regex iteration to
+  O(|query_words|) hash fetch + O(1) subset test.
+- **Reconciliation extension.**
+  `ReconciliationService._apply_supersedes` emits
+  `retires_entities` on SUPERSEDES edges via the structural
+  retirement extractor, so TLG zone computation is populated
+  on ingest, not on query.
+
+**Composition with BM25 / SPLADE / graph.**  TLG runs *alongside*
+the Tier-1/2/3 pipeline via `MemoryService.search`.  On every
+query:
+
+1. The grammar layer produces an answer + confidence label.
+2. If `has_confident_answer()` is true, TLG's rank-1 answer is
+   composed onto the head of the BM25 ranking; the rest of the
+   BM25 ordering is preserved verbatim.
+3. If confidence is low or the grammar abstains, the BM25 +
+   SPLADE + graph ranking is returned unchanged.
+
+This composition satisfies a **zero-confidently-wrong invariant**
+(Proposition 1 in `docs/temporal-linguistic-geometry.md` §3.4):
+TLG never overrides BM25 with a confidently-wrong answer.
+Abstention is a first-class primitive, not a failure mode.
+
+**Observability.**  Every dispatch emits a `grammar.dispatched`
+event (intent, subject, entity, confidence, grammar_answer, proof
+preview) on the dashboard event log.  Every composition emits
+`grammar.composed` tracking the bm25-vs-composed ranking delta.
+
+**Maintenance.**  A periodic `tlg_induction` task refreshes the
+L1 vocabulary + L2 markers + aliases so the cache doesn't
+stale-drift as new memories land.  CLI commands `ncms tlg
+status` and `ncms tlg induce` expose manual control.  The
+`--tlg` flag on the LongMemEval benchmark flips
+`NCMS_TLG_ENABLED` for benchmark runs.
+
+**Scope note.**  TLG targets the *state-evolution* axis.  On
+conversational corpora like LongMemEval — no state
+declarations, no retirement markers — L1 induction yields 0
+subjects, TLG falls through, and retrieval runs unchanged
+through the Tier 1–3 pipeline.  LongMemEval therefore serves
+as a non-regression check, not a headline benchmark.  The
+at-scale benchmark on the state-evolution axis is the SWE
+state-evolution corpus planned in `docs/p3-swe-state-benchmark.md`.
+
+**Deprecated in favour of TLG.**  The following modules carry
+`DeprecationWarning` on use and will be removed one release
+later: `domain/temporal/intent.py::classify_query_intent`,
+`application/retrieval/apply_ordinal_ordering`,
+`application/retrieval/apply_range_filter`,
+`domain/tlg/query_classifier.py` (the pre-TLG heuristic
+classifier).  The `temporal_range_filter_enabled` config flag
+is retained as a baseline path and will retire with the next
+major release.
+
+### Tier 5 (ingest-side): Intent-Slot Distillation ✅ SHIPPED 2026-04-20
+
+The ingest-side complement to TLG's query-side grammar: a
+**LoRA multi-head classifier** that runs at `store_memory()`
+time and replaces five brittle pattern-matching code paths with
+one forward pass.  Shipped end-to-end in P2 Sprint 4; three
+reference adapters (conversational / software_dev / clinical)
+at F1 = 1.000 on gold across every head are published at
+`~/.ncms/adapters/<domain>/v4/` (2.4 MB each).  Integration
+findings:
+[`intent-slot-sprint-4-findings.md`](intent-slot-sprint-4-findings.md).
+Plan: [`p2-plan.md`](p2-plan.md).  Sprint 1–3 research:
+[`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md).
+
+Gated behind `NCMS_INTENT_SLOT_ENABLED` (default `False` at
+ship; flips to `True` one release later).
+
+**Architecture.**  One shared `bert-base-uncased` encoder +
+per-deployment LoRA adapter + five classification heads:
+
+| Head | Output | Replaces today |
+|---|---|---|
+| `intent_head` | positive / negative / habitual / difficulty / choice / none | Never-shipped regex preference extractor |
+| `slot_head` | BIO tags over domain slot taxonomy | Regex slot fills |
+| `topic_head` | Domain taxonomy label (e.g. `framework`, `medication`, `food_pref`) | `infrastructure/extraction/label_detector.py` (LLM topic detection) |
+| `admission_head` | persist / ephemeral / discard | `application/admission_service.py` (4-feature heuristic) |
+| `state_change_head` | declaration / retirement / none | `application/index_worker.py::_has_state_declaration` regex |
+
+**One forward pass, 20–65 ms on MPS, 2.4 MB per adapter.**
+Swap adapter = swap domain behaviour.  Topic output optionally
+auto-populates `Memory.domains` (replacing the
+"user-hands-us-a-domain-string" flow with
+"SLM-classifies-content-against-learned-taxonomy").
+
+**Composition with TLG.**  The `state_change_head` output is the
+*ingest-side* signal that drives TLG's retirement extractor at
+zone-induction time.  Two systems on different axes share one
+fact: the classifier decides *whether* a memory is a state
+transition; TLG decides *what the transition means structurally*.
+
+**Fallback chain.**  Confidence-gated degradation:
+
+```
+JointLoraExtractor (custom adapter)
+    ↓ if adapter missing / confidence < threshold
+GlinerPlusE5Extractor (zero-shot, always available)
+    ↓ if GLiNER unavailable
+E5ZeroShotExtractor (pure E5)
+    ↓ if E5 unavailable
+heuristic null-output (old admission_service path)
+```
+
+Same zero-confidently-wrong invariant as TLG — the classifier
+abstains rather than emit a confidently-wrong label.
+
+**Per-deployment adaptation.**  Operators train their own
+adapter against their corpus in one command:
+
+```bash
+ncms train-adapter --corpus ./my-docs \
+  --taxonomy ./my-topics.yaml \
+  --domain my_domain \
+  --output ./adapters/my_domain/v1/
+```
+
+The CLI runs the four-phase pipeline (bootstrap → SDG expand →
+adversarial augment → train + gate) and refuses to promote an
+adapter that fails the gate.  See
+[`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md) for
+the gate design.
+
+**Deprecated in favour of the SLM.**  One release after
+`NCMS_INTENT_SLOT_ENABLED` defaults to true, the following
+retire entirely: `application/admission_service.py`,
+`application/index_worker._has_state_declaration`,
+`infrastructure/extraction/label_detector.py`.
+
 ---
 
 ## 5. Embedded Knowledge Bus
