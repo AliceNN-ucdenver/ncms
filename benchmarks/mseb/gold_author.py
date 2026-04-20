@@ -172,8 +172,19 @@ def generate_candidates(
                 qid = (
                     f"{domain}-{shape}-{shape_counts[shape]+1:03d}"
                 )
-                title = short_title(gold["content"])
-                first = first_sentence(gold["content"])
+                # Optional: pull the human-readable title from a
+                # different memory in the chain (e.g. SWE patch
+                # queries phrase themselves with the issue body's
+                # prose title, not raw diff text).
+                title_source = tpl.get("title_from_source")
+                title_src_memory = gold
+                if title_source:
+                    for m in chain:
+                        if m.get("metadata", {}).get("source") in title_source:
+                            title_src_memory = m
+                            break
+                title = short_title(title_src_memory["content"])
+                first = first_sentence(title_src_memory["content"])
                 text = tpl["text_template"].format(
                     title=title,
                     first_sentence=first,

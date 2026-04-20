@@ -11,11 +11,14 @@ mseb_swe/raw/
 mseb_swe/raw_labeled/
 mseb_swe/build/
 mseb_swe/build_smoke/
+mseb_swe/gold_candidates.yaml
 mseb_clinical/raw/
 mseb_clinical/raw_labeled/
 mseb_clinical/build/
+mseb_clinical/gold_candidates.yaml
 mseb_convo/raw/
 mseb_convo/raw_labeled/
 mseb_convo/build/
+mseb_convo/gold_candidates.yaml
 mseb/run-logs/
 results/mseb/
