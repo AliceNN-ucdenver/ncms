@@ -150,10 +150,35 @@ transient terminal output.
 | Component | Status |
 | --- | --- |
 | `schema.py` — CorpusMemory + GoldQuery + PreferenceKind (v1 locked 2026-04-20) | ✅ done |
-| `mseb_swe/mine.py` — SWE-bench Verified miner | ✅ done (pilot passes) |
-| `mseb_clinical/mine.py` — PMC OA miner | ✅ done (pilot passes) |
-| `mseb_convo/mine.py` — LongMemEval wrapper | ✅ done (smoke-test passes) |
-| `mseb_{swe,clinical,convo}/label.py` | pending |
-| `mseb_{swe,clinical,convo}/gold.yaml` | pending |
-| `mseb/harness.py` (shared metrics + ablation flags) | pending |
+| `mseb_swe/mine.py` + `label.py` | ✅ done — SWE-bench Verified, 500 issues → 1,835 memories |
+| `mseb_clinical/mine.py` + `label.py` | ✅ done — PMC OA, 200 PMCIDs → 153 kept → 1,565 memories |
+| `mseb_convo/mine.py` + `label.py` | ✅ done — LongMemEval, 500 users → 458 subjects → 9,962 turns |
+| `mseb/metrics.py` | ✅ done — per-shape / per-preference / per-head F1 + Wilson CI |
+| `mseb/build.py` | ✅ done — labeled + gold.yaml → canonical JSONL with validation |
+| `mseb/harness.py` | ✅ done — 8 ablation flags, `--backend {ncms,mem0}` |
+| `mseb/backends/` — `MemoryBackend` protocol + `ncms` + `mem0` | ✅ done — mem0 uses Spark LLM + local MiniLM + in-memory Chroma |
+| `mseb/gold_author.py` — templated gold candidate generator | ✅ done |
+| `mseb_{swe,clinical,convo}/gold.yaml` — hand-authored / reviewed gold | pending (next sprint) |
+| Full ablation matrix runs | pending |
 | `docs/mseb-results.md` (pre-paper §4.2) | pending post-run |
+
+## 8. Backend abstraction (`benchmarks/mseb/backends/`)
+
+Every backend implements the ``MemoryBackend`` protocol
+(`backends/base.py`): `setup()` + `ingest(memories)` + `search(query, limit)`
++ `shutdown()`.  The harness treats them interchangeably.
+Adding a competitor is one file.
+
+Currently registered:
+
+| Backend | Heart | LLM | Embedder | Vector store |
+| --- | --- | --- | --- | --- |
+| `ncms` | `MemoryService` (full pipeline) | Spark for ingest-side SLM (optional) | SPLADE v3 sparse | Tantivy BM25 + NetworkX graph |
+| `mem0` | `mem0.Memory` | Spark for fact-extraction / rerank (optional) | `sentence-transformers/all-MiniLM-L6-v2` local | Chroma (ephemeral tempdir) |
+
+The mem0 default config is ``infer=False`` + ``rerank=False``
+(stores content verbatim, pure dense retrieval at query time) so
+the comparison against NCMS is apples-to-apples.  ``--mem0-infer
+--mem0-rerank`` enable the full mem0 pipeline for a separate
+"mem0-full" column in the results table.  Chroma runs against a
+tempdir that ``shutdown()`` cleans up — no cross-run state leakage.

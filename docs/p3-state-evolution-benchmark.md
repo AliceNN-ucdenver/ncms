@@ -5,7 +5,9 @@ SWE-only spec into a reusable multi-domain framework.  Schema
 v1 locked 2026-04-20 after pilot mining of MSEB-SWE + MSEB-Clinical
 confirmed state-evolution signal is present in both corpora; a
 third domain (MSEB-Convo) was added to cover the preference
-sub-type axis of the P2 multi-head classifier.*
+sub-type axis of the P2 multi-head classifier.  A pluggable
+backend layer was added so mem0 (and future competitors) run
+through the same harness / gold / metrics pipeline.*
 
 ---
 
@@ -57,11 +59,13 @@ reports, ...) is a matter of adding one directory.
 |---|---|---|
 | Framework doc (this) | `docs/p3-state-evolution-benchmark.md` | Design spec + addition playbook |
 | Shared harness | `benchmarks/mseb/` | Schema, metrics, pytest-fixtured CLI, ablation matrix |
+| Backend abstraction | `benchmarks/mseb/backends/` | `MemoryBackend` protocol + `ncms` / `mem0` implementations |
 | Dataset #1: software-dev | `benchmarks/mseb_swe/` | Mined from SWE-bench Verified |
 | Dataset #2: clinical | `benchmarks/mseb_clinical/` | Mined from PMC Open Access + synthetic augmentation |
 | Dataset #3: conversational (preferences) | `benchmarks/mseb_convo/` | Wraps LongMemEval corpus + hand-authored preference queries (positive / avoidance / habitual / difficult) |
-| Results | `benchmarks/results/mseb/<domain>/` | Timestamped runs with full tables |
-| Write-up | `docs/mseb-results.md` | Headline numbers + per-domain breakdown + ablation tables |
+| Gold authoring helper | `benchmarks/mseb/gold_author.py` | Template-anchored gold.yaml candidate generator (author reviews rows) |
+| Results | `benchmarks/results/mseb/<domain>/` | Timestamped runs with full tables, per-backend |
+| Write-up | `docs/mseb-results.md` | Headline numbers + per-domain breakdown + ablation tables + NCMS vs mem0 |
 
 All dataset JSONL files check in under CC-BY (matching both source
 licenses), so the benchmark is itself reusable — other memory
@@ -324,16 +328,25 @@ would be redundant without a new adapter.  Could become MSEB-Ops
 ### 4.1 CLI
 
 ```bash
-# Run one instantiation, one adapter, with TLG on
-uv run python -m benchmarks.mseb \
-    --corpus mseb_swe \
-    --adapter software_dev
+# NCMS — default full pipeline (TLG + SLM on)
+uv run python -m benchmarks.mseb.harness \
+    --domain mseb_swe \
+    --backend ncms \
+    --build-dir benchmarks/mseb_swe/build \
+    --adapter-domain software_dev
 
-# TLG fully off — baseline (BM25 + SPLADE + graph only)
-uv run python -m benchmarks.mseb --corpus mseb_swe --tlg-off
+# NCMS — TLG fully off (pure BM25 + SPLADE + graph baseline)
+uv run python -m benchmarks.mseb.harness --domain mseb_swe \
+    --backend ncms --build-dir benchmarks/mseb_swe/build --tlg-off
 
-# Full ablation matrix: every domain × every feature-flag cell
-uv run python -m benchmarks.mseb --all --ablate
+# mem0 — competitor (Spark LLM + local embedder + in-memory Chroma)
+uv run python -m benchmarks.mseb.harness --domain mseb_swe \
+    --backend mem0 --build-dir benchmarks/mseb_swe/build
+
+# mem0 with LLM fact-extraction + reranker (the "full mem0" config)
+uv run python -m benchmarks.mseb.harness --domain mseb_swe \
+    --backend mem0 --build-dir benchmarks/mseb_swe/build \
+    --mem0-infer --mem0-rerank
 ```
 
 ### 4.1.1 Ablation flag matrix
@@ -480,31 +493,38 @@ Pilots can parallelize — mining + labeling are independent per-domain.  Shared
 
 Each MSEB instantiation publishes three tables.
 
-### 7.1 Per-shape × per-strategy (all domains)
+### 7.1 Per-shape × per-strategy × per-backend (all domains)
 
-| | BM25 | BM25+SPLADE | +graph | **+TLG** | **SLM+TLG** |
-|---|---:|---:|---:|---:|---:|
-| current_state | | | | | |
-| origin | | | | | |
-| ordinal_first / ordinal_last | | | | | |
-| sequence | | | | | |
-| predecessor | | | | | |
-| interval / range | | | | | |
-| transitive_cause | | | | | |
-| causal_chain | | | | | |
-| concurrent | | | | | |
-| before_named | | | | | |
-| retirement | | | | | |
-| noise (rejection) | | | | | |
-| **overall rank-1** | | | | | |
+Columns: `mem0` (competitor, dense-only), `mem0-full`
+(`--mem0-infer --mem0-rerank`, mem0's full pipeline incl. LLM
+extraction + rerank), `ncms (tlg-off)` (the strategic baseline
+— BM25 + SPLADE + graph only), `ncms (tlg-on)` (headline row).
 
-`SLM+TLG` is the headline strategy: the SLM's heads emit
-ingest-side labels (declaration / retirement / preference) that
-TLG consumes when dispatching query-side.
+| | mem0 | mem0-full | ncms (tlg-off) | **ncms (tlg-on)** |
+|---|---:|---:|---:|---:|
+| current_state       | | | | |
+| origin              | | | | |
+| ordinal_first / last| | | | |
+| sequence            | | | | |
+| predecessor         | | | | |
+| interval / range    | | | | |
+| transitive_cause    | | | | |
+| causal_chain        | | | | |
+| concurrent          | | | | |
+| before_named        | | | | |
+| retirement          | | | | |
+| noise (rejection)   | | | | |
+| **overall rank-1**  | | | | |
 
-### 7.2 Per-preference × per-strategy (MSEB-Convo only)
+The mem0 row anchors the comparison against a widely-adopted
+open-source memory system (so the TLG lift isn't just a
+self-comparison).  `ncms (tlg-on)` is the headline: SLM heads
+emit ingest-side labels (declaration / retirement / preference)
+that TLG consumes when dispatching query-side.
 
-| | BM25 | BM25+SPLADE | **SLM only** | **SLM+TLG** |
+### 7.2 Per-preference × per-strategy × per-backend (MSEB-Convo only)
+
+| | mem0 | mem0-full | ncms (tlg-off) | **ncms (tlg-on + SLM)** |
 |---|---:|---:|---:|---:|
 | positive | | | | |
 | avoidance | | | | |
