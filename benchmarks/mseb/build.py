@@ -52,6 +52,7 @@ from benchmarks.mseb.schema import (
     INTENT_SHAPES,
     MESSAGE_KINDS,
     PREFERENCE_KINDS,
+    QUERY_CLASSES,
     CorpusMemory,
     GoldQuery,
     dump_corpus,
@@ -78,7 +79,7 @@ def load_labeled_dir(path: Path) -> list[CorpusMemory]:
     for jsonl in sorted(path.glob("*.jsonl")):
         if jsonl.name.startswith("_"):  # skip _stats.json, _questions.jsonl
             continue
-        for line in jsonl.read_text(encoding="utf-8").splitlines():
+        for line in jsonl.read_text(encoding="utf-8").split(chr(10)):
             line = line.strip()
             if not line:
                 continue
@@ -158,6 +159,14 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
             )
             pref = "none"
 
+        qclass = row.get("query_class", "general")
+        if qclass not in QUERY_CLASSES:
+            logger.warning(
+                "qid=%s: unknown query_class=%r → coerced to 'general'",
+                qid, qclass,
+            )
+            qclass = "general"
+
         out.append(GoldQuery(
             qid=qid,
             shape=shape,
@@ -169,6 +178,7 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
             expected_proof_pattern=row.get("expected_proof_pattern"),
             note=row.get("note", ""),
             preference=pref,
+            query_class=qclass,
         ))
     logger.info("loaded %d gold queries from %s", len(out), path)
     return out

@@ -386,6 +386,15 @@ def main() -> None:
         help="Skip phase 3 (useful for smoke tests).",
     )
     parser.add_argument(
+        "--skip-sdg", action="store_true",
+        help=(
+            "Skip phase 2 (template-SDG expansion).  Appropriate when "
+            "the gold corpus is already large enough to train without "
+            "synthetic augmentation — e.g. the swe_diff adapter's 1,835 "
+            "rule-labeled examples from MSEB-SWE."
+        ),
+    )
+    parser.add_argument(
         "--gold-upsample", type=int, default=1,
         help=(
             "How many times to repeat gold rows in the training mix.  "
@@ -407,6 +416,33 @@ def main() -> None:
         args.corpus_dir / f"adversarial_train_{args.domain}.jsonl"
     )
 
+    # Log the resolved domain ↔ adapter ↔ corpus mapping upfront so
+    # the run-log is self-describing (no silent mismatches).
+    try:
+        from experiments.intent_slot_distillation.schemas import (
+            get_domain_manifest,
+        )
+        m = get_domain_manifest(args.domain)  # type: ignore[arg-type]
+        logger.info("=" * 72)
+        logger.info("train_adapter: DOMAIN MANIFEST")
+        logger.info("  domain              = %s", m.name)
+        logger.info("  description         = %s", m.description)
+        logger.info("  gold corpus         = %s", m.gold_jsonl)
+        logger.info("  sdg corpus          = %s", m.sdg_jsonl)
+        logger.info("  adversarial corpus  = %s", m.adversarial_train_jsonl)
+        logger.info("  taxonomy            = %s", m.taxonomy_yaml)
+        logger.info("  adapter output root = %s", m.adapter_output_root)
+        logger.info("  deployed path       = %s", m.deployed_path(args.version))
+        logger.info("  CLI --adapter-dir   = %s", args.adapter_dir)
+        logger.info("  CLI --taxonomy      = %s", args.taxonomy)
+        logger.info("=" * 72)
+    except (KeyError, ImportError):
+        # New domain without a manifest — warn but proceed.
+        logger.warning(
+            "no DomainManifest for domain=%s; proceeding with explicit CLI paths",
+            args.domain,
+        )
+
     t0 = time.perf_counter()
 
     # Phase 1
@@ -415,13 +451,19 @@ def main() -> None:
         parser.error(f"no gold rows for domain={args.domain!r}")
 
     # Phase 2
-    sdg = phase2_expand(
-        args.domain,
-        target_size=args.target_size,
-        seed=args.seed,
-        taxonomy_path=args.taxonomy,
-        output_path=sdg_output,
-    )
+    if args.skip_sdg:
+        logger.info(
+            "[phase2] skipping SDG expansion (--skip-sdg); training on gold alone",
+        )
+        sdg = []
+    else:
+        sdg = phase2_expand(
+            args.domain,
+            target_size=args.target_size,
+            seed=args.seed,
+            taxonomy_path=args.taxonomy,
+            output_path=sdg_output,
+        )
 
     # Phase 3
     adversarial: list[GoldExample] = []

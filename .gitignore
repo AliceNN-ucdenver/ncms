@@ -36,16 +36,26 @@ openapi_letta.json
 # P2 intent-slot experiment artefacts.
 #
 # Full fine-tune checkpoints (~400 MB each) and autolabeler backups
-# are regeneratable and excluded.  Only the v4 adapter is kept in git
-# as the authoritative reference — earlier iteration runs (v1 / v2 /
-# v3 / v3_final / v1_multihead) are historical and reproducible via
+# are regeneratable and excluded.  The current authoritative adapters
+# kept in git are:
+#   - conversational/v4, clinical/v4, software_dev/v4   (P2 reference)
+#   - swe_diff/v1                                       (MSEB-SWE diff adapter)
+# Earlier iterations (v1 / v2 / v3 / v3_final / v1_multihead) are
+# historical and reproducible via
 # `experiments/intent_slot_distillation/train_adapter.py`.
 experiments/intent_slot_distillation/checkpoints/
 experiments/intent_slot_distillation/adapters/*/v1/
+!experiments/intent_slot_distillation/adapters/swe_diff/v1/
 experiments/intent_slot_distillation/adapters/*/v1_multihead/
 experiments/intent_slot_distillation/adapters/*/v2/
 experiments/intent_slot_distillation/adapters/*/v3/
 experiments/intent_slot_distillation/adapters/*/v3_final/
+
+# P2 training corpora — regeneratable from SWE-Gym / SDG via
+# experiments/intent_slot_distillation/corpus_builder.py + train_adapter.py.
+# Commit stats.json (small, reproducibility anchor) but not raw JSONL.
+experiments/intent_slot_distillation/corpus/*.jsonl
+!experiments/intent_slot_distillation/corpus/*.stats.json
 *.bak
 
 # Benchmark durable run-logs (~30 MB each from verbose runs; regeneratable)

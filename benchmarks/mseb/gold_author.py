@@ -62,7 +62,7 @@ def load_labeled_memories(labeled_dir: Path) -> list[dict]:
     for jsonl in sorted(labeled_dir.glob("*.jsonl")):
         if jsonl.name.startswith("_"):
             continue
-        for line in jsonl.read_text(encoding="utf-8").splitlines():
+        for line in jsonl.read_text(encoding="utf-8").split(chr(10)):
             line = line.strip()
             if not line:
                 continue
@@ -108,6 +108,100 @@ def short_title(text: str, max_chars: int = 80) -> str:
             return line[:max_chars].rsplit(" ", 1)[0]
         return line
     return text[:max_chars]
+
+
+# ---------------------------------------------------------------------------
+# Entity extraction — pulls distinctive features per memory type so we can
+# anchor queries on symbols / paths / test-names that appear in the GOLD but
+# don't appear in its chain siblings.  See docstring at module top for why
+# this matters: without it, queries lexically match whichever memory carries
+# the bug description, and rank-1 is unwinnable for non-issue-body golds.
+# ---------------------------------------------------------------------------
+
+
+_PATCH_FILE_RE = re.compile(r"diff --git a/([^\s]+)")
+_BACKTICK_SYMBOL_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]{1,80})`")
+_TEST_PATH_HINT = re.compile(r"(?i)^tests?/")
+
+
+def extract_patch_files(content: str) -> list[str]:
+    """File paths modified by a patch (``diff --git a/<path>`` lines).
+
+    Returns an ordered, deduplicated list.  Empty for non-patch content.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in _PATCH_FILE_RE.finditer(content):
+        path = m.group(1)
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(path)
+    return out
+
+
+def extract_backtick_symbols(content: str) -> list[str]:
+    """Code symbols in backticks — typical for issue bodies."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in _BACKTICK_SYMBOL_RE.finditer(content):
+        sym = m.group(1)
+        if sym in seen:
+            continue
+        seen.add(sym)
+        out.append(sym)
+    return out
+
+
+def first_test_path(content: str) -> str | None:
+    """If the patch content touches a test file, return its path."""
+    for path in extract_patch_files(content):
+        if _TEST_PATH_HINT.match(path):
+            return path
+    return None
+
+
+def first_non_test_path(content: str) -> str | None:
+    """If the patch touches a non-test file, return its path."""
+    for path in extract_patch_files(content):
+        if not _TEST_PATH_HINT.match(path):
+            return path
+    return None
+
+
+def subject_entities(chain: list[dict]) -> dict[str, str]:
+    """Collect distinguishing tokens per subject chain.
+
+    Returns a dict consumed by the template ``.format()`` call:
+    ``{symbol, patch_file, test_file, any_file}`` plus ``{title}``.
+    Missing keys default to empty strings.
+    """
+    out = {
+        "symbol": "",
+        "patch_file": "",
+        "test_file": "",
+        "any_file": "",
+    }
+    for m in chain:
+        src = m.get("metadata", {}).get("source", "")
+        content = m.get("content", "")
+        if src == "issue_body" and not out["symbol"]:
+            syms = extract_backtick_symbols(content)
+            if syms:
+                out["symbol"] = syms[0]
+        elif src == "resolving_patch":
+            if not out["patch_file"]:
+                p = first_non_test_path(content)
+                if p:
+                    out["patch_file"] = p
+                    out["any_file"] = out.get("any_file") or p
+        elif src == "test_patch":
+            if not out["test_file"]:
+                p = first_test_path(content) or first_non_test_path(content)
+                if p:
+                    out["test_file"] = p
+                    out["any_file"] = out.get("any_file") or p
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +254,11 @@ def generate_candidates(
         chain = by_subject[subject]
         if not chain:
             continue
+
+        # Per-subject entity bag — extracted once so every shape's
+        # template can draw from it.
+        entities = subject_entities(chain)
+
         for shape, shape_templates in templates.items():
             if shape == "noise":
                 continue  # handled below
@@ -169,13 +268,22 @@ def generate_candidates(
                 gold = _pick_gold(chain, tpl)
                 if gold is None:
                     continue
+
+                # Check template's required entities — skip this
+                # candidate if the subject doesn't have them
+                # (otherwise we'd emit queries with empty ``{symbol}``
+                # or ``{patch_file}`` placeholders, yielding garbage
+                # like "Which change touched ?" ).
+                required = tpl.get("requires_entities") or []
+                if any(not entities.get(k) for k in required):
+                    continue
+
                 qid = (
                     f"{domain}-{shape}-{shape_counts[shape]+1:03d}"
                 )
                 # Optional: pull the human-readable title from a
-                # different memory in the chain (e.g. SWE patch
-                # queries phrase themselves with the issue body's
-                # prose title, not raw diff text).
+                # different memory in the chain when the gold is
+                # code-heavy.
                 title_source = tpl.get("title_from_source")
                 title_src_memory = gold
                 if title_source:
@@ -185,12 +293,18 @@ def generate_candidates(
                             break
                 title = short_title(title_src_memory["content"])
                 first = first_sentence(title_src_memory["content"])
-                text = tpl["text_template"].format(
-                    title=title,
-                    first_sentence=first,
-                    subject=subject,
-                    entity=tpl.get("entity_placeholder", ""),
-                )
+                try:
+                    text = tpl["text_template"].format(
+                        title=title,
+                        first_sentence=first,
+                        subject=subject,
+                        entity=tpl.get("entity_placeholder", ""),
+                        **entities,
+                    )
+                except KeyError:
+                    # Template asked for an entity not in the bag —
+                    # skip this candidate rather than emit garbage.
+                    continue
                 # Optional ordinal-anchor alternate (the first
                 # memory in the chain is frequently an acceptable
                 # alternate for origin/ordinal_first style queries).
@@ -319,7 +433,7 @@ def main() -> None:
         description="MSEB gold authoring: labeled corpus → gold.yaml candidates",
     )
     ap.add_argument("--domain", required=True,
-                    choices=["swe", "clinical", "convo"])
+                    choices=["swe", "clinical", "convo", "softwaredev"])
     ap.add_argument("--labeled-dir", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--max-per-shape", type=int, default=30)

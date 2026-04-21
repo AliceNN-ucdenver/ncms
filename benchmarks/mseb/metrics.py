@@ -19,9 +19,11 @@ from typing import Any
 from benchmarks.mseb.schema import (
     INTENT_SHAPES,
     PREFERENCE_KINDS,
+    QUERY_CLASSES,
     GoldQuery,
     IntentShape,
     PreferenceKind,
+    QueryClass,
 )
 
 # ---------------------------------------------------------------------------
@@ -165,6 +167,12 @@ def aggregate(
     pref_hits_r5: dict[PreferenceKind, int] = defaultdict(int)
     pref_n: dict[PreferenceKind, int] = defaultdict(int)
 
+    # ---- per-class (general / temporal / preference / noise) ----
+    class_hits_r1: dict[QueryClass, int] = defaultdict(int)
+    class_hits_r5: dict[QueryClass, int] = defaultdict(int)
+    class_sum_rr: dict[QueryClass, float] = defaultdict(float)
+    class_n: dict[QueryClass, int] = defaultdict(int)
+
     # ---- latency / confidently-wrong ----
     latencies: list[float] = []
     confidently_wrong = 0
@@ -191,6 +199,12 @@ def aggregate(
         pref_hits_r1[q.preference] += r1
         pref_hits_r5[q.preference] += r5
         pref_n[q.preference] += 1
+
+        qc = getattr(q, "query_class", "general") or "general"
+        class_hits_r1[qc] += r1
+        class_hits_r5[qc] += r5
+        class_sum_rr[qc] += rr_val
+        class_n[qc] += 1
 
         if pred.latency_ms > 0:
             latencies.append(pred.latency_ms)
@@ -222,6 +236,17 @@ def aggregate(
             "r@1": (pref_hits_r1[pref] / n) if n else 0.0,
             "r@5": (pref_hits_r5[pref] / n) if n else 0.0,
             "r@1_ci95": wilson_ci(pref_hits_r1[pref], n),
+        }
+
+    per_class: dict[str, dict[str, float | int | tuple[float, float]]] = {}
+    for cls in QUERY_CLASSES:
+        n = class_n[cls]
+        per_class[cls] = {
+            "n": n,
+            "r@1": (class_hits_r1[cls] / n) if n else 0.0,
+            "r@5": (class_hits_r5[cls] / n) if n else 0.0,
+            "mrr": (class_sum_rr[cls] / n) if n else 0.0,
+            "r@1_ci95": wilson_ci(class_hits_r1[cls], n),
         }
 
     # ---- overall aggregates ----
@@ -265,6 +290,7 @@ def aggregate(
         },
         "per_shape": per_shape,
         "per_preference": per_preference,
+        "per_class": per_class,
         "per_head": per_head,
         "latency_p50_ms": _pct(latencies, 0.50),
         "latency_p95_ms": _pct(latencies, 0.95),
@@ -308,6 +334,20 @@ def markdown_summary(result: dict[str, Any], *, run_id: str = "") -> str:
             f"{cell['r@1']:.3f} | {cell['r@5']:.3f} | {cell['mrr']:.3f} | "
             f"[{lo:.2f}, {hi:.2f}] |",
         )
+
+    if any(cell["n"] for cell in result.get("per_class", {}).values()):
+        lines.append("\n## Per-class")
+        lines.append("| query_class | n | r@1 | r@5 | MRR | r@1 95% CI |")
+        lines.append("|---|---:|---:|---:|---:|---|")
+        for cls, cell in result["per_class"].items():
+            if not cell["n"]:
+                continue
+            lo, hi = cell["r@1_ci95"]
+            lines.append(
+                f"| `{cls}` | {cell['n']} | "
+                f"{cell['r@1']:.3f} | {cell['r@5']:.3f} | "
+                f"{cell['mrr']:.3f} | [{lo:.2f}, {hi:.2f}] |",
+            )
 
     if any(cell["n"] for cell in result["per_preference"].values()):
         lines.append("\n## Per-preference")

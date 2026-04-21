@@ -137,9 +137,13 @@ class Mem0Backend:
         # the harness's event loop during cold model load (MiniLM is
         # ~80MB but still spends 0.5-2s on first init).
         self._memory = await asyncio.to_thread(Memory.from_config, config)
+        # Log the actual runtime config (unambiguous, greppable).
         logger.info(
-            "mem0 setup: llm=%s embedder=%s infer=%s rerank=%s",
-            self.llm_model, self.embedder_model, self.infer, self.rerank,
+            "mem0 runtime config: llm=%s api_base=%s embedder=%s "
+            "collection=%s infer=%s rerank=%s user_id=%s tmp_path=%s",
+            self.llm_model, self.llm_api_base, self.embedder_model,
+            self.collection_name, self.infer, self.rerank,
+            GLOBAL_USER_ID, self._tmp_path,
         )
 
     # -------------------------------------------------------------------

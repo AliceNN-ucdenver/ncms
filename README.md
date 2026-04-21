@@ -81,7 +81,7 @@ Every memory enters through an **ingest pipeline** that classifies it &mdash; li
 
 ### Ingest-Side Intelligence — The Fine-Tunable SLM
 
-The ingest pipeline used to depend on **five separate pieces of brittle pattern-matching code** to decide admission routing, detect state changes, tag topics, populate domains, and extract preferences. NCMS now replaces all of them with a **single fine-tuned LoRA adapter** running a multi-head BERT classifier — one forward pass produces five classification decisions per memory. ([P2 plan](docs/p2-plan.md) · [Sprint 4 findings](docs/intent-slot-sprint-4-findings.md))
+The ingest pipeline used to depend on **five separate pieces of brittle pattern-matching code** to decide admission routing, detect state changes, tag topics, populate domains, and extract preferences. NCMS now replaces all of them with a **single fine-tuned LoRA adapter** running a multi-head BERT classifier — one forward pass produces five classification decisions per memory. ([P2 plan](docs/completed/p2-plan.md) · [Sprint 4 findings](docs/intent-slot-sprint-4-findings.md))
 
 <p align="center">
   <img src="docs/assets/intent-slot-slm.svg" alt="Intent-Slot SLM - 5-head LoRA classifier + fine-tune pipeline" width="100%">
@@ -109,7 +109,7 @@ fallback:   E5 zero-shot   (cold-start: intent-only head, no training required)
 heuristic:  null output    (admission=persist, everything else None — ingest keeps working)
 ```
 
-**Dynamic topics.** The topic vocabulary lives in the adapter's `manifest.json` + `taxonomy.yaml`, **not** in the codebase. Swap adapter → swap topics. The dashboard enumerates topics directly from the database (`SQLiteStore.list_topics_seen()`) with zero config coupling. Three reference adapters ship today: `conversational`, `software_dev`, `clinical` — each 2.4 MB at `~/.ncms/adapters/<domain>/v4/`.
+**Dynamic topics.** The topic vocabulary lives in the adapter's `manifest.json` + `taxonomy.yaml`, **not** in the codebase. Swap adapter → swap topics. The dashboard enumerates topics directly from the database (`SQLiteStore.list_topics_seen()`) with zero config coupling. Four reference adapters ship today: `conversational/v4`, `software_dev/v4`, `clinical/v4`, and `swe_diff/v1` (trained on SWE-Gym diffs, zero repo overlap with SWE-bench Verified — see [datasheet](experiments/intent_slot_distillation/adapters/swe_diff/DATASHEET.md)) — each ~2.4 MB at `~/.ncms/adapters/<domain>/<version>/`. Adapter ↔ corpus ↔ taxonomy wiring is registered in `experiments/intent_slot_distillation/schemas.py::DOMAIN_MANIFESTS`, and all four are baked into the NemoClaw hub Docker image.
 
 ### Retrieval Pipeline
 
@@ -133,7 +133,7 @@ Traditional memory systems compress documents into dense vectors, losing precisi
 
 **Tier 4 &mdash; Structured Recall.** The `recall()` method layers structured context on top: entity state snapshots, episode membership with sibling expansion, causal chains from the HTMG. One call returns what takes 5+ tool calls elsewhere.
 
-**Tier 5 &mdash; Temporal Linguistic Geometry (TLG).** For state-evolution queries ("What's the *current* authentication scheme?", "What caused the payments delay?", "What came before MFA?"), TLG runs a **grammar-based structural proof** over typed state-transition edges. It produces an exact answer (or abstains) with a readable syntactic proof — and composes with BM25 via a **zero-confidently-wrong invariant**: when TLG's confidence is high, its rank-1 answer replaces BM25's head; when it abstains, BM25 ordering is returned unchanged. On the 32-query ADR corpus spanning 11 intent shapes (current_state, ordinal_first/last, causal_chain, sequence, predecessor, interval, transitive_cause, before_named, concurrent, noise), **TLG hits 32/32 top-5 and rank-1** vs BM25's 41 % / 16 %. ([Pre-paper](docs/temporal-linguistic-geometry.md) · [Validation findings](docs/tlg-validation-findings.md) · [Integration plan](docs/p1-plan.md))
+**Tier 5 &mdash; Temporal Linguistic Geometry (TLG).** For state-evolution queries ("What's the *current* authentication scheme?", "What caused the payments delay?", "What came before MFA?"), TLG runs a **grammar-based structural proof** over typed state-transition edges. It produces an exact answer (or abstains) with a readable syntactic proof — and composes with BM25 via a **zero-confidently-wrong invariant**: when TLG's confidence is high, its rank-1 answer replaces BM25's head; when it abstains, BM25 ordering is returned unchanged. On the 32-query ADR corpus spanning 11 intent shapes (current_state, ordinal_first/last, causal_chain, sequence, predecessor, interval, transitive_cause, before_named, concurrent, noise), **TLG hits 32/32 top-5 and rank-1** vs BM25's 41 % / 16 %. ([Pre-paper](docs/temporal-linguistic-geometry.md) · [Validation findings](docs/tlg-validation-findings.md) · [Integration plan](docs/completed/p1-plan.md))
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
@@ -210,7 +210,7 @@ await agent.announce_knowledge(
 
 ## Fine-Tune Your Own Adapter
 
-The three reference adapters ship at `~/.ncms/adapters/{conversational,software_dev,clinical}/v4/` — but the point of the architecture is that **operators train their own for their own domain**. The classifier does its best work when it's been fine-tuned on the kind of content your users actually ingest.
+Four reference adapters ship today — three prose-content adapters at `~/.ncms/adapters/{conversational,software_dev,clinical}/v4/` and one diff-shaped adapter at `~/.ncms/adapters/swe_diff/v1/` — but the point of the architecture is that **operators train their own for their own domain**. The classifier does its best work when it's been fine-tuned on the kind of content your users actually ingest.
 
 ### One-command training
 
@@ -256,7 +256,7 @@ uv run python -m benchmarks longmemeval --features-on \
     --intent-slot-domain my_domain
 ```
 
-See [P2 plan §2.3 Adapter lifecycle](docs/p2-plan.md#23-adapter-lifecycle), [Sprint 4 findings §7 Known sharp edges](docs/intent-slot-sprint-4-findings.md), and [Sprint 1–3 findings §9 Post-sprint fixes](docs/intent-slot-sprints-1-3.md) for the detailed playbook.
+See [P2 plan §2.3 Adapter lifecycle](docs/completed/p2-plan.md#23-adapter-lifecycle), [Sprint 4 findings §7 Known sharp edges](docs/intent-slot-sprint-4-findings.md), and [Sprint 1–3 findings §9 Post-sprint fixes](docs/intent-slot-sprints-1-3.md) for the detailed playbook.
 
 ---
 
@@ -277,21 +277,40 @@ Across 11 intent shapes on the hand-curated ADR / project / clinical corpus:
 | Entity-scoped + path-rerank | 14 / 32 (44 %) | 6 / 32 (19 %) |
 | **TLG grammar** | **32 / 32 (100 %)** | **32 / 32 (100 %)** |
 
-Every TLG answer comes with a readable syntactic proof ("successor = ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"). On LongMemEval's conversational subset the grammar correctly **abstains** (framing mismatch — LME isn't state-evolution content) and falls through to BM25+SPLADE unchanged. Full validation in [`docs/tlg-validation-findings.md`](docs/tlg-validation-findings.md); the reusable SWE state-evolution benchmark is planned at [`docs/p3-state-evolution-benchmark.md`](docs/p3-state-evolution-benchmark.md).
+Every TLG answer comes with a readable syntactic proof ("successor = ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"). On LongMemEval's conversational subset the grammar correctly **abstains** (framing mismatch — LME isn't state-evolution content) and falls through to BM25+SPLADE unchanged. Full validation in [`docs/tlg-validation-findings.md`](docs/tlg-validation-findings.md); the reusable four-domain state-evolution benchmark (MSEB v1) ships at [`docs/mseb-results.md`](docs/mseb-results.md) ([original design](docs/completed/p3-state-evolution-benchmark.md)).
 
 ### Intent-Slot SLM — ingest classifier (NEW, 2026-04)
 
-Three reference adapters trained on 27-42 gold examples per domain plus ~400 SDG rows + 300 adversarial:
+Four reference adapters — three prose adapters trained on 27-42 gold examples per domain plus ~400 SDG rows + 300 adversarial, plus a diff-shaped adapter trained on SWE-Gym (2,438 issues):
 
 | Domain | Intent F1 | Slot F1 | Joint | Topic F1 | Admission F1 | State F1 | p95 ms |
 |---|--:|--:|--:|--:|--:|--:|--:|
-| conversational | 1.000 | 0.987 | 0.972 | 1.000 | 1.000 | 0.333¹ | 43 |
-| software_dev | 1.000 | 0.983 | 0.952 | 1.000 | 1.000 | 1.000 | 73 |
-| clinical | 1.000 | 0.966 | 0.926 | 1.000 | 1.000 | 1.000 | 42 |
+| conversational/v4 | 1.000 | 0.987 | 0.972 | 1.000 | 1.000 | 0.333¹ | 43 |
+| software_dev/v4 | 1.000 | 0.983 | 0.952 | 1.000 | 1.000 | 1.000 | 73 |
+| clinical/v4 | 1.000 | 0.966 | 0.926 | 1.000 | 1.000 | 1.000 | 42 |
+| swe_diff/v1² | — | — | — | — | — | — | — |
 
 ¹ Preferences never declare / retire state, so state_change collapses to "none" by design on conversational.
+² `swe_diff/v1` trained on SWE-Gym diffs (pandas / MONAI / mypy / dvc / dask / ...) — zero repo overlap with SWE-bench Verified. Fixes 100 % of "resolving patch = `declaration`" misclassifications the prose adapter produced on raw diff content. See the [datasheet](experiments/intent_slot_distillation/adapters/swe_diff/DATASHEET.md) and [MSEB results §5](docs/mseb-results.md#5-the-5-head-slm--per-head-contribution) for per-head evidence.
 
 Compare to zero-shot baselines: E5 label-similarity hits intent F1 0.347–0.612 on the same gold — the LoRA adapters gain **+0.22 to +0.49 absolute intent F1** while eliminating the 26.7–56.7% confidently-wrong rate.
+
+### MSEB v1 — state-evolution retrieval across four domains (NEW, 2026-04-21)
+
+A pluggable, gold-audited benchmark for state-evolution memory retrieval: four domains (SWE-bench Verified diffs, PMC clinical case reports, ADR prose, LongMemEval conversations) × four query classes (`general` / `temporal` / `preference` / `noise`). Head-to-head against [mem0](https://github.com/mem0ai/mem0) in a 12-cell single-pass run (747 hand-audited gold queries, locked):
+
+| Domain | NCMS (hybrid) | mem0 (dense) | Δ NCMS – mem0 |
+|---|--:|--:|--:|
+| MSEB-SoftwareDev (ADR prose) | **0.745** | 0.455 | **+0.29** |
+| MSEB-Clinical (PMC case reports) | **0.672** | 0.224 | **+0.45** |
+| MSEB-SWE (SWE-bench Verified diffs) | **0.416–0.456** | 0.256 | +0.16–0.20 |
+| MSEB-Convo (LongMemEval) | **0.345** | 0.207 | +0.14 |
+
+**Hybrid retrieval beats dense retrieval on state-evolution content by +0.14 to +0.45 rank-1 across every domain tested** — not a borderline result. All three backends (NCMS tlg-on, NCMS tlg-off, mem0) correctly reject 100 % of the 59 adversarial off-topic noise queries. Per-class breakdown, per-head SLM contribution analysis, honest TLG limitations, and full reproducibility recipe in [`docs/mseb-results.md`](docs/mseb-results.md).
+
+```bash
+./benchmarks/mseb/run_main_12.sh    # One-shot: 12 cells, 4 domains × 3 backends
+```
 
 ### LongMemEval A/B (500-question non-regression check, 2026-04-20)
 
@@ -458,7 +477,7 @@ Note: the ingest-side intent-slot SLM (`bert-base-uncased` + LoRA) runs happily 
 ## Roadmap (Post-v1)
 
 **P3 — SWE state-evolution benchmark** (planned)
-- [ ] SWE-bench Verified-derived state-evolution corpus (~500 issues, ~6k memories, ~100 gold queries across 11 intent shapes) — see [`docs/p3-state-evolution-benchmark.md`](docs/p3-state-evolution-benchmark.md)
+- [x] **MSEB v1** — four-domain state-evolution benchmark (SWE-bench Verified / PMC Clinical / ADR prose / LongMemEval), 747 hand-audited gold queries stratified by `general` / `temporal` / `preference` / `noise`, head-to-head vs mem0 — results in [`docs/mseb-results.md`](docs/mseb-results.md); full-scale rerun next
 - [ ] Reusable JSONL artefact that other memory systems can consume without knowing NCMS internals
 - [ ] Gates paper milestone M3 ("confidently-wrong = 0 at scale")
 

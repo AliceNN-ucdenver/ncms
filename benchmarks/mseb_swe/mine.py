@@ -49,7 +49,17 @@ except ImportError:  # pragma: no cover — allow running outside repo
 
 logger = logging.getLogger("mseb_swe.mine")
 
-DATASET = "princeton-nlp/SWE-bench_Verified"
+# Alternative datasets with identical schema — used for training the
+# swe_diff adapter on a DISJOINT corpus from the MSEB-SWE benchmark
+# (SWE-bench Verified).  See experiments/intent_slot_distillation/
+# adapters/swe_diff/DATASHEET.md for the train/test leakage rationale.
+DATASETS: dict[str, str] = {
+    "swe_bench_verified": "princeton-nlp/SWE-bench_Verified",
+    "swe_gym":            "SWE-Gym/SWE-Gym",
+    "swe_gym_lite":       "SWE-Gym/SWE-Gym-Lite",
+}
+DEFAULT_DATASET_KEY = "swe_bench_verified"
+DATASET = DATASETS[DEFAULT_DATASET_KEY]  # legacy alias
 DEFAULT_OUT = Path(__file__).parent / "raw"
 
 
@@ -149,19 +159,28 @@ def mine(
     out_dir: Path,
     split: str = "test",
     hf_cache_dir: Path | None = None,
+    dataset: str = DATASET,
+    shuffle_seed: int | None = None,
 ) -> dict:
-    """Fetch SWE-bench Verified and emit raw message JSONL per issue.
+    """Fetch a SWE-bench-compatible dataset and emit raw messages.
 
-    Returns a stats dict (``issues``, ``messages``, ``per_source``).
+    ``dataset`` defaults to SWE-bench Verified.  Pass
+    ``SWE-Gym/SWE-Gym`` to mine the disjoint training-only corpus.
+    ``shuffle_seed`` deterministically shuffles rows before slicing
+    to ``limit`` — avoids alphabetical project-clumping in partial mines.
     """
     from datasets import load_dataset
 
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = str(hf_cache_dir) if hf_cache_dir else None
 
-    logger.info("Loading %s [split=%s] …", DATASET, split)
-    ds = load_dataset(DATASET, split=split, cache_dir=cache)
+    logger.info("Loading %s [split=%s] …", dataset, split)
+    ds = load_dataset(dataset, split=split, cache_dir=cache)
     logger.info("Loaded %d rows", len(ds))
+
+    if shuffle_seed is not None:
+        ds = ds.shuffle(seed=shuffle_seed)
+        logger.info("shuffled with seed=%d for representative sampling", shuffle_seed)
 
     stats = {
         "issues": 0,
@@ -221,16 +240,38 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=50,
                         help="Max issues to mine (default 50 for pilot)")
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--split", default="test",
-                        help="HF dataset split (verified data is under 'test')")
+    parser.add_argument("--split", default=None,
+                        help="HF dataset split.  Default 'test' for "
+                             "SWE-bench Verified, 'train' for SWE-Gym.")
     parser.add_argument("--hf-cache-dir", type=Path, default=None)
+    parser.add_argument(
+        "--dataset", default=DEFAULT_DATASET_KEY,
+        choices=list(DATASETS) + list(DATASETS.values()),
+        help="Which upstream dataset to pull from (default: SWE-bench Verified).",
+    )
+    parser.add_argument(
+        "--shuffle-seed", type=int, default=None,
+        help="Shuffle dataset rows before slicing to --limit.  Recommended "
+             "for SWE-Gym training mines (alphabetical ordering clumps "
+             "rows by repo).  Default None (preserve upstream order).",
+    )
     args = parser.parse_args()
+
+    # Accept either friendly keys or full HF names.
+    dataset_name = DATASETS.get(args.dataset, args.dataset)
+    # Default split depends on the dataset — SWE-bench uses 'test' for the
+    # verified split; SWE-Gym ships as 'train' only.
+    split = args.split or (
+        "test" if dataset_name.endswith("SWE-bench_Verified") else "train"
+    )
 
     stats = mine(
         limit=args.limit,
         out_dir=args.out_dir,
-        split=args.split,
+        split=split,
         hf_cache_dir=args.hf_cache_dir,
+        dataset=dataset_name,
+        shuffle_seed=args.shuffle_seed,
     )
     print(json.dumps(stats, indent=2, sort_keys=True))
 

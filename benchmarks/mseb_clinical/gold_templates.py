@@ -1,201 +1,198 @@
 """Gold query templates for MSEB-Clinical.
 
-Anchors each query at a specific section of a PMC case report.
-See ``benchmarks/mseb_swe/gold_templates.py`` for field docs.
+Same design principle as SWE (see that module's docstring): each
+query must reference distinguishing vocabulary of the gold
+section so it doesn't just match the memory with the most
+bug-description words.
 
-Clinical narratives don't carry per-event timestamps, so the
-``interval`` / ``range`` shapes are excluded by design — those
-queries need real clock times (see `docs/p3-state-evolution-benchmark.md`
-§3b).  All 12 supported shapes produce candidates against the
-normal case-report arc:
+Clinical sections and their distinguishing vocabulary:
 
-  abstract → case presentation → investigations →
-    differential diagnosis / initial diagnosis →
-    management / treatment → outcome / follow-up →
-    final diagnosis → discussion
+| source                   | distinguishing vocabulary                   |
+|--------------------------|---------------------------------------------|
+| ``abstract``             | summary; often names final diagnosis         |
+| ``case presentation`` / ``case report`` | patient age/sex, presenting complaint |
+| ``history``              | past medical history, medications             |
+| ``investigations`` / ``workup`` | lab values, imaging, test results      |
+| ``differential diagnosis`` | hypothesis list, "differential"             |
+| ``initial diagnosis``    | first working diagnosis                       |
+| ``management`` / ``treatment`` | drug/procedure names, "administered"    |
+| ``course`` / ``outcome`` / ``follow-up`` | patient trajectory, "recovered" |
+| ``final diagnosis``      | "confirmed", "final", established diagnosis   |
+| ``discussion``           | retrospective reasoning, mechanism            |
+| ``conclusion``           | lessons learned, takeaways                    |
 
-Caveats documented in `benchmarks/mseb_clinical/README.md` §6:
-- ~30 % of authors don't use the canonical "Differential
-  Diagnosis" heading; reasoning lives in Discussion / Case
-  Description.  Templates target `causal_link` memories labeled
-  by the labeler's regex rather than raw heading names.
+Queries use the abstract's first sentence as ``{title}`` (the
+disease context stays consistent across a subject's queries)
+and shape-appropriate section vocabulary.
 """
 
 from __future__ import annotations
 
 TEMPLATES: dict[str, list[dict[str, object]]] = {
     # -----------------------------------------------------------------
-    # current_state — gold = final diagnosis (what the patient ends up with)
+    # current_state — final established diagnosis
     # -----------------------------------------------------------------
     "current_state": [
         {
-            "text_template": "What is the final diagnosis for the patient described in: {title}?",
+            "text_template": "What final confirmed diagnosis did the workup establish for: {title}?",
             "gold_kind": "retirement",
             "gold_source_filter": ["final diagnosis"],
         },
         {
-            "text_template": "What is the current clinical picture following: {title}?",
+            "text_template": "What was the corrected diagnosis after full investigation in: {title}?",
             "gold_kind": "retirement",
+            "gold_source_filter": ["discussion"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # origin — gold = abstract or presentation (how the patient presented)
+    # origin — how the patient first presented
     # -----------------------------------------------------------------
     "origin": [
         {
-            "text_template": "How did the patient first present with: {title}?",
-            "gold_kind": "ordinal_anchor",
-            "gold_source_filter": ["abstract"],
-        },
-        {
-            "text_template": "What were the initial symptoms in the case described as: {title}?",
+            "text_template": "How did the patient first present with signs consistent with: {title}?",
             "gold_kind": "declaration",
-            "gold_source_filter": ["case presentation", "case report", "presentation"],
-        },
-    ],
-
-    # -----------------------------------------------------------------
-    # ordinal_first
-    # -----------------------------------------------------------------
-    "ordinal_first": [
-        {
-            "text_template": "What was the first recorded observation about this patient: {title}?",
-            "gold_kind": "ordinal_anchor",
-            "gold_source_filter": ["abstract"],
+            "gold_source_filter": ["case presentation", "case report", "presentation", "history"],
         },
         {
-            "text_template": "What was the presenting complaint in: {title}?",
+            "text_template": "What was the patient's presenting complaint in: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "presentation", "history"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # ordinal_last — gold = conclusion or final diagnosis
+    # ordinal_first — earliest recorded observation
+    # -----------------------------------------------------------------
+    "ordinal_first": [
+        {
+            "text_template": "What was the earliest documented patient observation in: {title}?",
+            "gold_kind": "declaration",
+            "gold_source_filter": ["case presentation", "case report", "history"],
+        },
+    ],
+
+    # -----------------------------------------------------------------
+    # ordinal_last — final outcome / follow-up
     # -----------------------------------------------------------------
     "ordinal_last": [
         {
-            "text_template": "What was the final outcome in the case: {title}?",
-            "gold_kind": "ordinal_anchor",
-            "gold_source_filter": ["conclusion"],
-        },
-        {
-            "text_template": "What was the last documented state of the patient in: {title}?",
+            "text_template": "What was the patient's outcome at final follow-up in: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["outcome", "follow-up"],
         },
+        {
+            "text_template": "What conclusion did the authors draw from the case of: {title}?",
+            "gold_kind": "ordinal_anchor",
+            "gold_source_filter": ["conclusion"],
+        },
     ],
 
     # -----------------------------------------------------------------
-    # sequence — gold = case presentation (start of diagnostic arc)
+    # sequence — the diagnostic sequence
     # -----------------------------------------------------------------
     "sequence": [
         {
-            "text_template": "Trace the diagnostic sequence starting with: {title}",
+            "text_template": "What initial presentation started the diagnostic workup for: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # predecessor — gold = initial_diagnosis / case presentation (before revision)
+    # predecessor — earlier working diagnosis (before the final)
     # -----------------------------------------------------------------
     "predecessor": [
         {
-            "text_template": "What was the initial diagnosis before revision in: {title}?",
+            "text_template": "What working diagnosis was considered before the final one in: {title}?",
             "gold_kind": "declaration",
-            "gold_source_filter": ["initial diagnosis"],
+            "gold_source_filter": ["initial diagnosis", "differential diagnosis"],
         },
         {
-            "text_template": "What was the working diagnosis prior to the final one in: {title}?",
-            "gold_kind": "declaration",
-            "gold_source_filter": ["differential diagnosis", "initial diagnosis"],
-        },
-        {
-            "text_template": "What was suspected before the correct diagnosis was established in: {title}?",
+            "text_template": "What diagnosis was initially suspected based on presentation in: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # transitive_cause — gold = discussion (explains the revised diagnosis)
+    # transitive_cause — which new investigation revised the diagnosis
     # -----------------------------------------------------------------
     "transitive_cause": [
         {
-            "text_template": "What evidence ultimately led to the correct diagnosis in: {title}?",
-            "gold_kind": "causal_link",
-            "gold_source_filter": ["discussion"],
+            "text_template": "What laboratory or imaging finding drove the diagnostic revision in: {title}?",
+            "gold_kind": "declaration",
+            "gold_source_filter": ["investigations", "workup"],
         },
         {
-            "text_template": "What new test or finding caused the diagnosis to be revised in: {title}?",
+            "text_template": "What new test result prompted reconsidering the diagnosis in: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["investigations", "workup"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # causal_chain — gold = discussion (chain of reasoning)
+    # causal_chain — retrospective reasoning
     # -----------------------------------------------------------------
     "causal_chain": [
         {
-            "text_template": "Explain the chain of reasoning from symptoms to diagnosis in: {title}",
+            "text_template": "What retrospective reasoning explains the diagnostic trajectory in: {title}?",
             "gold_kind": "causal_link",
             "gold_source_filter": ["discussion"],
         },
         {
-            "text_template": "What chain of evidence led to the final diagnosis in: {title}?",
+            "text_template": "What mechanism did the authors discuss to explain the findings in: {title}?",
             "gold_kind": "causal_link",
+            "gold_source_filter": ["discussion"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # concurrent — gold = treatment / management alongside workup
+    # concurrent — treatment alongside the workup
     # -----------------------------------------------------------------
     "concurrent": [
         {
-            "text_template": "What treatment was given alongside the workup for: {title}?",
+            "text_template": "What therapy was administered concurrently with diagnostic workup in: {title}?",
             "gold_kind": "causal_link",
             "gold_source_filter": ["management", "treatment", "course"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # before_named — gold = case presentation (before a named treatment)
+    # before_named — state prior to treatment
     # -----------------------------------------------------------------
     "before_named": [
         {
-            "text_template": "What was the patient's state before treatment was initiated in: {title}?",
+            "text_template": "What was the patient's clinical state before treatment was initiated in: {title}?",
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
 
     # -----------------------------------------------------------------
-    # retirement — gold = final_diagnosis (retires the initial one)
+    # retirement — the diagnosis that retired the earlier hypothesis
     # -----------------------------------------------------------------
     "retirement": [
         {
-            "text_template": "Which diagnosis retired the initial hypothesis in: {title}?",
+            "text_template": "Which established diagnosis retired the initial working hypothesis in: {title}?",
             "gold_kind": "retirement",
             "gold_source_filter": ["final diagnosis"],
         },
         {
-            "text_template": "What was the corrected diagnosis in the misdiagnosis case: {title}?",
+            "text_template": "What confirmed diagnosis corrected the earlier misdiagnosis in: {title}?",
             "gold_kind": "retirement",
         },
     ],
 
     # -----------------------------------------------------------------
-    # noise — off-topic clinical queries (different domain)
+    # noise — off-topic clinical queries
     # -----------------------------------------------------------------
     "noise": [
-        {"text_template": "What is the current recommended dosage for amlodipine?"},
-        {"text_template": "How do you perform a standard lumbar puncture?"},
-        {"text_template": "What are the ICD-10 codes for childhood asthma?"},
-        {"text_template": "What's the standard of care for type 2 diabetes screening?"},
-        {"text_template": "How is serum potassium measured in the lab?"},
+        {"text_template": "What is the recommended dose of amlodipine for hypertension in adults?"},
+        {"text_template": "How do you perform a standard lumbar puncture procedure?"},
+        {"text_template": "What ICD-10 codes describe childhood-onset asthma?"},
+        {"text_template": "What is the standard of care for type 2 diabetes screening guidelines?"},
+        {"text_template": "How is serum potassium measured in a clinical chemistry lab?"},
     ],
 }
 

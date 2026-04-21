@@ -188,7 +188,7 @@ def label_file(raw_path: Path, out_path: Path) -> dict[str, object]:
     """
     lines = [
         json.loads(line) for line in
-        raw_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        raw_path.read_text(encoding="utf-8").split(chr(10)) if line.strip()
     ]
     if not lines:
         return {"total": 0, "skipped": "empty_file"}

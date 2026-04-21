@@ -1,0 +1,1847 @@
+# Audited gold — only queries that pass the per-class rule survived.
+# See benchmarks/mseb/gold_auditor.py for the rule table.
+
+- qid: softwaredev-current_state-001
+  shape: current_state
+  text: 'What decision was adopted in: Decided on Bulma. Open to new CSS framework
+    choices as they arrive.?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-001
+  shape: origin
+  text: 'What background or problem motivated the decision in: Decided on Bulma. Open
+    to new CSS framework choices as they arrive.?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-001
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Contents:?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-001
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Contents:?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-001
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Contents:.'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-001
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Decided
+    on Bulma. Open to new CSS framework choices as they arrive.?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-001
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Decided on Bulma. Open
+    to new CSS framework choices as they arrive.?'
+  subject: sdev-adr_jph-css-framework
+  gold_mid: sdev-adr_jph-css-framework-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-002
+  shape: current_state
+  text: 'What decision was adopted in: After considering the pros and cons of both
+    options, we have decided to use?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  gold_alt:
+  - sdev-adr_jph-api-using-json-v-grpc-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-002
+  shape: origin
+  text: 'What background or problem motivated the decision in: After considering the
+    pros and cons of both options, we have decided to use?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  gold_alt:
+  - sdev-adr_jph-api-using-json-v-grpc-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-002
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: We are designing an API for
+    a new service that will be used by multiple?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-002
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: We are designing
+    an API for a new service that will be used by multiple?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-002
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: We are designing an API
+    for a new service that will be used by multiple.'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-002
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: After
+    considering the pros and cons of both options, we have decided to use?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  gold_alt:
+  - sdev-adr_jph-api-using-json-v-grpc-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-002
+  shape: before_named
+  text: 'What problem existed before the decision was made in: After considering the
+    pros and cons of both options, we have decided to use?'
+  subject: sdev-adr_jph-api-using-json-v-grpc
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  gold_alt:
+  - sdev-adr_jph-api-using-json-v-grpc-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-003
+  shape: current_state
+  text: 'What decision was adopted in: We are considering different container orchestration
+    tools to manage our?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-003
+  shape: origin
+  text: 'What background or problem motivated the decision in: We are considering
+    different container orchestration tools to manage our?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-003
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Decision Number: 001?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-00
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-003
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Decision Number:
+    001?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-00
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-003
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Decision Number: 001.'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-00
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-predecessor-001
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: - **Kubernetes:**  Kubernetes
+    is the most widely-used container orchestration?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-05
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-003
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    are considering different container orchestration tools to manage our?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-003
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We are considering
+    different container orchestration tools to manage our?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  gold_alt:
+  - sdev-adr_jph-docker-swarm-container-orchestration-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-001
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: - **Kubernetes:**  Kubernetes
+    is the most widely-used container orchestration?'
+  subject: sdev-adr_jph-docker-swarm-container-orchestration
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-05
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-current_state-004
+  shape: current_state
+  text: 'What decision was adopted in: We choose the timestamp standard format ISO
+    8601 with nanosecond precision,?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-004
+  shape: origin
+  text: 'What background or problem motivated the decision in: We choose the timestamp
+    standard format ISO 8601 with nanosecond precision,?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-004
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Contents:?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-004
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Contents:?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-004
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Contents:.'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-004
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    choose the timestamp standard format ISO 8601 with nanosecond precision,?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-004
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We choose the timestamp
+    standard format ISO 8601 with nanosecond precision,?'
+  subject: sdev-adr_jph-timestamp-format
+  gold_mid: sdev-adr_jph-timestamp-format-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-005
+  shape: current_state
+  text: 'What decision was adopted in: Our organization is planning to develop a web
+    application that manages customer?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-005
+  shape: origin
+  text: 'What background or problem motivated the decision in: Our organization is
+    planning to develop a web application that manages customer?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-005
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Decision Date: 2021-07-15?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-005
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Decision Date:
+    2021-07-15?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-005
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Decision Date: 2021-07-15.'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-06
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-predecessor-002
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: We considered
+    other web frameworks such as Flask and Pyramid. However, we found?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-001
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: Some of the factors
+    that influenced our decision include:?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-001
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: Some of the factors
+    that influenced our decision include:.'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-005
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Our
+    organization is planning to develop a web application that manages customer?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-005
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Our organization is
+    planning to develop a web application that manages customer?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-django-framework-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-002
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: We considered other web
+    frameworks such as Flask and Pyramid. However, we found?'
+  subject: sdev-adr_jph-python-django-framework
+  gold_mid: sdev-adr_jph-python-django-framework-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-current_state-006
+  shape: current_state
+  text: 'What decision was adopted in: We are choosing TypeScript for the front-end.?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-02
+  gold_alt:
+  - sdev-adr_jph-programming-languages-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-006
+  shape: origin
+  text: 'What background or problem motivated the decision in: We are choosing TypeScript
+    for the front-end.?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-02
+  gold_alt:
+  - sdev-adr_jph-programming-languages-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-006
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Contents:?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-006
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Contents:?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-006
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Contents:.'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-006
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    are choosing TypeScript for the front-end.?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-02
+  gold_alt:
+  - sdev-adr_jph-programming-languages-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-006
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We are choosing TypeScript
+    for the front-end.?'
+  subject: sdev-adr_jph-programming-languages
+  gold_mid: sdev-adr_jph-programming-languages-sec-02
+  gold_alt:
+  - sdev-adr_jph-programming-languages-sec-03
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_first-007
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Contents:?'
+  subject: sdev-adr_jph-secrets-storage
+  gold_mid: sdev-adr_jph-secrets-storage-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-007
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Contents:?'
+  subject: sdev-adr_jph-secrets-storage
+  gold_mid: sdev-adr_jph-secrets-storage-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-007
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Contents:.'
+  subject: sdev-adr_jph-secrets-storage
+  gold_mid: sdev-adr_jph-secrets-storage-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-008
+  shape: current_state
+  text: 'What decision was adopted in: Decided on .env files with related default
+    file and schema file.?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-02
+  gold_alt:
+  - sdev-adr_jph-environment-variable-configuration-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-008
+  shape: origin
+  text: 'What background or problem motivated the decision in: Decided on .env files
+    with related default file and schema file.?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-02
+  gold_alt:
+  - sdev-adr_jph-environment-variable-configuration-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-008
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Contents:?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-008
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Contents:?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-008
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Contents:.'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-008
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Decided
+    on .env files with related default file and schema file.?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-02
+  gold_alt:
+  - sdev-adr_jph-environment-variable-configuration-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-008
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Decided on .env files
+    with related default file and schema file.?'
+  subject: sdev-adr_jph-environment-variable-configuration
+  gold_mid: sdev-adr_jph-environment-variable-configuration-sec-02
+  gold_alt:
+  - sdev-adr_jph-environment-variable-configuration-sec-03
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-009
+  shape: current_state
+  text: 'What decision was adopted in: We are selecting a Svelte UI component library
+    to provide full features for:?'
+  subject: sdev-adr_jph-svelte-components
+  gold_mid: sdev-adr_jph-svelte-components-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-009
+  shape: origin
+  text: 'What background or problem motivated the decision in: We are selecting a
+    Svelte UI component library to provide full features for:?'
+  subject: sdev-adr_jph-svelte-components
+  gold_mid: sdev-adr_jph-svelte-components-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-009
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    are selecting a Svelte UI component library to provide full features for:?'
+  subject: sdev-adr_jph-svelte-components
+  gold_mid: sdev-adr_jph-svelte-components-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-009
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We are selecting a
+    Svelte UI component library to provide full features for:?'
+  subject: sdev-adr_jph-svelte-components
+  gold_mid: sdev-adr_jph-svelte-components-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-010
+  shape: current_state
+  text: 'What decision was adopted in: We need to decide on which database management
+    system (DBMS) to use for Project?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-01
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-010
+  shape: origin
+  text: 'What background or problem motivated the decision in: We need to decide on
+    which database management system (DBMS) to use for Project?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-01
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-011
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Title: Choosing MySQL as Database
+    Management System for Project X?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-08
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-011
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Title: Choosing
+    MySQL as Database Management System for Project X?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-08
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-011
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Title: Choosing MySQL as
+    Database Management System for Project X.'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-08
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-010
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    need to decide on which database management system (DBMS) to use for Project?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-01
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-010
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We need to decide on
+    which database management system (DBMS) to use for Project?'
+  subject: sdev-adr_jph-mysql-database
+  gold_mid: sdev-adr_jph-mysql-database-sec-01
+  gold_alt:
+  - sdev-adr_jph-mysql-database-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-011
+  shape: current_state
+  text: 'What decision was adopted in: - Use Ruby on Rails as the framework for developing
+    the web application.?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-ruby-on-rails-framework-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-011
+  shape: origin
+  text: 'What background or problem motivated the decision in: - Use Ruby on Rails
+    as the framework for developing the web application.?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-ruby-on-rails-framework-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-012
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: - The organization is developing
+    a web application with complex business logic?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-012
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: - The organization
+    is developing a web application with complex business logic?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-012
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: - The organization is developing
+    a web application with complex business logic.'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-011
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: -
+    Use Ruby on Rails as the framework for developing the web application.?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-ruby-on-rails-framework-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-011
+  shape: before_named
+  text: 'What problem existed before the decision was made in: - Use Ruby on Rails
+    as the framework for developing the web application.?'
+  subject: sdev-adr_jph-ruby-on-rails-framework
+  gold_mid: sdev-adr_jph-ruby-on-rails-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-ruby-on-rails-framework-sec-03
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-012
+  shape: current_state
+  text: 'What decision was adopted in: Based on these priorities, the architecture
+    for programming code editors should?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-012
+  shape: origin
+  text: 'What background or problem motivated the decision in: Based on these priorities,
+    the architecture for programming code editors should?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-013
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Programming code editors are
+    an essential tool for developers to write and edit?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-013
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Programming code
+    editors are an essential tool for developers to write and edit?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-013
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Programming code editors
+    are an essential tool for developers to write and edit.'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-concurrent-012
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Based
+    on these priorities, the architecture for programming code editors should?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-012
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Based on these priorities,
+    the architecture for programming code editors should?'
+  subject: sdev-adr_jph-programming-code-editors
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-013
+  shape: current_state
+  text: 'What decision was adopted in: The organization is planning to migrate from
+    traditional on-premises?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-01
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-013
+  shape: origin
+  text: 'What background or problem motivated the decision in: The organization is
+    planning to migrate from traditional on-premises?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-01
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-014
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Decision Title: Adopting Microsoft
+    Azure as the cloud infrastructure for our?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-00
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-014
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Decision Title:
+    Adopting Microsoft Azure as the cloud infrastructure for our?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-00
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-014
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Decision Title: Adopting
+    Microsoft Azure as the cloud infrastructure for our.'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-00
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-003
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: The following
+    are the reasons for adopting Microsoft Azure:?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-003
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: The following are
+    the reasons for adopting Microsoft Azure:.'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-013
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: The
+    organization is planning to migrate from traditional on-premises?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-01
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-013
+  shape: before_named
+  text: 'What problem existed before the decision was made in: The organization is
+    planning to migrate from traditional on-premises?'
+  subject: sdev-adr_jph-microsoft-azure-cloud-infrastructure
+  gold_mid: sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-01
+  gold_alt:
+  - sdev-adr_jph-microsoft-azure-cloud-infrastructure-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-014
+  shape: current_state
+  text: 'What decision was adopted in: Our organization has been primarily using Java
+    programming language for?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-014
+  shape: origin
+  text: 'What background or problem motivated the decision in: Our organization has
+    been primarily using Java programming language for?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-015
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Title: Adoption of Go Programming
+    Language?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-015
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Title: Adoption
+    of Go Programming Language?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-015
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Title: Adoption of Go Programming
+    Language.'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-004
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: 1. **Simplicity
+    and readability:** Go is known for its simplicity and concise?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-004
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: 1. **Simplicity
+    and readability:** Go is known for its simplicity and concise.'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-014
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Our
+    organization has been primarily using Java programming language for?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-014
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Our organization has
+    been primarily using Java programming language for?'
+  subject: sdev-adr_jph-go-programming-language
+  gold_mid: sdev-adr_jph-go-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-go-programming-language-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-015
+  shape: current_state
+  text: 'What decision was adopted in: We are building a new web application that
+    requires a scalable and efficient?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-sveltekit-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-015
+  shape: origin
+  text: 'What background or problem motivated the decision in: We are building a new
+    web application that requires a scalable and efficient?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-sveltekit-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-predecessor-004
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: We have evaluated
+    several alternatives, such as React, Vue, Angular, and?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-005
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: SvelteKit is
+    a new and comprehensive front-end solution that offers an array of?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-005
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: SvelteKit is a
+    new and comprehensive front-end solution that offers an array of.'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-015
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    are building a new web application that requires a scalable and efficient?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-sveltekit-framework-sec-02
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-015
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We are building a new
+    web application that requires a scalable and efficient?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-01
+  gold_alt:
+  - sdev-adr_jph-sveltekit-framework-sec-02
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-004
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: We have evaluated several
+    alternatives, such as React, Vue, Angular, and?'
+  subject: sdev-adr_jph-sveltekit-framework
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-current_state-016
+  shape: current_state
+  text: 'What decision was adopted in: We are building a web application for a client
+    that requires a responsive and?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-02
+  gold_alt:
+  - sdev-adr_jph-tailwind-css-sec-05
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-016
+  shape: origin
+  text: 'What background or problem motivated the decision in: We are building a web
+    application for a client that requires a responsive and?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-02
+  gold_alt:
+  - sdev-adr_jph-tailwind-css-sec-05
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-017
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Decision: Use Tailwind CSS as
+    the CSS framework to style a user interface.?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-017
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Decision: Use
+    Tailwind CSS as the CSS framework to style a user interface.?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-017
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Decision: Use Tailwind CSS
+    as the CSS framework to style a user interface..'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-00
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-predecessor-005
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: - **Bootstrap:**  A
+    popular CSS framework with a lot of pre-built components?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-006
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: - **Easy to use:**  We
+    want a framework that is simple to learn and can be?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-006
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: - **Easy to use:**  We
+    want a framework that is simple to learn and can be.'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-016
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    are building a web application for a client that requires a responsive and?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-02
+  gold_alt:
+  - sdev-adr_jph-tailwind-css-sec-05
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-016
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We are building a web
+    application for a client that requires a responsive and?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-02
+  gold_alt:
+  - sdev-adr_jph-tailwind-css-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-005
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: - **Bootstrap:**  A popular
+    CSS framework with a lot of pre-built components?'
+  subject: sdev-adr_jph-tailwind-css
+  gold_mid: sdev-adr_jph-tailwind-css-sec-04
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-current_state-017
+  shape: current_state
+  text: 'What decision was adopted in: We have decided to use Python as our primary
+    programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-017
+  shape: origin
+  text: 'What background or problem motivated the decision in: We have decided to
+    use Python as our primary programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-018
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: We need to decide on whether
+    to use Python as a programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-018
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: We need to decide
+    on whether to use Python as a programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-018
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: We need to decide on whether
+    to use Python as a programming language for our.'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-00
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-007
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: Python is a versatile
+    programming language that is widely used in the areas of?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-007
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: Python is a versatile
+    programming language that is widely used in the areas of.'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-017
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: We
+    have decided to use Python as our primary programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-03
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-017
+  shape: before_named
+  text: 'What problem existed before the decision was made in: We have decided to
+    use Python as our primary programming language for our?'
+  subject: sdev-adr_jph-python-programming-language
+  gold_mid: sdev-adr_jph-python-programming-language-sec-01
+  gold_alt:
+  - sdev-adr_jph-python-programming-language-sec-03
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-current_state-018
+  shape: current_state
+  text: 'What decision was adopted in: Our organization has decided to use Google
+    Cloud Platform as the cloud?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-01
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-04
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-origin-018
+  shape: origin
+  text: 'What background or problem motivated the decision in: Our organization has
+    decided to use Google Cloud Platform as the cloud?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-01
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-04
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-ordinal_first-019
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Google Cloud Platform (GCP)
+    is a prominent cloud computing platform that offers?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-00
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-019
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Google Cloud Platform
+    (GCP) is a prominent cloud computing platform that offers?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-00
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-019
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Google Cloud Platform (GCP)
+    is a prominent cloud computing platform that offers.'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-00
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-05
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-008
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: - Cost-Effectiveness:
+    Google Cloud Platform is highly cost-effective compared?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-008
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: - Cost-Effectiveness:
+    Google Cloud Platform is highly cost-effective compared.'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-concurrent-018
+  shape: concurrent
+  text: 'What consequences were anticipated alongside adopting the decision in: Our
+    organization has decided to use Google Cloud Platform as the cloud?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-01
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-04
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-before_named-018
+  shape: before_named
+  text: 'What problem existed before the decision was made in: Our organization has
+    decided to use Google Cloud Platform as the cloud?'
+  subject: sdev-adr_jph-google-cloud-platform
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-01
+  gold_alt:
+  - sdev-adr_jph-google-cloud-platform-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_first-020
+  shape: ordinal_first
+  text: 'What introduction opens the decision record: Our organization is currently
+    evaluating options for the most suitable database?'
+  subject: sdev-adr_jph-postgresql-database
+  gold_mid: sdev-adr_jph-postgresql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-postgresql-database-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-ordinal_last-020
+  shape: ordinal_last
+  text: 'What closing summary does the decision record provide for: Our organization
+    is currently evaluating options for the most suitable database?'
+  subject: sdev-adr_jph-postgresql-database
+  gold_mid: sdev-adr_jph-postgresql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-postgresql-database-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-sequence-020
+  shape: sequence
+  text: 'Trace the ADR from context through decision for: Our organization is currently
+    evaluating options for the most suitable database.'
+  subject: sdev-adr_jph-postgresql-database
+  gold_mid: sdev-adr_jph-postgresql-database-sec-00
+  gold_alt:
+  - sdev-adr_jph-postgresql-database-sec-04
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-predecessor-006
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: The other option
+    that we considered was MySQL. MySQL is also a highly capable?'
+  subject: sdev-adr_jph-postgresql-database
+  gold_mid: sdev-adr_jph-postgresql-database-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-006
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: The other option that
+    we considered was MySQL. MySQL is also a highly capable?'
+  subject: sdev-adr_jph-postgresql-database
+  gold_mid: sdev-adr_jph-postgresql-database-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-transitive_cause-010
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: We have adopted
+    Rust due to its unique features designed to provide memory?'
+  subject: sdev-adr_jph-rust-programming-language
+  gold_mid: sdev-adr_jph-rust-programming-language-sec-05
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-010
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: We have adopted
+    Rust due to its unique features designed to provide memory.'
+  subject: sdev-adr_jph-rust-programming-language
+  gold_mid: sdev-adr_jph-rust-programming-language-sec-05
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-predecessor-007
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: 1. Docker Swarm?'
+  subject: sdev-adr_jph-kubernetes-container-orchestration
+  gold_mid: sdev-adr_jph-kubernetes-container-orchestration-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-007
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: 1. Docker Swarm?'
+  subject: sdev-adr_jph-kubernetes-container-orchestration
+  gold_mid: sdev-adr_jph-kubernetes-container-orchestration-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-predecessor-008
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: We considered
+    React, Vue, and Angular, but decided against them for the?'
+  subject: sdev-adr_jph-svelte-front-end-javascript-library
+  gold_mid: sdev-adr_jph-svelte-front-end-javascript-library-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-008
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: We considered React,
+    Vue, and Angular, but decided against them for the?'
+  subject: sdev-adr_jph-svelte-front-end-javascript-library
+  gold_mid: sdev-adr_jph-svelte-front-end-javascript-library-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-transitive_cause-011
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: The decision
+    was based on the following factors:?'
+  subject: sdev-adr_jph-4-day-work-week
+  gold_mid: sdev-adr_jph-4-day-work-week-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-011
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: The decision was
+    based on the following factors:.'
+  subject: sdev-adr_jph-4-day-work-week
+  gold_mid: sdev-adr_jph-4-day-work-week-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-predecessor-009
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: - **Playwright**
+    (by Microsoft)?'
+  subject: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s
+  gold_mid: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-transitive_cause-013
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: The factors influencing
+    our decision are as follows:?'
+  subject: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s
+  gold_mid: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-013
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: The factors influencing
+    our decision are as follows:.'
+  subject: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s
+  gold_mid: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-retirement-009
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: - **Playwright** (by
+    Microsoft)?'
+  subject: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s
+  gold_mid: sdev-adr_jph-browser-automation-framework-for-e2e-testing-playwright-vs-s-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-transitive_cause-014
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: Continuous integration
+    will automatically build, test and deploy code changes?'
+  subject: sdev-adr_jph-continuous-integration
+  gold_mid: sdev-adr_jph-continuous-integration-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-014
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: Continuous integration
+    will automatically build, test and deploy code changes.'
+  subject: sdev-adr_jph-continuous-integration
+  gold_mid: sdev-adr_jph-continuous-integration-sec-03
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-predecessor-010
+  shape: predecessor
+  text: 'What alternatives were considered before the final choice in: We considered
+    alternative approaches to teamwork, including low trust or no?'
+  subject: sdev-adr_jph-high-trust-teamwork
+  gold_mid: sdev-adr_jph-high-trust-teamwork-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: temporal
+- qid: softwaredev-retirement-010
+  shape: retirement
+  text: 'Which alternatives were retired by the decision in: We considered alternative
+    approaches to teamwork, including low trust or no?'
+  subject: sdev-adr_jph-high-trust-teamwork
+  gold_mid: sdev-adr_jph-high-trust-teamwork-sec-02
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-transitive_cause-015
+  shape: transitive_cause
+  text: 'What rationale or decision drivers justified the choice in: We have chosen
+    a document database because:?'
+  subject: sdev-adr_jph-choosing-a-database-technology
+  gold_mid: sdev-adr_jph-choosing-a-database-technology-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-causal_chain-015
+  shape: causal_chain
+  text: 'Explain the chain of factors that led to the decision in: We have chosen
+    a document database because:.'
+  subject: sdev-adr_jph-choosing-a-database-technology
+  gold_mid: sdev-adr_jph-choosing-a-database-technology-sec-01
+  gold_alt: []
+  preference: none
+  note: ''
+  query_class: general
+- qid: softwaredev-noise-v2-001
+  shape: noise
+  query_class: noise
+  text: Who composed Eroica?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-002
+  shape: noise
+  query_class: noise
+  text: Where is Machu Picchu?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-003
+  shape: noise
+  query_class: noise
+  text: When was Sputnik launched?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-004
+  shape: noise
+  query_class: noise
+  text: Who painted Guernica?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-005
+  shape: noise
+  query_class: noise
+  text: Who wrote Beowulf?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-006
+  shape: noise
+  query_class: noise
+  text: What currency did Rome use?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-007
+  shape: noise
+  query_class: noise
+  text: Who ruled Byzantium?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-008
+  shape: noise
+  query_class: noise
+  text: Where is Angkor Wat?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-009
+  shape: noise
+  query_class: noise
+  text: Who composed Rhapsody in Blue?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-010
+  shape: noise
+  query_class: noise
+  text: Who sculpted Pieta?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-011
+  shape: noise
+  query_class: noise
+  text: What river flows through Budapest?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-012
+  shape: noise
+  query_class: noise
+  text: Who sailed HMS Beagle?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-013
+  shape: noise
+  query_class: noise
+  text: Where is Petra?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-014
+  shape: noise
+  query_class: noise
+  text: Who painted the Mona Lisa?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-015
+  shape: noise
+  query_class: noise
+  text: What mountains border Bolivia?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-016
+  shape: noise
+  query_class: noise
+  text: Who wrote Paradise Lost?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-017
+  shape: noise
+  query_class: noise
+  text: Which river flows through Khartoum?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-018
+  shape: noise
+  query_class: noise
+  text: Who discovered Madagascar?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-019
+  shape: noise
+  query_class: noise
+  text: Who invented the gramophone?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary
+- qid: softwaredev-noise-v2-020
+  shape: noise
+  query_class: noise
+  text: Where is Timbuktu?
+  subject: ''
+  gold_mid: ''
+  gold_alt: []
+  preference: none
+  note: hand-authored noise — off-topic vocabulary

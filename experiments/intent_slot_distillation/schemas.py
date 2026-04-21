@@ -19,6 +19,7 @@ clinical memory has ``medication``, a software memory has
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 # ---------------------------------------------------------------------------
@@ -61,9 +62,11 @@ INTENT_LABEL_DESCRIPTIONS: dict[Intent, str] = {
 # Domains + slot taxonomies
 # ---------------------------------------------------------------------------
 
-Domain = Literal["conversational", "software_dev", "clinical"]
+Domain = Literal["conversational", "software_dev", "clinical", "swe_diff"]
 
-DOMAINS: tuple[Domain, ...] = ("conversational", "software_dev", "clinical")
+DOMAINS: tuple[Domain, ...] = (
+    "conversational", "software_dev", "clinical", "swe_diff",
+)
 
 #: Slot tag universe per domain.  Used both by the hand-labelling
 #: gold files (authors pick from this list) and by the Joint BERT
@@ -90,7 +93,152 @@ SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
         "alternative",  # "X instead of Y" choices
         "frequency",    # "every 6 hours", "twice daily"
     ),
+    "swe_diff": (
+        "file_path",   # astropy/modeling/separable.py
+        "function",    # _cstack, URLValidator
+        "symbol",      # class / variable / module identifier from a diff
+        "test_path",   # tests/modeling/test_separable.py
+        "issue_ref",   # "#12345" / upstream tracker IDs
+        "alternative", # preceding implementation the patch replaces
+    ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Domain manifest — explicit wiring of domain → (corpus / taxonomy /
+# adapter output).  Every training / evaluation tool that used to
+# string-interpolate ``f"gold_{domain}.jsonl"`` should go through this
+# registry so adapter ↔ data ↔ taxonomy stays consistent and can be
+# grepped in one place.
+# ---------------------------------------------------------------------------
+
+_EXPERIMENT_ROOT = Path(__file__).resolve().parent
+_CORPUS_ROOT = _EXPERIMENT_ROOT / "corpus"
+_TAXONOMY_ROOT = _EXPERIMENT_ROOT / "taxonomies"
+_ADAPTER_ROOT = _EXPERIMENT_ROOT / "adapters"
+_DEPLOYED_ROOT = Path.home() / ".ncms" / "adapters"
+
+
+@dataclass(frozen=True)
+class DomainManifest:
+    """One row of the domain ↔ adapter ↔ corpus registry.
+
+    Every training script and benchmark helper reads from this
+    registry rather than string-interpolating domain names.  Makes
+    it obvious which adapter was trained on which corpus — and
+    catches mismatches at import time (e.g. adding a domain to
+    the Literal but forgetting to register its corpus files).
+    """
+
+    name: Domain
+    description: str
+    intended_content: str
+    gold_jsonl: Path
+    sdg_jsonl: Path
+    adversarial_train_jsonl: Path
+    taxonomy_yaml: Path
+    adapter_output_root: Path
+    deployed_adapter_root: Path
+    default_version: str = "v4"
+
+    def training_inputs(self) -> tuple[Path, Path, Path]:
+        """(gold, sdg, adversarial_train) — the three corpora the
+        training loop concatenates for LoRA fine-tuning."""
+        return (self.gold_jsonl, self.sdg_jsonl, self.adversarial_train_jsonl)
+
+    def deployed_path(self, version: str | None = None) -> Path:
+        """~/.ncms/adapters/<name>/<version>/ — where the extractor
+        chain looks at runtime."""
+        return self.deployed_adapter_root / (version or self.default_version)
+
+
+DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
+    "conversational": DomainManifest(
+        name="conversational",
+        description=(
+            "Conversational persona / preference corpus "
+            "(LongMemEval-shaped dialog)."
+        ),
+        intended_content=(
+            "User messages in multi-turn chat; positive/negative/"
+            "habitual/difficulty/choice preference signals; state "
+            "changes phrased as 'I used to X, now Y'."
+        ),
+        gold_jsonl=_CORPUS_ROOT / "gold_conversational.jsonl",
+        sdg_jsonl=_CORPUS_ROOT / "sdg_conversational.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT
+        / "adversarial_train_conversational.jsonl",
+        taxonomy_yaml=_TAXONOMY_ROOT / "conversational.yaml",
+        adapter_output_root=_ADAPTER_ROOT / "conversational",
+        deployed_adapter_root=_DEPLOYED_ROOT / "conversational",
+    ),
+    "software_dev": DomainManifest(
+        name="software_dev",
+        description=(
+            "Prose software-development content — ADRs, RFCs, design "
+            "docs, post-mortems, threat models."
+        ),
+        intended_content=(
+            "Natural-language state changes about software: 'Decision: "
+            "use Postgres.  Supersedes ADR-003.' / 'Root cause: config "
+            "drift after v2.3 rollout.'  NOT raw git diffs — see "
+            "'swe_diff' for the diff-aware adapter."
+        ),
+        gold_jsonl=_CORPUS_ROOT / "gold_software_dev.jsonl",
+        sdg_jsonl=_CORPUS_ROOT / "sdg_software_dev.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT
+        / "adversarial_train_software_dev.jsonl",
+        taxonomy_yaml=_TAXONOMY_ROOT / "software_dev.yaml",
+        adapter_output_root=_ADAPTER_ROOT / "software_dev",
+        deployed_adapter_root=_DEPLOYED_ROOT / "software_dev",
+    ),
+    "clinical": DomainManifest(
+        name="clinical",
+        description=(
+            "Clinical case-report corpus — PMC Open Access narratives."
+        ),
+        intended_content=(
+            "Sections of case reports: presentation, investigations, "
+            "differential / initial / final diagnosis, treatment, "
+            "outcome.  State changes = diagnostic revisions."
+        ),
+        gold_jsonl=_CORPUS_ROOT / "gold_clinical.jsonl",
+        sdg_jsonl=_CORPUS_ROOT / "sdg_clinical.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT
+        / "adversarial_train_clinical.jsonl",
+        taxonomy_yaml=_TAXONOMY_ROOT / "clinical.yaml",
+        adapter_output_root=_ADAPTER_ROOT / "clinical",
+        deployed_adapter_root=_DEPLOYED_ROOT / "clinical",
+    ),
+    "swe_diff": DomainManifest(
+        name="swe_diff",
+        description=(
+            "Software engineering diff-aware corpus — SWE-bench "
+            "Verified style issue bodies + PR discussions + resolving "
+            "patches + test patches."
+        ),
+        intended_content=(
+            "Raw GitHub issue/PR artefacts with diff headers, function "
+            "signatures, file paths.  State changes = resolving_patch "
+            "retires prior impl / test_patch declares new invariant.  "
+            "Distinct from 'software_dev' which covers PROSE software "
+            "documentation — this adapter parses code-shaped content."
+        ),
+        gold_jsonl=_CORPUS_ROOT / "gold_swe_diff.jsonl",
+        sdg_jsonl=_CORPUS_ROOT / "sdg_swe_diff.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT
+        / "adversarial_train_swe_diff.jsonl",
+        taxonomy_yaml=_TAXONOMY_ROOT / "swe_diff.yaml",
+        adapter_output_root=_ADAPTER_ROOT / "swe_diff",
+        deployed_adapter_root=_DEPLOYED_ROOT / "swe_diff",
+        default_version="v1",
+    ),
+}
+
+
+def get_domain_manifest(name: Domain) -> DomainManifest:
+    """Look up a domain's manifest; raises KeyError for unknowns."""
+    return DOMAIN_MANIFESTS[name]
 
 
 # ---------------------------------------------------------------------------

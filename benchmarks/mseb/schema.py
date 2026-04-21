@@ -54,6 +54,31 @@ PREFERENCE_KINDS: tuple[PreferenceKind, ...] = (
 
 
 # ---------------------------------------------------------------------------
+# Query class — cross-cuts intent shapes; identifies which NCMS mechanism
+# a query is expected to exercise.  Enables the "backend × class" table:
+#
+# | dataset × class  | general | temporal | preference | noise |
+# | ncms-tlg-on      |  .73   |   .93   |    .18    |  0.00 |
+# | mem0             |  .21   |   .20   |    .12    |  0.00 |
+#
+# Populated at gold-authoring time by a deterministic classifier
+# (see ``benchmarks/mseb/query_class.py``).  Defaults to "general" for
+# back-compat with gold files that predate this field.
+# ---------------------------------------------------------------------------
+
+QueryClass = Literal[
+    "general",     # standard retrieval — BM25 + SPLADE + graph lift
+    "temporal",    # ordinal / recency / range — NCMS temporal parser fires
+    "preference",  # positive / avoidance / habitual / difficult — P2 intent_head
+    "noise",       # adversarial / off-topic — all systems should reject
+]
+
+QUERY_CLASSES: tuple[QueryClass, ...] = (
+    "general", "temporal", "preference", "noise",
+)
+
+
+# ---------------------------------------------------------------------------
 # Intent shapes — fixed across all MSEB domains (matches TLG's 11)
 # ---------------------------------------------------------------------------
 
@@ -192,6 +217,13 @@ class GoldQuery:
     carries the gold ``intent_head`` preference class so the harness
     reports per-preference rank-1 / top-5 in addition to per-shape."""
 
+    query_class: QueryClass = "general"
+    """Cross-cutting class identifying which NCMS mechanism this
+    query exercises.  ``general`` (BM25+SPLADE lift), ``temporal``
+    (parser fires — ordinal / recency / range), ``preference``
+    (P2 intent_head), or ``noise`` (adversarial).  Defaults to
+    ``general`` for back-compat with pre-classifier gold files."""
+
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
 
@@ -249,11 +281,13 @@ __all__ = [
     "INTENT_SHAPES",
     "MESSAGE_KINDS",
     "PREFERENCE_KINDS",
+    "QUERY_CLASSES",
     "CorpusMemory",
     "GoldQuery",
     "IntentShape",
     "MemoryKind",
     "PreferenceKind",
+    "QueryClass",
     "dump_corpus",
     "dump_queries",
     "load_corpus",

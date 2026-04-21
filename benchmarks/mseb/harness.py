@@ -123,16 +123,24 @@ class FeatureSet:
                 "scoring_weight_recency": 0.0,
             })
         if not self.ordinal:
+            # Ordinal / first / last / sequence shapes live in the
+            # intent-classifier + hierarchy-bonus path (Phase 4).
             ov.update({
                 "intent_hierarchy_bonus": 0.0,
                 "scoring_weight_hierarchy": 0.0,
+                "intent_classification_enabled": False,
+                "intent_routing_enabled": False,
             })
         if not self.retirement:
+            # Supersession penalties live in reconciliation (Phase 2).
             ov.update({"reconciliation_enabled": False})
         if not self.causal:
+            # Causal traversal lives in the graph scoring signal +
+            # the episode linker (which builds causal chains).
             ov.update({
                 "scoring_weight_graph": 0.0,
                 "cooccurrence_max_entities": 0,
+                "episodes_enabled": False,
             })
         if not self.slm:
             ov.update({"intent_slot_enabled": False})
@@ -215,9 +223,25 @@ async def run(cfg: RunConfig) -> dict[str, object]:
     queries = load_queries(cfg.build_dir / "queries.jsonl")
 
     logger.info(
-        "domain=%s backend=%s corpus=%d queries=%d adapter=%s feature_set=%s",
-        cfg.domain, cfg.backend, len(corpus), len(queries),
-        cfg.adapter_domain, cfg.feature_set.to_dict(),
+        "=" * 72,
+    )
+    logger.info(
+        "MSEB RUN START  domain=%s backend=%s adapter=%s",
+        cfg.domain, cfg.backend, cfg.adapter_domain,
+    )
+    logger.info(
+        "MSEB RUN corpus=%d memories  queries=%d  top_k=%d",
+        len(corpus), len(queries), cfg.top_k,
+    )
+    logger.info(
+        "MSEB RUN feature_set=%s", cfg.feature_set.to_dict(),
+    )
+    logger.info(
+        "MSEB RUN backend_kwargs=%s run_id=%s",
+        cfg.backend_kwargs, cfg.run_id,
+    )
+    logger.info(
+        "=" * 72,
     )
 
     # Construct the selected backend.  NCMS honours the feature set;
@@ -258,6 +282,21 @@ async def run(cfg: RunConfig) -> dict[str, object]:
     (cfg.out_dir / f"{cfg.run_id}.summary.md").write_text(
         markdown_summary(result, run_id=cfg.run_id),
     )
+    # Dump per-query predictions alongside results.  Enables post-hoc
+    # re-scoring against new class / shape / preference taxonomies
+    # without re-running the whole pipeline (which costs MPS / Spark
+    # time).  One JSON line per prediction.
+    preds_path = cfg.out_dir / f"{cfg.run_id}.predictions.jsonl"
+    with preds_path.open("w", encoding="utf-8") as fh:
+        for p in preds:
+            fh.write(json.dumps({
+                "qid": p.qid,
+                "ranked_mids": p.ranked_mids,
+                "latency_ms": p.latency_ms,
+                "intent_confidence": p.intent_confidence,
+                "head_outputs": p.head_outputs,
+            }, ensure_ascii=False))
+            fh.write("\n")
     return result
 
 
@@ -320,6 +359,28 @@ def main() -> None:
         help="mem0 only: enable mem0's LLM reranker on search "
              "(default: off)",
     )
+    # NCMS scoring-weight overrides (for ablation sweeps without
+    # editing the backend each time).
+    ap.add_argument(
+        "--temporal-weight", type=float, default=None,
+        help="Override scoring_weight_temporal (default from NCMSConfig is 0.2).",
+    )
+    ap.add_argument(
+        "--hierarchy-weight", type=float, default=None,
+        help="Override scoring_weight_hierarchy (default via backend is 0.5).",
+    )
+    ap.add_argument(
+        "--graph-weight", type=float, default=None,
+        help="Override scoring_weight_graph (default 0.3).",
+    )
+    ap.add_argument(
+        "--bm25-weight", type=float, default=None,
+        help="Override scoring_weight_bm25 (default 0.6).",
+    )
+    ap.add_argument(
+        "--splade-weight", type=float, default=None,
+        help="Override scoring_weight_splade (default 0.3).",
+    )
 
     # Ablation flags.
     ap.add_argument("--tlg-off", action="store_true",
@@ -344,6 +405,20 @@ def main() -> None:
     if args.backend == "mem0":
         backend_kwargs["infer"] = args.mem0_infer
         backend_kwargs["rerank"] = args.mem0_rerank
+    if args.backend == "ncms":
+        weight_overrides: dict[str, float] = {}
+        if args.temporal_weight is not None:
+            weight_overrides["scoring_weight_temporal"] = args.temporal_weight
+        if args.hierarchy_weight is not None:
+            weight_overrides["scoring_weight_hierarchy"] = args.hierarchy_weight
+        if args.graph_weight is not None:
+            weight_overrides["scoring_weight_graph"] = args.graph_weight
+        if args.bm25_weight is not None:
+            weight_overrides["scoring_weight_bm25"] = args.bm25_weight
+        if args.splade_weight is not None:
+            weight_overrides["scoring_weight_splade"] = args.splade_weight
+        if weight_overrides:
+            backend_kwargs["ncms_config_overrides"] = weight_overrides
 
     cfg = RunConfig(
         domain=args.domain,
@@ -362,7 +437,18 @@ def main() -> None:
         "total_queries": result["total_queries"],
         "overall": result["overall"],
         "out_dir": str(out_dir),
-    }, indent=2))
+    }, indent=2), flush=True)
+
+    # Hard-exit to bypass asyncio cleanup hang at full corpus scale.
+    # NCMS's GLiNER/SPLADE threadpools + sentence-transformers tokenizer
+    # workers don't always drain cleanly; at pilot (188-memory) scale
+    # they exit, at full scale (1,835+) the process hangs indefinitely
+    # after results.json / summary.md have been written.  We've
+    # persisted everything we care about, so fast-exit is safe.
+    import os as _os
+    _os.sys.stdout.flush()
+    _os.sys.stderr.flush()
+    _os._exit(0)
 
 
 if __name__ == "__main__":

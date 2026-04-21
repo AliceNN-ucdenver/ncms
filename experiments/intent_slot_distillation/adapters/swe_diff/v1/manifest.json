@@ -1,0 +1,65 @@
+{
+  "encoder": "bert-base-uncased",
+  "domain": "swe_diff",
+  "version": "v1",
+  "max_length": 128,
+  "intent_labels": [
+    "positive",
+    "negative",
+    "habitual",
+    "difficulty",
+    "choice",
+    "none"
+  ],
+  "slot_labels": [
+    "O",
+    "B-file_path",
+    "I-file_path",
+    "B-function",
+    "I-function",
+    "B-symbol",
+    "I-symbol",
+    "B-test_path",
+    "I-test_path",
+    "B-issue_ref",
+    "I-issue_ref",
+    "B-alternative",
+    "I-alternative",
+    "B-object",
+    "I-object"
+  ],
+  "topic_labels": [
+    "core_module",
+    "test_module",
+    "docs",
+    "config",
+    "build",
+    "other"
+  ],
+  "admission_labels": [
+    "persist",
+    "ephemeral",
+    "discard"
+  ],
+  "state_change_labels": [
+    "declaration",
+    "retirement",
+    "none"
+  ],
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "lora_target_modules": [
+    "query",
+    "value"
+  ],
+  "trained_on": {
+    "n_examples": 8842,
+    "epochs": 4
+  },
+  "gate_metrics": {
+    "final_train_loss": 0.0576
+  },
+  "trained_at": "2026-04-20T22:54:40.895106+00:00",
+  "corpus_hash": "3abb3c6b2eee29c4"
+}
