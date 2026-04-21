@@ -176,13 +176,13 @@ async def run_nemoclaw_demo() -> None:
 
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
-    if config.reconciliation_enabled:
+    if config.temporal_enabled:
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(store=store, config=config)
 
     # Episode formation (Phase 3) - enable for richer demo
-    config.episodes_enabled = True
+    config.temporal_enabled = True
     config.episode_create_min_entities = 1
 
     from ncms.application.episode_service import EpisodeService
@@ -192,7 +192,7 @@ async def run_nemoclaw_demo() -> None:
     )
 
     # Intent classifier (Phase 4) - enable for richer demo
-    config.intent_classification_enabled = True
+    config.temporal_enabled = True
 
     intent_classifier = None
     try:

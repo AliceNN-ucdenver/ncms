@@ -87,8 +87,7 @@ async def _run_reconciliation(store: SQLiteStore) -> None:
     """
     config = NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=True,
+        temporal_enabled=True,
     )
     service = ReconciliationService(store=store, config=config)
 
@@ -279,8 +278,7 @@ class TestReconciliationUsesInducedMarkers:
         # re-seeding.
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 

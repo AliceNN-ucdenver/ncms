@@ -102,14 +102,14 @@ async def run_demo() -> None:
 
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
-    if config.reconciliation_enabled:
+    if config.temporal_enabled:
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(store=store, config=config)
 
     # Episode formation (Phase 3, disabled by default)
     episode = None
-    if config.episodes_enabled:
+    if config.temporal_enabled:
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
@@ -118,7 +118,7 @@ async def run_demo() -> None:
 
     # Intent classifier (Phase 4, disabled by default)
     intent_classifier = None
-    if config.intent_classification_enabled:
+    if config.temporal_enabled:
         from ncms.infrastructure.indexing.exemplar_intent_index import (
             ExemplarIntentIndex,
         )
@@ -497,7 +497,7 @@ Deployment: Vercel with edge functions for SSR.
     console.print(results_table)
 
     # ── Phase 6: Intent-Aware Search (if enabled) ─────────────────────
-    if config.intent_classification_enabled:
+    if config.temporal_enabled:
         header("Phase 6: Intent-Aware Search")
 
         step('Searching with intent override: current_state_lookup')
@@ -525,7 +525,7 @@ Deployment: Vercel with edge functions for SSR.
             )
     else:
         header("Phase 6: Intent-Aware Search [dim](skipped — not enabled)[/]")
-        step("Set NCMS_INTENT_CLASSIFICATION_ENABLED=true to enable")
+        step("Set NCMS_TEMPORAL_ENABLED=true to enable")
 
     # ── Summary ──────────────────────────────────────────────────────
     header("Demo Summary")

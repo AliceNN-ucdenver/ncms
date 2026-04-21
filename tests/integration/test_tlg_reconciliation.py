@@ -1,6 +1,6 @@
 """TLG Phase 1 integration: reconciliation populates retires_entities.
 
-End-to-end check that when ``NCMS_TLG_ENABLED=true`` a SUPERSEDES
+End-to-end check that when ``NCMS_TEMPORAL_ENABLED=true`` a SUPERSEDES
 reconciliation path produces a ``graph_edges.retires_entities`` set
 derived from the structural extractor.  With the flag off, the edge
 is emitted with an empty set — preserving pre-TLG behavior.
@@ -74,42 +74,11 @@ async def _seed_state(
     return node
 
 
-class TestTLGFlagOff:
-    async def test_retires_entities_stays_empty_when_disabled(
-        self, store: SQLiteStore
-    ) -> None:
-        config = NCMSConfig(
-            db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=False,
-        )
-        service = ReconciliationService(store=store, config=config)
-
-        await _seed_state(
-            store,
-            content="Authentication uses session cookies.",
-            entity_id="auth-svc",
-            state_key="auth_method",
-            state_value="session cookies",
-            linked_entity_ids=["session cookies"],
-        )
-        v2 = await _seed_state(
-            store,
-            content="Retire session cookies; adopt OAuth 2.0 tokens.",
-            entity_id="auth-svc",
-            state_key="auth_method",
-            state_value="OAuth 2.0",
-            linked_entity_ids=["OAuth 2.0"],
-        )
-
-        results = await service.reconcile(v2)
-        assert len(results) == 1
-        assert results[0].relation == RelationType.SUPERSEDES
-
-        edges = await store.get_graph_edges(v2.id, EdgeType.SUPERSEDES)
-        assert len(edges) == 1
-        # Flag off → empty list, matches pre-TLG behavior.
-        assert edges[0].retires_entities == []
+# NOTE: The "TLG flag off while reconciliation on" sub-phase ablation was
+# removed when the NCMSConfig flag scheme collapsed tlg/reconciliation/
+# episodes/intent_classification/intent_routing into the single
+# ``temporal_enabled`` master flag.  All TLG behaviour is now tested under
+# ``temporal_enabled=True``.
 
 
 class TestTLGFlagOn:
@@ -118,8 +87,7 @@ class TestTLGFlagOn:
     ) -> None:
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 
@@ -169,8 +137,7 @@ class TestTLGFlagOn:
         """
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 
@@ -205,8 +172,7 @@ class TestTLGFlagOn:
         """
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 

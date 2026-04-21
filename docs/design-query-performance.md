@@ -57,7 +57,7 @@
      then **retired 2026-04-19**.  The research follow-up (TLG) gave
      a strictly stronger structural framework.  The experiment's
      normalizer + range primitives are kept as the baseline
-     `temporal_range_filter_enabled=true, tlg_enabled=false` path
+     `temporal_range_filter_enabled=true, temporal_enabled=false` path
      and consumed by TLG itself.  Doc is at
      [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).
    - **TLG (Temporal Linguistic Geometry)** — shipped 2026-04-19.
@@ -176,7 +176,7 @@ When agents query NCMS, the query string sometimes contains system prompt fragme
 > corpus.
 >
 > The normalizer + range filter remain in the codebase as the
-> baseline `tlg_enabled=false, temporal_range_filter_enabled=true`
+> baseline `temporal_enabled=false, temporal_range_filter_enabled=true`
 > deployment; slated for removal after TLG benchmark parity is
 > demonstrated on the SWE corpus (see
 > [`p3-state-evolution-benchmark.md`](p3-state-evolution-benchmark.md)).
@@ -939,7 +939,7 @@ Features ordered by expected impact per unit effort, targeting the largest categ
 | P0 | Code Quality Refactoring | all | — | enabler | **Done** | Shipped (Phase 0 complete) |
 | P1a | Range-filter temporal + bitemporal model | temporal-reasoning | 133 | 0.000 | **Done** | Shipped; infrastructure only (observed_at/reference_time), no LongMemEval gain. |
 | ~~P1b~~ | ~~Ordinal rerank (post-retrieval)~~ | ~~temporal-reasoning~~ | — | ~~negative~~ | ~~Retired~~ | Both variants (pool-wide and subject-scoped) regressed LongMemEval; paper §5.4 does not rerank the retrieval pool. Dead code removed. |
-| ~~P1-exp~~ | ~~Time-aware indexing + hard-filter range query~~ | ~~temporal-reasoning~~ | ~~133~~ | ~~(not measured in isolation)~~ | ~~3-5 days~~ | **Retired 2026-04-19** — superseded by TLG.  Doc moved to [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).  The normalizer + `apply_range_filter` primitives remain in tree as the baseline `tlg_enabled=false` path. |
+| ~~P1-exp~~ | ~~Time-aware indexing + hard-filter range query~~ | ~~temporal-reasoning~~ | ~~133~~ | ~~(not measured in isolation)~~ | ~~3-5 days~~ | **Retired 2026-04-19** — superseded by TLG.  Doc moved to [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).  The normalizer + `apply_range_filter` primitives remain in tree as the baseline `temporal_enabled=false` path. |
 | **P1-TLG** | **Temporal Linguistic Geometry** | **state-evolution (on-axis)** | **32** (ADR corpus) | **32/32 top-5 and rank-1** vs. BM25 41%/16% | **2 weeks** | **✅ Shipped 2026-04-19.**  11-intent structural grammar, zero-confidently-wrong composition invariant, scale curve ≤50 ms through 10 k memories.  See [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md), [`p1-plan.md`](p1-plan.md), [`tlg-validation-findings.md`](tlg-validation-findings.md). |
 | ~~P1c~~ | ~~Multi-anchor retrieval~~ | ~~arithmetic~~ | — | ~~0~~ | ~~Cut — diagnostic showed zero Recall@K upside~~ | Not pursuing |
 | ~~P2 (regex)~~ | ~~Regex Preference Extraction + synthetic docs~~ | ~~single-session-preference~~ | ~~30~~ | ~~+0.70 to +0.95~~ | ~~2-3 days~~ | **Retired 2026-04-19** — superseded by intent-slot distillation.  Pattern families don't generalize across phrasing drift / quoted speech / negation scope / non-English domains. |
@@ -989,7 +989,7 @@ Timeline:
    GLiNER `date` label ingest-side, `temporal_parser.py` +
    `dateparser` query-side, hard range filter
    (`apply_range_filter`).  Kept in-tree as the
-   `temporal_range_filter_enabled=true, tlg_enabled=false`
+   `temporal_range_filter_enabled=true, temporal_enabled=false`
    baseline; consumed as a primitive by TLG's `range` intent.
    Design doc retired to
    [`docs/retired/p1-temporal-experiment.md`](retired/p1-temporal-experiment.md).

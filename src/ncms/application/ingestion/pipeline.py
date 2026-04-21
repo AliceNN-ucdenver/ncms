@@ -446,7 +446,7 @@ class IngestionPipeline:
             if intent_slot_label is not None and getattr(
                 intent_slot_label, "admission", None,
             ) is not None and intent_slot_label.is_admission_confident(
-                self._config.intent_slot_confidence_threshold,
+                self._config.slm_confidence_threshold,
             ):
                 # Normalise label values ("ephemeral" ↔ "ephemeral_cache")
                 raw = intent_slot_label.admission
@@ -572,7 +572,7 @@ class IngestionPipeline:
           ``admission_head`` replaces the regex heuristic when
           confident.
         * Appending ``topic`` to ``Memory.domains`` when
-          ``is_topic_confident`` + ``intent_slot_populate_domains``.
+          ``is_topic_confident`` + ``slm_populate_domains``.
         * Calling :meth:`MemoryStore.save_memory_slots` after
           ``save_memory`` to persist slot surface forms.
         * Emitting the ``intent_slot.extracted`` dashboard event.
@@ -585,7 +585,7 @@ class IngestionPipeline:
         don't block the event loop on a ~20-65ms forward pass.
         """
         if self._intent_slot is None or not getattr(
-            self._config, "intent_slot_enabled", False,
+            self._config, "slm_enabled", False,
         ):
             return None
 
@@ -929,7 +929,7 @@ class IngestionPipeline:
         if (
             l2_node is not None
             and self._reconciliation is not None
-            and self._config.reconciliation_enabled
+            and self._config.temporal_enabled
             and l2_node.metadata.get("entity_id")
         ):
             await self._reconcile_entity_state(
@@ -937,7 +937,7 @@ class IngestionPipeline:
             )
 
         # Episode formation (links to L1 atomic node)
-        if self._episode is not None and self._config.episodes_enabled:
+        if self._episode is not None and self._config.temporal_enabled:
             await self._assign_episode(
                 l1_node, memory, content, linked_entity_ids,
                 emit_stage,
@@ -971,7 +971,7 @@ class IngestionPipeline:
         slm_confident = (
             slm_state in {"declaration", "retirement"}
             and slm_state_conf
-            >= self._config.intent_slot_confidence_threshold
+            >= self._config.slm_confidence_threshold
         )
         if slm_confident:
             _has_state_change = True

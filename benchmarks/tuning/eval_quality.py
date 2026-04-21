@@ -101,8 +101,7 @@ async def measure_latency() -> dict:
     config = NCMSConfig(
         db_path=":memory:",
         admission_enabled=False,
-        reconciliation_enabled=False,
-        episodes_enabled=False,
+        temporal_enabled=False,
         contradiction_detection_enabled=False,
     )
     svc = MemoryService(store=store, index=index, graph=graph, config=config)
@@ -142,9 +141,7 @@ async def measure_latency() -> dict:
     config = NCMSConfig(
         db_path=":memory:",
         admission_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
-        intent_classification_enabled=True,
+        temporal_enabled=True,
         contradiction_detection_enabled=False,  # No LLM for latency test
     )
     admission_svc = AdmissionService(store=store, index=index, graph=graph, config=config)

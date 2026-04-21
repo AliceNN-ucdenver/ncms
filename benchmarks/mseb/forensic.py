@@ -119,14 +119,10 @@ async def run_forensic(
         scoring_weight_splade=0.3,
         scoring_weight_graph=0.3,
         contradiction_detection_enabled=False,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
-        intent_classification_enabled=True,
-        intent_routing_enabled=True,
-        scoring_weight_hierarchy=0.5,
         temporal_enabled=True,
-        intent_slot_enabled=True,
-        intent_slot_populate_domains=True,
+        scoring_weight_hierarchy=0.5,
+        slm_enabled=True,
+        slm_populate_domains=True,
         pipeline_debug=True,
     )
 

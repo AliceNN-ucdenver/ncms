@@ -16,6 +16,16 @@ This is a retrieval-quality baseline (no LLM answer generation).
 
 from __future__ import annotations
 
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
+
 import json
 import logging
 import re
@@ -220,9 +230,7 @@ async def _create_ncms_instance(
         actr_threshold=-999.0,  # Effectively disable ACT-R threshold
         # Disable phases that add overhead without helping retrieval baseline
         admission_enabled=False,
-        reconciliation_enabled=False,
-        episodes_enabled=False,
-        intent_classification_enabled=False,
+        temporal_enabled=False,
     )
 
     # Seed domain-specific topics for GLiNER entity extraction

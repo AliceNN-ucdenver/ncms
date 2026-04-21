@@ -138,8 +138,7 @@ class TestMultiZoneSupersession:
         closed it twice."""
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 
@@ -195,8 +194,7 @@ class TestMultiZoneSupersession:
         still resolve the retirement via the zone-scoped extractor."""
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 

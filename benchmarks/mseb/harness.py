@@ -71,15 +71,18 @@ DEFAULT_RESULTS_ROOT = Path("benchmarks/results/mseb")
 
 @dataclass
 class FeatureSet:
-    """Boolean flags for every ablation axis.  All default True
-    (full TLG + SLM).  ``--tlg-off`` clears the 4 TLG flags;
-    ``--slm-off`` clears ``slm``."""
+    """Boolean flags for every ablation axis.  Both default True
+    (full temporal stack + SLM).  ``--temporal-off`` flips
+    ``temporal`` to False; ``--slm-off`` flips ``slm``.
+
+    Sub-phase ablations (reconciliation alone, episodes alone,
+    intent-classifier alone, etc.) are no longer user-facing — the
+    ``NCMSConfig`` flag scheme collapsed them into ``temporal_enabled``.
+    Researchers who want a weight-sweep at individual phases can pass
+    ``--ncms-config`` scoring-weight overrides directly.
+    """
 
     temporal: bool = True
-    ordinal: bool = True
-    retirement: bool = True
-    causal: bool = True
-    preference: bool = True
     slm: bool = True
 
     # Single-head isolation (evaluates classifier for one head only).
@@ -88,10 +91,6 @@ class FeatureSet:
     def to_dict(self) -> dict[str, object]:
         return {
             "temporal": self.temporal,
-            "ordinal": self.ordinal,
-            "retirement": self.retirement,
-            "causal": self.causal,
-            "preference": self.preference,
             "slm": self.slm,
             "head": self.head,
         }
@@ -99,51 +98,23 @@ class FeatureSet:
     def to_ncms_config_overrides(self) -> dict[str, object]:
         """Translate feature flags into ``NCMSConfig(**overrides)``.
 
-        Keys match ``ncms.config.NCMSConfig`` fields.  Each flag
-        when ``False`` nudges the corresponding NCMS pipeline
-        toward its baseline:
-
-        - ``temporal=False``   → ``temporal_enabled=False`` +
-          ``scoring_weight_temporal=0.0`` + ``scoring_weight_recency=0.0``
-        - ``ordinal=False``    → ``intent_hierarchy_bonus=0.0`` +
-          ``scoring_weight_hierarchy=0.0``
-        - ``retirement=False`` → ``reconciliation_enabled=False``
-        - ``causal=False``     → ``scoring_weight_graph=0.0`` +
-          ``cooccurrence_max_entities=0``
-        - ``slm=False``        → ``intent_slot_enabled=False``
-
-        ``preference`` is enforced at prediction-time by stripping
-        the intent head's contribution (no config knob required).
+        - ``temporal=False`` → ``temporal_enabled=False`` +
+          ``scoring_weight_temporal=0.0`` + ``scoring_weight_hierarchy=0.0``
+          + ``scoring_weight_recency=0.0`` (zero the temporal-layer
+          scoring weights so the mechanism is fully off, not merely
+          a 0 × nonzero multiplication)
+        - ``slm=False``      → ``slm_enabled=False``
         """
         ov: dict[str, object] = {}
         if not self.temporal:
             ov.update({
                 "temporal_enabled": False,
                 "scoring_weight_temporal": 0.0,
+                "scoring_weight_hierarchy": 0.0,
                 "scoring_weight_recency": 0.0,
             })
-        if not self.ordinal:
-            # Ordinal / first / last / sequence shapes live in the
-            # intent-classifier + hierarchy-bonus path (Phase 4).
-            ov.update({
-                "intent_hierarchy_bonus": 0.0,
-                "scoring_weight_hierarchy": 0.0,
-                "intent_classification_enabled": False,
-                "intent_routing_enabled": False,
-            })
-        if not self.retirement:
-            # Supersession penalties live in reconciliation (Phase 2).
-            ov.update({"reconciliation_enabled": False})
-        if not self.causal:
-            # Causal traversal lives in the graph scoring signal +
-            # the episode linker (which builds causal chains).
-            ov.update({
-                "scoring_weight_graph": 0.0,
-                "cooccurrence_max_entities": 0,
-                "episodes_enabled": False,
-            })
         if not self.slm:
-            ov.update({"intent_slot_enabled": False})
+            ov["slm_enabled"] = False
         return ov
 
 
@@ -154,21 +125,11 @@ class FeatureSet:
 
 def _parse_feature_set(args: argparse.Namespace) -> FeatureSet:
     fs = FeatureSet()
-    if args.tlg_off:
-        fs.temporal = fs.ordinal = fs.retirement = fs.causal = False
-    if args.no_temporal:
+    if getattr(args, "temporal_off", False):
         fs.temporal = False
-    if args.no_ordinal:
-        fs.ordinal = False
-    if args.no_retirement:
-        fs.retirement = False
-    if args.no_causal:
-        fs.causal = False
-    if args.no_preference:
-        fs.preference = False
-    if args.slm_off:
+    if getattr(args, "slm_off", False):
         fs.slm = False
-    fs.head = args.head
+    fs.head = getattr(args, "head", None)
     return fs
 
 
@@ -306,18 +267,17 @@ async def run(cfg: RunConfig) -> dict[str, object]:
 
 
 def _make_run_id(domain: str, backend: str, feature_set: FeatureSet) -> str:
+    """Build a run_id that self-describes the active feature set.
+
+    Format: ``<domain>_<backend>[_temporal-on|temporal-off][_slm-off][_head-X]_<ts>``
+    The temporal/slm tags are always present for ncms runs so the
+    file name cannot lie about what was measured.
+    """
     parts = [domain, backend]
     if backend == "ncms":
+        parts.append("temporal-on" if feature_set.temporal else "temporal-off")
         if not feature_set.slm:
             parts.append("slm-off")
-        flags_off = [
-            name for name, on in feature_set.to_dict().items()
-            if name not in {"head", "slm"} and on is False
-        ]
-        if flags_off:
-            parts.append("off-" + "-".join(flags_off))
-        else:
-            parts.append("tlg-on")
         if feature_set.head:
             parts.append(f"head-{feature_set.head}")
     parts.append(datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ"))
@@ -382,18 +342,23 @@ def main() -> None:
         help="Override scoring_weight_splade (default 0.3).",
     )
 
-    # Ablation flags.
-    ap.add_argument("--tlg-off", action="store_true",
-                    help="Shortcut for --no-temporal --no-ordinal --no-retirement --no-causal")
-    ap.add_argument("--no-temporal", action="store_true")
-    ap.add_argument("--no-ordinal", action="store_true")
-    ap.add_argument("--no-retirement", action="store_true")
-    ap.add_argument("--no-causal", action="store_true")
-    ap.add_argument("--no-preference", action="store_true")
-    ap.add_argument("--slm-off", action="store_true")
-    ap.add_argument("--head", default=None,
-                    choices=["admission", "state_change", "topic", "intent", "slot"],
-                    help="Evaluate ONE head in isolation")
+    # Ablation flags — two master toggles mirroring NCMSConfig.
+    ap.add_argument(
+        "--temporal-off", action="store_true",
+        help="Disable the temporal reasoning stack (temporal_enabled=False): "
+             "TLG grammar, reconciliation, episodes, intent classifier, "
+             "intent routing, temporal + hierarchy scoring weights.",
+    )
+    ap.add_argument(
+        "--slm-off", action="store_true",
+        help="Disable the 5-head LoRA classifier (slm_enabled=False). "
+             "Ingest falls back to the regex/heuristic chain.",
+    )
+    ap.add_argument(
+        "--head", default=None,
+        choices=["admission", "state_change", "topic", "intent", "slot"],
+        help="Evaluate ONE head in isolation.",
+    )
 
     args = ap.parse_args()
     feature_set = _parse_feature_set(args)

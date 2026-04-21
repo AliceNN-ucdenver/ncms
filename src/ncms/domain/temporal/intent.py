@@ -5,7 +5,7 @@
    :mod:`ncms.domain.tlg.query_parser`, which subsumes these
    primitive families with richer slot filling (``sequence`` /
    ``predecessor`` / ``interval`` / ``range`` intents).  Kept for
-   the baseline ``temporal_range_filter_enabled=true, tlg_enabled
+   the baseline ``temporal_range_filter_enabled=true, temporal_enabled
    =false`` path; slated for removal after TLG benchmark parity.
 
 Classifies a user query into one of the six LLM-free retrieval routes

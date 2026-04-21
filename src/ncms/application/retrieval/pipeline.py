@@ -327,10 +327,10 @@ class RetrievalPipeline:
            Superseded by the TLG dispatch path
            (``sequence`` / ``predecessor`` / ``origin`` intents in
            :mod:`ncms.application.tlg.dispatch`).  When
-           ``NCMS_TLG_ENABLED=true`` the grammar layer resolves
+           ``NCMS_TEMPORAL_ENABLED=true`` the grammar layer resolves
            ordinal semantics over the zone graph, which is more
            precise than scalar re-ranking.  Kept for the
-           ``temporal_range_filter_enabled=true, tlg_enabled=false``
+           ``temporal_range_filter_enabled=true, temporal_enabled=false``
            deployment path; slated for removal once benchmark parity
            is demonstrated.
 
@@ -813,10 +813,7 @@ class RetrievalPipeline:
         emit_stage: Callable,
     ) -> dict[str, list]:
         nodes_by_memory: dict[str, list] = {}
-        if not (
-            self._config.intent_classification_enabled
-            or self._config.reconciliation_enabled
-        ):
+        if not self._config.temporal_enabled:
             return nodes_by_memory
         t0_nodes = time.perf_counter()
         candidate_memory_ids = [mid for mid, _ in all_candidates]

@@ -544,7 +544,7 @@ class IndexWorkerPool:
             admission_route == "persist"
             or admission_route is None
             or (
-                config.episodes_enabled
+                config.temporal_enabled
                 and self._svc._episode is not None
             )
         )
@@ -611,7 +611,7 @@ class IndexWorkerPool:
         _slm_confident = (
             _slm_state in {"declaration", "retirement"}
             and _slm_state_conf
-            >= self._svc._config.intent_slot_confidence_threshold
+            >= self._svc._config.slm_confidence_threshold
         )
         if _slm_confident and not _is_section_content:
             _has_state_change = True
@@ -675,7 +675,7 @@ class IndexWorkerPool:
 
         # Reconciliation
         config = self._svc._config
-        if config.reconciliation_enabled:
+        if config.temporal_enabled:
             try:
                 from ncms.application.reconciliation_service import (
                     ReconciliationService,
@@ -693,7 +693,7 @@ class IndexWorkerPool:
         # TLG Phase 3c — background path also creates ENTITY_STATE
         # nodes.  Invalidate the L1 vocabulary cache so the next
         # retrieve_lg call sees the new subject / entity tokens.
-        if config.tlg_enabled:
+        if config.temporal_enabled:
             self._svc.invalidate_tlg_vocabulary()
 
     async def _run_episode_formation(
@@ -706,7 +706,7 @@ class IndexWorkerPool:
         config = self._svc._config
         if (
             self._svc._episode is None
-            or not config.episodes_enabled
+            or not config.temporal_enabled
         ):
             return
 

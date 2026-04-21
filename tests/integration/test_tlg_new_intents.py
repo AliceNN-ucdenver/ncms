@@ -79,8 +79,7 @@ async def _auth_chain(store: SQLiteStore) -> tuple[
     """v1 (cookies) → v2 (OAuth) → v3 (passkeys), reconciled."""
     config = NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=True,
+        temporal_enabled=True,
     )
     service = ReconciliationService(store=store, config=config)
 

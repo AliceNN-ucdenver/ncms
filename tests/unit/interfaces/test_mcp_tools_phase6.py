@@ -111,7 +111,7 @@ class TestGetCurrentState:
 
         mcp = FastMCP(name="test")
         memory_svc = AsyncMock()
-        config = NCMSConfig(reconciliation_enabled=False)
+        config = NCMSConfig(temporal_enabled=False)
         type(memory_svc)._config = PropertyMock(return_value=config)
         bus_svc = MagicMock()
         snapshot_svc = MagicMock()

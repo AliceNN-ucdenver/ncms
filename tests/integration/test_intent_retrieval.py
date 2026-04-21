@@ -43,7 +43,7 @@ def intent_config() -> NCMSConfig:
     return NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        intent_classification_enabled=True,
+        temporal_enabled=True,
         scoring_weight_hierarchy=0.10,
         intent_hierarchy_bonus=0.5,
     )

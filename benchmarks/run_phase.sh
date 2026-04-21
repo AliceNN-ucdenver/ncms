@@ -86,7 +86,6 @@ case "$PHASE" in
     phase5*)
         export NCMS_CONTENT_CLASSIFICATION_ENABLED=true
         export NCMS_TEMPORAL_ENABLED=true
-        export NCMS_INTENT_CLASSIFICATION_ENABLED=true
         export NCMS_SCORING_WEIGHT_HIERARCHY=0.5
         ;;
 esac

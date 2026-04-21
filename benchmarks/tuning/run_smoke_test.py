@@ -103,9 +103,7 @@ async def run_smoke_test() -> dict:
     config = NCMSConfig(
         db_path=":memory:",
         admission_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
-        intent_classification_enabled=True,
+        temporal_enabled=True,
         contradiction_detection_enabled=True,
         llm_model=llm_model,
         llm_api_base=llm_api_base,

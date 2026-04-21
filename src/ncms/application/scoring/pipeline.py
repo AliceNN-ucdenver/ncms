@@ -229,7 +229,7 @@ class ScoringPipeline:
         w_splade = self._config.scoring_weight_splade
         w_graph = self._config.scoring_weight_graph
         w_recency = self._config.scoring_weight_recency
-        if self._config.intent_routing_enabled and intent_result:
+        if self._config.temporal_enabled and intent_result:
             with contextlib.suppress(Exception):
                 w_bm25, w_splade, w_graph, w_recency = (
                     self._get_intent_weights(intent_result.intent)
@@ -431,7 +431,7 @@ class ScoringPipeline:
 
         Returns (penalty, is_superseded, has_conflicts).
         """
-        if not self._config.reconciliation_enabled or not nodes:
+        if not self._config.temporal_enabled or not nodes:
             return 0.0, False, False
         try:
             is_superseded = False

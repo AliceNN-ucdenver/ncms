@@ -19,9 +19,7 @@ async def services():
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        intent_classification_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
+        temporal_enabled=True,
     )
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()

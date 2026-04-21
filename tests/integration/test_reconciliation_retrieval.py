@@ -44,7 +44,7 @@ def config() -> NCMSConfig:
     return NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,  # Deterministic for testing
-        reconciliation_enabled=True,
+        temporal_enabled=True,
         reconciliation_supersession_penalty=0.3,
         reconciliation_conflict_penalty=0.15,
     )

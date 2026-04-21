@@ -7,7 +7,7 @@
 > **Status: SHIPPED into NCMS (P1 2026-04-19).**  The grammar
 > layer at `src/ncms/domain/tlg/` and `src/ncms/application/tlg/`
 > provides query-side structural retrieval behind
-> `NCMS_TLG_ENABLED`.  32/32 top-5 and rank-1 on the ADR state-
+> `NCMS_TEMPORAL_ENABLED`.  32/32 top-5 and rank-1 on the ADR state-
 > evolution corpus vs. BM25 41 % / 16 %; see
 > [`docs/tlg-validation-findings.md`](tlg-validation-findings.md).
 > Composes cleanly with the P2 intent-slot SLM (2026-04-20) —
@@ -1658,7 +1658,7 @@ write-up), shipped alongside the Phase 6 validation commit.
 **Goal.**  Replace the experimental `_find_memory` iterator with
 NCMS's entity-graph index for O(1) lookup; integrate TLG's
 production-matcher layer into `RetrievalPipeline`; gate behind a
-feature flag (`NCMS_TLG_ENABLED`).
+feature flag (`NCMS_TEMPORAL_ENABLED`).
 
 **Artifacts delivered (see the TLG Phase 0 – 3d commits on `main`):**
 
@@ -1677,7 +1677,7 @@ feature flag (`NCMS_TLG_ENABLED`).
 * `MemoryService.search` auto-composes the grammar answer into
   the BM25 ranking when TLG is enabled; `retrieve_lg` /
   `invalidate_tlg_vocabulary` are public entry points.
-* Feature-flag integration (`NCMS_TLG_ENABLED`), dashboard
+* Feature-flag integration (`NCMS_TEMPORAL_ENABLED`), dashboard
   events (`grammar.*`), maintenance-scheduler task
   (`tlg_induction`), CLI (`ncms tlg status` / `induce`,
   `--tlg` on the LongMemEval benchmark).

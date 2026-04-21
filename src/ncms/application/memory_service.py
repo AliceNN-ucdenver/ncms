@@ -218,16 +218,12 @@ class MemoryService:
             features.append("SPLADE")
         if self._config.admission_enabled:
             features.append("admission")
-        if self._config.reconciliation_enabled:
-            features.append("reconciliation")
-        if self._config.episodes_enabled:
-            features.append("episodes")
-        if self._config.intent_classification_enabled:
-            features.append("intent")
+        if self._config.temporal_enabled:
+            features.append("temporal_stack")  # reconciliation + episodes + intent + tlg + temporal scoring
+        if self._config.slm_enabled:
+            features.append("slm")
         if self._config.content_classification_enabled:
             features.append("content_classification")
-        if self._config.temporal_enabled:
-            features.append("temporal")
         if self._config.dream_cycle_enabled:
             features.append("dream")
         if self._config.reranker_enabled:
@@ -239,8 +235,6 @@ class MemoryService:
             features.append("synthesis")
         if self._config.topic_map_enabled:
             features.append("topic_map")
-        if self._config.tlg_enabled:
-            features.append("tlg")
         logger.info("[memory_service] Active features: %s", ", ".join(features) or "none")
 
     @property
@@ -364,14 +358,14 @@ class MemoryService:
                 },
             )
             # Auto-populate Memory.domains from the SLM topic head
-            # when the operator opted in via intent_slot_populate_domains.
+            # when the operator opted in via slm_populate_domains.
             # This replaces the "user hands us a domain string" flow.
             if (
                 intent_slot_label.topic is not None
                 and intent_slot_label.is_topic_confident(
-                    self._config.intent_slot_confidence_threshold,
+                    self._config.slm_confidence_threshold,
                 )
-                and self._config.intent_slot_populate_domains
+                and self._config.slm_populate_domains
             ):
                 domains = list(domains or [])
                 if intent_slot_label.topic not in domains:
@@ -526,7 +520,7 @@ class MemoryService:
         _should_create_node = (
             admission_route == "persist"
             or admission_route is None  # admission disabled, always create
-            or (self._config.episodes_enabled and self._episode is not None)
+            or (self._config.temporal_enabled and self._episode is not None)
         )
         if _should_create_node:
             try:
@@ -550,7 +544,7 @@ class MemoryService:
             # so the next retrieve_lg call rebuilds with the new
             # subject / entity tokens.  Cheap: invalidation is just a
             # None-assignment; rebuild is lazy.
-            if self._config.tlg_enabled:
+            if self._config.temporal_enabled:
                 self._tlg_vocab_cache.invalidate()
 
         logger.info("Stored memory %s: %s", memory.id, content[:80])
@@ -866,7 +860,7 @@ class MemoryService:
                 target_node_types=INTENT_TARGETS.get(qi, ("atomic",)),
             )
 
-        if not self._config.intent_classification_enabled:
+        if not self._config.temporal_enabled:
             return None
 
         t0 = time.perf_counter()
@@ -1100,11 +1094,11 @@ class MemoryService:
                 logger.debug("Failed to log search for dream cycle", exc_info=True)
 
         # TLG Phase 3c — grammar ∨ BM25 composition.  Runs only when
-        # ``NCMS_TLG_ENABLED=true`` and the grammar dispatch returns a
+        # ``NCMS_TEMPORAL_ENABLED=true`` and the grammar dispatch returns a
         # confident answer; otherwise the BM25-derived ranking is
         # returned unchanged (the invariant that guarantees zero
         # confidently-wrong results).
-        if self._config.tlg_enabled:
+        if self._config.temporal_enabled:
             results = await self._compose_grammar_with_results(
                 query, results, limit,
             )
@@ -1258,7 +1252,7 @@ class MemoryService:
         if not self._config.scale_aware_flags_enabled:
             return {
                 "reranker": self._config.reranker_enabled,
-                "intent": self._config.intent_classification_enabled,
+                "intent": self._config.temporal_enabled,
             }
 
         # Use index size as proxy for corpus size (faster than SQL count)
@@ -1280,8 +1274,8 @@ class MemoryService:
 
         # Intent classification: exemplar index is fast but scoring adds latency
         intent_ok = corpus_size <= self._config.scale_intent_max_memories
-        flags["intent"] = self._config.intent_classification_enabled and intent_ok
-        if self._config.intent_classification_enabled and not intent_ok:
+        flags["intent"] = self._config.temporal_enabled and intent_ok
+        if self._config.temporal_enabled and not intent_ok:
             logger.warning(
                 "[scale] Intent classification auto-disabled: corpus=%d > threshold=%d",
                 corpus_size, self._config.scale_intent_max_memories,
@@ -1596,7 +1590,7 @@ class MemoryService:
 
         # 2. Classify intent for context enrichment strategy
         intent_result: IntentResult | None = None
-        if self._config.intent_classification_enabled:
+        if self._config.temporal_enabled:
             if self._intent_classifier is not None:
                 intent_result = self._intent_classifier.classify(query)
             else:
@@ -1680,18 +1674,18 @@ class MemoryService:
 
         Safe to call on any store state.  Returns a
         :attr:`Confidence.NONE` trace when TLG is disabled via
-        ``NCMSConfig.tlg_enabled`` — this keeps callers' composition
+        ``NCMSConfig.temporal_enabled`` — this keeps callers' composition
         logic identical whether TLG is on or off.
         """
         from ncms.application.tlg import retrieve_lg as _dispatch
         from ncms.domain.tlg import Confidence, LGIntent, LGTrace
 
-        if not self._config.tlg_enabled:
+        if not self._config.temporal_enabled:
             return LGTrace(
                 query=query,
                 intent=LGIntent(kind=""),
                 confidence=Confidence.NONE,
-                proof="tlg disabled (NCMS_TLG_ENABLED=false)",
+                proof="tlg disabled (NCMS_TEMPORAL_ENABLED=false)",
             )
         # Warm the persistent shape cache once per process lifetime.
         if not self._tlg_shape_cache_warmed:
@@ -1738,7 +1732,7 @@ class MemoryService:
         CLI / MCP tool).  Returns a small summary dict for logging.
         No-op when TLG is disabled — returns an empty summary.
         """
-        if not self._config.tlg_enabled:
+        if not self._config.temporal_enabled:
             return {"status": "skipped", "reason": "tlg_disabled"}
         from ncms.application.tlg import induce_and_persist_markers
         induced = await induce_and_persist_markers(self._store)

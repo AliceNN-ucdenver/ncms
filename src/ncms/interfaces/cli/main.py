@@ -304,14 +304,14 @@ def load(
 
         # Reconciliation service (Phase 2, disabled by default)
         reconciliation = None
-        if config.reconciliation_enabled:
+        if config.temporal_enabled:
             from ncms.application.reconciliation_service import ReconciliationService
 
             reconciliation = ReconciliationService(store=store, config=config)
 
         # Episode formation (Phase 3, disabled by default)
         episode = None
-        if config.episodes_enabled:
+        if config.temporal_enabled:
             from ncms.application.episode_service import EpisodeService
 
             episode = EpisodeService(
@@ -634,14 +634,14 @@ def watch(
 
         # Optional reconciliation
         reconciliation = None
-        if config.reconciliation_enabled:
+        if config.temporal_enabled:
             from ncms.application.reconciliation_service import ReconciliationService
 
             reconciliation = ReconciliationService(store=store, config=config)
 
         # Optional episodes
         episode = None
-        if config.episodes_enabled:
+        if config.temporal_enabled:
             from ncms.application.episode_service import EpisodeService
 
             episode = EpisodeService(
@@ -1026,7 +1026,7 @@ def state() -> None:
     """Query entity states and history (Phase 2 reconciliation).
 
     View current entity states and their temporal transition history.
-    Requires NCMS_RECONCILIATION_ENABLED=true for data to exist.
+    Requires NCMS_TEMPORAL_ENABLED=true for data to exist.
     """
     pass
 
@@ -1182,7 +1182,7 @@ def episodes() -> None:
     """Query episode formation data (Phase 3).
 
     View open/closed episodes and their member fragments.
-    Requires NCMS_EPISODES_ENABLED=true for data to exist.
+    Requires NCMS_TEMPORAL_ENABLED=true for data to exist.
     """
     pass
 
@@ -1355,8 +1355,8 @@ def maintenance_status() -> None:
             (
                 "episode_close",
                 f"{config.maintenance_episode_close_interval_minutes}m",
-                "episodes_enabled",
-                config.episodes_enabled,
+                "temporal_enabled",
+                config.temporal_enabled,
             ),
             (
                 "decay",
@@ -1367,8 +1367,8 @@ def maintenance_status() -> None:
             (
                 "tlg_induction",
                 f"{config.maintenance_tlg_induction_interval_minutes}m",
-                "tlg_enabled",
-                config.tlg_enabled,
+                "temporal_enabled",
+                config.temporal_enabled,
             ),
         ]
 
@@ -1441,7 +1441,7 @@ def maintenance_run(task: str) -> None:
 
         # Episode service (optional)
         episode_svc = None
-        if config.episodes_enabled:
+        if config.temporal_enabled:
             from ncms.application.episode_service import EpisodeService
 
             episode_svc = EpisodeService(
@@ -1577,7 +1577,7 @@ def lint(db: str | None) -> None:
 def tlg() -> None:
     """Temporal Linguistic Geometry — induction + status.
 
-    TLG is feature-flagged behind NCMS_TLG_ENABLED.  These commands
+    TLG is feature-flagged behind NCMS_TEMPORAL_ENABLED.  These commands
     operate directly on the store without constructing a full
     MemoryService, so they're cheap to run on production DBs for
     inspection.
@@ -1591,7 +1591,7 @@ def tlg_status(db: str | None) -> None:
     """Show current L2 marker inventory + retires_entities coverage.
 
     Reports:
-      * Feature flag state (``NCMS_TLG_ENABLED``).
+      * Feature flag state (``NCMS_TEMPORAL_ENABLED``).
       * Persisted L2 marker buckets (from ``grammar_transition_markers``).
       * Count of SUPERSEDES / SUPERSEDED_BY edges, and how many have
         a populated ``retires_entities`` set.
@@ -1614,7 +1614,7 @@ def tlg_status(db: str | None) -> None:
         store = SQLiteStore(db_path=config.db_path)
         try:
             await store.initialize()
-            flag_state = "[green]enabled[/]" if config.tlg_enabled else "[red]disabled[/]"
+            flag_state = "[green]enabled[/]" if config.temporal_enabled else "[red]disabled[/]"
             console.print(f"TLG feature flag: {flag_state}")
 
             # Marker inventory

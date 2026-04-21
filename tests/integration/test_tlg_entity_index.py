@@ -129,8 +129,7 @@ class TestDispatchUsesIndex:
         dispatch should succeed via the fast index lookup."""
         config = NCMSConfig(
             db_path=":memory:",
-            reconciliation_enabled=True,
-            tlg_enabled=True,
+            temporal_enabled=True,
         )
         service = ReconciliationService(store=store, config=config)
 

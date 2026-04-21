@@ -204,7 +204,7 @@ src/ncms/
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE v3 (2,000 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
 10. **Hybrid episode linker** — Episodes group related fragments via incremental multi-signal matching (no LLM). Each episode maintains a compact profile (entities + domains + anchors) indexed in BM25/SPLADE. New fragments scored against candidates using 7 weighted signals: BM25 lexical match, SPLADE semantic match, entity overlap coefficient, domain overlap, temporal proximity, source agent, and structured anchor bonus. Weights auto-redistribute when SPLADE is disabled.
 11. **Selective admission scoring** (Phase 1) — 4 pure text heuristic features (utility, persistence, state_change_signal, temporal_salience) implement a 3-way quality gate: discard / ephemeral_cache / persist. No index or LLM dependency — runs identically in sync and async indexing modes. Content-hash dedup (SHA-256) handles exact duplicates. State change signal ≥ 0.35 auto-promotes to persist for entity state capture. Every persisted memory gets an L1 atomic node; content with state change signal ≥ 0.35 or structured state declaration (`Entity: key = value`) additionally gets an L2 entity_state node with a DERIVED_FROM edge to L1; episodes link to L1 atomic nodes. `importance >= 8.0` bypasses admission entirely (force-store for agents). Feature-flagged off by default (`NCMS_ADMISSION_ENABLED=false`).
-12. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Feature-flagged off by default (`NCMS_RECONCILIATION_ENABLED=false`).
+12. **Heuristic state reconciliation** (Phase 2) — Entity state nodes are compared via 5 relation types (supports, refines, supersedes, conflicts, unrelated). Superseded states get `is_current=False` + `valid_to` closure + bidirectional edges. Superseded/conflicted memories receive ACT-R mismatch penalties in retrieval scoring. Bitemporal fields (`observed_at`, `ingested_at`) enable point-in-time queries. Gated by the master `NCMS_TEMPORAL_ENABLED=false` flag (default off).
 13. **Intent-aware retrieval** (Phase 4) — BM25 exemplar index classifies queries into 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection). ~70 exemplar queries indexed in a small in-memory Tantivy index; BM25 scoring aggregated per intent replaces hardcoded keyword patterns. Keyword fallback used when index unavailable. Matching node types receive an additive hierarchy bonus in scoring. Two-toggle safety: classification can be enabled for observability without affecting ranking (scoring_weight_hierarchy defaults to 0.0). Supplementary candidates (entity states, episode members, state history) injected based on classified intent. Batch node preload eliminates N+1 queries.
 14. **Hierarchical consolidation** (Phase 5) — Three batch consolidation passes generate abstract memories from lower-level traces. Episode summaries (5A) synthesize closed episodes into searchable narratives via LLM. State trajectories (5B) generate temporal progression narratives for entities with ≥N state transitions. Recurring patterns (5C) cluster episode summaries by topic_entities Jaccard overlap, with stability-based promotion (`min(1.0, cluster_size/5) * confidence`) to `strategic_insight` above 0.7 threshold. Each abstract creates dual storage: `Memory(type="insight")` for Tantivy/SPLADE indexing + `MemoryNode(node_type=ABSTRACT)` for HTMG hierarchy. Staleness tracking via `refresh_due_at` metadata enables re-synthesis. All three sub-phases feature-flagged off by default.
 15. **Dream cycles** (Phase 8) — Offline rehearsal creating differential access patterns so ACT-R provides meaningful signal. Three non-LLM passes: (8A) search logging captures query→result associations, learned entity co-occurrence strengths via PMI feed into graph spreading activation (PMI-weighted edges traversed during BFS, rare co-occurrences get high weight); (8B) dream rehearsal selects top memories by 5-signal weighted score (centrality 0.40, staleness 0.30, importance 0.20, access_count 0.05, recency 0.05) and injects synthetic access records; importance drift compares recent vs older access rates and adjusts importance within ±drift_rate. Co-occurrence edge generation capped at 12 entities per memory (`cooccurrence_max_entities`) to limit hub-node inflation from generic entities. Integrated into consolidation pass. Feature-flagged off by default (`NCMS_DREAM_CYCLE_ENABLED=false`).
@@ -219,7 +219,7 @@ src/ncms/
 24. **Maintenance scheduler** — Background asyncio scheduler runs consolidation, dream cycles, episode closure, and decay passes on configurable intervals. CLI: `ncms maintenance status|run`. Feature-flagged via `NCMS_MAINTENANCE_ENABLED`.
 25. **Wiki export** — `ncms export` generates a linked markdown wiki with pages for entities, episodes, agents, and insights. Suitable for human audit or Obsidian import. Implementation in `cli/export.py`.
 26. **Bus heartbeat + offline detection** — HTTP transport tracks agent heartbeats via SSE stream. When an agent disconnects, auto-publishes a snapshot if `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT=true`. Enables surrogate responses for offline agents.
-27. **Intent-slot SLM (P2)** — LoRA multi-head BERT classifier that runs at `store_memory()` time BEFORE admission and replaces five brittle pattern-matching code paths with one forward pass: `admission_head` (persist/ephemeral/discard) replaces the 4-feature regex admission scorer; `state_change_head` (declaration/retirement/none) replaces the YAML/status regex; `topic_head` auto-populates `Memory.domains` from the adapter's learned taxonomy (replacing the "caller hands us a domain string" flow); `intent_head` extracts preference type; `slot_head` (BIO) extracts typed domain-specific surface forms.  3-tier SLM-first fallback chain: per-deployment LoRA adapter → E5 zero-shot intent-only → heuristic null-output (admission=persist).  GLiNER is NOT in this chain — it remains for NER entity extraction (separate concern).  **Four adapters ship today** at `~/.ncms/adapters/<domain>/<version>/` (~2.4 MB each): `conversational/v4`, `clinical/v4`, `software_dev/v4` (P2 prose reference), and `swe_diff/v1` (MSEB-SWE diff adapter, trained on SWE-Gym with zero repo overlap vs SWE-bench Verified).  Adapter ↔ corpus ↔ taxonomy wiring is registered in `experiments/intent_slot_distillation/schemas.py::DOMAIN_MANIFESTS`; operators train their own with `train_adapter.py`.  Adapters are baked into the NemoClaw hub Docker image (`deployment/nemoclaw-blueprint/hub.Dockerfile` COPY stage).  Benchmark hook: `benchmarks/intent_slot_adapter.py::get_intent_slot_chain(domain=...)`.  Feature-flagged via `NCMS_INTENT_SLOT_ENABLED=false` by default.  Design: `docs/completed/p2-plan.md`, sprint-4 findings: `docs/intent-slot-sprint-4-findings.md`, per-head evidence: `docs/mseb-results.md` §5.
+27. **Intent-slot SLM (P2)** — LoRA multi-head BERT classifier that runs at `store_memory()` time BEFORE admission and replaces five brittle pattern-matching code paths with one forward pass: `admission_head` (persist/ephemeral/discard) replaces the 4-feature regex admission scorer; `state_change_head` (declaration/retirement/none) replaces the YAML/status regex; `topic_head` auto-populates `Memory.domains` from the adapter's learned taxonomy (replacing the "caller hands us a domain string" flow); `intent_head` extracts preference type; `slot_head` (BIO) extracts typed domain-specific surface forms.  3-tier SLM-first fallback chain: per-deployment LoRA adapter → E5 zero-shot intent-only → heuristic null-output (admission=persist).  GLiNER is NOT in this chain — it remains for NER entity extraction (separate concern).  **Four adapters ship today** at `~/.ncms/adapters/<domain>/<version>/` (~2.4 MB each): `conversational/v4`, `clinical/v4`, `software_dev/v4` (P2 prose reference), and `swe_diff/v1` (MSEB-SWE diff adapter, trained on SWE-Gym with zero repo overlap vs SWE-bench Verified).  Adapter ↔ corpus ↔ taxonomy wiring is registered in `experiments/intent_slot_distillation/schemas.py::DOMAIN_MANIFESTS`; operators train their own with `train_adapter.py`.  Adapters are baked into the NemoClaw hub Docker image (`deployment/nemoclaw-blueprint/hub.Dockerfile` COPY stage).  Benchmark hook: `benchmarks/intent_slot_adapter.py::get_intent_slot_chain(domain=...)`.  Feature-flagged via `NCMS_SLM_ENABLED=false` by default (renamed from `NCMS_INTENT_SLOT_ENABLED` in the flag-refactor of 2026-04).  Design: `docs/completed/p2-plan.md`, sprint-4 findings: `docs/intent-slot-sprint-4-findings.md`, per-head evidence: `docs/mseb-results.md` §5.
 
 28. **MSEB v1 — Memory State-Evolution Benchmark (P3)** — Four-domain benchmark family for state-evolution retrieval: MSEB-SWE (SWE-bench Verified diffs, 500 issues), MSEB-Clinical (PMC OA case reports), MSEB-SoftwareDev (ADR prose from joelparkerhenderson/architecture-decision-record), MSEB-Convo (LongMemEval conversations).  Gold queries are stratified into four query classes (`general` / `temporal` / `preference` / `noise`) via a deterministic classifier (`benchmarks/mseb/query_class.py`).  Per-class validation uses a shared auditor (`benchmarks/mseb/gold_auditor.py`) with a strict `chain-unique-anchor` rule for corpus-structured domains and a relaxed TF-lift rule for high-turn conversational content.  Frozen gold ships as `benchmarks/mseb_<domain>/gold_locked.yaml`.  Backend layer is pluggable: `NcmsBackend` (hybrid: BM25 + SPLADE + graph + SLM) vs `Mem0Backend` (dense MiniLM + Chroma, optional Spark LLM for infer/rerank).  Harness (`benchmarks/mseb/harness.py`) dumps `*.predictions.jsonl` per run for post-hoc rescoring without re-running the backend.  Headline finding (12-cell mini, 747 gold queries): **NCMS hybrid beats mem0 dense by +0.14 to +0.45 rank-1 across all four domains**.  Per-head contributions documented in `docs/mseb-results.md` §5.  Reproduce via `./benchmarks/mseb/run_main_12.sh`.  Results: `benchmarks/results/mseb/main12/`.
 
@@ -312,7 +312,16 @@ Single-pass creation in `migrations.py`. All tables created together.
 
 ## Configuration
 
-All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
+All settings via environment variables with `NCMS_` prefix (Pydantic Settings).
+
+**Two master feature flags** gate all temporal/state reasoning and the ingest-side classifier.  Everything else in the table is a tunable knob that applies *when* the relevant master flag is on.
+
+| Master flag | Default | What it turns on |
+|---|---|---|
+| `NCMS_TEMPORAL_ENABLED` | `false` | TLG grammar composition, state reconciliation (supersedes/refines/conflicts), episode formation, intent classification, intent routing, temporal scoring signal, hierarchy bonus |
+| `NCMS_SLM_ENABLED`      | `false` | 5-head LoRA classifier at ingest (admission / state_change / topic / intent / slot) — replaces the regex/LLM fallbacks for those five labels |
+
+Flag history: the previous scheme had 7 separate per-phase booleans (`NCMS_TLG_ENABLED`, `NCMS_RECONCILIATION_ENABLED`, `NCMS_EPISODES_ENABLED`, `NCMS_INTENT_CLASSIFICATION_ENABLED`, `NCMS_INTENT_ROUTING_ENABLED`, plus a narrow `NCMS_TEMPORAL_ENABLED` and `NCMS_INTENT_SLOT_ENABLED`).  Those are all removed as of the 2026-04 flag refactor — they collapsed into the two master flags above because they were never independently ablatable in practice.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -346,11 +355,10 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_LABEL_DETECTION_API_BASE` | `http://spark-ee7d.local:8000/v1` | vLLM endpoint on DGX Spark |
 | `NCMS_ADMISSION_ENABLED` | `false` | Enable admission scoring for incoming memories (Phase 1) |
 | `NCMS_ADMISSION_EPHEMERAL_TTL_SECONDS` | `3600` | TTL for ephemeral cache entries (1 hour) |
-| `NCMS_RECONCILIATION_ENABLED` | `false` | Enable state reconciliation (Phase 2, requires admission) |
-| `NCMS_RECONCILIATION_IMPORTANCE_BOOST` | `0.5` | Importance boost for SUPPORTS relations |
+| `NCMS_TEMPORAL_ENABLED` | `false` | **Master temporal reasoning flag.** When True, enables the full stack: TLG grammar composition, state reconciliation (supersedes/refines/conflicts edges), episode formation (7-signal hybrid linker), intent classification (BM25 exemplar), intent routing (supplementary candidates), temporal scoring signal, and the hierarchy bonus for intent-matched node types. When False, the pipeline runs pure hybrid retrieval (BM25+SPLADE+graph+ACT-R) with no state-evolution semantics. |
+| `NCMS_RECONCILIATION_IMPORTANCE_BOOST` | `0.5` | Importance boost for SUPPORTS relations (active when `temporal_enabled=True`) |
 | `NCMS_RECONCILIATION_SUPERSESSION_PENALTY` | `0.3` | ACT-R mismatch penalty for superseded states |
 | `NCMS_RECONCILIATION_CONFLICT_PENALTY` | `0.15` | ACT-R mismatch penalty for conflicted states |
-| `NCMS_EPISODES_ENABLED` | `false` | Enable hybrid episode linker (Phase 3) |
 | `NCMS_EPISODE_WINDOW_MINUTES` | `1440` | Temporal proximity window for episode signals (24h) |
 | `NCMS_EPISODE_CLOSE_MINUTES` | `1440` | Auto-close episodes with no activity past this (24h) |
 | `NCMS_EPISODE_MATCH_THRESHOLD` | `0.30` | Weighted score threshold for joining an episode |
@@ -363,7 +371,6 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_EPISODE_WEIGHT_TEMPORAL` | `0.10` | Temporal proximity weight |
 | `NCMS_EPISODE_WEIGHT_AGENT` | `0.05` | Source agent match weight |
 | `NCMS_EPISODE_WEIGHT_ANCHOR` | `0.05` | Structured anchor match weight |
-| `NCMS_INTENT_CLASSIFICATION_ENABLED` | `false` | Enable heuristic query intent classification (Phase 4) |
 | `NCMS_INTENT_CONFIDENCE_THRESHOLD` | `0.6` | Minimum confidence to apply classified intent (falls back to fact_lookup) |
 | `NCMS_INTENT_HIERARCHY_BONUS` | `0.5` | Raw bonus value for node type match before weight |
 | `NCMS_SCORING_WEIGHT_HIERARCHY` | `0.0` | Additive weight for hierarchy bonus (0 = no effect) |
@@ -404,27 +411,24 @@ All settings via environment variables with `NCMS_` prefix (Pydantic Settings):
 | `NCMS_SNAPSHOT_TTL_HOURS` | `168` | Snapshot expiry (7 days) |
 | `NCMS_CONTENT_CLASSIFICATION_ENABLED` | `false` | Enable two-class content gate (ATOMIC vs NAVIGABLE) |
 | `NCMS_MAX_CONTENT_LENGTH` | `5000` | Max chars for atomic content (importance >= 8.0 exempt) |
-| `NCMS_TEMPORAL_ENABLED` | `false` | Enable temporal scoring signal |
-| `NCMS_SCORING_WEIGHT_TEMPORAL` | `0.2` | Temporal signal weight in combined score |
+| `NCMS_SCORING_WEIGHT_TEMPORAL` | `0.2` | Temporal signal weight in combined score (active when `temporal_enabled=True`) |
 | `NCMS_SCORING_WEIGHT_RECENCY` | `0.0` | Recency decay weight (0.0 = disabled) |
 | `NCMS_RECENCY_HALF_LIFE_DAYS` | `30.0` | Recency decay half-life |
 | `NCMS_LEVEL_FIRST_ENABLED` | `false` | Enable level-first retrieval with scoped search |
 | `NCMS_SYNTHESIS_ENABLED` | `false` | Enable synthesize() pipeline (5 modes) |
 | `NCMS_TOPIC_MAP_ENABLED` | `false` | Enable emergent topic map from L4 clustering |
-| `NCMS_INTENT_ROUTING_ENABLED` | `false` | Enable intent-driven candidate routing |
 | `NCMS_DREAM_QUERY_EXPANSION_ENABLED` | `false` | Enable dream-learned query expansion |
 | `NCMS_DREAM_ACTIVE_FORGETTING_ENABLED` | `false` | Enable active forgetting in dream cycles |
 | `NCMS_SEARCH_FEEDBACK_ENABLED` | `false` | Enable implicit search feedback recording |
 | `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT` | `false` | Auto-publish snapshot when agent disconnects |
 | `NCMS_SCALE_AWARE_FLAGS_ENABLED` | `false` | Enable memory-count-based feature activation |
 | `NCMS_MAINTENANCE_ENABLED` | `false` | Enable background maintenance scheduler |
-| `NCMS_INTENT_SLOT_ENABLED` | `false` | Enable P2 intent-slot SLM ingest-side classifier (replaces admission / state-change / topic regex when confident) |
-| `NCMS_INTENT_SLOT_CHECKPOINT_DIR` | *(none)* | Adapter artifact path (e.g. `~/.ncms/adapters/conversational/v4/`) |
-| `NCMS_INTENT_SLOT_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor — below this the chain falls to the next backend |
-| `NCMS_INTENT_SLOT_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` |
-| `NCMS_INTENT_SLOT_E5_FALLBACK_ENABLED` | `true` | Include E5 zero-shot intent classifier in the fallback chain |
-| `NCMS_INTENT_SLOT_DEVICE` | *(auto)* | Device override for SLM forward pass (cuda / mps / cpu) |
-| `NCMS_INTENT_SLOT_LATENCY_BUDGET_MS` | `200.0` | Soft limit on forward-pass latency — exceeding logs a warning |
+| `NCMS_SLM_ENABLED` | `false` | **Master 5-head SLM flag.** When True, the 5-head LoRA classifier runs at ingest and produces typed labels for admission / state_change / topic / intent / slot that replace the regex/LLM fallbacks. |
+| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Adapter artifact path (e.g. `~/.ncms/adapters/conversational/v4/`) |
+| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor — below this the chain falls to the next backend |
+| `NCMS_SLM_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` |
+| `NCMS_SLM_E5_FALLBACK_ENABLED` | `true` | Include E5 zero-shot intent classifier in the fallback chain |
+| `NCMS_SLM_LATENCY_BUDGET_MS` | `200.0` | Soft limit on forward-pass latency — exceeding logs a warning |
 | `NCMS_BULK_IMPORT_QUEUE_SIZE` | `10000` | Queue size for bulk import mode |
 
 ## Local LLM Development

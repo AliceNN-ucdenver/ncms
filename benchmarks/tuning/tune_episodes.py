@@ -166,7 +166,7 @@ async def evaluate_episodes() -> dict:
                 config = NCMSConfig(
                     db_path=":memory:",
                     admission_enabled=True,
-                    episodes_enabled=True,
+                    temporal_enabled=True,
                     episode_match_threshold=threshold,
                     episode_create_min_entities=min_ents,
                     episode_weight_bm25=wv["bm25"],
@@ -174,7 +174,6 @@ async def evaluate_episodes() -> dict:
                     episode_weight_domain=wv["domain"],
                     # Other weights stay default
                     contradiction_detection_enabled=False,
-                    reconciliation_enabled=False,
                 )
 
                 admission_svc = AdmissionService(

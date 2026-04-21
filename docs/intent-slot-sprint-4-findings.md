@@ -15,9 +15,9 @@ the brittle regex paths on the hot path:
 
 | Old path | Replacement | Kicks in when |
 |---|---|---|
-| `admission_service.score_admission` (4-feature regex heuristic, 65.9% accuracy on labeled set) | `admission_head` (softmax over persist/ephemeral/discard) | Confidence ≥ `intent_slot_confidence_threshold` (default 0.7) |
+| `admission_service.score_admission` (4-feature regex heuristic, 65.9% accuracy on labeled set) | `admission_head` (softmax over persist/ephemeral/discard) | Confidence ≥ `slm_confidence_threshold` (default 0.7) |
 | `_has_state_declaration` (3 regex patterns — 8/8 false-positive rate in NemoClaw audit) | `state_change_head` (declaration/retirement/none) | Confidence ≥ threshold, same knob |
-| Manual `Memory.domains: list[str]` tagging | `topic_head` → auto-populates `Memory.domains` from adapter taxonomy | `intent_slot_populate_domains=True` + topic confident |
+| Manual `Memory.domains: list[str]` tagging | `topic_head` → auto-populates `Memory.domains` from adapter taxonomy | `slm_populate_domains=True` + topic confident |
 | (Never shipped) regex preference extractor | `intent_head` + `slot_head` | Always, when flag is on |
 
 All four replacements are **SLM-first, regex-fallback**:
@@ -161,7 +161,7 @@ Inside the harness:
   avoids BERT reload × 500 questions)
 - Each question's fresh `MemoryService` receives the shared
   chain via `intent_slot=` kwarg
-- `intent_slot_enabled=True` is set on the config when a domain
+- `slm_enabled=True` is set on the config when a domain
   is supplied
 
 ### 4.2 Benchmark helper API
@@ -255,7 +255,7 @@ to follow once the A/B run completes — that's the first real
    caller-supplied entries.  This is intentional — preserves
    operator-controlled routing tags — but means a miscalibrated
    adapter could pollute the domains list.  Mitigate with
-   `intent_slot_populate_domains=False` during migration.
+   `slm_populate_domains=False` during migration.
 
 ---
 
@@ -348,7 +348,7 @@ predicted:
 1. **No regression.**  The SLM does not break any category.
 2. **Latency is in budget.**  48 ms/memory × ~22 memories per
    question ≈ 1 s/question overhead.  Well within
-   `NCMS_INTENT_SLOT_LATENCY_BUDGET_MS=200` per-memory soft
+   `NCMS_SLM_LATENCY_BUDGET_MS=200` per-memory soft
    limit.
 3. **Adapter loads once + survives.**  10,960 classifier
    forward passes without a failure; MPS stayed stable; no

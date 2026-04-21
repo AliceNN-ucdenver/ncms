@@ -116,8 +116,8 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
 
         config_kwargs.update({
             "admission_enabled": True,
-            "reconciliation_enabled": True,
-            "episodes_enabled": True,
+            "temporal_enabled": True,
+            "temporal_enabled": True,
         })
         config = NCMSConfig(**config_kwargs)
         admission = AdmissionService(store=store, index=index, graph=graph, config=config)

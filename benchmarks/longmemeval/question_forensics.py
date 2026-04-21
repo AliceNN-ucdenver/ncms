@@ -25,6 +25,16 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
 from benchmarks.core.runner import log_run_header, run_async, setup_logging
 from benchmarks.longmemeval.harness import (
     _create_ncms_instance,
@@ -81,15 +91,11 @@ async def _run(args: argparse.Namespace) -> None:
         scoring_weight_bm25=0.6, scoring_weight_actr=0.0,
         scoring_weight_splade=0.3, scoring_weight_graph=0.3,
         admission_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
-        intent_classification_enabled=True,
+        temporal_enabled=True,
         scoring_weight_hierarchy=0.1,
         level_first_enabled=True, topic_map_enabled=True,
         dream_query_expansion_enabled=True,
-        intent_routing_enabled=True,
         reranker_enabled=True,
-        temporal_enabled=True, scoring_weight_temporal=0.2,
         temporal_range_filter_enabled=args.phase_b,
         scoring_weight_recency=0.1, recency_half_life_days=30.0,
     )

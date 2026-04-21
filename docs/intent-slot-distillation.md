@@ -290,7 +290,7 @@ Total effort shipped: ~12 working days (estimate was 14).
 * **TLG.**  The structural query parser in `ncms.domain.tlg.query_parser` is a separate axis (retrieval intent, not preference intent) and stays as shipped.
 * **Memory storage format.**  Preference extraction still emits synthetic memories the same way `p2-plan.md` §4.3 described; only the extraction method changes.
 * **Reconciliation.**  Preference memories don't participate in the HTMG supersedence layer.  A later extension might ("I used to love vanilla, now I prefer chocolate") but that's out of scope.
-* **P1/TLG feature flags.**  `NCMS_TLG_ENABLED` stays independent.  New flag: `NCMS_INTENT_SLOT_BACKEND={zero_shot, pretrained, custom}`.
+* **P1/TLG feature flags.**  `NCMS_TEMPORAL_ENABLED` stays independent.  New flag: `NCMS_INTENT_SLOT_BACKEND={zero_shot, pretrained, custom}`.
 
 ---
 

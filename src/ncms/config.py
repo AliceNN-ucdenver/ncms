@@ -111,14 +111,12 @@ class NCMSConfig(BaseSettings):
     admission_enabled: bool = False
     admission_ephemeral_ttl_seconds: int = 3600
 
-    # State reconciliation (Phase 2)
-    reconciliation_enabled: bool = False
+    # State reconciliation (Phase 2) — gated by ``temporal_enabled``.
     reconciliation_importance_boost: float = 0.5
     reconciliation_supersession_penalty: float = 0.3
     reconciliation_conflict_penalty: float = 0.15
 
-    # Episode formation (Phase 3)
-    episodes_enabled: bool = False
+    # Episode formation (Phase 3) — gated by ``temporal_enabled``.
     episode_window_minutes: int = 1440   # T_window for temporal proximity signal
     episode_close_minutes: int = 1440    # T_close for auto-closure
     episode_match_threshold: float = 0.30  # Weighted score threshold for joining
@@ -132,8 +130,7 @@ class NCMSConfig(BaseSettings):
     episode_weight_agent: float = 0.05
     episode_weight_anchor: float = 0.05
 
-    # Intent-aware retrieval (Phase 4)
-    intent_classification_enabled: bool = False
+    # Intent-aware retrieval (Phase 4) — gated by ``temporal_enabled``.
     intent_confidence_threshold: float = 0.6   # Below → fall back to fact_lookup
     intent_hierarchy_bonus: float = 0.5        # Raw bonus before weight
     scoring_weight_hierarchy: float = 0.0      # Additive weight (0 = no effect)
@@ -154,9 +151,21 @@ class NCMSConfig(BaseSettings):
     abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
     consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
 
-    # Temporal query scoring (Phase 4 temporal)
+    # ── Master temporal reasoning flag ────────────────────────────────
+    # When True, the retrieval pipeline runs the full temporal stack:
+    #   - TLG grammar composition (query_parser + zone dispatch)
+    #   - State reconciliation (supersedes/refines/conflicts edges)
+    #   - Episode formation (7-signal hybrid linker)
+    #   - Intent classification (BM25 exemplar)
+    #   - Intent routing (supplementary candidates by classified intent)
+    #   - Temporal scoring signal (``scoring_weight_temporal``)
+    #   - Hierarchy bonus for intent-matched node types
+    # When False, only the hybrid retrieval core (BM25+SPLADE+graph+ACT-R)
+    # runs; the pipeline has no concept of state transitions or temporal
+    # query shapes.  Tuning is via the ``scoring_weight_*`` floats + the
+    # per-subsystem knobs (reconciliation_*, episode_*, intent_*, etc.).
     temporal_enabled: bool = False
-    scoring_weight_temporal: float = 0.2  # Additive weight when temporal ref detected
+    scoring_weight_temporal: float = 0.2  # Weight of the temporal signal when temporal_enabled=True
 
     # P1-temporal-experiment: GLiNER-extracted date ranges + hard-filter
     # retrieval.  See docs/retired/p1-temporal-experiment.md (historical).
@@ -166,41 +175,34 @@ class NCMSConfig(BaseSettings):
     # precision-safe (drop).  Default recall-safe.
     temporal_missing_range_policy: Literal["include", "exclude"] = "include"
 
-    # Temporal Linguistic Geometry (TLG) integration — master flag.
-    # When True, subsystems participate in the grammar layer: the
-    # ReconciliationService populates ``retires_entities`` on SUPERSEDES
-    # edges via the structural extractor (Phase 1), induction runs at
-    # ingest (Phase 2), grammar dispatch runs at query time (Phase 3).
-    # Default off until integration stabilizes — see docs/p1-plan.md.
-    tlg_enabled: bool = False
-
-    # P2 — Intent-slot SLM (ingest-side classifier).  When True,
-    # ``IngestionPipeline`` runs the multi-head classifier on every
-    # store_memory call and persists {intent, slot, topic, admission,
-    # state_change} to the ``memories`` columns + ``memory_slots``
-    # table.  Replaces the regex-based admission scorer, the
-    # state-change regex in index_worker, and the LLM topic labeller.
-    # Default off until the adapter registry is populated.  See
-    # docs/p2-plan.md for the integration design.
-    intent_slot_enabled: bool = False
+    # ── 5-head SLM master flag ────────────────────────────────────────
+    # When True, ``IngestionPipeline`` runs the LoRA multi-head
+    # classifier on every ``store_memory`` call and persists
+    # {intent, slot, topic, admission, state_change} to the
+    # ``memories`` columns + ``memory_slots`` table.  Replaces the
+    # regex-based admission scorer, the state-change regex in
+    # index_worker, and the LLM topic labeller.  Default off until
+    # the adapter registry is populated.  See docs/completed/p2-plan.md
+    # for the integration design.
+    slm_enabled: bool = False
     # Adapter artifact path (lora_adapter/ + heads.safetensors +
     # manifest.json).  None → skip the custom primary and fall
     # through to the generic/zero-shot chain.
-    intent_slot_checkpoint_dir: str | None = None
+    slm_checkpoint_dir: str | None = None
     # Confidence floor for head-by-head fallback — below this value
     # the chain moves to the next backend's output for that head.
-    intent_slot_confidence_threshold: float = 0.7
+    slm_confidence_threshold: float = 0.7
     # When True, append the topic-head label to Memory.domains
     # automatically.  Set False during migration to keep callers
     # explicitly controlling the domain tag set.
-    intent_slot_populate_domains: bool = True
+    slm_populate_domains: bool = True
     # Include the E5-small-v2 zero-shot learned fallback in the
     # chain.  Set False for minimal-dependency deployments that
     # only ship the heuristic fallback.
-    intent_slot_e5_fallback_enabled: bool = True
+    slm_e5_fallback_enabled: bool = True
     # Soft latency limit on the SLM forward pass.  Exceeding it
     # emits a warning but does not block ingest.
-    intent_slot_latency_budget_ms: float = 200.0
+    slm_latency_budget_ms: float = 200.0
 
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False
@@ -222,8 +224,8 @@ class NCMSConfig(BaseSettings):
     scale_reranker_max_memories: int = 10000  # Disable reranker above this corpus size
     scale_intent_max_memories: int = 50000    # Disable intent classification above this
 
-    # Per-intent signal weights (Phase 9 — RouteRAG-style)
-    intent_routing_enabled: bool = False
+    # Per-intent signal weights (Phase 9 — RouteRAG-style).
+    # Gated by ``temporal_enabled``; tunables remain independent.
     intent_weights_fact_lookup: str = "0.6,0.3,0.3,0.0"
     intent_weights_current_state_lookup: str = "0.4,0.2,0.5,0.1"
     intent_weights_historical_lookup: str = "0.5,0.3,0.3,0.1"
@@ -289,8 +291,8 @@ class NCMSConfig(BaseSettings):
     maintenance_dream_interval_minutes: int = 1440          # 24 hours
     maintenance_episode_close_interval_minutes: int = 60    # 1 hour
     maintenance_decay_interval_minutes: int = 720           # 12 hours
-    # TLG L2 marker induction — runs on the master ``tlg_enabled`` flag.
-    # Default 6 hours; induction is cheap (bounded by |transition edges|)
-    # so higher-frequency re-runs are safe.
+    # TLG L2 marker induction — runs under the master ``temporal_enabled``
+    # flag.  Default 6 hours; induction is cheap (bounded by
+    # |transition edges|) so higher-frequency re-runs are safe.
     maintenance_tlg_induction_interval_minutes: int = 360   # 6 hours
 

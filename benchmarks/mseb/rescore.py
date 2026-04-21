@@ -24,6 +24,16 @@ import logging
 import sys
 from pathlib import Path
 
+
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
 from benchmarks.mseb.metrics import Prediction, aggregate, markdown_summary
 from benchmarks.mseb.schema import load_queries
 

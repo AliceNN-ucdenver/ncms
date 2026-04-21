@@ -318,8 +318,8 @@ def create_dashboard_app(
                     "exemplar index. Drives per-intent weight routing "
                     "and supplementary candidate selection."
                 ),
-                "config_key": "NCMS_INTENT_CLASSIFICATION_ENABLED",
-                "enabled": cfg.intent_classification_enabled,
+                "config_key": "NCMS_TEMPORAL_ENABLED",
+                "enabled": cfg.temporal_enabled,
             },
             # ── Ingestion ───────────────────────────────────────────
             {
@@ -371,8 +371,8 @@ def create_dashboard_app(
                     "into episodes using BM25 + SPLADE + entity overlap "
                     "+ temporal proximity signals. No LLM required."
                 ),
-                "config_key": "NCMS_EPISODES_ENABLED",
-                "enabled": cfg.episodes_enabled,
+                "config_key": "NCMS_TEMPORAL_ENABLED",
+                "enabled": cfg.temporal_enabled,
             },
             {
                 "id": "reconciliation",
@@ -384,8 +384,8 @@ def create_dashboard_app(
                     "supersedes / conflicts) and maintains is_current + "
                     "bidirectional edges."
                 ),
-                "config_key": "NCMS_RECONCILIATION_ENABLED",
-                "enabled": cfg.reconciliation_enabled,
+                "config_key": "NCMS_TEMPORAL_ENABLED",
+                "enabled": cfg.temporal_enabled,
             },
             # ── Background / offline ────────────────────────────────
             {
@@ -784,7 +784,7 @@ async def run_dashboard(
 
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
-    if config.reconciliation_enabled:
+    if config.temporal_enabled:
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(
@@ -793,7 +793,7 @@ async def run_dashboard(
 
     # Episode formation (Phase 3, disabled by default)
     episode = None
-    if config.episodes_enabled:
+    if config.temporal_enabled:
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
@@ -803,7 +803,7 @@ async def run_dashboard(
 
     # Intent classifier (Phase 4, disabled by default)
     intent_classifier = None
-    if config.intent_classification_enabled:
+    if config.temporal_enabled:
         from ncms.infrastructure.indexing.exemplar_intent_index import (
             ExemplarIntentIndex,
         )

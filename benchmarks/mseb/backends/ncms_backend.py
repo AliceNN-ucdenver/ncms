@@ -81,12 +81,12 @@ class NcmsBackend:
                 include_e5_fallback=False,  # deterministic benchmarks
             )
 
-        # Base config = FULL NCMS (TLG-on + SLM-on baseline).  Every
-        # TLG feature that NCMSConfig ships default-off is explicitly
-        # turned on here, so the benchmark actually measures TLG on
-        # the baseline side.  --tlg-off flips these back off.  We
-        # deliberately leave `admission_enabled` OFF — admission's
-        # 3-way gate can DROP gold memories into ephemeral cache,
+        # Base config = FULL NCMS (temporal stack on + SLM on baseline).
+        # ``temporal_enabled=True`` is the master flag that gates: the
+        # TLG grammar, reconciliation, episodes, intent classification,
+        # intent routing, and the temporal scoring signal.  ``--temporal-off``
+        # flips it back to False.  ``admission_enabled`` stays OFF — the
+        # 3-way admission gate can DROP gold memories into ephemeral cache,
         # corrupting retrieval scoring.  Benchmark never wants that.
         base_kwargs: dict[str, object] = {
             "db_path": ":memory:",
@@ -96,20 +96,13 @@ class NcmsBackend:
             "scoring_weight_actr": 0.0,
             "scoring_weight_splade": 0.3,
             "scoring_weight_graph": 0.3,
+            "scoring_weight_hierarchy": 0.5,   # tuned temporal-layer weight
             "contradiction_detection_enabled": False,
 
-            # -------- TLG features (all default-off on NCMSConfig) --------
-            "reconciliation_enabled": True,         # Phase 2 — supersession penalties
-            "episodes_enabled": True,               # Phase 3 — episode linker
-            "intent_classification_enabled": True,  # Phase 4 — intent routing + hierarchy
-            "intent_routing_enabled": True,
-            "scoring_weight_hierarchy": 0.5,        # Phase 4 — intent hierarchy bonus
-            "temporal_enabled": True,               # Phase 6 — temporal scoring signal
-            # scoring_weight_temporal already 0.2 by default
-
-            # -------- SLM (P2) --------
-            "intent_slot_enabled": self.feature_set.slm and intent_slot is not None,
-            "intent_slot_populate_domains": True,
+            # -------- Master feature flags --------
+            "temporal_enabled": True,
+            "slm_enabled": self.feature_set.slm and intent_slot is not None,
+            "slm_populate_domains": True,
         }
         base_kwargs.update(self.feature_set.to_ncms_config_overrides())
         # Sweep-level overrides land last so they beat ablation flags.
@@ -125,31 +118,24 @@ class NcmsBackend:
         self._svc = svc
 
         # Log the actual runtime config so the run-log is self-describing.
-        # No guessing — every subsequent line in the log can be validated
-        # against these values.
+        # Master flags appear first; scoring weights second; sub-knobs
+        # third.  Grep this line in any run-log to verify what was ON.
         logger.info(
             "NCMS runtime config: "
-            "bm25=%.2f splade=%.2f graph=%.2f actr=%.2f temporal=%.2f "
-            "hierarchy=%.2f recency=%.2f | "
-            "reconciliation=%s episodes=%s "
-            "intent_classification=%s intent_routing=%s temporal_enabled=%s "
-            "admission=%s intent_slot=%s populate_domains=%s",
+            "temporal_enabled=%s slm_enabled=%s | "
+            "bm25=%.2f splade=%.2f graph=%.2f actr=%.2f "
+            "temporal=%.2f hierarchy=%.2f recency=%.2f | "
+            "admission=%s populate_domains=%s",
+            config.temporal_enabled, config.slm_enabled,
             config.scoring_weight_bm25, config.scoring_weight_splade,
             config.scoring_weight_graph, config.scoring_weight_actr,
             config.scoring_weight_temporal, config.scoring_weight_hierarchy,
             config.scoring_weight_recency,
-            config.reconciliation_enabled, config.episodes_enabled,
-            config.intent_classification_enabled, config.intent_routing_enabled,
-            config.temporal_enabled,
-            config.admission_enabled, config.intent_slot_enabled,
-            config.intent_slot_populate_domains,
+            config.admission_enabled, config.slm_populate_domains,
         )
         logger.info(
-            "NCMS feature_set (harness flags): temporal=%s ordinal=%s "
-            "retirement=%s causal=%s preference=%s slm=%s head=%s",
-            self.feature_set.temporal, self.feature_set.ordinal,
-            self.feature_set.retirement, self.feature_set.causal,
-            self.feature_set.preference, self.feature_set.slm,
+            "NCMS feature_set (harness flags): temporal=%s slm=%s head=%s",
+            self.feature_set.temporal, self.feature_set.slm,
             self.feature_set.head,
         )
 

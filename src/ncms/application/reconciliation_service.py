@@ -7,7 +7,7 @@ or structured state declaration in memory_service), this service:
 3. Applies the appropriate action (create edges, flip is_current, set valid_to)
 
 All classification is heuristic-based (no LLM required).
-Feature-flagged via config.reconciliation_enabled (default False).
+Feature-flagged via config.temporal_enabled (default False).
 """
 
 from __future__ import annotations
@@ -189,7 +189,7 @@ class ReconciliationService:
     ) -> None:
         """Close prior valid_to, flip is_current, create bidirectional edges.
 
-        When :attr:`NCMSConfig.tlg_enabled` is True, the outgoing
+        When :attr:`NCMSConfig.temporal_enabled` is True, the outgoing
         SUPERSEDES edge also carries a structurally-extracted
         ``retires_entities`` set (Phase 1 of the TLG integration — see
         ``docs/p1-plan.md``).  Extraction never raises to the caller:
@@ -259,7 +259,7 @@ class ReconciliationService:
         can proceed unchanged — TLG-enablement is a best-effort
         annotation, never a hard dependency for reconciliation.
         """
-        if not getattr(self._config, "tlg_enabled", False):
+        if not getattr(self._config, "temporal_enabled", False):
             return []
         try:
             new_memory = await self._store.get_memory(new_node.memory_id)  # type: ignore[attr-defined]

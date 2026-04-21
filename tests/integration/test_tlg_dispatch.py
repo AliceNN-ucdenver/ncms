@@ -86,8 +86,7 @@ async def _auth_corpus(store: SQLiteStore) -> tuple[MemoryNode, MemoryNode]:
     """
     config = NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=True,
+        temporal_enabled=True,
     )
     service = ReconciliationService(store=store, config=config)
 

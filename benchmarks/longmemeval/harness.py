@@ -18,6 +18,16 @@ import re
 import time
 from datetime import UTC, datetime
 
+
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
 from benchmarks.core.qa_metrics import contains_match, f1_token_overlap, recall_at_k_qa
 from benchmarks.core.rag_pipeline import (
     DEFAULT_API_BASE,
@@ -100,7 +110,7 @@ async def _create_ncms_instance(
 
     # Resolve the intent-slot extractor.  Reuse ``shared_intent_slot``
     # when the caller has already loaded one — avoids reloading BERT
-    # per question.  ``intent_slot_enabled`` in the config governs
+    # per question.  ``slm_enabled`` in the config governs
     # whether the pipeline actually runs it; we flip it on here when
     # either an extractor or a domain was provided.
     intent_slot = shared_intent_slot
@@ -122,8 +132,8 @@ async def _create_ncms_instance(
             scoring_weight_splade=0.3,
             scoring_weight_graph=0.3,
             contradiction_detection_enabled=False,
-            intent_slot_enabled=intent_slot is not None,
-            intent_slot_populate_domains=True,
+            slm_enabled=intent_slot is not None,
+            slm_populate_domains=True,
         )
 
     # Seed domain-specific topics for GLiNER entity extraction

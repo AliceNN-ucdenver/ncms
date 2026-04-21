@@ -2,6 +2,10 @@
 # Main 12-cell re-run with new harness (predictions dump + per-class metrics).
 # Fresh minis where each query carries a query_class tag.
 # Skips mem0-full (user said we can rerun that later).
+#
+# Cell labels ``temporal-on`` / ``temporal-off`` / ``mem0`` reflect the
+# NCMSConfig master flag that was set — grep the run-log's
+# "NCMS runtime config" line to double-check what actually ran.
 
 set -eu
 cd /Users/shawnmccarthy/ncms
@@ -16,8 +20,8 @@ run() {
     local log="$LOG_DIR/main12-$d-$c-$TS.log"
     local -a extra
     case "$c" in
-        tlg-on)  extra=(--backend ncms --adapter-domain "$a") ;;
-        tlg-off) extra=(--backend ncms --adapter-domain "$a" --tlg-off) ;;
+        temporal-on)  extra=(--backend ncms --adapter-domain "$a") ;;
+        temporal-off) extra=(--backend ncms --adapter-domain "$a" --temporal-off) ;;
         mem0)    extra=(--backend mem0) ;;
     esac
     echo "[$(date -u +%H:%M:%S)] $d / $c"
@@ -28,7 +32,7 @@ run() {
     echo
 }
 
-for cfg in tlg-on tlg-off mem0; do
+for cfg in temporal-on temporal-off mem0; do
     run main_softwaredev benchmarks/mseb_softwaredev/build_mini software_dev   $cfg
     run main_swe         benchmarks/mseb_swe/build_mini         swe_diff       $cfg
     run main_clinical    benchmarks/mseb_clinical/build_mini    clinical       $cfg

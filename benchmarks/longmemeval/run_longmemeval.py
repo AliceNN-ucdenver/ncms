@@ -88,10 +88,8 @@ async def _run(args: argparse.Namespace) -> None:
             scoring_weight_graph=0.3,
             # Phase 1-3: Admission, reconciliation, episodes
             admission_enabled=True,
-            reconciliation_enabled=True,
-            episodes_enabled=True,
+            temporal_enabled=True,
             # Phase 4: Intent-aware retrieval
-            intent_classification_enabled=True,
             scoring_weight_hierarchy=0.1,
             # Phase 5: Hierarchical consolidation + level-first
             level_first_enabled=True,
@@ -99,11 +97,9 @@ async def _run(args: argparse.Namespace) -> None:
             # Phase 8: Dream query expansion
             dream_query_expansion_enabled=True,
             # Phase 9: Intent routing
-            intent_routing_enabled=True,
             # Phase 10: Cross-encoder reranking
             reranker_enabled=True,
             # Temporal query scoring
-            temporal_enabled=True,
             scoring_weight_temporal=0.2,
             # Recency
             scoring_weight_recency=0.1,
@@ -118,8 +114,8 @@ async def _run(args: argparse.Namespace) -> None:
             # P2: intent-slot SLM — flipped on when --intent-slot-domain
             # is supplied so the SLM's admission / state-change / topic
             # heads replace the regex gates at ingest time.
-            intent_slot_enabled=bool(args.intent_slot_domain),
-            intent_slot_populate_domains=True,
+            slm_enabled=bool(args.intent_slot_domain),
+            slm_populate_domains=True,
         )
         logger.info("Features ON: production retrieval bundle enabled")
 
@@ -130,10 +126,10 @@ async def _run(args: argparse.Namespace) -> None:
         if ncms_config is None:
             from ncms.config import NCMSConfig
             ncms_config = NCMSConfig(db_path=":memory:")
-        ncms_config.tlg_enabled = True
+        ncms_config.temporal_enabled = True
         # Reconciliation must be on — TLG reads retires_entities off
         # SUPERSEDES edges emitted by the reconciler.
-        ncms_config.reconciliation_enabled = True
+        ncms_config.temporal_enabled = True
         logger.info("TLG ON: grammar layer + retirement extractor enabled")
 
     # Run benchmark
@@ -277,7 +273,7 @@ def main() -> None:
         "--tlg",
         action="store_true",
         help=(
-            "Enable Temporal Linguistic Geometry (NCMS_TLG_ENABLED). "
+            "Enable Temporal Linguistic Geometry (NCMS_TEMPORAL_ENABLED). "
             "May be combined with --features-on; implies reconciliation."
         ),
     )

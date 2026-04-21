@@ -97,9 +97,9 @@ async def _build_service_with_adapter(
     event_log = EventLog()
     config = NCMSConfig(
         db_path=":memory:",
-        intent_slot_enabled=True,
-        intent_slot_populate_domains=True,
-        intent_slot_confidence_threshold=0.7,
+        slm_enabled=True,
+        slm_populate_domains=True,
+        slm_confidence_threshold=0.7,
         # No start_index_pool() → store_memory's enqueue returns
         # False and the ingest runs inline.  Keeps the test
         # deterministic without the worker-loop teardown spam.
@@ -231,8 +231,8 @@ async def test_heuristic_fallback_when_no_adapter():
     graph = NetworkXGraph()
     config = NCMSConfig(
         db_path=":memory:",
-        intent_slot_enabled=True,
-        intent_slot_populate_domains=True,
+        slm_enabled=True,
+        slm_populate_domains=True,
     )
     # Build a heuristic-only chain (no checkpoint, no E5).
     chain = build_extractor_chain(

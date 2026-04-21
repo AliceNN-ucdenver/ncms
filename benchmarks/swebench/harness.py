@@ -24,6 +24,16 @@ from typing import Any
 
 import networkx as nx
 
+
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
 from benchmarks.core.metrics import (
     classification_accuracy,
     compute_all_metrics,
@@ -131,15 +141,13 @@ async def ingest_swebench(
         actr_threshold=-2.0,
         # Enable phases 1-3
         admission_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
+        temporal_enabled=True,
         # Enable dream cycle flag globally so search logging populates
         # search_log table for PMI computation across ALL stages
         dream_cycle_enabled=True,
         # Phase 9: Query expansion disabled (Phase 10: 40K terms adds noise)
         dream_query_expansion_enabled=False,
         # Phase 4: Intent classification (required for Phase 11 recall routing)
-        intent_classification_enabled=True,
         # Phase 10: Cross-encoder reranking (selective by intent in Phase 11)
         reranker_enabled=True,
         reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -835,7 +843,7 @@ async def run_swebench_experiment(
 
         # Phase 11: Recall-based measurements (structured retrieval)
         recall_metrics: dict[str, Any] = {}
-        if state.config.intent_classification_enabled:
+        if state.config.temporal_enabled:
             logger.info("  Measuring recall-based metrics (Phase 11)...")
             try:
                 ar_recall = await measure_ar_recall(state, ar_queries, ar_qrels)

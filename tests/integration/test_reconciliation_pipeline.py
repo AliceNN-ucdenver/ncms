@@ -31,7 +31,7 @@ async def store():
 def config() -> NCMSConfig:
     return NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
+        temporal_enabled=True,
         reconciliation_importance_boost=0.5,
     )
 

@@ -495,10 +495,10 @@ def register_tools(
         Returns:
             The current state node, or an error if not found or feature disabled.
         """
-        if not memory_svc._config.reconciliation_enabled:
+        if not memory_svc._config.temporal_enabled:
             return {
                 "error": "State reconciliation not enabled "
-                "(set NCMS_RECONCILIATION_ENABLED=true)",
+                "(set NCMS_TEMPORAL_ENABLED=true)",
             }
         node = await memory_svc.store.get_current_state(entity_id, state_key)
         if node is None:
@@ -519,10 +519,10 @@ def register_tools(
         Returns:
             Ordered list of state nodes from oldest to newest.
         """
-        if not memory_svc._config.reconciliation_enabled:
+        if not memory_svc._config.temporal_enabled:
             return {
                 "error": "State reconciliation not enabled "
-                "(set NCMS_RECONCILIATION_ENABLED=true)",
+                "(set NCMS_TEMPORAL_ENABLED=true)",
             }
         nodes = await memory_svc.store.get_state_history(entity_id, state_key)
         return {
@@ -544,10 +544,10 @@ def register_tools(
         Returns:
             List of episodes with metadata and member counts.
         """
-        if not memory_svc._config.episodes_enabled:
+        if not memory_svc._config.temporal_enabled:
             return {
                 "error": "Episode formation not enabled "
-                "(set NCMS_EPISODES_ENABLED=true)",
+                "(set NCMS_TEMPORAL_ENABLED=true)",
             }
         from ncms.domain.models import NodeType
 
@@ -585,10 +585,10 @@ def register_tools(
         Returns:
             Episode metadata and member fragment contents.
         """
-        if not memory_svc._config.episodes_enabled:
+        if not memory_svc._config.temporal_enabled:
             return {
                 "error": "Episode formation not enabled "
-                "(set NCMS_EPISODES_ENABLED=true)",
+                "(set NCMS_TEMPORAL_ENABLED=true)",
             }
         episode_node = await memory_svc.store.get_memory_node(episode_id)
         if episode_node is None:

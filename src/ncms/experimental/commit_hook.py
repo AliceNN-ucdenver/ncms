@@ -81,13 +81,13 @@ async def _handle_event(
         )
 
     reconciliation = None
-    if config.reconciliation_enabled:
+    if config.temporal_enabled:
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(store=store, config=config)
 
     episode = None
-    if config.episodes_enabled:
+    if config.temporal_enabled:
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(

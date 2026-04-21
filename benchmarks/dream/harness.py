@@ -21,6 +21,16 @@ from typing import Any
 
 import networkx as nx
 
+
+# Load HF_TOKEN etc. before any ncms/sentence-transformers import
+# (SPLADE v3 is gated on HuggingFace and falls back to an
+# anonymous fetch otherwise, which 401s).
+try:
+    from benchmarks.env import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:  # pragma: no cover
+    pass
+
 from benchmarks.core.configs import TUNED_CONFIG
 from benchmarks.core.datasets import DATASET_TOPICS
 from benchmarks.core.metrics import compute_all_metrics, ndcg_at_k
@@ -121,8 +131,7 @@ async def ingest_with_phases(
         actr_threshold=TUNED_CONFIG.actr_threshold,
         # Enable phases 1-3
         admission_enabled=True,
-        reconciliation_enabled=True,
-        episodes_enabled=True,
+        temporal_enabled=True,
         # LLM config for consolidation (set now, used later)
         consolidation_knowledge_model=llm_model,
         consolidation_knowledge_api_base=llm_api_base,

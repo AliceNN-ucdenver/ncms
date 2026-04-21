@@ -97,7 +97,7 @@ The ingest pipeline used to depend on **five separate pieces of brittle pattern-
 | `admission` | persist / ephemeral / discard, with calibrated softmax confidence | 4-feature regex heuristic (65.9% accuracy on labeled set) |
 | `state_change` | declaration / retirement / none → **feeds TLG zone induction** | 3-pattern state-declaration regex (8/8 false positives on NemoClaw YAML templates) |
 
-**SLM-first, regex-fallback.** When the classifier is confident (head confidence ≥ `intent_slot_confidence_threshold`, default 0.7), its decision wins. On abstain or when the feature flag is off, the ingest pipeline falls back to the original regex / heuristic code. The zero-confidently-wrong invariant from TLG carries over: **abstain is always an option**.
+**SLM-first, regex-fallback.** When the classifier is confident (head confidence ≥ `slm_confidence_threshold`, default 0.7), its decision wins. On abstain or when the feature flag is off, the ingest pipeline falls back to the original regex / heuristic code. The zero-confidently-wrong invariant from TLG carries over: **abstain is always an option**.
 
 **3-tier fallback chain** (no GLiNER on this path — GLiNER stays in NCMS for entity NER, a separate concern):
 
@@ -154,7 +154,7 @@ Entities, preferences, topics, admission routing, and state-change detection all
 
 **Content Classification** &mdash; Incoming content passes through a dedup gate (SHA-256) then a two-class classifier. **NAVIGABLE** documents (ADRs, PRDs, YAML configs with headings/structure) get section-aware ingestion: one vocabulary-dense profile memory in the memory store, full document + sections in the document store. **ATOMIC** fragments (facts, observations, announcements) proceed through the standard pipeline.
 
-**Intent-Slot SLM** (optional, `NCMS_INTENT_SLOT_ENABLED=true`) &mdash; Runs **before** admission. Produces all five classification outputs in one forward pass. Its `admission_head` replaces the regex admission scorer when confident; its `state_change_head` replaces the state-declaration regex; its `topic_head` auto-populates `Memory.domains`.
+**Intent-Slot SLM** (optional, `NCMS_SLM_ENABLED=true`) &mdash; Runs **before** admission. Produces all five classification outputs in one forward pass. Its `admission_head` replaces the regex admission scorer when confident; its `state_change_head` replaces the state-declaration regex; its `topic_head` auto-populates `Memory.domains`.
 
 **GLiNER NER** &mdash; Zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts entities across any domain, **running in parallel with the SLM** — GLiNER's output feeds the knowledge graph (spreading activation, co-occurrence edges, entity-state reconciliation) while the SLM's output feeds ingest decisions. The two are complementary: GLiNER handles open-vocabulary NER, SLM handles typed domain-specific slot extraction.
 
@@ -247,8 +247,8 @@ uv run python -m experiments.intent_slot_distillation.train_adapter \
 
 ```python
 # Via config
-NCMS_INTENT_SLOT_ENABLED=true \
-NCMS_INTENT_SLOT_CHECKPOINT_DIR=./adapters/my_domain/v1 \
+NCMS_SLM_ENABLED=true \
+NCMS_SLM_CHECKPOINT_DIR=./adapters/my_domain/v1 \
 uv run ncms serve
 
 # Or via benchmark runner
@@ -415,7 +415,7 @@ Note: the ingest-side intent-slot SLM (`bert-base-uncased` + LoRA) runs happily 
 - [x] Zero-confidently-wrong composition invariant with BM25
 - [x] Readable syntactic proofs on every grammar answer
 - [x] 32/32 top-5 and rank-1 on ADR state-evolution corpus
-- [x] Full integration: `NCMS_TLG_ENABLED`, `ncms tlg status|induce`, `--tlg` benchmark flag
+- [x] Full integration: `NCMS_TEMPORAL_ENABLED`, `ncms tlg status|induce`, `--tlg` benchmark flag
 
 **P2 — Intent-Slot SLM** ✅ SHIPPED 2026-04-20
 - [x] LoRA multi-head classifier (5 heads, one forward pass per memory)

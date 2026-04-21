@@ -379,13 +379,13 @@ Replaces the regex admission scorer, the state-change regex, the LLM topic label
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NCMS_INTENT_SLOT_ENABLED` | `false` | Master switch.  When `true` and a checkpoint is provided, the SLM's admission / state_change / topic heads replace the regex paths at ingest time. |
-| `NCMS_INTENT_SLOT_CHECKPOINT_DIR` | *(none)* | Path to the LoRA adapter artifact (e.g. `~/.ncms/adapters/software_dev/v4/`).  Three reference adapters (conversational / software_dev / clinical) ship pre-trained; train your own with `experiments/intent_slot_distillation/train_adapter.py`. |
-| `NCMS_INTENT_SLOT_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor.  Below this value the chain falls through to the next backend for that head. |
-| `NCMS_INTENT_SLOT_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` — replaces manual domain tagging. |
-| `NCMS_INTENT_SLOT_E5_FALLBACK_ENABLED` | `true` | Include the E5-small-v2 zero-shot classifier as a cold-start fallback when no adapter is available. |
+| `NCMS_SLM_ENABLED` | `false` | Master switch.  When `true` and a checkpoint is provided, the SLM's admission / state_change / topic heads replace the regex paths at ingest time. |
+| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Path to the LoRA adapter artifact (e.g. `~/.ncms/adapters/software_dev/v4/`).  Three reference adapters (conversational / software_dev / clinical) ship pre-trained; train your own with `experiments/intent_slot_distillation/train_adapter.py`. |
+| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor.  Below this value the chain falls through to the next backend for that head. |
+| `NCMS_SLM_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` — replaces manual domain tagging. |
+| `NCMS_SLM_E5_FALLBACK_ENABLED` | `true` | Include the E5-small-v2 zero-shot classifier as a cold-start fallback when no adapter is available. |
 | `NCMS_INTENT_SLOT_DEVICE` | *(auto)* | Device override for the SLM forward pass — `cuda` / `mps` / `cpu`.  Defaults to `NCMS_DEVICE` then auto-detect. |
-| `NCMS_INTENT_SLOT_LATENCY_BUDGET_MS` | `200.0` | Soft latency budget; exceeding it logs a warning but does not block ingest. |
+| `NCMS_SLM_LATENCY_BUDGET_MS` | `200.0` | Soft latency budget; exceeding it logs a warning but does not block ingest. |
 
 ### SPLADE Neural Retrieval
 

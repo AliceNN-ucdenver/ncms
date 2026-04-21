@@ -76,7 +76,7 @@ class MaintenanceScheduler:
         (
             "episode_close",
             "maintenance_episode_close_interval_minutes",
-            "episodes_enabled",
+            "temporal_enabled",
             "close_stale_episodes",
         ),
         (
@@ -88,7 +88,7 @@ class MaintenanceScheduler:
         (
             "tlg_induction",
             "maintenance_tlg_induction_interval_minutes",
-            "tlg_enabled",
+            "temporal_enabled",
             "run_tlg_induction_pass",
         ),
     ]

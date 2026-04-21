@@ -193,10 +193,9 @@ async def run_profile(
         db_path=":memory:",
         splade_enabled=splade,
         actr_noise=0.0,
-        episodes_enabled=episodes,
+        temporal_enabled=episodes,
         admission_enabled=admission,
         contradiction_detection_enabled=contradiction,
-        intent_classification_enabled=True,
         index_workers=index_workers,
         scoring_weight_bm25=0.6,
         scoring_weight_splade=0.3 if splade else 0.0,
@@ -241,7 +240,7 @@ async def run_profile(
         flags.append("Contradiction")
     if splade:
         flags.append("SPLADE")
-    if config.intent_classification_enabled:
+    if config.temporal_enabled:
         flags.append("IntentClassification")
     if async_indexing:
         flags.append(f"AsyncIndexing({index_workers}w)")

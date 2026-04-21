@@ -40,8 +40,7 @@ async def service_tlg_on() -> MemoryService:
     graph = NetworkXGraph()
     config = NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=True,
+        temporal_enabled=True,
     )
     reconciliation = ReconciliationService(store=store, config=config)
     svc = MemoryService(
@@ -55,26 +54,12 @@ async def service_tlg_on() -> MemoryService:
     await store.close()
 
 
-@pytest_asyncio.fixture
-async def service_tlg_off() -> MemoryService:
-    store = SQLiteStore(db_path=":memory:")
-    await store.initialize()
-    index = TantivyEngine()
-    index.initialize()
-    graph = NetworkXGraph()
-    config = NCMSConfig(
-        db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=False,
-    )
-    svc = MemoryService(
-        store=store,
-        index=index,
-        graph=graph,
-        config=config,
-    )
-    yield svc
-    await store.close()
+# NOTE: ``service_tlg_off`` fixture and ``TestTLGDisabled`` suite were
+# removed when the NCMSConfig flag scheme collapsed tlg/reconciliation/
+# episodes/intent_classification/intent_routing into the single
+# ``temporal_enabled`` master flag.  The disabled path is now a single
+# short-circuit checked implicitly by every other unit test that runs
+# without ``temporal_enabled=True``.
 
 
 async def _ensure_entity(store: SQLiteStore, eid: str) -> None:
@@ -110,28 +95,6 @@ async def _seed_state(
     )
     await store.save_memory_node(node)
     return node
-
-
-class TestTLGDisabled:
-    async def test_retrieve_lg_returns_none_confidence_when_disabled(
-        self, service_tlg_off: MemoryService,
-    ) -> None:
-        # Seed a state chain — even with data present, flag-off must
-        # short-circuit.
-        await _seed_state(
-            service_tlg_off.store,
-            content="Authentication uses session cookies.",
-            entity_id="auth-svc",
-            state_key="auth_method",
-            state_value="session cookies",
-            linked_entity_ids=["session cookies"],
-        )
-        trace = await service_tlg_off.retrieve_lg(
-            "What is the current auth method?"
-        )
-        assert trace.confidence == Confidence.NONE
-        assert trace.grammar_answer is None
-        assert not trace.has_confident_answer()
 
 
 class TestTLGEnabled:

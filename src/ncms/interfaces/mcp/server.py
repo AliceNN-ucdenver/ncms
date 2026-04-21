@@ -67,7 +67,7 @@ async def create_ncms_services(
 
     # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
-    if config.reconciliation_enabled:
+    if config.temporal_enabled:
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(store=store, config=config)
@@ -75,7 +75,7 @@ async def create_ncms_services(
 
     # Episode formation (Phase 3, disabled by default)
     episode = None
-    if config.episodes_enabled:
+    if config.temporal_enabled:
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
@@ -86,7 +86,7 @@ async def create_ncms_services(
 
     # Intent classifier (Phase 4, uses BM25 exemplar index when enabled)
     intent_classifier = None
-    if config.intent_classification_enabled:
+    if config.temporal_enabled:
         from ncms.infrastructure.indexing.exemplar_intent_index import (
             ExemplarIntentIndex,
         )

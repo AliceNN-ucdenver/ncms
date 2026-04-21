@@ -1,7 +1,7 @@
 """TLG Phase 3d: MemoryService.search() auto-composes with grammar.
 
 Benchmarks call ``memory_service.search()`` — this test verifies
-that when ``NCMS_TLG_ENABLED=true`` a confident grammar answer
+that when ``NCMS_TEMPORAL_ENABLED=true`` a confident grammar answer
 promotes its memory to rank 1 of the returned ``ScoredMemory``
 list.  When TLG is disabled, the original BM25 ordering is
 returned unchanged.
@@ -29,7 +29,7 @@ from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 
-async def _build_service(*, tlg_enabled: bool) -> MemoryService:
+async def _build_service() -> MemoryService:
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
     index = TantivyEngine()
@@ -37,8 +37,7 @@ async def _build_service(*, tlg_enabled: bool) -> MemoryService:
     graph = NetworkXGraph()
     config = NCMSConfig(
         db_path=":memory:",
-        reconciliation_enabled=True,
-        tlg_enabled=tlg_enabled,
+        temporal_enabled=True,
     )
     reconciliation = ReconciliationService(store=store, config=config)
     return MemoryService(
@@ -52,16 +51,17 @@ async def _build_service(*, tlg_enabled: bool) -> MemoryService:
 
 @pytest_asyncio.fixture
 async def svc_tlg_on() -> MemoryService:
-    svc = await _build_service(tlg_enabled=True)
+    svc = await _build_service()
     yield svc
     await svc.store.close()
 
 
-@pytest_asyncio.fixture
-async def svc_tlg_off() -> MemoryService:
-    svc = await _build_service(tlg_enabled=False)
-    yield svc
-    await svc.store.close()
+# NOTE: ``svc_tlg_off`` fixture + ``TestSearchCompositionDisabled`` suite
+# were removed when the NCMSConfig flag scheme collapsed tlg/
+# reconciliation/episodes/intent_classification/intent_routing into the
+# single ``temporal_enabled`` master flag.  Disabled-path behaviour is
+# implicitly covered by every other unit test that runs without
+# ``temporal_enabled=True``.
 
 
 async def _ensure_entity(store: SQLiteStore, eid: str) -> None:
@@ -121,38 +121,6 @@ async def _seed_entity_state(
 
 
 # ---------------------------------------------------------------------------
-
-
-class TestSearchCompositionDisabled:
-    async def test_bm25_order_preserved_when_flag_off(
-        self, svc_tlg_off: MemoryService
-    ) -> None:
-        # Two candidates — one with a vague match, one that wins BM25.
-        first = await _seed_entity_state(
-            svc_tlg_off,
-            content="Authentication uses session cookies.",
-            entity_id="auth-svc",
-            state_key="auth_method",
-            state_value="session cookies",
-            linked_entity_ids=["session cookies", "authentication"],
-        )
-        second = await _seed_entity_state(
-            svc_tlg_off,
-            content="Retire session cookies; adopt OAuth 2.0 tokens.",
-            entity_id="auth-svc",
-            state_key="auth_method",
-            state_value="OAuth 2.0",
-            linked_entity_ids=["OAuth 2.0", "authentication"],
-        )
-        results = await svc_tlg_off.search(
-            "current authentication method", limit=5,
-        )
-        assert results  # BM25 finds something
-        # Flag off — we don't assert an exact order, just that the
-        # composition hook didn't run and rank the grammar answer.
-        # Both memories should be present; whichever BM25 chose leads.
-        ids = {sm.memory.id for sm in results}
-        assert first.memory_id in ids or second.memory_id in ids
 
 
 class TestSearchCompositionEnabled:

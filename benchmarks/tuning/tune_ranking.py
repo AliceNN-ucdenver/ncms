@@ -95,7 +95,7 @@ async def _run_grid_queries(
         scoring_weight_graph=weights["graph"],
         scoring_weight_hierarchy=weights["hierarchy"],
         actr_threshold=weights["actr_threshold"] if has_actr else -999.0,
-        intent_classification_enabled=has_hierarchy,
+        temporal_enabled=has_hierarchy,
         contradiction_detection_enabled=False,
     )
 

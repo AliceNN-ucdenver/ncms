@@ -184,7 +184,7 @@ corpus spanning 11 intent shapes, TLG delivers 32/32 top-5
 and rank-1 vs. BM25's 41%/16%; see
 `docs/tlg-validation-findings.md`.
 
-Gated behind `NCMS_TLG_ENABLED` (default `False`).
+Gated behind `NCMS_TEMPORAL_ENABLED` (default `False`).
 
 **Architecture.**
 
@@ -235,7 +235,7 @@ L1 vocabulary + L2 markers + aliases so the cache doesn't
 stale-drift as new memories land.  CLI commands `ncms tlg
 status` and `ncms tlg induce` expose manual control.  The
 `--tlg` flag on the LongMemEval benchmark flips
-`NCMS_TLG_ENABLED` for benchmark runs.
+`NCMS_TEMPORAL_ENABLED` for benchmark runs.
 
 **Scope note.**  TLG targets the *state-evolution* axis.  On
 conversational corpora like LongMemEval — no state
@@ -270,7 +270,7 @@ findings:
 Plan: [`p2-plan.md`](p2-plan.md).  Sprint 1–3 research:
 [`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md).
 
-Gated behind `NCMS_INTENT_SLOT_ENABLED` (default `False` at
+Gated behind `NCMS_SLM_ENABLED` (default `False` at
 ship; flips to `True` one release later).
 
 **Architecture.**  One shared `bert-base-uncased` encoder +
@@ -328,7 +328,7 @@ adapter that fails the gate.  See
 the gate design.
 
 **Deprecated in favour of the SLM.**  One release after
-`NCMS_INTENT_SLOT_ENABLED` defaults to true, the following
+`NCMS_SLM_ENABLED` defaults to true, the following
 retire entirely: `application/admission_service.py`,
 `application/index_worker._has_state_declaration`,
 `infrastructure/extraction/label_detector.py`.

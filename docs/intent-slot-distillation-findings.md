@@ -228,10 +228,10 @@ class IntentSlotExtractor(Protocol):
 
 ```python
 # src/ncms/config.py
-intent_slot_enabled: bool = False
+slm_enabled: bool = False
 intent_slot_backend: Literal["zero_shot", "pretrained", "custom"] = "custom"
-intent_slot_confidence_threshold: float = 0.7
-intent_slot_checkpoint_dir: Path | None = None
+slm_confidence_threshold: float = 0.7
+slm_checkpoint_dir: Path | None = None
 ```
 
 ### 4.4 Ingestion wiring

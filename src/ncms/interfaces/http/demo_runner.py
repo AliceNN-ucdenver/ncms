@@ -219,7 +219,7 @@ async def run_demo_loop(
 
     # ── Phase 8: Intent-Aware Search ──────────────────────────────────────
 
-    if memory_svc._config.intent_classification_enabled:
+    if memory_svc._config.temporal_enabled:
         logger.info("Phase 8: Intent-aware search demo")
         # Current state lookup
         await memory_svc.search(

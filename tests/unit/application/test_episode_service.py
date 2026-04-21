@@ -44,7 +44,7 @@ def index() -> TantivyEngine:
 def config() -> NCMSConfig:
     return NCMSConfig(
         db_path=":memory:",
-        episodes_enabled=True,
+        temporal_enabled=True,
         episode_window_minutes=1440,
         episode_close_minutes=1440,
         episode_create_min_entities=2,
@@ -408,7 +408,7 @@ class TestEpisodeClosure:
         """Episode with no recent members gets auto-closed."""
         short_config = NCMSConfig(
             db_path=":memory:",
-            episodes_enabled=True,
+            temporal_enabled=True,
             episode_close_minutes=0,  # Close immediately
             episode_create_min_entities=2,
         )

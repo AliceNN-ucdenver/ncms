@@ -227,10 +227,9 @@ async def evaluate_reconciliation() -> dict:
             config = NCMSConfig(
                 db_path=":memory:",
                 admission_enabled=True,
-                reconciliation_enabled=True,
+                temporal_enabled=True,
                 reconciliation_supersession_penalty=sup_pen,
                 reconciliation_conflict_penalty=con_pen,
-                episodes_enabled=False,
                 contradiction_detection_enabled=False,
             )
 

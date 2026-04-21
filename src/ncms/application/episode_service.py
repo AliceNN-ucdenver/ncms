@@ -13,7 +13,7 @@ Each episode maintains a compact profile (backing Memory) indexed in BM25
 and optionally SPLADE, enabling cheap candidate generation via existing
 search infrastructure.
 
-Feature-flagged via config.episodes_enabled (default False).
+Feature-flagged via config.temporal_enabled (default False).
 """
 
 from __future__ import annotations
