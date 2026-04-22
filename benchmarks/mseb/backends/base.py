@@ -64,6 +64,33 @@ class MemoryBackend(Protocol):
         """Return the backend's top-``limit`` rankings for the query."""
         ...
 
+    def classify_query(self, query: str) -> dict[str, object]:
+        """Return per-head SLM outputs for one query string.
+
+        Implemented by backends that ship a classifier (NcmsBackend);
+        other backends (mem0) may return ``{}``.  Output format::
+
+            {
+              "admission":          str | None,
+              "admission_conf":     float | None,
+              "state_change":       str | None,
+              "state_change_conf":  float | None,
+              "topic":              str | None,
+              "topic_conf":         float | None,
+              "intent":             str,
+              "intent_conf":        float,
+              "slots":              dict[str, str],
+              "shape_intent":       str | None,
+              "shape_intent_conf":  float | None,
+              "adapter":            str,   # e.g. "clinical/v6"
+              "latency_ms":         float,
+            }
+
+        Harness populates this into ``predictions.jsonl`` so post-hoc
+        forensic tooling can trace WHY a query routed the way it did.
+        """
+        return {}
+
     async def shutdown(self) -> None: ...
 
 

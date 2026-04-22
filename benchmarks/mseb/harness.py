@@ -141,8 +141,18 @@ def _parse_feature_set(args: argparse.Namespace) -> FeatureSet:
 async def _run_queries(
     backend, queries: list[GoldQuery], *, top_k: int = 10,
 ) -> list[Prediction]:
-    """Run each gold query through the backend's search; build Predictions."""
+    """Run each gold query through the backend's search and capture
+    per-head SLM classification for forensic analysis.
+
+    ``Prediction.head_outputs`` is populated from the backend's
+    ``classify_query()`` method (a no-op for non-NCMS backends) so
+    the dumped predictions.jsonl carries, per query, BOTH the
+    search ranking AND the SLM's 6-head classification.  That's
+    what downstream forensic tooling needs to trace WHY a query
+    routed the way it did.
+    """
     preds: list[Prediction] = []
+    classify = getattr(backend, "classify_query", None)
     for q in queries:
         t0 = time.perf_counter()
         try:
@@ -151,10 +161,24 @@ async def _run_queries(
             logger.warning("qid=%s search failed: %s", q.qid, exc)
             rankings = []
         latency_ms = (time.perf_counter() - t0) * 1000.0
+        head_outputs: dict[str, object] = {}
+        if classify is not None:
+            try:
+                head_outputs = classify(q.text) or {}
+            except Exception as exc:  # pragma: no cover — forensic path
+                logger.debug(
+                    "qid=%s classify_query failed: %s", q.qid, exc,
+                )
+        intent_conf = head_outputs.get("intent_conf")
         preds.append(Prediction(
             qid=q.qid,
             ranked_mids=[r.mid for r in rankings],
             latency_ms=latency_ms,
+            head_outputs=head_outputs,
+            intent_confidence=(
+                float(intent_conf) if isinstance(intent_conf, (int, float))
+                else None
+            ),
         ))
     return preds
 

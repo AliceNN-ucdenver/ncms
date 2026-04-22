@@ -139,6 +139,55 @@ class NcmsBackend:
             self.feature_set.head,
         )
 
+        # Adapter provenance — make the loaded adapter's
+        # domain/version/head set self-describing in the run-log.
+        # Forensic tooling can grep "SLM adapter:" and prove which
+        # adapter shipped each run.
+        if intent_slot is not None:
+            primary = None
+            backends_list = getattr(intent_slot, "_backends", None) or []
+            for b in backends_list:
+                m = getattr(b, "_manifest", None) or getattr(b, "manifest", None)
+                if m is not None:
+                    primary = m
+                    break
+            if primary is not None:
+                logger.info(
+                    "SLM adapter: domain=%s version=%s encoder=%s "
+                    "heads: intent=%d slot=%d topic=%d admission=%d "
+                    "state_change=%d shape_intent=%d",
+                    getattr(primary, "domain", "?"),
+                    getattr(primary, "version", "?"),
+                    getattr(primary, "encoder", "?"),
+                    len(getattr(primary, "intent_labels", []) or []),
+                    len(getattr(primary, "slot_labels", []) or []),
+                    len(getattr(primary, "topic_labels", []) or []),
+                    len(getattr(primary, "admission_labels", []) or []),
+                    len(getattr(primary, "state_change_labels", []) or []),
+                    len(getattr(primary, "shape_intent_labels", []) or []),
+                )
+                # The 6th head's trained vocabulary — critical for
+                # knowing whether TLG dispatch has anything to route.
+                shape_labels = (
+                    getattr(primary, "shape_intent_labels", []) or []
+                )
+                if shape_labels:
+                    logger.info(
+                        "SLM shape_intent_labels: %s",
+                        ", ".join(shape_labels),
+                    )
+                else:
+                    logger.info(
+                        "SLM shape_intent_labels: (empty — pre-v6 adapter, "
+                        "TLG dispatch will abstain on every query)",
+                    )
+        else:
+            logger.info(
+                "SLM adapter: (none wired — feature_set.slm=%s, "
+                "adapter_domain=%s)",
+                self.feature_set.slm, self.adapter_domain,
+            )
+
     # -------------------------------------------------------------------
     # Ingest
     # -------------------------------------------------------------------
@@ -222,6 +271,69 @@ class NcmsBackend:
             score = float(getattr(r, "score", 1.0 / (rank + 1)))
             rankings.append(BackendRanking(mid=mid, score=score))
         return rankings
+
+    # -------------------------------------------------------------------
+    # Forensic: expose per-query SLM head outputs for predictions dump
+    # -------------------------------------------------------------------
+
+    def classify_query(self, query: str) -> dict[str, object]:
+        """Run all 6 SLM heads on ``query`` and return a dict suitable
+        for the harness's ``predictions.jsonl`` dump.
+
+        Called once per query by the harness, alongside ``search()``.
+        The output is persisted verbatim so post-hoc forensic tooling
+        can trace — for any given query — which shape the SLM
+        classified and whether dispatch abstained or routed.  This
+        closes the gap that hid the ``tlg_enabled=False`` wiring
+        bug in earlier runs.
+
+        When no SLM is wired (``--slm-off`` or an adapter without a
+        chain), returns an empty dict so downstream tooling can tell
+        "SLM wasn't active" apart from "SLM returned None for every
+        head".
+        """
+        svc = getattr(self, "_svc", None)
+        if svc is None:
+            return {}
+        extractor = getattr(svc, "_intent_slot", None)
+        if extractor is None:
+            return {}
+        adapter_name = (
+            getattr(extractor, "adapter_domain", None)
+            or getattr(self, "adapter_domain", None)
+            or "unknown"
+        )
+        try:
+            r = extractor.extract(query, domain=adapter_name or "unknown")
+        except Exception as exc:  # pragma: no cover — forensic path
+            return {"adapter": adapter_name, "error": repr(exc)}
+        # Pull the manifest's version off the primary backend when
+        # available so the dumped record self-describes the adapter.
+        version: str | None = None
+        backends = getattr(extractor, "_backends", None) or []
+        for b in backends:
+            m = getattr(b, "_manifest", None) or getattr(b, "manifest", None)
+            if m is not None:
+                version = getattr(m, "version", None)
+                break
+        adapter_label = (
+            f"{adapter_name}/{version}" if version else adapter_name or "?"
+        )
+        return {
+            "adapter":            adapter_label,
+            "admission":          r.admission,
+            "admission_conf":     r.admission_confidence,
+            "state_change":       r.state_change,
+            "state_change_conf":  r.state_change_confidence,
+            "topic":              r.topic,
+            "topic_conf":         r.topic_confidence,
+            "intent":             r.intent,
+            "intent_conf":        r.intent_confidence,
+            "slots":              dict(r.slots),
+            "shape_intent":       r.shape_intent,
+            "shape_intent_conf":  r.shape_intent_confidence,
+            "slm_latency_ms":     r.latency_ms,
+        }
 
     # -------------------------------------------------------------------
     # Shutdown
