@@ -48,6 +48,7 @@ from ncms.domain.tlg import (
     lookup_entity,
     lookup_subject,
 )
+
 logger = logging.getLogger(__name__)
 
 
@@ -245,10 +246,10 @@ class VocabularyCache:
         )
         for node in nodes:
             try:
-                linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+                linked = await store.get_memory_entity_names(node.memory_id)  # type: ignore[attr-defined]
             except Exception as exc:  # pragma: no cover — defensive guard
                 logger.warning(
-                    "TLG aliases: could not load entities for memory %s: %s",
+                    "TLG aliases: could not load entity names for memory %s: %s",
                     node.memory_id,
                     exc,
                 )
@@ -380,10 +381,10 @@ class VocabularyCache:
             if not subject:
                 continue
             try:
-                linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+                linked = await store.get_memory_entity_names(node.memory_id)  # type: ignore[attr-defined]
             except Exception as exc:  # pragma: no cover — defensive guard
                 logger.warning(
-                    "TLG domain-nouns: could not load entities for memory %s: %s",
+                    "TLG domain-nouns: could not load entity names for memory %s: %s",
                     node.memory_id,
                     exc,
                 )
@@ -408,10 +409,10 @@ class VocabularyCache:
             if not subject:
                 continue
             try:
-                linked = await store.get_memory_entities(node.memory_id)  # type: ignore[attr-defined]
+                linked = await store.get_memory_entity_names(node.memory_id)  # type: ignore[attr-defined]
             except Exception as exc:  # pragma: no cover — defensive guard
                 logger.warning(
-                    "TLG vocabulary: could not load entities for memory %s: %s",
+                    "TLG vocabulary: could not load entity names for memory %s: %s",
                     node.memory_id,
                     exc,
                 )

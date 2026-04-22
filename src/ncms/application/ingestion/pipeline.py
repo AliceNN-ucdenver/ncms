@@ -101,6 +101,53 @@ class IngestionPipeline:
         # ``None`` → pipeline runs without SLM (pre-P2 behaviour).
         self._intent_slot = intent_slot
 
+    # ── SLM slot-head → entity dicts ─────────────────────────────────────
+
+    @staticmethod
+    def slm_slots_to_entity_dicts(
+        label: Any | None,
+        *,
+        confidence_threshold: float = 0.7,
+    ) -> list[dict]:
+        """Convert SLM slot-head output into the entity-dict format
+        the downstream linker consumes.
+
+        The slot head is trained per-adapter on a typed taxonomy
+        (e.g. ``library``, ``medication``, ``service``) and — on
+        trained domains — beats GLiNER's zero-shot NER in both
+        precision and typed-label quality.  We promote its outputs
+        to primary and let GLiNER act as the open-vocabulary
+        fallback.
+
+        Each ``(slot_name, surface)`` pair in ``label.slots`` becomes
+        an entity dict with ``type`` = slot name, ``name`` = surface.
+        Entries below ``confidence_threshold`` are dropped so low-
+        precision picks don't flood the entity graph.
+
+        Returns an empty list when the label is ``None``, has no
+        slots, or every slot is below threshold.
+        """
+        if label is None:
+            return []
+        slots = getattr(label, "slots", None) or {}
+        confidences = getattr(label, "slot_confidences", None) or {}
+        out: list[dict] = []
+        for slot_name, surface in slots.items():
+            if not surface:
+                continue
+            conf = float(confidences.get(slot_name, 1.0))
+            if conf < confidence_threshold:
+                continue
+            out.append({
+                "name": str(surface).strip(),
+                "type": str(slot_name),
+                "attributes": {
+                    "source": "slm_slot",
+                    "confidence": round(conf, 3),
+                },
+            })
+        return out
+
     # ── Entity State Extraction (shared with index_worker) ──────────────
 
     @staticmethod
@@ -893,13 +940,15 @@ class IngestionPipeline:
         linked_entity_ids: list[str],
         admission_features: object | None,
         emit_stage: Callable,
+        subject: str | None = None,
     ) -> None:
         """Create HTMG nodes for a persisted memory.
 
         L1 ATOMIC node is always created.  L2 ENTITY_STATE node is
         additionally created if state change or declaration is
-        detected.  Then reconcile against existing states and assign
-        to an episode.
+        detected, OR when ``subject`` is supplied (caller-asserted
+        entity-subject, Option D' Part 4).  Then reconcile against
+        existing states and assign to an episode.
         """
         from ncms.domain.models import MemoryNode, NodeType
 
@@ -919,10 +968,11 @@ class IngestionPipeline:
             "layer": "L1",
         }, memory_id=memory.id)
 
-        # L2: Detect state change or declaration
+        # L2: Detect state change or declaration (or use caller subject)
         l2_node = await self._detect_and_create_l2_node(
             memory, content, all_entities, l1_node,
             admission_features, emit_stage,
+            subject=subject,
         )
 
         # Reconcile entity state against existing states
@@ -951,13 +1001,73 @@ class IngestionPipeline:
         l1_node: MemoryNode,
         admission_features: object | None,
         emit_stage: Callable,
+        subject: str | None = None,
     ) -> MemoryNode | None:
-        """Detect entity state change and create L2 ENTITY_STATE node."""
+        """Detect entity state change and create L2 ENTITY_STATE node.
+
+        When ``subject`` is provided (Option D' Part 4), create the
+        node unconditionally with ``entity_id = subject`` and skip
+        the state-change / regex / GLiNER-validation fork.
+        """
         from ncms.domain.models import (
             EdgeType,
             GraphEdge,
             NodeType,
         )
+
+        # ── Caller-asserted subject short-circuit ────────────────────
+        # Reconciliation requires (entity_id, state_key, state_value).
+        # We do NOT call the regex extractor here — that's the legacy
+        # path the SLM replaces.  Instead:
+        #
+        #   entity_id  ← caller-asserted subject
+        #   state_key  ← SLM topic head when confident, else "status"
+        #   state_value ← content snippet (bounded, not regex-matched)
+        #
+        # Reconciliation uses (entity_id, state_key) to find prior
+        # states of the same entity — the value is a comparison
+        # anchor, not a parse target.  Content-as-value gives the
+        # reconciler enough signal to detect "new observation supersedes
+        # prior observation" without any regex machinery.
+        if subject:
+            slm_label = (memory.structured or {}).get("intent_slot") or {}
+            slm_topic = slm_label.get("topic")
+            slm_topic_conf = slm_label.get("topic_confidence") or 0.0
+            state_key = (
+                str(slm_topic)
+                if (slm_topic and
+                    slm_topic_conf >= self._config.slm_confidence_threshold)
+                else "status"
+            )
+            snippet = content.strip()[:200] or "(empty)"
+            node_metadata = {
+                "entity_id": subject,
+                "state_key": state_key,
+                "state_value": snippet,
+                "source": "caller_subject",
+            }
+            l2_node = MemoryNode(
+                memory_id=memory.id,
+                node_type=NodeType.ENTITY_STATE,
+                importance=memory.importance,
+                metadata=node_metadata,
+            )
+            await self._store.save_memory_node(l2_node)
+            await self._store.save_graph_edge(GraphEdge(
+                source_id=l2_node.id,
+                target_id=l1_node.id,
+                edge_type=EdgeType.DERIVED_FROM,
+                metadata={"layer": "L2_from_L1"},
+            ))
+            emit_stage("memory_node", 0.0, {
+                "node_id": l2_node.id,
+                "node_type": "entity_state",
+                "layer": "L2",
+                "derived_from": l1_node.id,
+                "has_entity_state": True,
+                "source": "caller_subject",
+            }, memory_id=memory.id)
+            return l2_node
 
         # SLM-first: when the intent-slot classifier is confident on
         # the state_change head, its prediction wins.  Falls through

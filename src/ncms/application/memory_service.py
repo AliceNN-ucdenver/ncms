@@ -307,8 +307,21 @@ class MemoryService:
         entities: list[dict] | None = None,
         relationships: list[dict] | None = None,
         observed_at: datetime | None = None,
+        subject: str | None = None,
     ) -> Memory:
-        """Store a new memory with automatic indexing and graph updates."""
+        """Store a new memory with automatic indexing and graph updates.
+
+        When ``subject`` is provided, the caller is asserting the
+        entity-subject this memory pertains to (e.g. "adr-0001",
+        "ticket-ABC-123", "patient-42").  The ingest pipeline will
+        force creation of an L2 ENTITY_STATE node with
+        ``metadata["entity_id"] = subject``, bypassing the
+        regex / SLM state-change detection fork.  The subject name
+        is also linked as an entity so the TLG L1 vocabulary picks
+        it up.  Leave as ``None`` for the legacy behaviour where the
+        pipeline infers subject from content heuristics.  See
+        ``docs/slm-entity-extraction-design.md`` Part 4.
+        """
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()
 
@@ -454,17 +467,53 @@ class MemoryService:
                     memory.id, exc_info=True,
                 )
 
+        # ── SLM slot head → entity dicts (Option D' Part 2) ──────────────
+        # The slot head is fine-tuned per-domain and outperforms
+        # GLiNER's zero-shot NER on trained taxonomies (typed labels,
+        # higher precision).  We merge its output into the manual
+        # entity list so it lands as primary in both ingest paths;
+        # GLiNER still runs downstream as the open-vocabulary
+        # fallback for entities outside the slot schema.
+        slm_entity_dicts = self._ingestion.slm_slots_to_entity_dicts(
+            intent_slot_label,
+            confidence_threshold=self._config.slm_confidence_threshold,
+        )
+        merged_entities = list(entities or [])
+        if slm_entity_dicts:
+            existing_names = {e["name"].lower() for e in merged_entities}
+            merged_entities.extend(
+                e for e in slm_entity_dicts
+                if e["name"].lower() not in existing_names
+            )
+
+        # ── Caller-asserted subject (Option D' Part 4) ───────────────────
+        # When the caller knows the entity-subject of this memory
+        # (MSEB backend, ticket system, patient record, etc.), we
+        # link it as a first-class entity so TLG L1 vocabulary
+        # induction sees it.  The ENTITY_STATE node is created with
+        # ``entity_id = subject`` downstream in create_memory_nodes.
+        if subject:
+            _subject_lower = subject.lower()
+            _existing = {e["name"].lower() for e in merged_entities}
+            if _subject_lower not in _existing:
+                merged_entities.append({
+                    "name": subject,
+                    "type": "subject",
+                    "attributes": {"source": "caller_subject"},
+                })
+
         # ── Background indexing (fast path) ─────────────────────────────
         # If the async index pool accepts the task, return immediately.
         # Otherwise fall through to inline indexing.
         enqueued = self._try_enqueue_indexing(
             memory=memory, content=content, memory_type=memory_type,
             domains=domains, tags=tags, source_agent=source_agent,
-            importance=importance, entities=entities,
+            importance=importance, entities=merged_entities,
             relationships=relationships,
             admission_features=admission_features,
             admission_route=admission_route,
             pipeline_start=pipeline_start, emit_stage=_emit_stage,
+            subject=subject,
         )
         if enqueued:
             return memory
@@ -473,7 +522,7 @@ class MemoryService:
         all_entities, linked_entity_ids = (
             await self._ingestion.run_inline_indexing(
                 memory=memory, content=content, domains=domains,
-                entities_manual=entities, emit_stage=_emit_stage,
+                entities_manual=merged_entities, emit_stage=_emit_stage,
             )
         )
 
@@ -531,6 +580,7 @@ class MemoryService:
                     linked_entity_ids=linked_entity_ids,
                     admission_features=admission_features,
                     emit_stage=_emit_stage,
+                    subject=subject,
                 )
             except Exception:
                 logger.warning(
@@ -574,6 +624,7 @@ class MemoryService:
         admission_route: str | None,
         pipeline_start: float,
         emit_stage: Callable,
+        subject: str | None = None,
     ) -> bool:
         """Try to hand indexing off to the background worker pool.
 
@@ -598,6 +649,7 @@ class MemoryService:
             relationships=list(relationships or []),
             admission_features=admission_features,
             admission_route=admission_route,
+            subject=subject,
         )
         enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
         if not enqueued:

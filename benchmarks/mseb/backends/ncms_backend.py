@@ -220,7 +220,12 @@ class NcmsBackend:
                 memory_type="fact",
                 source_agent=m.metadata.get("source_agent", "mseb"),
                 domains=m.metadata.get("domains") or [],
-                tags=["mseb", f"subject:{m.subject}", f"mid:{m.mid}"],
+                # Option D' Part 4: pass MSEB subject as first-class
+                # kwarg so the ingest pipeline forces creation of an
+                # L2 ENTITY_STATE node with entity_id=subject, seeding
+                # the TLG L1 vocabulary induction.
+                subject=m.subject,
+                tags=["mseb", f"mid:{m.mid}"],
                 observed_at=observed_at,
             )
             mid_map[m.mid] = memory.id

@@ -51,6 +51,10 @@ class IndexTask:
     relationships: list[dict] = field(default_factory=list)
     admission_features: object | None = None
     admission_route: str | None = None
+    # Option D' Part 4: caller-asserted entity-subject.  When set,
+    # ENTITY_STATE node creation uses this as ``entity_id`` directly
+    # instead of inferring via regex / SLM state-change detection.
+    subject: str | None = None
 
     # Internal tracking
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -326,6 +330,7 @@ class IndexWorkerPool:
                 admission_route=task.admission_route,
                 pipeline_id=pipeline_id,
                 source_agent=task.source_agent,
+                subject=task.subject,
             )
             nodes_ms = (time.perf_counter() - t3) * 1000
             _emit("nodes_and_episodes", nodes_ms)
@@ -534,6 +539,7 @@ class IndexWorkerPool:
         admission_route: str | None,
         pipeline_id: str,
         source_agent: str | None,
+        subject: str | None = None,
     ) -> None:
         """Create L1/L2 memory nodes, run reconciliation, form episodes."""
         from ncms.domain.models import MemoryNode, NodeType
@@ -560,9 +566,10 @@ class IndexWorkerPool:
         )
         await self._svc._store.save_memory_node(l1_node)
 
-        # L2: entity_state if state change detected
+        # L2: entity_state if state change detected OR caller asserted subject
         await self._detect_and_create_l2_node(
             memory, all_entities, admission_features, l1_node,
+            subject=subject,
         )
 
         # Episode formation
@@ -576,12 +583,18 @@ class IndexWorkerPool:
         all_entities: list[dict],
         admission_features: object | None,
         l1_node: MemoryNode,
+        subject: str | None = None,
     ) -> None:
         """Detect state changes and create L2 entity_state node.
 
         Checks admission signal threshold and regex-based state
         declaration patterns. Validates detected entity exists in
         GLiNER extraction set. Runs reconciliation if enabled.
+
+        When ``subject`` is provided (Option D' Part 4), the caller
+        has asserted the entity-subject and we create the ENTITY_STATE
+        node unconditionally with ``entity_id = subject`` — bypassing
+        the state-change / regex / GLiNER-validation fork.
         """
         import re
 
@@ -591,6 +604,60 @@ class IndexWorkerPool:
             MemoryNode,
             NodeType,
         )
+
+        # ── Caller-asserted subject short-circuit ────────────────────
+        # Reconciliation requires (entity_id, state_key, state_value).
+        # No regex — we want the SLM-first architecture here.
+        #
+        #   entity_id   ← caller-asserted subject
+        #   state_key   ← SLM topic head when confident, else "status"
+        #   state_value ← content snippet (bounded, not regex-matched)
+        if subject:
+            slm_label = (memory.structured or {}).get("intent_slot") or {}
+            slm_topic = slm_label.get("topic")
+            slm_topic_conf = slm_label.get("topic_confidence") or 0.0
+            state_key = (
+                str(slm_topic)
+                if (slm_topic and
+                    slm_topic_conf >= self._svc._config.slm_confidence_threshold)
+                else "status"
+            )
+            snippet = memory.content.strip()[:200] or "(empty)"
+            node_metadata = {
+                "entity_id": subject,
+                "state_key": state_key,
+                "state_value": snippet,
+                "source": "caller_subject",
+            }
+            l2_node = MemoryNode(
+                memory_id=memory.id,
+                node_type=NodeType.ENTITY_STATE,
+                importance=memory.importance,
+                metadata=node_metadata,
+            )
+            await self._svc._store.save_memory_node(l2_node)
+            await self._svc._store.save_graph_edge(GraphEdge(
+                source_id=l2_node.id,
+                target_id=l1_node.id,
+                edge_type=EdgeType.DERIVED_FROM,
+            ))
+            config = self._svc._config
+            if config.temporal_enabled:
+                try:
+                    from ncms.application.reconciliation_service import (
+                        ReconciliationService,
+                    )
+                    recon = ReconciliationService(
+                        store=self._svc._store, config=config,
+                    )
+                    await recon.reconcile(l2_node)
+                except Exception:
+                    logger.warning(
+                        "Reconciliation failed for %s", l2_node.id,
+                        exc_info=True,
+                    )
+                self._svc.invalidate_tlg_vocabulary()
+            return
 
         # Skip document sections — structural content triggers
         # false positives on state-declaration regexes.

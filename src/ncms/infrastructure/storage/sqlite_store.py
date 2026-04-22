@@ -354,6 +354,23 @@ class SQLiteStore:
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
+    async def get_memory_entity_names(self, memory_id: str) -> list[str]:
+        """Return entity *names* (not IDs) linked to ``memory_id``.
+
+        TLG vocabulary induction (L1) needs surface forms, not
+        primary-key UUIDs, to seed the subject + entity lookup
+        tables.  Callers that want the IDs (graph service, dispatch
+        zone lookup) keep using ``get_memory_entities``.
+        """
+        cursor = await self.db.execute(
+            """SELECT e.name FROM memory_entities me
+               JOIN entities e ON me.entity_id = e.id
+               WHERE me.memory_id = ?""",
+            (memory_id,),
+        )
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows if row[0]]
+
     async def find_memory_ids_by_entity(
         self, entity_identifier: str,
     ) -> list[str]:

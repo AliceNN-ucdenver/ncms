@@ -146,7 +146,8 @@ async def run_forensic(
             content=m.content, memory_type="fact",
             source_agent=m.metadata.get("source_agent", "mseb"),
             domains=m.metadata.get("domains") or [],
-            tags=["mseb", f"subject:{m.subject}", f"mid:{m.mid}"],
+            subject=m.subject,
+            tags=["mseb", f"mid:{m.mid}"],
             observed_at=observed_at,
         )
     await svc.flush_indexing()

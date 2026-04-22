@@ -27,6 +27,21 @@ ALLOWLIST: set[tuple[str, str]] = {
     # clarifying behavior.  Fully unit-tested in
     # tests/unit/domain/test_temporal_parser.py.
     ("domain/temporal_parser.py", "parse_temporal_reference"),
+    # Pre-existing F-grade orchestrators targeted by the
+    # ``validated-giggling-dove`` refactor plan (phases 2 + 9).  Both
+    # are composition-root methods that walk a long sequential pipeline
+    # of SLM extraction → admission gate → persist → SLM side-effects
+    # → indexing fork → node creation.  The refactor plan extracts
+    # 5-6 sub-pipelines from each; holding that work out of the
+    # slm-entity-extraction-design PR to keep the diff readable.
+    ("application/memory_service.py", "MemoryService.store_memory"),
+    ("application/index_worker.py", "IndexWorkerPool._detect_and_create_l2_node"),
+    # 6-head SLM merge loop: each head has a 3-clause gate
+    # (confident OR last-backend OR null-confidence pass-through).
+    # Splitting into per-head helpers would duplicate the control
+    # structure without reducing the branching count.  Unit-tested
+    # in tests/unit/infrastructure/extraction/intent_slot/.
+    ("infrastructure/extraction/intent_slot/factory.py", "ChainedExtractor.extract"),
 }
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "ncms"
