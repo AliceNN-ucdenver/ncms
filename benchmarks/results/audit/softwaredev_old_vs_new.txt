@@ -1,0 +1,221 @@
+qids: old=165 new=165 common=165
+
+R@1 transition matrix:
+  old=hit_new=hit                  37
+  old=hit_new=miss                 86
+  old=miss_new=miss                42
+
+Per-shape breakdown:
+  before_named                   total=  15 new_hit=   9 (60.00%)
+    old=hit_new=hit                   9
+    old=hit_new=miss                  6
+  causal_chain                   total=  11 new_hit=   0 (0.00%)
+    old=hit_new=miss                 10
+    old=miss_new=miss                 1
+  concurrent                     total=  15 new_hit=   4 (26.67%)
+    old=hit_new=hit                   4
+    old=hit_new=miss                 11
+  current_state                  total=  15 new_hit=   1 (6.67%)
+    old=hit_new=hit                   1
+    old=hit_new=miss                 14
+  noise                          total=  20 new_hit=   0 (0.00%)
+    old=miss_new=miss                20
+  ordinal_first                  total=  15 new_hit=   2 (13.33%)
+    old=hit_new=hit                   2
+    old=hit_new=miss                  8
+    old=miss_new=miss                 5
+  ordinal_last                   total=  15 new_hit=   0 (0.00%)
+    old=hit_new=miss                  9
+    old=miss_new=miss                 6
+  origin                         total=  15 new_hit=   0 (0.00%)
+    old=hit_new=miss                 15
+  predecessor                    total=   9 new_hit=   7 (77.78%)
+    old=hit_new=hit                   7
+    old=hit_new=miss                  1
+    old=miss_new=miss                 1
+  retirement                     total=   9 new_hit=   8 (88.89%)
+    old=hit_new=hit                   8
+    old=miss_new=miss                 1
+  sequence                       total=  15 new_hit=   0 (0.00%)
+    old=hit_new=miss                  8
+    old=miss_new=miss                 7
+  transitive_cause               total=  11 new_hit=   6 (54.55%)
+    old=hit_new=hit                   6
+    old=hit_new=miss                  4
+    old=miss_new=miss                 1
+
+REGRESSIONS (old hit top-1, new missed): 86
+================================================================================
+
+qid=softwaredev-before_named-002  shape=before_named  new_gold_rank=4
+  query: 
+  gold_mid: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  old_top1: sdev-adr_jph-api-using-json-v-grpc-sec-01
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.99595707654953
+    intent           = 'none'                          conf=0.9861716628074646
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9989413619041443
+    state_change     = 'none'                          conf=0.9988603591918945
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-before_named-003  shape=before_named  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  old_top1: sdev-adr_jph-docker-swarm-container-orchestration-sec-01
+  new_top1: sdev-adr_jph-docker-swarm-container-orchestration-sec-06
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.9961574673652649
+    intent           = 'none'                          conf=0.9815539121627808
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9976982474327087
+    state_change     = 'none'                          conf=0.9983731508255005
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-before_named-004  shape=before_named  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-timestamp-format-sec-02
+  old_top1: sdev-adr_jph-timestamp-format-sec-02
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.9961283206939697
+    intent           = 'none'                          conf=0.9852129220962524
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9985761642456055
+    state_change     = 'none'                          conf=0.9977421760559082
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-before_named-009  shape=before_named  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-svelte-components-sec-01
+  old_top1: sdev-adr_jph-svelte-components-sec-01
+  new_top1: sdev-adr_jph-svelte-front-end-javascript-library-sec-04
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.9955356121063232
+    intent           = 'none'                          conf=0.9911313652992249
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9974326491355896
+    state_change     = 'none'                          conf=0.997363269329071
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-before_named-010  shape=before_named  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-mysql-database-sec-01
+  old_top1: sdev-adr_jph-mysql-database-sec-01
+  new_top1: sdev-adr_jph-postgresql-database-sec-04
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.9956812858581543
+    intent           = 'none'                          conf=0.9828404188156128
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9975905418395996
+    state_change     = 'none'                          conf=0.9982169270515442
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-before_named-012  shape=before_named  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-programming-code-editors-sec-02
+  old_top1: sdev-adr_jph-programming-code-editors-sec-02
+  new_top1: sdev-adr_jph-programming-code-editors-sec-03
+  new heads:
+    shape_intent     = 'before_named'                  conf=0.9961308240890503
+    intent           = 'none'                          conf=0.9800896644592285
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9986095428466797
+    state_change     = 'none'                          conf=0.9984153509140015
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-001  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-python-django-framework-sec-03
+  old_top1: sdev-adr_jph-python-django-framework-sec-03
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9911434650421143
+    intent           = 'none'                          conf=0.9956985712051392
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9976513981819153
+    state_change     = 'none'                          conf=0.9993489384651184
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-004  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-go-programming-language-sec-03
+  old_top1: sdev-adr_jph-go-programming-language-sec-03
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9923092126846313
+    intent           = 'none'                          conf=0.9975103139877319
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9980564117431641
+    state_change     = 'none'                          conf=0.9987633228302002
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-005  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-sveltekit-framework-sec-03
+  old_top1: sdev-adr_jph-sveltekit-framework-sec-03
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9927067160606384
+    intent           = 'none'                          conf=0.9973742961883545
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9986544847488403
+    state_change     = 'none'                          conf=0.9983096122741699
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-006  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-tailwind-css-sec-03
+  old_top1: sdev-adr_jph-tailwind-css-sec-03
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9929749965667725
+    intent           = 'none'                          conf=0.9972590208053589
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.997789740562439
+    state_change     = 'none'                          conf=0.9989050626754761
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-007  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-python-programming-language-sec-02
+  old_top1: sdev-adr_jph-python-programming-language-sec-02
+  new_top1: sdev-adr_jph-high-trust-teamwork-sec-01
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9921422004699707
+    intent           = 'none'                          conf=0.9967069029808044
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.9984883069992065
+    state_change     = 'none'                          conf=0.9987871050834656
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+qid=softwaredev-causal_chain-008  shape=causal_chain  new_gold_rank=2
+  query: 
+  gold_mid: sdev-adr_jph-google-cloud-platform-sec-03
+  old_top1: sdev-adr_jph-google-cloud-platform-sec-03
+  new_top1: sdev-adr_jph-google-cloud-platform-sec-00
+  new heads:
+    shape_intent     = 'causal_chain'                  conf=0.9925962686538696
+    intent           = 'none'                          conf=0.9965789914131165
+    topic            = None                            conf=None
+    admission        = 'persist'                       conf=0.997962474822998
+    state_change     = 'none'                          conf=0.9985173344612122
+    slots            = {}
+    adapter          = 'software_dev/v6'
+
+... and 74 more regressions
+
+GAINS (new hit top-1, old missed): 0
+================================================================================

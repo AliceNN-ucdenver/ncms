@@ -55,6 +55,11 @@ class IndexTask:
     # ENTITY_STATE node creation uses this as ``entity_id`` directly
     # instead of inferring via regex / SLM state-change detection.
     subject: str | None = None
+    # SLM slot head primary / GLiNER fallback: when True, the SLM
+    # slot head already produced confident typed entities for this
+    # memory; skip GLiNER to keep the entity graph clean on
+    # trained-domain deployments.
+    skip_gliner: bool = False
 
     # Internal tracking
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -284,13 +289,27 @@ class IndexWorkerPool:
                 return
 
             # ── Stage 1: Parallel indexing (BM25 + SPLADE + GLiNER) ──
-            # All three are independent — run concurrently.
+            # All three are independent — run concurrently.  GLiNER
+            # is SKIPPED when the SLM slot head already produced
+            # confident typed entities for this memory (see
+            # ``task.skip_gliner``, set upstream in
+            # ``MemoryService.store_memory``).  Keeps the entity
+            # graph clean on trained-domain deployments.
             t1 = time.perf_counter()
-            bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
-                self._do_bm25(memory),
-                self._do_splade(memory),
-                self._do_gliner(memory, task.domains),
-            )
+            if task.skip_gliner:
+                async def _noop_gliner() -> tuple[list[dict[str, str]], float]:
+                    return [], 0.0
+                bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
+                    self._do_bm25(memory),
+                    self._do_splade(memory),
+                    _noop_gliner(),
+                )
+            else:
+                bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
+                    self._do_bm25(memory),
+                    self._do_splade(memory),
+                    self._do_gliner(memory, task.domains),
+                )
             parallel_ms = (time.perf_counter() - t1) * 1000
 
             _emit("parallel_indexing", parallel_ms, {
@@ -605,29 +624,32 @@ class IndexWorkerPool:
             NodeType,
         )
 
-        # ── Caller-asserted subject short-circuit ────────────────────
-        # Reconciliation requires (entity_id, state_key, state_value).
-        # No regex — we want the SLM-first architecture here.
-        #
-        #   entity_id   ← caller-asserted subject
-        #   state_key   ← SLM topic head when confident, else "status"
-        #   state_value ← content snippet (bounded, not regex-matched)
-        if subject:
-            slm_label = (memory.structured or {}).get("intent_slot") or {}
-            slm_topic = slm_label.get("topic")
-            slm_topic_conf = slm_label.get("topic_confidence") or 0.0
-            state_key = (
-                str(slm_topic)
-                if (slm_topic and
-                    slm_topic_conf >= self._svc._config.slm_confidence_threshold)
-                else "status"
-            )
+        # ── Caller-asserted subject + SLM state_change gate ──────────
+        # See pipeline.py::_detect_and_create_l2_node for the full
+        # rationale.  Summary: subject kwarg alone is not enough;
+        # L2 creation also requires the SLM state_change head to
+        # fire declaration/retirement with confidence.  Otherwise
+        # we'd create one L2 per memory (measured on MSEB mini:
+        # 186 L2 from 186 memories, which floods reconciliation
+        # and turns subject entities into graph hubs).  The
+        # subject is already linked as an entity upstream; that's
+        # enough for TLG vocabulary seeding.  NO REGEX.
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        _caller_slm_state = slm_label.get("state_change")
+        _caller_slm_state_conf = slm_label.get("state_change_confidence") or 0.0
+        _caller_slm_confident = (
+            _caller_slm_state in {"declaration", "retirement"}
+            and _caller_slm_state_conf
+            >= self._svc._config.slm_confidence_threshold
+        )
+        if subject and _caller_slm_confident:
             snippet = memory.content.strip()[:200] or "(empty)"
             node_metadata = {
                 "entity_id": subject,
-                "state_key": state_key,
+                "state_key": "status",
                 "state_value": snippet,
-                "source": "caller_subject",
+                "source": "caller_subject_slm_state_change",
+                "slm_state_change": _caller_slm_state,
             }
             l2_node = MemoryNode(
                 memory_id=memory.id,
@@ -657,6 +679,10 @@ class IndexWorkerPool:
                         exc_info=True,
                     )
                 self._svc.invalidate_tlg_vocabulary()
+            return
+        if subject:
+            # Subject provided but SLM did not declare state change.
+            # No L2 node; subject entity link is sufficient.
             return
 
         # Skip document sections — structural content triggers

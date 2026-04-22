@@ -231,11 +231,15 @@ class VocabularyCache:
     ) -> dict[str, frozenset[str]]:
         """Mine the alias table from the store's entity universe.
 
-        Scans two sources:
+        Scans three sources (mirrors :meth:`_rebuild` so the alias
+        universe lines up with the subject vocabulary):
 
         1. Every entity linked to an ENTITY_STATE node's backing
-           Memory (matches the vocabulary-rebuild universe).
-        2. Every entry in a SUPERSEDES / SUPERSEDED_BY edge's
+           Memory (real state transitions).
+        2. Every entity linked to a memory that has a caller-asserted
+           subject entity (``type='subject'``) — Option D' Part 4
+           aboutness coverage.
+        3. Every entry in a SUPERSEDES / SUPERSEDED_BY edge's
            ``retires_entities`` set — so a query can reference
            retired entities using the short form even if the
            reconciler recorded the long form.
@@ -255,6 +259,27 @@ class VocabularyCache:
                 )
                 continue
             universe.update(linked)
+
+        # Memories reached via a subject-typed entity link.
+        try:
+            subj_entities = await store.list_entities(  # type: ignore[attr-defined]
+                entity_type="subject",
+            )
+        except Exception:
+            subj_entities = []
+        for ent in subj_entities:
+            try:
+                mids = await store.find_memory_ids_by_entity(  # type: ignore[attr-defined]
+                    ent.id,
+                )
+            except Exception:
+                continue
+            for mid in mids:
+                try:
+                    linked = await store.get_memory_entity_names(mid)  # type: ignore[attr-defined]
+                except Exception:
+                    continue
+                universe.update(linked)
 
         try:
             edges = await store.list_graph_edges_by_type(  # type: ignore[attr-defined]
@@ -390,20 +415,72 @@ class VocabularyCache:
                 )
                 continue
             views.append(_MemView(subject=subject, entities=frozenset(linked)))
+
+        # Subject-entity coverage (Option D' Part 4 refined): include
+        # memories where the caller asserted aboutness via a
+        # subject-typed entity, so domain nouns are computed over
+        # the same universe that seeds the L1 vocabulary.
+        try:
+            subj_entities = await store.list_entities(  # type: ignore[attr-defined]
+                entity_type="subject",
+            )
+        except Exception:
+            subj_entities = []
+        for ent in subj_entities:
+            try:
+                mids = await store.find_memory_ids_by_entity(  # type: ignore[attr-defined]
+                    ent.id,
+                )
+            except Exception:
+                continue
+            for mid in mids:
+                try:
+                    linked = await store.get_memory_entity_names(mid)  # type: ignore[attr-defined]
+                except Exception:
+                    continue
+                if not linked:
+                    continue
+                views.append(
+                    _MemView(subject=ent.name, entities=frozenset(linked)),
+                )
         return compute_domain_nouns(views)
 
     async def _rebuild(self, store: object) -> InducedVocabulary:
-        """Scan the store's ENTITY_STATE nodes and induce a fresh vocab.
+        """Scan the store and induce a fresh subject / entity vocab.
 
-        Pure read — does not mutate the store.  A memory without an
-        ``entity_id`` in its node metadata is skipped (no subject to
-        anchor induction to).  A memory with no linked entities is
-        also skipped (no vocabulary to contribute).
+        Pure read — does not mutate the store.  Two signal sources,
+        unioned:
+
+          1. **ENTITY_STATE nodes** — the original path.  Each node's
+             ``metadata.entity_id`` is the subject; linked entities
+             on the backing memory form its entity set.  This covers
+             memories that represent a genuine state transition
+             (SLM state_change head fired declaration/retirement,
+             or the legacy regex fired).
+
+          2. **Caller-asserted subject entities** (Option D' Part 4,
+             refined) — any entity row with ``type='subject'``.  Its
+             name IS the subject; every memory linked to that entity
+             contributes its entity names to the subject's
+             vocabulary.  This covers memories where the caller knew
+             the aboutness-subject at ingest time but the content
+             wasn't a state transition — e.g. a mid-ADR section.
+
+        Memories that carry both signals (rare but possible) are
+        merged: the entity set unions across both sources under the
+        same subject key.  A memory with no linked entities is
+        skipped (no vocabulary to contribute).
         """
+        # Signal 1: ENTITY_STATE nodes (real state transitions).
+        # Each node is a distinct SubjectMemory so that
+        # induce_vocabulary preserves the duplicate-counts used for
+        # majority-voting on ambiguous tokens (see
+        # tests/integration/test_tlg_vocabulary_cache.py::
+        # test_cross_subject_ambiguity_resolves_to_majority).
+        memories: list[SubjectMemory] = []
         nodes = await store.get_memory_nodes_by_type(  # type: ignore[attr-defined]
             NodeType.ENTITY_STATE.value
         )
-        memories: list[SubjectMemory] = []
         for node in nodes:
             subject = node.metadata.get("entity_id") if node.metadata else None
             if not subject:
@@ -422,10 +499,55 @@ class VocabularyCache:
             memories.append(
                 SubjectMemory(subject=subject, entities=frozenset(linked))
             )
+
+        # Signal 2: subject-typed entity rows (caller-asserted
+        # aboutness).  Each (subject_entity, linked_memory) pair is
+        # a distinct SubjectMemory — same as the ENTITY_STATE path
+        # — preserving duplicate counts for majority voting.
+        try:
+            subj_entities = await store.list_entities(  # type: ignore[attr-defined]
+                entity_type="subject",
+            )
+        except Exception as exc:  # pragma: no cover — defensive guard
+            logger.warning(
+                "TLG vocabulary: could not list subject entities: %s", exc,
+            )
+            subj_entities = []
+        n_subject_memories = 0
+        for ent in subj_entities:
+            subject_name = ent.name
+            if not subject_name:
+                continue
+            try:
+                mids = await store.find_memory_ids_by_entity(  # type: ignore[attr-defined]
+                    ent.id,
+                )
+            except Exception as exc:  # pragma: no cover — defensive guard
+                logger.warning(
+                    "TLG vocabulary: could not find memories for subject %s: %s",
+                    ent.id, exc,
+                )
+                continue
+            for mid in mids:
+                try:
+                    linked = await store.get_memory_entity_names(mid)  # type: ignore[attr-defined]
+                except Exception:
+                    continue
+                if not linked:
+                    continue
+                memories.append(
+                    SubjectMemory(
+                        subject=subject_name, entities=frozenset(linked),
+                    ),
+                )
+                n_subject_memories += 1
+
         vocab = induce_vocabulary(memories)
         logger.info(
-            "TLG L1 induction: %d subjects, %d entity tokens",
+            "TLG L1 induction: %d subjects, %d entity tokens "
+            "(entity_state_memories=%d, subject_entity_memories=%d)",
             len({m.subject for m in memories}),
             len(vocab.entity_lookup),
+            len(nodes), n_subject_memories,
         )
         return vocab

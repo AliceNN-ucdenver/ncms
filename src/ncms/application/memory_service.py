@@ -470,21 +470,27 @@ class MemoryService:
         # ── SLM slot head → entity dicts (Option D' Part 2) ──────────────
         # The slot head is fine-tuned per-domain and outperforms
         # GLiNER's zero-shot NER on trained taxonomies (typed labels,
-        # higher precision).  We merge its output into the manual
-        # entity list so it lands as primary in both ingest paths;
-        # GLiNER still runs downstream as the open-vocabulary
-        # fallback for entities outside the slot schema.
+        # higher precision).  When the slot head produces confident
+        # typed entities, we use those AS the entity set and skip
+        # GLiNER for this memory — honouring the "SLM primary,
+        # GLiNER fallback for open-vocabulary" design invariant.
+        #
+        # When the slot head produced nothing (empty or sub-threshold),
+        # GLiNER runs as the open-vocabulary fallback to ensure the
+        # memory is still linked to the graph for retrieval.
         slm_entity_dicts = self._ingestion.slm_slots_to_entity_dicts(
             intent_slot_label,
             confidence_threshold=self._config.slm_confidence_threshold,
         )
         merged_entities = list(entities or [])
+        skip_gliner = False
         if slm_entity_dicts:
             existing_names = {e["name"].lower() for e in merged_entities}
             merged_entities.extend(
                 e for e in slm_entity_dicts
                 if e["name"].lower() not in existing_names
             )
+            skip_gliner = True
 
         # ── Caller-asserted subject (Option D' Part 4) ───────────────────
         # When the caller knows the entity-subject of this memory
@@ -514,6 +520,7 @@ class MemoryService:
             admission_route=admission_route,
             pipeline_start=pipeline_start, emit_stage=_emit_stage,
             subject=subject,
+            skip_gliner=skip_gliner,
         )
         if enqueued:
             return memory
@@ -523,6 +530,7 @@ class MemoryService:
             await self._ingestion.run_inline_indexing(
                 memory=memory, content=content, domains=domains,
                 entities_manual=merged_entities, emit_stage=_emit_stage,
+                skip_gliner=skip_gliner,
             )
         )
 
@@ -625,6 +633,7 @@ class MemoryService:
         pipeline_start: float,
         emit_stage: Callable,
         subject: str | None = None,
+        skip_gliner: bool = False,
     ) -> bool:
         """Try to hand indexing off to the background worker pool.
 
@@ -650,6 +659,7 @@ class MemoryService:
             admission_features=admission_features,
             admission_route=admission_route,
             subject=subject,
+            skip_gliner=skip_gliner,
         )
         enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
         if not enqueued:

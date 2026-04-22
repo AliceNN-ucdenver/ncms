@@ -661,8 +661,14 @@ class IngestionPipeline:
         domains: list[str] | None,
         entities_manual: list[dict] | None,
         emit_stage: Callable,
+        skip_gliner: bool = False,
     ) -> tuple[list[dict], list[str]]:
         """Run BM25, SPLADE, GLiNER in parallel; link entities.
+
+        When ``skip_gliner`` is True, the SLM slot head already
+        produced confident typed entities for this memory and
+        ``entities_manual`` contains them; GLiNER is skipped to
+        keep the entity graph clean on trained-domain deployments.
 
         Returns ``(all_entities, linked_entity_ids)``.
         """
@@ -693,6 +699,12 @@ class IngestionPipeline:
             return (time.perf_counter() - t) * 1000
 
         async def _do_gliner() -> tuple[list[dict[str, str]], float]:
+            # SLM slot head primary / GLiNER fallback: when the
+            # caller upstream told us the slot head already produced
+            # confident typed entities, skip the open-vocabulary NER
+            # pass entirely for this memory.
+            if skip_gliner:
+                return [], 0.0
             t = time.perf_counter()
             cached = await load_cached_labels(self._store, domains or [])
             gliner_labels = resolve_labels(
@@ -1015,36 +1027,46 @@ class IngestionPipeline:
             NodeType,
         )
 
-        # ── Caller-asserted subject short-circuit ────────────────────
-        # Reconciliation requires (entity_id, state_key, state_value).
-        # We do NOT call the regex extractor here — that's the legacy
-        # path the SLM replaces.  Instead:
+        # ── Caller-asserted subject + SLM state_change gate ──────────
+        # The subject kwarg alone is NOT enough to create an L2
+        # ENTITY_STATE node.  An L2 node means "this memory IS a
+        # state of entity X", but `subject` only asserts "this
+        # memory is ABOUT entity X" — those are different things
+        # for multi-section content (ADR sections, ticket threads,
+        # patient-record paragraphs).
         #
-        #   entity_id  ← caller-asserted subject
-        #   state_key  ← SLM topic head when confident, else "status"
-        #   state_value ← content snippet (bounded, not regex-matched)
+        # The subject is already linked as a graph entity upstream
+        # in memory_service.store_memory, which is all the TLG
+        # vocabulary-cache rebuild needs (see vocabulary_cache.
+        # _rebuild Signal 2).  We only create an L2 node here when
+        # the SLM state_change head says declaration/retirement with
+        # confidence — i.e. when the memory content genuinely marks
+        # a state transition.
         #
-        # Reconciliation uses (entity_id, state_key) to find prior
-        # states of the same entity — the value is a comparison
-        # anchor, not a parse target.  Content-as-value gives the
-        # reconciler enough signal to detect "new observation supersedes
-        # prior observation" without any regex machinery.
-        if subject:
-            slm_label = (memory.structured or {}).get("intent_slot") or {}
-            slm_topic = slm_label.get("topic")
-            slm_topic_conf = slm_label.get("topic_confidence") or 0.0
-            state_key = (
-                str(slm_topic)
-                if (slm_topic and
-                    slm_topic_conf >= self._config.slm_confidence_threshold)
-                else "status"
-            )
+        # NO REGEX on this path — the legacy regex state-declaration
+        # fork below runs only when subject is NOT provided and the
+        # SLM either abstained or is disabled.
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        slm_state = slm_label.get("state_change")
+        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
+        slm_state_change_confident = (
+            slm_state in {"declaration", "retirement"}
+            and slm_state_conf >= self._config.slm_confidence_threshold
+        )
+        if subject and slm_state_change_confident:
+            # Always state_key="status" on the caller-asserted path.
+            # The SLM topic head produces coarse domain labels
+            # (framework/infra/tooling) that misclassify content
+            # (observed on real data: a team-culture ADR got
+            # topic='tooling' at conf 0.81).  Pinning state_key
+            # keeps reconciliation lookup consistent per subject.
             snippet = content.strip()[:200] or "(empty)"
             node_metadata = {
                 "entity_id": subject,
-                "state_key": state_key,
+                "state_key": "status",
                 "state_value": snippet,
-                "source": "caller_subject",
+                "source": "caller_subject_slm_state_change",
+                "slm_state_change": slm_state,
             }
             l2_node = MemoryNode(
                 memory_id=memory.id,
@@ -1065,9 +1087,14 @@ class IngestionPipeline:
                 "layer": "L2",
                 "derived_from": l1_node.id,
                 "has_entity_state": True,
-                "source": "caller_subject",
+                "source": "caller_subject_slm_state_change",
             }, memory_id=memory.id)
             return l2_node
+        if subject:
+            # Subject provided but SLM did not declare a state change
+            # — no L2 node.  Subject entity link (done upstream in
+            # store_memory) is sufficient for vocabulary seeding.
+            return None
 
         # SLM-first: when the intent-slot classifier is confident on
         # the state_change head, its prediction wins.  Falls through
