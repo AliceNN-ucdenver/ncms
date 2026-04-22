@@ -60,19 +60,21 @@ def _render_example(
     template: IntentTemplate,
     vocab: DomainTemplates,
     object_to_topic: dict[str, str] | None = None,
+    *,
+    state_change: str = "none",
 ) -> GoldExample | None:
     """Realise one template using vocabulary drawn with ``rng``.
 
     If ``object_to_topic`` is provided, the chosen ``object`` value
     is mapped to a topic label (or ``"other"`` when unmapped).  A
-    heuristic admission label + ``state_change="none"`` are always
-    emitted for preference content — preferences are persistent
-    structured statements so they route to ``persist`` admission,
-    and they never retire prior state (state_change=none).
+    heuristic admission label is always ``persist`` — every
+    template in the registry produces a structured, persist-worthy
+    utterance.
 
-    These defaults let a corpus derived from the template expander
-    train the multi-head adapter without any additional labelling
-    step — the payoff Sprint 2 is measuring.
+    The caller passes ``state_change`` explicitly so the same render
+    function can emit preference rows (``state_change="none"``),
+    pure-none rows (also ``"none"``), and state-change rows
+    (``"declaration"`` or ``"retirement"``).
     """
     obj = rng.choice(vocab.objects)
     subs: dict[str, str] = {"object": obj}
@@ -92,6 +94,14 @@ def _render_example(
         alt = rng.choice(vocab.alternatives)
         subs["alt"] = alt
         slots["alternative"] = alt
+    # ``intent == "none"`` templates only use {object}; nothing extra.
+
+    # State-change retirement templates that use {alt} ("deprecated
+    # in favour of {alt}") need an alternative filled.
+    if "{alt}" in template.pattern and "alt" not in subs:
+        alt = rng.choice(vocab.alternatives)
+        subs["alt"] = alt
+        slots["alternative"] = alt
 
     # Render — tolerate templates that don't use every key.
     try:
@@ -105,12 +115,9 @@ def _render_example(
             obj.lower(),
         ) or "other"
 
-    # Admission heuristic: preference content is always persist-
-    # worthy (concrete, structured).  If future intents emerge that
-    # should route to ephemeral or discard, extend this map.
+    # Every template in the registry emits structured, persist-worthy
+    # content — admission heuristic is uniform.
     admission = "persist"
-    # Preferences don't retire state (they're not zone transitions).
-    state_change = "none"
 
     return GoldExample(
         text=text,
@@ -121,7 +128,7 @@ def _render_example(
         admission=admission,  # type: ignore[arg-type]
         state_change=state_change,  # type: ignore[arg-type]
         split="sdg",
-        source=f"template-v1 seed={rng.getstate()[1][0]}",
+        source=f"template-v2 seed={rng.getstate()[1][0]}",
     )
 
 
@@ -134,30 +141,99 @@ def expand_domain(
 ) -> list[GoldExample]:
     """Produce ``target`` synthetic examples for ``domain``.
 
+    Output composition (approximate, target-dependent):
+
+    * 50% preference (positive / negative / habitual / difficulty /
+      choice) — ``intent=<label>``, ``state_change=none``
+    * 35% pure-none distractors — ``intent=none``,
+      ``state_change=none``
+    * 15% state-change (declaration + retirement) — ``intent=none``,
+      ``state_change=declaration|retirement``
+
+    Conversational has no state-change templates by design, so for
+    convo the 15% state-change share collapses into additional
+    pure-none rows (total ~50% none).
+
     When ``object_to_topic`` is provided (loaded from the per-domain
     taxonomy YAML), emitted examples carry ``topic`` labels derived
     from the object surface-form they were built around.  Without a
-    map, the topic field stays ``None`` and only the intent / slot
-    heads train on those rows.
+    map, the topic field stays ``None``.
     """
     rng = random.Random(seed)
     vocab = TEMPLATE_REGISTRY[domain]
-    intents: list[Intent] = [
+
+    # Target share per category.
+    preference_target = int(target * 0.50)
+    none_target = int(target * 0.35)
+    decl_target = int(target * 0.075)
+    ret_target = int(target * 0.075)
+
+    out: list[GoldExample] = []
+
+    # ── Preference intents ────────────────────────────────────────
+    preference_intents: list[Intent] = [
         "positive", "negative", "habitual", "difficulty", "choice",
     ]
-    per_intent = target // len(intents)
-    out: list[GoldExample] = []
-    for intent in intents:
+    per_preference = preference_target // len(preference_intents)
+    for intent in preference_intents:
         templates = vocab.intent_templates.get(intent, ())
         if not templates:
             continue
-        for _ in range(per_intent):
+        for _ in range(per_preference):
             template = rng.choice(templates)
             example = _render_example(
                 rng, domain, intent, template, vocab, object_to_topic,
+                state_change="none",
             )
             if example is not None:
                 out.append(example)
+
+    # ── Pure-none distractors ─────────────────────────────────────
+    # Teaches the intent head that descriptive / question /
+    # assistant prose is NOT a preference.  Without this the
+    # adapter over-fires on corpus content at eval time (v4 bug:
+    # 93%+ non-none predictions on prose corpora).
+    none_templates = vocab.none_templates
+    if none_templates:
+        # If the domain has no state-change templates, fold the
+        # state-change budget into pure-none so the total still hits
+        # the target row count.
+        effective_none_target = none_target
+        if not vocab.state_change_decl_templates and not vocab.state_change_ret_templates:
+            effective_none_target += decl_target + ret_target
+        for _ in range(effective_none_target):
+            template = rng.choice(none_templates)
+            example = _render_example(
+                rng, domain, "none", template, vocab, object_to_topic,
+                state_change="none",
+            )
+            if example is not None:
+                out.append(example)
+
+    # ── State-change declaration ──────────────────────────────────
+    decl_templates = vocab.state_change_decl_templates
+    if decl_templates:
+        for _ in range(decl_target):
+            template = rng.choice(decl_templates)
+            example = _render_example(
+                rng, domain, "none", template, vocab, object_to_topic,
+                state_change="declaration",
+            )
+            if example is not None:
+                out.append(example)
+
+    # ── State-change retirement ──────────────────────────────────
+    ret_templates = vocab.state_change_ret_templates
+    if ret_templates:
+        for _ in range(ret_target):
+            template = rng.choice(ret_templates)
+            example = _render_example(
+                rng, domain, "none", template, vocab, object_to_topic,
+                state_change="retirement",
+            )
+            if example is not None:
+                out.append(example)
+
     return out
 
 

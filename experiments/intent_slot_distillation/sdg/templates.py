@@ -55,6 +55,26 @@ class DomainTemplates:
     intent_templates: dict[Intent, tuple[IntentTemplate, ...]] = field(
         default_factory=dict,
     )
+    # ── Neutral-voice templates for ``intent="none"`` ──────────────────
+    # Questions, factual statements, assistant replies, and
+    # descriptive/plan statements that DO NOT carry a preference.
+    # These are the distractors the adapter needs to learn that
+    # "this text is not a preference utterance".  Without them the
+    # intent head over-fires on descriptive corpus content (93%+
+    # non-none predictions on prose corpora, observed in v4).
+    none_templates: tuple[IntentTemplate, ...] = field(default_factory=tuple)
+    # ── State-change templates ───────────────────────────────────────
+    # For clinical (diagnosis declaration/revision) and software_dev
+    # (ADR supersession).  Emit ``intent="none"`` (state changes are
+    # not preference utterances) and ``state_change`` set accordingly.
+    # Conversational leaves both tuples empty — conversation doesn't
+    # have "Redis upgraded to v7.4" state transitions.
+    state_change_decl_templates: tuple[IntentTemplate, ...] = field(
+        default_factory=tuple,
+    )
+    state_change_ret_templates: tuple[IntentTemplate, ...] = field(
+        default_factory=tuple,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +160,80 @@ CONVERSATIONAL_TEMPLATES = DomainTemplates(
             ),
         ),
     },
+    # Neutral-voice — these MUST train intent=none so the adapter
+    # learns that descriptive / question / assistant prose is not a
+    # preference statement.  Target shapes cover the 3 failure modes
+    # observed in v4 eval: (a) AI assistant replies, (b) questions,
+    # (c) user descriptive / plan statements.
+    none_templates=(
+        # Questions (user asks about object)
+        IntentTemplate("Can you tell me more about {object}?", ("object",)),
+        IntentTemplate("What's the best way to get into {object}?", ("object",)),
+        IntentTemplate("How does {object} work for beginners?", ("object",)),
+        IntentTemplate("Are there any good resources for learning about {object}?", ("object",)),
+        IntentTemplate("What should I know before trying {object}?", ("object",)),
+        # Assistant-voice replies (most of our corpus is this shape)
+        IntentTemplate(
+            "Here are some great {object} options to consider:",
+            ("object",),
+        ),
+        IntentTemplate(
+            "I'd be happy to help you with {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Let me know if you have any other questions about {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "That's a great topic! {object} has a lot going for it.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "You're welcome! Glad I could help with {object}.",
+            ("object",),
+        ),
+        # Neutral / factual descriptive statements
+        IntentTemplate(
+            "There are many different styles of {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The {object} community is pretty active online.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Most beginners start with {object} at an introductory level.",
+            ("object",),
+        ),
+        # Plans / intentions without preference
+        IntentTemplate(
+            "I'm planning to look into {object} next week.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "I'll check out {object} when I get a chance.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "I might give {object} a try sometime.",
+            ("object",),
+        ),
+        # Acknowledgments / time references
+        IntentTemplate("Thanks for the info about {object}.", ("object",)),
+        IntentTemplate(
+            "Got it, I'll keep {object} in mind for later.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "I'll think it over and let you know about {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Sounds good, I'll come back with more questions about {object}.",
+            ("object",),
+        ),
+    ),
 )
 
 
@@ -223,6 +317,139 @@ SOFTWARE_DEV_TEMPLATES = DomainTemplates(
             ),
         ),
     },
+    # Neutral-voice ADR / design-doc / code-review prose that's not a
+    # personal preference.  Primary failure mode in v4: ADR context
+    # sections ("The team evaluated...") got tagged as ``choice``.
+    none_templates=(
+        # Questions (developer asks about object)
+        IntentTemplate("What does {object} offer for our use case?", ("object",)),
+        IntentTemplate("How does {object} compare to the alternatives?", ("object",)),
+        IntentTemplate("What are the trade-offs of using {object}?", ("object",)),
+        # ADR narrative context
+        IntentTemplate(
+            "The team evaluated several approaches including {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "This document describes the context and trade-offs for {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} is one of several options under consideration.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The decision record will be updated as we learn more about {object}.",
+            ("object",),
+        ),
+        # Neutral factual statements
+        IntentTemplate(
+            "{object} is widely used in modern Python services.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The {object} ecosystem has grown significantly over the past year.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "There are documented patterns for integrating {object} with existing services.",
+            ("object",),
+        ),
+        # Future work / planning (no preference)
+        IntentTemplate(
+            "Next steps involve benchmarking {object} against our baseline.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "We plan to evaluate {object} in a proof of concept.",
+            ("object",),
+        ),
+        # Documentation / reference
+        IntentTemplate(
+            "See the {object} documentation for configuration details.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} is tracked in issue #123 and discussed in the design review.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The {object} module lives under the core package.",
+            ("object",),
+        ),
+    ),
+    # ADR declaration — "Status: Accepted" / "We adopt X" language.
+    state_change_decl_templates=(
+        IntentTemplate(
+            "Status: Accepted. We hereby adopt {object} for all new services.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The decision is to proceed with {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} is now the standard for new internal APIs.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Going forward, all new modules will use {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "This ADR establishes {object} as the chosen approach.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "We are introducing {object} as the default for the platform.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Effective immediately, {object} is the recommended pattern.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The team has adopted {object} after review.",
+            ("object",),
+        ),
+    ),
+    # ADR retirement / supersession — the exact vocabulary TLG needs
+    # to detect for zone transitions ("Supersedes", "Deprecated by",
+    # "migrated away from").
+    state_change_ret_templates=(
+        IntentTemplate(
+            "This decision supersedes the previous approach using {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} is deprecated in favor of {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "We are migrating away from {object} to {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "{object} is no longer recommended for new code.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The prior {object} implementation will be retired over the next quarter.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} has been superseded by {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "All existing uses of {object} should be migrated before the deprecation deadline.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} is sunset and will be removed in the next major release.",
+            ("object",),
+        ),
+    ),
 )
 
 
@@ -297,6 +524,147 @@ CLINICAL_TEMPLATES = DomainTemplates(
             ),
         ),
     },
+    # Neutral-voice case-report narrative prose.  v4 over-fired on
+    # descriptive clinical text (48% `choice` on case reports).
+    # These templates teach the adapter that narrative context,
+    # demographic / history statements, and assessment prose are not
+    # preference utterances.
+    none_templates=(
+        # Case-report narrative context
+        IntentTemplate(
+            "The patient presented with symptoms suggestive of {object}-related pathology.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Initial workup included {object} and standard lab panels.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The case report describes a patient evaluated for {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "History was notable for prior exposure to {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Review of systems was unremarkable except for {object}.",
+            ("object",),
+        ),
+        # Assessment / plan (neutral voice)
+        IntentTemplate(
+            "Assessment pending further evaluation of {object} findings.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Follow-up scheduled to reassess response to {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Consultation requested to address {object} management.",
+            ("object",),
+        ),
+        # Questions
+        IntentTemplate(
+            "What is the differential diagnosis for {object} presentation?",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Are there established guidelines for {object} workup?",
+            ("object",),
+        ),
+        # Demographic / factual
+        IntentTemplate(
+            "Patient is a 45-year-old with a history including {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Admission labs were consistent with {object}-related findings.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Imaging showed changes compatible with {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Vital signs stable on arrival; {object} unremarkable.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Discharge summary documented the course of {object} treatment.",
+            ("object",),
+        ),
+    ),
+    # Clinical state_change=declaration — new diagnosis / regimen.
+    state_change_decl_templates=(
+        IntentTemplate(
+            "Primary diagnosis established as {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Treatment was initiated with {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Patient was admitted with {object} as the working diagnosis.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "A new regimen of {object} was started on admission.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "{object} was added to the current medication list.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Final diagnosis documented as {object}.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Confirmed diagnosis of {object} after additional workup.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "We now adopt {object} as the primary treatment.",
+            ("object",),
+        ),
+    ),
+    # Clinical state_change=retirement — discontinuation / revision.
+    state_change_ret_templates=(
+        IntentTemplate(
+            "The prior treatment with {object} was discontinued.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Initial diagnosis of {object} was ruled out in favor of {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "{object} was stopped due to side effects.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "The earlier {object} approach was abandoned.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "Previous diagnosis of {object} was corrected to {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "{object} therapy was tapered off over the following weeks.",
+            ("object",),
+        ),
+        IntentTemplate(
+            "We discontinued {object} in favor of {alt}.",
+            ("object", "alternative"),
+        ),
+        IntentTemplate(
+            "The {object} regimen was revised after reassessment.",
+            ("object",),
+        ),
+    ),
 )
 
 
