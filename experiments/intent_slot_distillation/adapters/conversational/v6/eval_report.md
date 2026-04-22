@@ -1,13 +1,13 @@
 # Adapter eval report — conversational
 
-Generated: 2026-04-22T01:28:19.068498+00:00
+Generated: 2026-04-22T03:11:48.582110+00:00
 Adapter:   `experiments/intent_slot_distillation/adapters/conversational/v6`
 
 **Gate verdict:** ❌ FAIL
 
 ## Failures
 
-- slot_f1_macro 0.505 < threshold 0.750 on gold
+- slot_f1_macro 0.542 < threshold 0.750 on gold
 
 ## Thresholds
 
@@ -21,5 +21,5 @@ Adapter:   `experiments/intent_slot_distillation/adapters/conversational/v6`
 
 | Split | N | Intent F1 | Slot F1 | Joint | Topic F1 (N) | Admission F1 (N) | State F1 (N) | p95 ms | Conf-wrong % |
 |:------|--:|---------:|--------:|------:|-------------:|-----------------:|-------------:|-------:|-------------:|
-| gold | 305 | 0.933 | 0.505 | 0.895 | 0.968 (36) | 1.000 (305) | 0.333 (305) | 64.1 | 0.33% |
-| adversarial | 12 | 0.587 | 0.706 | 0.750 | — | — | — | 38.6 | 16.67% |
+| gold | 305 | 0.925 | 0.542 | 0.885 | 0.834 (36) | 1.000 (305) | 0.333 (305) | 63.4 | 0.33% |
+| adversarial | 12 | 0.587 | 0.714 | 0.667 | — | — | — | 39.1 | 16.67% |

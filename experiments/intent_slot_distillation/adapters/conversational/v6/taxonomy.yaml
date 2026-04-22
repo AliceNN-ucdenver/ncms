@@ -32,10 +32,9 @@ state_change_labels:
 - none
 shape_intent_labels:
 - current_state
-- origin
 - retirement
 - sequence
-- causal_chain
+- interval
 - ordinal_first
 - ordinal_last
 - none

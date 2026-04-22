@@ -42,10 +42,9 @@
   ],
   "shape_intent_labels": [
     "current_state",
-    "origin",
     "retirement",
     "sequence",
-    "causal_chain",
+    "interval",
     "ordinal_first",
     "ordinal_last",
     "none"
@@ -62,8 +61,8 @@
     "epochs": 6
   },
   "gate_metrics": {
-    "final_train_loss": 0.3235
+    "final_train_loss": 0.2346
   },
-  "trained_at": "2026-04-22T01:17:09.942500+00:00",
+  "trained_at": "2026-04-22T03:00:46.992004+00:00",
   "corpus_hash": "34c1257801c90274"
 }
