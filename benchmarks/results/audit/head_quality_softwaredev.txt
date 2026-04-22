@@ -1,0 +1,92 @@
+domain: softwaredev  ingest records: 186  predictions: main_softwaredev_ncms_temporal-on_20260422T144457Z.predictions.jsonl
+
+── admission head ──
+  decisions: {'persist': 186}
+  confidence  min=0.933  median=1.000  max=1.000
+  gold-curated misses (non-persist): 0
+
+── state_change head ──
+  SLM decisions: {'none': 178, 'declaration': 8}
+  confidence  min=0.000  median=0.967  max=1.000
+  SLM vs heuristic-oracle agreement matrix:
+    slm='declaration'    oracle='declaration'    n=   2  ✓
+    slm='declaration'    oracle='none'           n=   6  ✗
+    slm='none'           oracle='declaration'    n=  20  ✗
+    slm='none'           oracle='none'           n= 157  ✓
+    slm='none'           oracle='retirement'     n=   1  ✗
+
+  cases where heuristic=declaration but SLM=none:
+    mid=sdev-adr_jph-4-day-work-week-sec-03  SLM=none (conf=0.9878964424133301)
+      content[:120]: 'The decision was based on the following factors:\n\n1. Employee feedback: A survey conducted among the employees highlight'
+    mid=sdev-adr_jph-api-using-json-v-grpc-sec-01  SLM=none (conf=0.9620831608772278)
+      content[:120]: 'After considering the pros and cons of both options, we have decided to use gRPC for our API. Although JSON over HTTP is'
+    mid=sdev-adr_jph-css-framework-sec-02  SLM=none (conf=0.9565297365188599)
+      content[:120]: 'Decided on Bulma. Open to new CSS framework choices as they arrive.'
+    mid=sdev-adr_jph-docker-swarm-container-orchestration-sec-02  SLM=none (conf=0.7288436889648438)
+      content[:120]: 'We have decided to use Docker Swarm as our container orchestration tool. Docker Swarm provides a simple and intuitive wa'
+    mid=sdev-adr_jph-docker-swarm-container-orchestration-sec-06  SLM=none (conf=0.911765456199646)
+      content[:120]: 'After careful consideration, we have decided to use Docker Swarm as our container orchestration tool. Docker Swarm provi'
+
+── topic head ──
+  topic distribution: {None: 131, 'tooling': 12, 'testing': 5, 'framework': 18, 'language_runtime': 6, 'infra': 14}
+  confidence (non-None only)  min=0.702  median=0.830  max=0.999
+  SLM topic vs slug-hint agreement matrix:
+    slm='(none)'              slug_hint='(other)'             n=  40
+    slm='(none)'              slug_hint='framework'           n=  36
+    slm='(none)'              slug_hint='infra'               n=  35
+    slm='(none)'              slug_hint='language_runtime'    n=  14
+    slm='(none)'              slug_hint='testing'             n=   6
+    slm='framework'           slug_hint='(other)'             n=   3
+    slm='framework'           slug_hint='framework'           n=  12
+    slm='framework'           slug_hint='infra'               n=   2
+    slm='framework'           slug_hint='language_runtime'    n=   1
+    slm='infra'               slug_hint='(other)'             n=   2
+    slm='infra'               slug_hint='infra'               n=  12
+    slm='language_runtime'    slug_hint='framework'           n=   3
+    slm='language_runtime'    slug_hint='infra'               n=   2
+    slm='language_runtime'    slug_hint='language_runtime'    n=   1
+    slm='testing'             slug_hint='testing'             n=   5
+    slm='tooling'             slug_hint='(other)'             n=   9
+    slm='tooling'             slug_hint='framework'           n=   1
+    slm='tooling'             slug_hint='language_runtime'    n=   2
+
+── intent head (ingest-voice) ──
+  intent distribution: {'none': 186}
+  confidence  min=0.000  median=0.999  max=1.000
+  ingest-time intent != 'none' (rare expected): 0
+
+── slot head (typed surface forms) ──
+  total slots extracted: 87
+  slot-type distribution: {'alternative': 21, 'library': 66}
+  surface NOT found in content (hallucination count): 9 / 87  (10.3%)
+    mid=sdev-adr_jph-docker-swarm-container-orchestration-sec-06  slot=alternative:'Chat'
+      content[:120]: 'After careful consideration, we have decided to use Docker Swarm as our container orchestration tool. Docker Swarm provi'
+    mid=sdev-adr_jph-environment-variable-configuration-sec-05  slot=library:'dot'
+      content[:120]: 'We want to keep secrets out of our source code management (SCM) version control system (VCS).\n\nWe want to aim for compat'
+    mid=sdev-adr_jph-mysql-database-sec-08  slot=alternative:'Chat'
+      content[:120]: 'Based on the available data and our decision considerations, we believe that MySQL is the right choice for our database '
+    mid=sdev-adr_jph-postgresql-database-sec-00  slot=alternative:'MySQL'
+      content[:120]: 'Our organization is currently evaluating options for the most suitable database management system to be used in our upco'
+    mid=sdev-adr_jph-python-programming-language-sec-04  slot=alternative:'Chat'
+      content[:120]: 'After considering the pros and cons of using Python as our programming language, we have decided that it is the best cho'
+
+── shape_intent head (query-voice) ──
+  queries total: 165
+  high-conf (≥0.7) correct: 165  (100.0%)
+  high-conf (≥0.7) wrong:   0  (0.0%)
+  low-conf / abstain:        0  (0.0%)
+  per-shape recall (SLM gets gold shape at high conf):
+    before_named            15/  15  (100.0%)
+    causal_chain            11/  11  (100.0%)
+    concurrent              15/  15  (100.0%)
+    current_state           15/  15  (100.0%)
+    none                    20/  20  (100.0%)
+    ordinal_first           15/  15  (100.0%)
+    ordinal_last            15/  15  (100.0%)
+    origin                  15/  15  (100.0%)
+    predecessor              9/   9  (100.0%)
+    retirement               9/   9  (100.0%)
+    sequence                15/  15  (100.0%)
+    transitive_cause        11/  11  (100.0%)
+
+  Top confusion pairs (gold → SLM, wrong predictions):

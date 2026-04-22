@@ -73,7 +73,6 @@ from experiments.intent_slot_distillation.schemas import (
 )
 from experiments.intent_slot_distillation.sdg.template_expander import (
     _dedupe,
-    _load_object_to_topic,
     expand_domain,
 )
 from experiments.intent_slot_distillation.train_lora_adapter import (
@@ -131,21 +130,22 @@ def phase2_expand(
     *,
     target_size: int,
     seed: int,
-    taxonomy_path: Path | None,
+    taxonomy_path: Path | None = None,  # retained for CLI compat; unused in v7
     output_path: Path,
 ) -> list[GoldExample]:
     """Run template-SDG expansion and write the result to disk.
 
+    Post-v7 rewrite: topic labels come directly from each
+    :class:`SlotPool`.``topic`` in the template registry, so no
+    external ``object_to_topic`` map is required.  The
+    ``taxonomy_path`` parameter is kept for CLI backwards-compat
+    but is ignored by this call.
+
     ``target_size`` is the pre-dedup target; deduped output may be
     ~20% smaller depending on vocabulary diversity.
     """
-    object_to_topic = _load_object_to_topic(taxonomy_path)
-    raw = expand_domain(
-        domain,
-        target=target_size,
-        seed=seed,
-        object_to_topic=object_to_topic,
-    )
+    del taxonomy_path  # unused post-v7
+    raw = expand_domain(domain, target=target_size, seed=seed)
     deduped = _dedupe(raw)
     dump_jsonl(deduped, output_path)
     logger.info(
