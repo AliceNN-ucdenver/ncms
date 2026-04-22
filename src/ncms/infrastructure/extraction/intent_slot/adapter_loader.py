@@ -47,6 +47,10 @@ class AdapterManifest:
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)
+    # 6th head — query-shape intent.  Empty list means the adapter
+    # predates the v6 schema and does not ship this head; callers
+    # must gracefully treat it as "abstain".
+    shape_intent_labels: list[str] = field(default_factory=list)
 
     lora_r: int = 8
     lora_alpha: int = 16

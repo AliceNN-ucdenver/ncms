@@ -154,6 +154,7 @@ class TestDispatchUsesIndex:
             "What came after session cookies for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="sequence",
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.HIGH

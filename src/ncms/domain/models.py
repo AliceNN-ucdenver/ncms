@@ -898,6 +898,28 @@ AdmissionDecision = Literal["persist", "ephemeral", "discard"]
 
 StateChange = Literal["declaration", "retirement", "none"]
 
+# Query-shape taxonomy produced by the 6th SLM head.  Mirrors the
+# TLG grammar's production rules — classifies an incoming query
+# into one of 12 structural shapes that map to HTMG walk strategies.
+# ``none`` means the query does not match any grammar shape, so the
+# dispatcher should return pure hybrid retrieval unchanged.  Replaces
+# the hand-coded regex classifier in ``domain/tlg/query_parser.py``.
+ShapeIntent = Literal[
+    "current_state",
+    "before_named",
+    "concurrent",
+    "origin",
+    "retirement",
+    "sequence",
+    "predecessor",
+    "transitive_cause",
+    "causal_chain",
+    "interval",
+    "ordinal_first",
+    "ordinal_last",
+    "none",
+]
+
 
 class ExtractedLabel(BaseModel):
     """Output of an :class:`IntentSlotExtractor`.
@@ -934,6 +956,15 @@ class ExtractedLabel(BaseModel):
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
 
+    # Query-shape intent (6th head).  Only meaningful when the
+    # classifier is called on a query string; for memory-voice
+    # inputs (ingest path) the head's prediction is ignored by
+    # callers.  None = adapter doesn't ship this head (pre-v6
+    # adapters) — callers must treat None as "abstain" and skip
+    # TLG grammar routing.
+    shape_intent: ShapeIntent | None = None
+    shape_intent_confidence: float | None = None
+
     method: str = ""           # backend name that produced this label
     latency_ms: float = 0.0    # inference wall-time (populated by caller)
 
@@ -956,4 +987,10 @@ class ExtractedLabel(BaseModel):
         return (
             self.state_change_confidence is not None
             and self.state_change_confidence >= threshold
+        )
+
+    def is_shape_intent_confident(self, threshold: float = 0.7) -> bool:
+        return (
+            self.shape_intent_confidence is not None
+            and self.shape_intent_confidence >= threshold
         )

@@ -29,7 +29,35 @@ from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 
-async def _build_service() -> MemoryService:
+class _StubIntentSlotExtractor:
+    """Test stub that returns a canned ``shape_intent`` for any input.
+
+    The MemoryService consults its ``_intent_slot`` at query time to
+    classify the query's TLG shape; production uses a real LoRA
+    adapter.  Tests that need the grammar composition path to fire
+    without loading a 2.4 MB adapter supply this stub wired to the
+    shape the test is exercising.
+    """
+    name = "test_stub"
+
+    def __init__(self, shape: str, *, adapter_domain: str = "conversational"):
+        self._shape = shape
+        self.adapter_domain = adapter_domain
+
+    def extract(self, text: str, *, domain: str):  # pragma: no cover — trivial
+        from ncms.domain.models import ExtractedLabel
+        return ExtractedLabel(
+            intent="none",
+            intent_confidence=0.0,
+            shape_intent=self._shape,  # type: ignore[arg-type]
+            shape_intent_confidence=0.99,
+            method=self.name,
+        )
+
+
+async def _build_service(
+    *, slm_shape: str | None = None,
+) -> MemoryService:
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
     index = TantivyEngine()
@@ -40,18 +68,24 @@ async def _build_service() -> MemoryService:
         temporal_enabled=True,
     )
     reconciliation = ReconciliationService(store=store, config=config)
-    return MemoryService(
+    svc = MemoryService(
         store=store,
         index=index,
         graph=graph,
         config=config,
         reconciliation=reconciliation,
+        intent_slot=(
+            _StubIntentSlotExtractor(slm_shape) if slm_shape else None
+        ),
     )
+    return svc
 
 
 @pytest_asyncio.fixture
 async def svc_tlg_on() -> MemoryService:
-    svc = await _build_service()
+    # current_state is the shape the composition tests exercise; the
+    # stub hands that back so the grammar dispatcher has a route.
+    svc = await _build_service(slm_shape="current_state")
     yield svc
     await svc.store.close()
 
@@ -188,7 +222,8 @@ class TestIngestInvalidatesVocabularyCache:
     ) -> None:
         # Warm cache — empty corpus → empty vocabulary.
         trace1 = await svc_tlg_on.retrieve_lg(
-            "What is the current authentication method?"
+            "What is the current authentication method?",
+            slm_shape_intent="current_state",
         )
         assert trace1.confidence.value == "abstain"  # no subject known
 
@@ -207,7 +242,8 @@ class TestIngestInvalidatesVocabularyCache:
         svc_tlg_on.invalidate_tlg_vocabulary()
 
         trace2 = await svc_tlg_on.retrieve_lg(
-            "What is the current authentication method?"
+            "What is the current authentication method?",
+            slm_shape_intent="current_state",
         )
         assert trace2.confidence.value == "high"
         assert trace2.grammar_answer is not None

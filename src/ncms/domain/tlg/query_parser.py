@@ -1,50 +1,58 @@
-"""L3 — structural query parser (routing-as-parse).
+"""L3 — minimal query entity extraction (post-v6).
 
-Port of ``experiments/temporal_trajectory/query_parser.py`` adapted
-for NCMS: all globals lifted to a :class:`ParserContext` argument.
-The context bundles the four corpus-derived inputs the parser
-needs — induced L1 vocabulary, induced L2 markers, the auto-mined
-issue inventory, and the per-subject domain nouns — so callers
-build them once (from the MemoryStore via
-``application/tlg/vocabulary_cache``) and reuse across queries.
+Historical context
+------------------
 
-Why structural parsing
-----------------------
+Before v6 this module hosted a hand-coded regex classifier: ~15
+production rules that matched seed-marker vocabularies
+(``SEED_INTENT_MARKERS``) against the query text to pick a TLG
+grammar intent (``current`` / ``origin`` / ``before_named`` / etc.).
 
-The production-rule matchers validate the FULL query shape: a
-marker appearing anywhere is not enough — the marker must live
-inside the specific syntactic structure the intent expects.
-"Rachel moved to Seattle" contains the L2 ``moves`` marker but is
-not a retirement query, so the retirement production rejects and
-the parser falls through.
+The P2 SLM's 6th head (``shape_intent_head``, trained on 747 MSEB
+gold queries with 100% accuracy on the clean-gold domains) now
+owns intent classification.  The production-rule matchers and the
+seed-marker vocabulary have been deleted — see
+``ncms.application.tlg.vocabulary_cache`` for the two small seed
+sets that survived (used only for L2 marker induction at ingest
+time, not for query parsing).
 
-Each matcher is self-contained; neighbours don't interact via
-shared precedence flags.  Order in :data:`_PRODUCTIONS` is
-specificity — most-specific first.  Adding new intents = inserting
-a matcher at the right specificity level.
+What this module still does
+---------------------------
 
-Returned shape
---------------
+1. **Subject resolution** — ``lookup_subject`` against the L1
+   ``InducedVocabulary``.  Deterministic vocabulary match, not
+   regex; maps query tokens to corpus subject IDs.
 
-:class:`QueryStructure` carries every slot downstream dispatch
-needs (``intent`` / ``subject`` / ``target_entity`` /
-``secondary_entity`` / ``range_start`` / ``range_end``).  A miss
-returns ``intent="none"``.
+2. **Target-entity extraction** — ``_extract_event_name`` finds
+   named entities (issue-vocabulary or L1-vocabulary hits) in the
+   query so dispatchers that need a specific target (sequence,
+   predecessor, before_named, …) can reference it.  This is a
+   surface-form NER task and will move to a ``target_entity``
+   slot head in v7; until then it's a compact regex-adjacent
+   helper kept in-process.
 
-See ``docs/temporal-linguistic-geometry.md`` §6 for the theory and
-``docs/p1-plan.md`` for phase context.
+3. **Data types** — ``ParserContext`` + ``QueryStructure`` + the
+   ``compute_domain_nouns`` helper are schema containers the
+   dispatcher consumes.
+
+The exported ``analyze_query`` returns a ``QueryStructure`` with
+``intent=None``.  The caller (``retrieve_lg``) fills ``intent``
+from the SLM's ``shape_intent_head`` output before dispatching
+to a walker.
+
+See ``docs/completed/p2-plan.md`` for the SLM design and
+``docs/mseb-results.md`` §5 for per-head evidence.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import timedelta
 from typing import Protocol
 
-from ncms.domain.temporal.parser import parse_temporal_reference
 from ncms.domain.tlg.aliases import expand_aliases
 from ncms.domain.tlg.markers import InducedEdgeMarkers
 from ncms.domain.tlg.vocabulary import (
@@ -54,54 +62,6 @@ from ncms.domain.tlg.vocabulary import (
     lookup_subject,
 )
 
-# ---------------------------------------------------------------------------
-# Seed intent-marker vocabulary — the ONLY hand-maintained lexicon.
-# ~35 words across 5 intent families.
-# ---------------------------------------------------------------------------
-
-SEED_INTENT_MARKERS: dict[str, tuple[str, ...]] = {
-    "current": (
-        "current", "currently", "now", "today", "latest",
-        "present", "presently", "as of",
-    ),
-    "still": (
-        "still", "yet", "currently in", "currently on",
-    ),
-    "origin": (
-        "original", "first", "initial", "earliest", "starting",
-        "started", "start", "begin", "began", "kickoff", "onset",
-    ),
-    "cause_of": (
-        "caused", "cause of", "reason for", "source of",
-        "why", "what caused", "led to", "what led",
-    ),
-    "retirement": (
-        "retired", "retire", "deprecated", "stopped using", "ended",
-        "decommissioned",
-    ),
-}
-
-# Action verbs that mark "still <verb> <target>" structure — the
-# target after the verb is the entity of interest, not a subject noun.
-_STILL_ACTION_VERBS: frozenset[str] = frozenset({
-    "use", "using", "have", "having", "on", "in", "uses", "haven",
-    "do", "doing", "does",
-})
-
-# Irreducible English issue-seed vocabulary for cause_of target
-# preference ("something went wrong").  Domain-specific issue words
-# reach the parser via the ``issue_entities`` context field.
-ISSUE_SEED: frozenset[str] = frozenset({
-    "blocker", "blockers", "blocked",
-    "delay", "delays", "delayed",
-    "issue", "issues",
-    "problem", "problems",
-    "incident", "incidents",
-    "bug", "bugs",
-    "error", "errors",
-    "failure", "failures",
-})
-
 
 # ---------------------------------------------------------------------------
 # Parser inputs / outputs
@@ -109,12 +69,11 @@ ISSUE_SEED: frozenset[str] = frozenset({
 
 
 class _MemoryLike(Protocol):
-    """Minimal shape the parser needs from a memory.
+    """Minimal shape the domain-noun helper needs from a memory.
 
-    The parser doesn't inspect content; it only needs entity lists
-    to compute per-subject domain nouns.  Caller decides which
-    records participate — typically ENTITY_STATE nodes' backing
-    Memory objects.
+    Reads only ``subject`` + ``entities``; used for
+    ``compute_domain_nouns`` so the caller can supply mocks /
+    trimmed views without pulling the full Memory class.
     """
 
     subject: str | None
@@ -125,65 +84,60 @@ class _MemoryLike(Protocol):
 class ParserContext:
     """Everything the parser reads besides the query itself.
 
-    Built once per batch of queries (e.g. at search time) from the
-    :class:`VocabularyCache`.  Immutable so callers can share it
-    freely.
+    Built once per batch of queries (typically from
+    :class:`VocabularyCache`).  Immutable so callers can share
+    freely across threads / coroutines.
+
+    Post-v6, the L3 parser only uses ``vocabulary``, ``issue_entities``,
+    and ``domain_nouns``.  The remaining fields (``induced_markers``,
+    ``aliases``, ``content_*_markers``) are carried on the context
+    for downstream consumers — zone dispatch, aliased-entity
+    expansion, and L2 induction — that still read them.
     """
 
     vocabulary: InducedVocabulary
-    induced_markers: InducedEdgeMarkers
+    induced_markers: InducedEdgeMarkers | None = None
     aliases: dict[str, frozenset[str]] = field(default_factory=dict)
-    issue_entities: frozenset[str] = ISSUE_SEED
-    domain_nouns: frozenset[str] = frozenset()
-    # Content-induced extras for the current / origin buckets — mined
-    # from zone-terminal and subject-first memory content via
-    # :func:`ncms.domain.tlg.induce_content_markers`.  Empty on cold
-    # corpora; retirement vocabulary extends via L2 instead.
-    content_current_markers: frozenset[str] = frozenset()
-    content_origin_markers: frozenset[str] = frozenset()
-
-    def augmented_markers(self) -> dict[str, frozenset[str]]:
-        """Seed + L2 + content-induced markers per intent family.
-
-        * ``retirement`` — seed + L2 supersedes + L2 retires buckets.
-        * ``current`` — seed + content-induced current candidates.
-        * ``origin`` — seed + content-induced origin candidates.
-
-        Other intents (still / cause_of) stay seed-only; their
-        markers are English structural atoms (``still`` / ``led to``)
-        that don't grow with the corpus.
-        """
-        out: dict[str, set[str]] = {
-            k: set(v) for k, v in SEED_INTENT_MARKERS.items()
-        }
-        induced = self.induced_markers.markers
-        out["retirement"].update(induced.get("supersedes", frozenset()))
-        out["retirement"].update(induced.get("retires", frozenset()))
-        out["current"].update(self.content_current_markers)
-        out["origin"].update(self.content_origin_markers)
-        return {k: frozenset(v) for k, v in out.items()}
+    issue_entities: frozenset[str] = field(default_factory=frozenset)
+    domain_nouns: frozenset[str] = field(default_factory=frozenset)
+    content_current_markers: frozenset[str] = field(
+        default_factory=frozenset,
+    )
+    content_origin_markers: frozenset[str] = field(
+        default_factory=frozenset,
+    )
 
 
 @dataclass(frozen=True)
 class QueryStructure:
-    """Structured query analysis.
+    """Structured query analysis — subject + target_entity only.
 
-    ``intent`` is always populated; ``"none"`` when no production
-    matched.  Which slots matter depends on the intent — see the
-    per-matcher docstrings.  Consumers should read ``intent`` first
-    and branch on it.
+    Post-v6, ``intent`` is always ``None`` on output from
+    :func:`analyze_query`.  The grammar dispatcher fills it in
+    from the SLM ``shape_intent_head`` classification before
+    routing to a walker.
+
+    Consumers should branch on the dispatcher-assigned intent, not
+    on this struct's ``intent`` field.  Kept here for
+    compatibility with the dispatcher's data model.
     """
 
-    intent: str
+    intent: str | None
     subject: str | None
     target_entity: str | None
-    detected_marker: str | None
+    detected_marker: str | None = None
     secondary_entity: str | None = None
     range_start: str | None = None
     range_end: str | None = None
 
     def has_grammar_answer(self) -> bool:
-        return self.intent != "none"
+        """Deprecated — kept for call-site compatibility.
+
+        The post-v6 dispatcher reads ``intent`` directly and checks
+        for ``None``; this method will be removed after the
+        ``intent`` field itself can be dropped from the struct.
+        """
+        return self.intent is not None and self.intent != "none"
 
 
 # ---------------------------------------------------------------------------
@@ -198,11 +152,12 @@ def compute_domain_nouns(
     threshold_fraction: float = 0.6,
 ) -> frozenset[str]:
     """Entities that appear in ≥``threshold_fraction`` of any subject's
-    memories.  Used to prefer distinctive event names over the
-    subject's topical nouns in :func:`_extract_event_name`.
+    memories.  Used by target-entity extraction to prefer distinctive
+    event names over the subject's topical nouns.
 
-    Ported from the research ``_domain_nouns`` helper, with the
-    subject mapping lifted to the caller (``_MemoryLike.subject``).
+    Historical note: lived alongside the regex production rules
+    before v6; remains here because it's used by
+    :func:`_extract_event_name`.
     """
     by_subject_count: dict[str, int] = {}
     counts_by_subject: dict[str, Counter[str]] = {}
@@ -211,558 +166,179 @@ def compute_domain_nouns(
         if subj is None:
             continue
         by_subject_count[subj] = by_subject_count.get(subj, 0) + 1
-        c = counts_by_subject.setdefault(subj, Counter())
+        counts = counts_by_subject.setdefault(subj, Counter())
         for ent in mem.entities:
-            c[ent.lower()] += 1
-            for w in ent.split():
-                if len(w) >= 3:
-                    c[w.lower()] += 1
+            counts[ent] += 1
 
-    out: set[str] = set()
-    for subj, counter in counts_by_subject.items():
-        size = by_subject_count[subj]
+    domain: set[str] = set()
+    for subj, size in by_subject_count.items():
         if size < min_memories_per_subject:
             continue
-        threshold = max(2, int(threshold_fraction * size))
-        for token, n in counter.items():
-            if n >= threshold:
-                out.add(token)
-    return frozenset(out)
+        # Round UP so 60% of 3 = 2, not 1.  Previously used
+        # int(0.6*3) = 1 which made every entity in any memory a
+        # domain-noun whenever size >= 2 — far too loose.
+        floor = max(1, math.ceil(threshold_fraction * size))
+        per_subject = counts_by_subject.get(subj) or Counter()
+        for ent, n in per_subject.items():
+            if n >= floor:
+                domain.add(ent)
+    return frozenset(domain)
 
 
 # ---------------------------------------------------------------------------
-# Marker + slot helpers
+# Target-entity extraction helpers
 # ---------------------------------------------------------------------------
-
-
-def _find_marker(
-    query: str, kind: str, augmented: dict[str, frozenset[str]],
-) -> str | None:
-    """Return the first marker of ``kind`` in ``query``, or None.
-
-    Two-pass match preserved from the research code:
-
-    1. Word-boundary prefix — marker ``retire`` matches ``retire``,
-       ``retired``, ``retirement``.
-    2. Stem equality (Snowball) — handles the reverse case
-       (marker ``supersedes`` matches query word ``supersede``).
-    """
-    q = query.lower()
-    markers = augmented.get(kind, frozenset())
-    q_stems = [_stem(w) for w in re.findall(r"\w+", q)]
-    q_stem_set = set(q_stems)
-    for marker in sorted(markers, key=len, reverse=True):
-        pattern = r"\b" + re.escape(marker) + r"\w*\b"
-        if re.search(pattern, q):
-            return marker
-        if " " in marker:
-            continue
-        if _stem(marker) in q_stem_set:
-            return marker
-    return None
 
 
 def _word_like(token: str, query_lower: str) -> bool:
-    pattern = r"\b" + re.escape(token) + r"\w*\b"
+    """True if ``token`` appears as a whole word in ``query_lower``."""
+    pattern = r"\b" + re.escape(token.lower()) + r"\b"
     return re.search(pattern, query_lower) is not None
 
 
 def _prefer_issue_entity(
-    query: str, issue_entities: frozenset[str],
+    candidates: Iterable[str], ctx: ParserContext,
 ) -> str | None:
-    q = query.lower()
-    matches = [ent for ent in issue_entities if _word_like(ent, q)]
-    if not matches:
-        return None
-    return max(matches, key=len)
-
-
-def _extract_still_object(query: str) -> str | None:
-    """Extract the X slot from a still-intent query."""
-    q = query.lower()
-    # "currently in/on X"
-    m = re.search(
-        r"\bcurrently\s+(?:in|on|at|under|with)\s+(\w[\w\s-]{0,40}?)"
-        r"(?:\?|\.|,|$|\s+for\s+|\s+with\s+)",
-        q,
-    )
-    if m:
-        return m.group(1).strip()
-    # "still <action_verb> X"
-    action_pattern = (
-        r"\bstill\s+(?:"
-        + "|".join(re.escape(v) for v in _STILL_ACTION_VERBS)
-        + r")\s+(\w[\w\s-]{0,40}?)(?:\?|\.|,|$|\s+for\s+|\s+with\s+)"
-    )
-    m = re.search(action_pattern, q)
-    if m:
-        return m.group(1).strip()
-    # "still on/in/have X"
-    m = re.search(
-        r"\bstill\s+(?:on|in|at|have|has|had)\s+(\w[\w\s-]{0,40}?)"
-        r"(?:\?|\.|,|$|\s+for\s+)",
-        q,
-    )
-    if m:
-        return m.group(1).strip()
-    # "still <adjective>"
-    m = re.search(r"\bstill\s+(\w+)\b", q)
-    if m:
-        word = m.group(1).strip()
-        if word not in _STILL_ACTION_VERBS:
-            return word
+    """Pick the issue-like entity first; fall back to first candidate."""
+    for cand in candidates:
+        if cand.lower() in ctx.issue_entities:
+            return cand
+    # No issue hit — defer to caller's ordering.
     return None
 
 
-def _extract_event_name(raw: str, ctx: ParserContext) -> str:
-    """Canonicalize a named-event phrase via vocab lookup.
+def _extract_event_names(
+    raw: str, ctx: ParserContext, *, max_entities: int = 2,
+) -> list[str]:
+    """Find up to ``max_entities`` named entities in the query.
 
-    Pipeline matches the research version:
+    Returns entities in order of appearance (after skipping
+    domain-topical nouns like "authentication").  Two-entity
+    dispatchers (before_named, interval) use the first as
+    ``target_entity`` and the second as ``secondary_entity``.
 
-    1. Strip leading determiner.
-    2. Strip trailing prepositional phrase.
-    3. Try full-phrase entity lookup.  If it resolves to a domain
-       noun, fall through.
-    4. Token-level lookup — return the unique non-domain match.
-    5. Fall back to the stripped lowercase phrase.
+    Strategy:
+
+    1. Walk L1 vocabulary entities longest-first so multi-word
+       matches ("session cookies") preempt single-word substring
+       matches.
+    2. Track the START POSITION of each match so we can order them
+       by their position in the query (left-to-right).
+    3. Skip entities in ``domain_nouns`` (subject-topical nouns
+       like "authentication" that are too general).
+    4. When no L1 entity matches, fall back to a single issue-seed
+       word (``blocker`` / ``bug`` / ``problem`` / …).
     """
-    s = raw.strip().strip(".,?!").rstrip()
-    s = re.sub(
-        r"^(?:the|a|an|our|their|its|his|her)\s+",
-        "", s, flags=re.IGNORECASE,
-    )
-    s = re.sub(
-        r"\s+(?:in|on|for|at|during|with|by|from)\s+.*$",
-        "", s, flags=re.IGNORECASE,
-    )
-    phrase_ent = lookup_entity(s, ctx.vocabulary)
-    if phrase_ent is not None and phrase_ent.lower() == s.lower().strip():
-        return phrase_ent
+    query_lower = raw.lower()
 
-    single_matches: list[str] = []
-    for word in re.findall(r"[\w-]+", s):
-        if len(word) < 2:
+    # (position, canonical) pairs — use a longest-first walk so
+    # multi-word entities are detected before their sub-tokens;
+    # but de-dupe by covered character range so sub-token matches
+    # inside a larger match don't double-count.
+    found: list[tuple[int, str]] = []
+    covered_ranges: list[tuple[int, int]] = []
+
+    entity_names = sorted(
+        ctx.vocabulary.entity_lookup.keys(),
+        key=len, reverse=True,
+    )
+    for ent in entity_names:
+        if ent in ctx.domain_nouns:
             continue
-        ent = lookup_entity(word, ctx.vocabulary)
-        if ent is not None and ent.lower() not in ctx.domain_nouns:
-            single_matches.append(ent)
-    if len(single_matches) == 1:
-        return single_matches[0]
-    return s.lower()
+        pattern = r"\b" + re.escape(ent.lower()) + r"\b"
+        for m in re.finditer(pattern, query_lower):
+            start, end = m.start(), m.end()
+            # Skip if this match is inside a longer entity we
+            # already captured.
+            if any(cs <= start and end <= ce for cs, ce in covered_ranges):
+                continue
+            canonical = ctx.vocabulary.entity_lookup.get(ent)
+            if canonical:
+                found.append((start, canonical))
+                covered_ranges.append((start, end))
+
+    # Left-to-right, de-duped order.
+    found.sort(key=lambda t: t[0])
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for _, canonical in found:
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        ordered.append(canonical)
+        if len(ordered) >= max_entities:
+            break
+
+    if ordered:
+        return ordered
+
+    # No L1 match — issue-seed fallback, single entity.
+    for token in re.findall(r"\b\w+\b", query_lower):
+        if token in ctx.issue_entities:
+            return [token]
+
+    return []
+
+
+def _extract_event_name(raw: str, ctx: ParserContext) -> str | None:
+    """Back-compat single-entity extraction.  See
+    :func:`_extract_event_names` for the multi-entity form used by
+    before_named / interval dispatchers.
+    """
+    entities = _extract_event_names(raw, ctx, max_entities=1)
+    return entities[0] if entities else None
 
 
 def _canonicalize_target(
     raw: str | None, ctx: ParserContext,
 ) -> str | None:
-    """Map a raw extracted target to a canonical entity or lowercase
-    fallback.  Preserves research behavior: entity lookup first, then
-    raw-lower fallback."""
-    if not raw:
+    """Map a raw entity surface form to the L1 canonical name."""
+    if raw is None:
         return None
-    stripped = raw.strip()
-    if not stripped:
-        return None
-    ent = lookup_entity(stripped, ctx.vocabulary)
-    if ent is not None:
-        return ent
-    return stripped.lower()
+    hit = ctx.vocabulary.entity_lookup.get(raw.lower())
+    if hit is not None:
+        return hit
+    return raw
 
 
 # ---------------------------------------------------------------------------
-# Range detection — wraps ``parse_temporal_reference``
-# ---------------------------------------------------------------------------
-
-
-def _detect_range(query: str) -> tuple[str, str] | None:
-    """Extract a calendar range when the query carries one.
-
-    Filters out hits that aren't true range intents (recency,
-    ordinal, single-day spans).  ``range`` fires only on meaningful
-    intervals (explicit year, quarter, month, ≥ 7 day window).
-    """
-    ref = parse_temporal_reference(query)
-    if ref is None:
-        return None
-    if getattr(ref, "recency_bias", False):
-        return None
-    if getattr(ref, "ordinal", None):
-        return None
-    if ref.range_start is None or ref.range_end is None:
-        return None
-    span = ref.range_end - ref.range_start
-    if span < timedelta(days=7):
-        return None
-    return ref.range_start.isoformat(), ref.range_end.isoformat()
-
-
-# ---------------------------------------------------------------------------
-# Production matchers
-# ---------------------------------------------------------------------------
-
-
-def _match_interval(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """``between X and Y``."""
-    m = re.search(
-        r"\bbetween\s+(?P<x>[\w\s-]{2,40}?)\s+and\s+"
-        r"(?P<y>[\w\s-]{2,50}?)"
-        r"(?:\?|\.|,|\s+on\s|\s+in\s|\s+for\s|$)",
-        query,
-        flags=re.IGNORECASE,
-    )
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    y = _extract_event_name(m.group("y"), ctx)
-    if not x or not y:
-        return None
-    return QueryStructure(
-        intent="interval", subject=subject,
-        target_entity=x, secondary_entity=y,
-        detected_marker="between",
-    )
-
-
-def _match_before_named(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """Two-event ordering.
-
-    Two variants:
-
-    * **Anchored yes/no** — ``did X (come)? before Y``.
-    * **WH-alternation** — ``which X (did I do)? first, A or B``.
-    """
-    m = re.match(
-        r"\s*(?:did|was|were|has|have|do|does)\s+"
-        r"(?P<x>[\w\s-]{2,40}?)\s+"
-        r"(?:(?:come|happen|occur|ship|land)\s+)?before\s+"
-        r"(?P<y>[\w\s-]{2,40}?)(?:\?|\.|,|$)",
-        query, flags=re.IGNORECASE,
-    )
-    marker = "before_named"
-    if m is None:
-        m = re.search(
-            r"\bwhich\s+\w+\s+[^?]*?\bfirst\b[^?]*?(?:,\s*)?"
-            r"(?:the\s+)?(?P<x>[\w][\w\s-]{0,40}?)"
-            r"\s+or\s+(?:the\s+)?(?P<y>[\w][\w\s-]{0,40}?)"
-            r"(?:\?|\.|$)",
-            query, flags=re.IGNORECASE,
-        )
-        if m is not None:
-            marker = "which_first"
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    y = _extract_event_name(m.group("y"), ctx)
-    if not x or not y:
-        return None
-    return QueryStructure(
-        intent="before_named", subject=subject,
-        target_entity=x, secondary_entity=y,
-        detected_marker=marker,
-    )
-
-
-def _match_transitive_cause(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """``what (eventually|ultimately|finally) led to X``."""
-    m = re.search(
-        r"\bwhat\s+(?:eventually|ultimately|finally)\s+(?:led|resulted)"
-        r"\s+(?:to|in)\s+(?P<x>[\w\s-]{2,50}?)(?:\?|\.|,|$)",
-        query, flags=re.IGNORECASE,
-    )
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    if not x:
-        return None
-    return QueryStructure(
-        intent="transitive_cause", subject=subject,
-        target_entity=x, detected_marker="eventually_led_to",
-    )
-
-
-def _match_concurrent(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """``what was happening during X`` — cross-subject."""
-    m = re.search(
-        r"\bwhat\s+(?:else\s+)?(?:was\s+)?(?:happening|going\s+on|"
-        r"occurring|underway|ongoing|in\s+progress)\s+"
-        r"(?:during|while|alongside)\s+"
-        r"(?P<x>[\w\s-]{2,60}?)(?:\?|\.|,|$)",
-        query, flags=re.IGNORECASE,
-    )
-    if m is None:
-        m = re.search(
-            r"\bwhat\s+else\s+happened\s+(?:during|while|alongside)\s+"
-            r"(?P<x>[\w\s-]{2,60}?)(?:\?|\.|,|$)",
-            query, flags=re.IGNORECASE,
-        )
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    if not x:
-        return None
-    return QueryStructure(
-        intent="concurrent", subject=subject,
-        target_entity=x, detected_marker="during",
-    )
-
-
-def _match_sequence(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """WH-question about chain successor — ``what came after X``."""
-    if not re.match(r"\s*(?:what|where|who|which|how)\b", query, re.IGNORECASE):
-        return None
-    m = re.search(
-        r"\bafter\s+(?P<x>[\w\s-]{2,60}?)(?:\?|\.|,|$)",
-        query, flags=re.IGNORECASE,
-    )
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    if not x:
-        return None
-    return QueryStructure(
-        intent="sequence", subject=subject,
-        target_entity=x, detected_marker="after",
-    )
-
-
-def _match_predecessor(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """WH-question chain predecessor — ``what came before X``."""
-    if not re.match(r"\s*(?:what|who|which|how)\b", query, re.IGNORECASE):
-        return None
-    m = re.search(
-        r"\bbefore\s+(?P<x>[\w\s-]{2,50}?)(?:\?|\.|,|$)",
-        query, flags=re.IGNORECASE,
-    )
-    if m is None:
-        return None
-    x = _extract_event_name(m.group("x"), ctx)
-    if not x:
-        return None
-    return QueryStructure(
-        intent="predecessor", subject=subject,
-        target_entity=x, detected_marker="before_single",
-    )
-
-
-def _match_range(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    r = _detect_range(query)
-    if r is None:
-        return None
-    range_start, range_end = r
-    return QueryStructure(
-        intent="range", subject=subject,
-        target_entity=None, detected_marker="range",
-        range_start=range_start, range_end=range_end,
-    )
-
-
-def _match_retirement(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """Retirement verb in retirement *structure*.
-
-    Bare marker presence isn't enough: ``Rachel moved to Seattle``
-    contains ``moved`` but isn't a retirement query.  Structural
-    patterns are imperative/infinitive + object, passive voice,
-    ``led to <verb>``, and directional ``move(s) from <X>``.
-    """
-    augmented = ctx.augmented_markers()
-    marker = _find_marker(query, "retirement", augmented)
-    if marker is None:
-        return None
-    q_low = query.lower()
-
-    verb_re = re.escape(_stem(marker)) + r"\w*"
-    structure_patterns = [
-        rf"\b(?:is|was|are|were|has\s+been|have\s+been)\s+"
-        rf"(?:fully\s+|now\s+|officially\s+)?{verb_re}\b",
-        rf"\b(?:to\s+|should\s+|must\s+|will\s+|led\s+to\s+|decided\s+to\s+|"
-        rf"decision\s+to\s+|plan\s+to\s+)?{verb_re}\s+"
-        rf"(?:the\s+|our\s+|its\s+|their\s+)?\w",
-        rf"\b{verb_re}\s+from\b",
-    ]
-    if marker.startswith(("mov", "migrat")):
-        if not re.search(rf"\b{verb_re}\s+from\b", q_low):
-            return None
-    elif not any(re.search(p, q_low) for p in structure_patterns):
-        return None
-
-    target = lookup_entity(query, ctx.vocabulary)
-    return QueryStructure(
-        intent="retirement", subject=subject,
-        target_entity=target, detected_marker=marker,
-    )
-
-
-def _match_still(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """``still <verb> X`` / ``currently in X``.  Requires a resolvable object."""
-    augmented = ctx.augmented_markers()
-    marker = _find_marker(query, "still", augmented)
-    if marker is None:
-        return None
-    still_obj = _extract_still_object(query)
-    if not still_obj:
-        return None
-    target = _canonicalize_target(still_obj, ctx)
-    if not target:
-        return None
-    return QueryStructure(
-        intent="still", subject=subject,
-        target_entity=target, detected_marker=marker,
-    )
-
-
-def _match_cause_of(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    """``what caused / reason for X`` (without retirement verb).
-
-    Rejects when the target collapses to a subject-domain noun —
-    prevents confidently-wrong answers on unresolvable concepts.
-    """
-    augmented = ctx.augmented_markers()
-    marker = _find_marker(query, "cause_of", augmented)
-    if marker is None:
-        return None
-    target = (
-        _prefer_issue_entity(query, ctx.issue_entities)
-        or lookup_entity(query, ctx.vocabulary)
-    )
-    if target is not None and target.lower() in ctx.domain_nouns:
-        return None
-    return QueryStructure(
-        intent="cause_of", subject=subject,
-        target_entity=target, detected_marker=marker,
-    )
-
-
-def _match_origin(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    augmented = ctx.augmented_markers()
-    marker = _find_marker(query, "origin", augmented)
-    if marker is None:
-        return None
-    target = lookup_entity(query, ctx.vocabulary)
-    return QueryStructure(
-        intent="origin", subject=subject,
-        target_entity=target, detected_marker=marker,
-    )
-
-
-def _match_current(
-    query: str, subject: str | None, ctx: ParserContext,
-) -> QueryStructure | None:
-    augmented = ctx.augmented_markers()
-    marker = _find_marker(query, "current", augmented)
-    if marker is None:
-        return None
-    return QueryStructure(
-        intent="current", subject=subject,
-        target_entity=None, detected_marker=marker,
-    )
-
-
-#: Ordered production list — most-specific first.  Adding new intents
-#: means inserting a matcher at the right specificity level; each
-#: matcher is self-contained so neighbours are unaffected.
-_PRODUCTIONS: tuple[
-    Callable[[str, str | None, ParserContext], QueryStructure | None], ...,
-] = (
-    _match_interval,
-    _match_before_named,
-    _match_transitive_cause,
-    _match_concurrent,
-    _match_sequence,
-    _match_predecessor,
-    _match_range,
-    _match_retirement,
-    _match_still,
-    _match_cause_of,
-    _match_origin,
-    _match_current,
-)
-
-
-# ---------------------------------------------------------------------------
-# Public entry point
+# Public entry point — subject + target_entity only (post-v6)
 # ---------------------------------------------------------------------------
 
 
 def analyze_query(
     query: str, ctx: ParserContext,
 ) -> QueryStructure:
-    """Parse ``query`` into a :class:`QueryStructure`.
+    """Extract subject + target entity + secondary entity from a query.
 
-    Runs each production in specificity order; the first matcher to
-    accept the query wins.  Returns ``intent="none"`` when no
-    production fires — callers should fall back to BM25.
+    Post-v6 this function does NOT classify intent — the SLM's
+    ``shape_intent_head`` owns that.  Returns ``intent=None``;
+    the grammar dispatcher overrides it from the SLM output
+    before routing.
 
-    Subject resolution uses the context's L1 vocabulary (null when
-    the corpus is too cold to infer one).  Aliases aren't applied
-    here — they enter the pipeline at dispatch time where the
-    grammar checks ``retires_entities``.
+    When the query mentions two L1-vocabulary entities (e.g.
+    "Did session cookies come before OAuth?"), the first is
+    returned as ``target_entity`` and the second as
+    ``secondary_entity`` — left-to-right order.  Two-entity
+    dispatchers (before_named, interval) consume both slots.
     """
     subject = lookup_subject(query, ctx.vocabulary)
-    for matcher in _PRODUCTIONS:
-        result = matcher(query, subject, ctx)
-        if result is not None:
-            return result
+    entities = _extract_event_names(query, ctx, max_entities=2)
+    target_entity = entities[0] if entities else None
+    secondary_entity = entities[1] if len(entities) > 1 else None
     return QueryStructure(
-        intent="none",
+        intent=None,
         subject=subject,
-        target_entity=None,
+        target_entity=target_entity,
+        secondary_entity=secondary_entity,
         detected_marker=None,
     )
 
 
-# ---------------------------------------------------------------------------
-# Introspection — same spirit as the research summary()
-# ---------------------------------------------------------------------------
-
-
-def summary(ctx: ParserContext) -> str:
-    lines = ["L3 query-parser vocabulary", "=" * 60]
-    augmented = ctx.augmented_markers()
-    for kind in ("current", "still", "origin", "cause_of", "retirement"):
-        seed = set(SEED_INTENT_MARKERS.get(kind, ()))
-        extras = sorted(augmented.get(kind, frozenset()) - seed)
-        lines.append(
-            f"[{kind}] seed={sorted(seed)}  "
-            f"L2-augmented=+{len(extras)}"
-        )
-        if extras:
-            lines.append(f"    induced: {extras}")
-    lines.append(f"issue entities: {len(ctx.issue_entities)}")
-    lines.append(f"domain nouns:   {len(ctx.domain_nouns)}")
-    return "\n".join(lines)
-
-
-# ``expand_aliases`` re-exported for callers that want to apply
-# alias expansion on a parsed ``target_entity`` before hitting
-# dispatch.  Pure convenience passthrough.
 __all__ = [
-    "ISSUE_SEED",
     "ParserContext",
     "QueryStructure",
-    "SEED_INTENT_MARKERS",
     "analyze_query",
     "compute_domain_nouns",
     "expand_aliases",
-    "summary",
 ]

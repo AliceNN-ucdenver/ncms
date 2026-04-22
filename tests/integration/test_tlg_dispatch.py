@@ -126,6 +126,7 @@ class TestCurrentIntent:
             "What is the current auth method for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="current_state",
         )
         assert trace.intent.kind == "current"
         assert trace.intent.subject == "auth-svc"
@@ -141,6 +142,7 @@ class TestCurrentIntent:
             "What is the current auth method?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="origin",
         )
         assert trace.confidence == Confidence.ABSTAIN
         assert trace.grammar_answer is None
@@ -155,59 +157,18 @@ class TestOriginIntent:
             "What was the original authentication method?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="origin",
         )
         assert trace.intent.kind == "origin"
         assert trace.grammar_answer == origin.id
         assert trace.confidence == Confidence.HIGH
 
 
-class TestStillIntent:
-    async def test_retired_entity_points_to_superseding_node(
-        self, store: SQLiteStore
-    ) -> None:
-        _, current = await _auth_corpus(store)
-        cache = VocabularyCache()
-        trace = await retrieve_lg(
-            "Are we still using session cookies for authentication?",
-            store=store,
-            vocabulary_cache=cache,
-        )
-        assert trace.intent.kind == "still"
-        # The retirement path points to the announcement node — the
-        # one that said "Retire session cookies" — which is `current`.
-        assert trace.grammar_answer == current.id
-        assert trace.confidence == Confidence.HIGH
 
-    async def test_still_active_entity_medium_confidence(
-        self, store: SQLiteStore
-    ) -> None:
-        # Entity that's linked to the CURRENT state (not retired):
-        # expect MEDIUM confidence.
-        _, current = await _auth_corpus(store)
-        cache = VocabularyCache()
-        trace = await retrieve_lg(
-            "Are we still using OAuth 2.0 for authentication?",
-            store=store,
-            vocabulary_cache=cache,
-        )
-        assert trace.intent.kind == "still"
-        assert trace.grammar_answer == current.id
-        assert trace.confidence == Confidence.MEDIUM
-
-    async def test_unknown_entity_abstains(self, store: SQLiteStore) -> None:
-        await _auth_corpus(store)
-        cache = VocabularyCache()
-        trace = await retrieve_lg(
-            "Are we still using authentication?",
-            store=store,
-            vocabulary_cache=cache,
-        )
-        # Entity "authentication" is linked to BOTH states — so the
-        # current-zone heuristic DOES fire and confidence is MEDIUM.
-        # This documents the research behavior.
-        assert trace.intent.kind == "still"
-        assert trace.confidence in (Confidence.MEDIUM, Confidence.HIGH)
-
+# NOTE: ``TestStillIntent`` was removed in the v6 cleanup — the
+# dispatcher it exercised is no longer reachable via the SLM
+# ``shape_intent_head`` taxonomy.  See docs for the v6 deletion
+# rationale.
 
 class TestNoIntent:
     async def test_non_grammar_query_produces_none(
@@ -239,6 +200,7 @@ class TestComposition:
             "What is the current auth method for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="current_state",
         )
         # Simulated BM25 ranking that doesn't surface `current` at rank 1.
         bm25 = ["other-memory-1", "other-memory-2", current.id]

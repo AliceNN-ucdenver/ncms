@@ -1,0 +1,64 @@
+{
+  "passed": false,
+  "adapter_dir": "experiments/intent_slot_distillation/adapters/clinical/v6",
+  "domain": "clinical",
+  "failures": [
+    "slot_f1_macro 0.483 < threshold 0.750 on gold"
+  ],
+  "warnings": [],
+  "metrics": {
+    "gold": {
+      "method": "joint_bert_lora",
+      "domain": "clinical",
+      "split": "gold",
+      "n_examples": 199,
+      "intent_f1_macro": 1.0,
+      "slot_f1_macro": 0.4828,
+      "joint_accuracy": 0.9196,
+      "latency_p50_ms": 40.18,
+      "latency_p95_ms": 88.12,
+      "confidently_wrong_rate": 0.0,
+      "per_intent_f1": {
+        "positive": 1.0,
+        "negative": 1.0,
+        "habitual": 1.0,
+        "difficulty": 1.0,
+        "choice": 1.0,
+        "none": 1.0
+      },
+      "topic_f1_macro": 1.0,
+      "admission_f1_macro": 1.0,
+      "state_change_f1_macro": 1.0,
+      "n_topic_labeled": 27,
+      "n_admission_labeled": 199,
+      "n_state_change_labeled": 199
+    },
+    "adversarial": {
+      "method": "joint_bert_lora",
+      "domain": "clinical",
+      "split": "adversarial",
+      "n_examples": 4,
+      "intent_f1_macro": 0.1944,
+      "slot_f1_macro": 0.3636,
+      "joint_accuracy": 0.25,
+      "latency_p50_ms": 49.62,
+      "latency_p95_ms": 49.62,
+      "confidently_wrong_rate": 0.25,
+      "per_intent_f1": {
+        "positive": 0.0,
+        "negative": 0.5,
+        "habitual": 0.0,
+        "difficulty": 0.0,
+        "choice": 0.6667,
+        "none": 0.0
+      },
+      "topic_f1_macro": null,
+      "admission_f1_macro": null,
+      "state_change_f1_macro": null,
+      "n_topic_labeled": 0,
+      "n_admission_labeled": 0,
+      "n_state_change_labeled": 0
+    }
+  },
+  "baseline_metrics": {}
+}

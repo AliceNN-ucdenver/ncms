@@ -1,0 +1,64 @@
+{
+  "passed": false,
+  "adapter_dir": "experiments/intent_slot_distillation/adapters/conversational/v6",
+  "domain": "conversational",
+  "failures": [
+    "slot_f1_macro 0.505 < threshold 0.750 on gold"
+  ],
+  "warnings": [],
+  "metrics": {
+    "gold": {
+      "method": "joint_bert_lora",
+      "domain": "conversational",
+      "split": "gold",
+      "n_examples": 305,
+      "intent_f1_macro": 0.9335,
+      "slot_f1_macro": 0.5053,
+      "joint_accuracy": 0.8951,
+      "latency_p50_ms": 39.69,
+      "latency_p95_ms": 64.07,
+      "confidently_wrong_rate": 0.0033,
+      "per_intent_f1": {
+        "positive": 0.8333,
+        "negative": 0.7692,
+        "habitual": 1.0,
+        "difficulty": 1.0,
+        "choice": 1.0,
+        "none": 0.9982
+      },
+      "topic_f1_macro": 0.9677,
+      "admission_f1_macro": 1.0,
+      "state_change_f1_macro": 0.3333,
+      "n_topic_labeled": 36,
+      "n_admission_labeled": 305,
+      "n_state_change_labeled": 305
+    },
+    "adversarial": {
+      "method": "joint_bert_lora",
+      "domain": "conversational",
+      "split": "adversarial",
+      "n_examples": 12,
+      "intent_f1_macro": 0.5873,
+      "slot_f1_macro": 0.7059,
+      "joint_accuracy": 0.75,
+      "latency_p50_ms": 37.65,
+      "latency_p95_ms": 38.62,
+      "confidently_wrong_rate": 0.1667,
+      "per_intent_f1": {
+        "positive": 0.8571,
+        "negative": 0.6667,
+        "habitual": 1.0,
+        "difficulty": 0.0,
+        "choice": 0.0,
+        "none": 1.0
+      },
+      "topic_f1_macro": null,
+      "admission_f1_macro": null,
+      "state_change_f1_macro": null,
+      "n_topic_labeled": 0,
+      "n_admission_labeled": 0,
+      "n_state_change_labeled": 0
+    }
+  },
+  "baseline_metrics": {}
+}

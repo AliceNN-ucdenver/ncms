@@ -48,9 +48,49 @@ from ncms.domain.tlg import (
     lookup_entity,
     lookup_subject,
 )
-from ncms.domain.tlg.query_parser import ISSUE_SEED, SEED_INTENT_MARKERS
-
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# L2 induction seeds — USED AT INGEST TIME ONLY.
+# ---------------------------------------------------------------------------
+# These are seed vocabularies for the L2 marker inducer that runs when
+# memory-nodes are ingested: ``current`` seed words anchor the
+# terminal-side of a state chain, ``origin`` seeds anchor the root
+# side.  The inducer then expands from these seeds by scanning actual
+# memory text.
+#
+# Historically these lived inside ``SEED_INTENT_MARKERS`` in
+# ``ncms.domain.tlg.query_parser`` alongside query-parsing regex
+# vocabularies (``retirement``, ``cause_of``, ``still``).  With the
+# v6 SLM handling query-shape classification, the query-side regex
+# vocabularies are gone and these two seed sets are the only
+# survivors — relocated here so vocabulary_cache owns them directly
+# and the L3 query parser can shed all its regex machinery.
+_L2_SEED_CURRENT: frozenset[str] = frozenset({
+    "current", "currently", "now", "today", "latest",
+    "present", "presently", "as of",
+})
+_L2_SEED_ORIGIN: frozenset[str] = frozenset({
+    "original", "first", "initial", "earliest", "starting",
+    "started", "start", "begin", "began", "kickoff", "onset",
+})
+
+# Irreducible English issue-seed vocabulary used by the L3 parser
+# when preferring "issue entity" over subject noun for cause_of
+# target extraction.  Kept here (not in query_parser) because the
+# parser itself is entity-extraction-only now — the L2 side still
+# needs this seed for its domain-agnostic issue vocabulary.
+_ISSUE_SEED: frozenset[str] = frozenset({
+    "blocker", "blockers", "blocked",
+    "delay", "delays", "delayed",
+    "issue", "issues",
+    "problem", "problems",
+    "incident", "incidents",
+    "bug", "bugs",
+    "error", "errors",
+    "failure", "failures",
+})
 
 
 class VocabularyCache:
@@ -174,7 +214,7 @@ class VocabularyCache:
             vocabulary=vocab,
             induced_markers=markers,
             aliases=aliases,
-            issue_entities=ISSUE_SEED,
+            issue_entities=_ISSUE_SEED,
             domain_nouns=self._domain_nouns,
             content_current_markers=self._content_markers.current_candidates,
             content_origin_markers=self._content_markers.origin_candidates,
@@ -306,14 +346,12 @@ class VocabularyCache:
             if mem is not None:
                 memories.append(mem)
 
-        seed_current = frozenset(SEED_INTENT_MARKERS.get("current", ()))
-        seed_origin = frozenset(SEED_INTENT_MARKERS.get("origin", ()))
         return induce_content_markers(
             memories,
             terminal_ids=terminal_ids,
             root_ids=root_ids,
-            seed_current=seed_current,
-            seed_origin=seed_origin,
+            seed_current=_L2_SEED_CURRENT,
+            seed_origin=_L2_SEED_ORIGIN,
         )
 
     async def _compute_domain_nouns(

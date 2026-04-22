@@ -120,7 +120,8 @@ class TestTLGEnabled:
         await service_tlg_on._reconciliation.reconcile(v2)  # type: ignore[attr-defined]
 
         trace = await service_tlg_on.retrieve_lg(
-            "What is the current authentication method?"
+            "What is the current authentication method?",
+            slm_shape_intent="current_state",
         )
         assert trace.confidence == Confidence.HIGH
         assert trace.grammar_answer == v2.id
@@ -131,7 +132,8 @@ class TestTLGEnabled:
     ) -> None:
         # Warm the cache with empty corpus.
         trace1 = await service_tlg_on.retrieve_lg(
-            "What is the current auth method?"
+            "What is the current auth method?",
+            slm_shape_intent="current_state",
         )
         assert trace1.confidence == Confidence.ABSTAIN  # no subject known
 
@@ -146,14 +148,16 @@ class TestTLGEnabled:
         )
         # Without invalidation — cache still sees empty corpus.
         trace2 = await service_tlg_on.retrieve_lg(
-            "What is the current authentication method?"
+            "What is the current authentication method?",
+            slm_shape_intent="current_state",
         )
         assert trace2.confidence == Confidence.ABSTAIN
 
         # Invalidate + retry — now dispatches.
         service_tlg_on.invalidate_tlg_vocabulary()
         trace3 = await service_tlg_on.retrieve_lg(
-            "What is the current authentication method?"
+            "What is the current authentication method?",
+            slm_shape_intent="current_state",
         )
         assert trace3.confidence == Confidence.HIGH
         assert trace3.grammar_answer is not None

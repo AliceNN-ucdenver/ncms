@@ -110,6 +110,9 @@ class AdapterManifest:
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)
+    # 6th head (v6+) — query-shape intent.  Empty list = the adapter
+    # predates the v6 schema; inference ignores this head.
+    shape_intent_labels: list[str] = field(default_factory=list)
 
     lora_r: int = 8
     lora_alpha: int = 16
@@ -160,7 +163,12 @@ def _build_slot_labels(domain: Domain) -> list[str]:
 
 
 class LoraJointModel(nn.Module):
-    """BERT (or BERT+LoRA) + five classification heads.
+    """BERT (or BERT+LoRA) + six classification heads.
+
+    Six heads (v6+): intent, slot, topic, admission, state_change,
+    shape_intent.  The last is the query-shape classifier that
+    replaces the hand-coded regex parser in
+    ``ncms.domain.tlg.query_parser``.
 
     Construction is two-step so training and inference share code
     without peft double-wrapping.  Training path builds the heads +
@@ -177,6 +185,7 @@ class LoraJointModel(nn.Module):
         n_topics: int,
         n_admission: int,
         n_state_change: int,
+        n_shape_intents: int = 0,
     ) -> None:
         super().__init__()
         self.encoder = AutoModel.from_pretrained(encoder_name)
@@ -184,12 +193,14 @@ class LoraJointModel(nn.Module):
 
         self.intent_head = nn.Linear(hidden, n_intents)
         self.slot_head = nn.Linear(hidden, n_slots)
-        # Topic / admission / state-change heads are constructed even
-        # when the taxonomy is empty (n=0) to keep the forward signature
-        # stable; training code masks unlabeled heads per-example.
+        # Topic / admission / state-change / shape-intent heads are
+        # constructed even when the taxonomy is empty (n=0) to keep
+        # the forward signature stable; training code masks unlabeled
+        # heads per-example.
         self.topic_head = nn.Linear(hidden, max(n_topics, 1))
         self.admission_head = nn.Linear(hidden, max(n_admission, 1))
         self.state_change_head = nn.Linear(hidden, max(n_state_change, 1))
+        self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
 
     def wrap_encoder_with_lora(
         self,
@@ -230,22 +241,24 @@ class LoraJointModel(nn.Module):
             "topic": self.topic_head(pooled),
             "admission": self.admission_head(pooled),
             "state_change": self.state_change_head(pooled),
+            "shape_intent": self.shape_intent_head(pooled),
             "slot": self.slot_head(sequence),
         }
 
     def save_heads(self, path: Path) -> None:
-        """Dump the five heads to a single safetensors file."""
+        """Dump the six heads to a single safetensors file."""
         state = {f"{k}.{sk}": v for k, sv in [
             ("intent_head", dict(self.intent_head.state_dict())),
             ("slot_head", dict(self.slot_head.state_dict())),
             ("topic_head", dict(self.topic_head.state_dict())),
             ("admission_head", dict(self.admission_head.state_dict())),
             ("state_change_head", dict(self.state_change_head.state_dict())),
+            ("shape_intent_head", dict(self.shape_intent_head.state_dict())),
         ] for sk, v in sv.items()}
         save_safetensors(state, str(path))
 
     def load_heads(self, path: Path) -> None:
-        """Restore the five heads from safetensors.
+        """Restore the heads from safetensors.
 
         Tolerates shape mismatches where the checkpoint has a ``n=1``
         placeholder head and the current instance was constructed with
@@ -377,6 +390,7 @@ def train(
     topic_labels = manifest.topic_labels
     admission_labels = manifest.admission_labels
     state_change_labels = manifest.state_change_labels
+    shape_intent_labels = manifest.shape_intent_labels
 
     tokenizer = AutoTokenizer.from_pretrained(manifest.encoder, use_fast=True)
     model = LoraJointModel(
@@ -386,6 +400,7 @@ def train(
         n_topics=len(topic_labels),
         n_admission=len(admission_labels),
         n_state_change=len(state_change_labels),
+        n_shape_intents=len(shape_intent_labels),
     )
     model.wrap_encoder_with_lora(
         lora_r=manifest.lora_r,
@@ -399,6 +414,7 @@ def train(
     topic_idx = {label: i for i, label in enumerate(topic_labels)}
     admission_idx = {label: i for i, label in enumerate(admission_labels)}
     state_idx = {label: i for i, label in enumerate(state_change_labels)}
+    shape_idx = {label: i for i, label in enumerate(shape_intent_labels)}
 
     # Build tensor dataset (small enough to stay resident).
     ids_rows: list[list[int]] = []
@@ -407,9 +423,11 @@ def train(
     topics: list[int] = []
     admissions: list[int] = []
     state_changes: list[int] = []
+    shape_intents: list[int] = []
     topic_mask: list[int] = []
     admission_mask: list[int] = []
     state_change_mask: list[int] = []
+    shape_intent_mask: list[int] = []
 
     for ex in examples:
         if ex.domain != domain:
@@ -442,6 +460,16 @@ def train(
         else:
             state_changes.append(0)
             state_change_mask.append(0)
+        # Shape-intent label mask — only MSEB gold query rows carry
+        # this label; memory-voice SDG + adversarial rows have
+        # shape_intent=None and get masked out.
+        shape_intent_val = getattr(ex, "shape_intent", None)
+        if shape_intent_val is not None and shape_intent_val in shape_idx:
+            shape_intents.append(shape_idx[shape_intent_val])
+            shape_intent_mask.append(1)
+        else:
+            shape_intents.append(0)
+            shape_intent_mask.append(0)
 
     if not ids_rows:
         raise RuntimeError(f"no examples for domain {domain!r}")
@@ -455,12 +483,18 @@ def train(
     state_changes_t = torch.tensor(
         state_changes, dtype=torch.long, device=device,
     )
+    shape_intents_t = torch.tensor(
+        shape_intents, dtype=torch.long, device=device,
+    )
     topic_mask_t = torch.tensor(topic_mask, dtype=torch.bool, device=device)
     admission_mask_t = torch.tensor(
         admission_mask, dtype=torch.bool, device=device,
     )
     state_change_mask_t = torch.tensor(
         state_change_mask, dtype=torch.bool, device=device,
+    )
+    shape_intent_mask_t = torch.tensor(
+        shape_intent_mask, dtype=torch.bool, device=device,
     )
 
     # Class-weighted slot loss — non-O tags upweighted to counter
@@ -528,10 +562,19 @@ def train(
                 (state_per * state_m).sum() / (state_m.sum() + 1e-9)
                 if state_m.sum() > 0 else torch.tensor(0.0, device=device)
             )
+            shape_per = head_loss_fn(
+                logits["shape_intent"][:, :len(shape_intent_labels) or 1],
+                shape_intents_t[batch_idx],
+            )
+            shape_m = shape_intent_mask_t[batch_idx].float()
+            shape_loss = (
+                (shape_per * shape_m).sum() / (shape_m.sum() + 1e-9)
+                if shape_m.sum() > 0 else torch.tensor(0.0, device=device)
+            )
 
             loss = (
                 intent_loss + slot_loss
-                + topic_loss + admit_loss + state_loss
+                + topic_loss + admit_loss + state_loss + shape_loss
             )
             optimizer.zero_grad()
             loss.backward()
@@ -563,6 +606,7 @@ def train(
                 "topic_labels": topic_labels,
                 "admission_labels": admission_labels,
                 "state_change_labels": state_change_labels,
+                "shape_intent_labels": shape_intent_labels,
             }, sort_keys=False),
         )
     except ImportError:
@@ -609,6 +653,7 @@ class LoraJointBert(IntentSlotExtractor):
             n_topics=len(self._manifest.topic_labels),
             n_admission=len(self._manifest.admission_labels),
             n_state_change=len(self._manifest.state_change_labels),
+            n_shape_intents=len(self._manifest.shape_intent_labels),
         )
         self._model.encoder = PeftModel.from_pretrained(
             self._model.encoder, str(adapter_dir / "lora_adapter"),
@@ -650,6 +695,9 @@ class LoraJointBert(IntentSlotExtractor):
         state_change, state_change_conf = self._argmax_one_hot(
             logits["state_change"][0], self._manifest.state_change_labels,
         )
+        shape_intent, shape_intent_conf = self._argmax_one_hot(
+            logits["shape_intent"][0], self._manifest.shape_intent_labels,
+        )
 
         slot_preds = torch.argmax(logits["slot"][0], dim=-1).tolist()
         slots = self._assemble_slots(text, offsets, slot_preds)
@@ -663,6 +711,8 @@ class LoraJointBert(IntentSlotExtractor):
             admission_confidence=admission_conf,
             state_change=state_change,  # type: ignore[arg-type]
             state_change_confidence=state_change_conf,
+            shape_intent=shape_intent,  # type: ignore[arg-type]
+            shape_intent_confidence=shape_intent_conf,
             method=self.name,
         )
 
@@ -730,6 +780,7 @@ def build_manifest(
     topic_labels: list[str] | None = None,
     admission_labels: list[str] | None = None,
     state_change_labels: list[str] | None = None,
+    shape_intent_labels: list[str] | None = None,
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
@@ -740,9 +791,10 @@ def build_manifest(
     """Compose a manifest ready for :func:`train`.
 
     Intent + slot vocabs are fixed by the shared schemas.  Topic /
-    admission / state-change vocabs come from the caller's taxonomy
-    file (YAML).  Empty lists are allowed — the corresponding head
-    still exists but its output is treated as "no label" at inference.
+    admission / state-change / shape-intent vocabs come from the
+    caller's taxonomy file (YAML) or training-data discovery.  Empty
+    lists are allowed — the corresponding head still exists but its
+    output is treated as "no label" at inference.
     """
     return AdapterManifest(
         encoder=encoder,
@@ -760,6 +812,7 @@ def build_manifest(
             state_change_labels if state_change_labels is not None
             else list(STATE_CHANGES)
         ),
+        shape_intent_labels=shape_intent_labels or [],
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,

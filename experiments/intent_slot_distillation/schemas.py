@@ -270,6 +270,10 @@ class ExtractedLabel:
     admission_confidence: float | None = None
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
+    # 6th head (v6+) — query-shape.  None when the adapter predates
+    # v6 or the head confidence is below the dispatch threshold.
+    shape_intent: "ShapeIntent | None" = None
+    shape_intent_confidence: float | None = None
 
     def is_confident(self, threshold: float = 0.7) -> bool:
         return self.intent_confidence >= threshold
@@ -288,6 +292,34 @@ StateChange = Literal[
     "retirement",   # "Deprecated X in favor of Y" — retires prior state
     "none",         # no state transition
 ]
+
+#: Query-shape classification (6th head, v6+).  Produced by the
+#: ``shape_intent_head`` on query-voice input.  Replaces the hand-
+#: coded regex parser in ``ncms.domain.tlg.query_parser``.  ``none``
+#: means the query does not match any TLG grammar shape — dispatcher
+#: returns pure hybrid retrieval unchanged (zero-confidently-wrong
+#: invariant preserved).
+ShapeIntent = Literal[
+    "current_state",
+    "before_named",
+    "concurrent",
+    "origin",
+    "retirement",
+    "sequence",
+    "predecessor",
+    "transitive_cause",
+    "causal_chain",
+    "interval",
+    "ordinal_first",
+    "ordinal_last",
+    "none",
+]
+SHAPE_INTENTS: tuple[ShapeIntent, ...] = (
+    "current_state", "before_named", "concurrent", "origin",
+    "retirement", "sequence", "predecessor", "transitive_cause",
+    "causal_chain", "interval", "ordinal_first", "ordinal_last",
+    "none",
+)
 STATE_CHANGES: tuple[StateChange, ...] = ("declaration", "retirement", "none")
 
 
@@ -324,6 +356,10 @@ class GoldExample:
     topic: str | None = None
     admission: AdmissionDecision | None = None
     state_change: StateChange | None = None
+    # 6th head (v6+) — query-shape.  None on ingest-side training
+    # rows (they're not queries); set on query-side training rows
+    # imported from MSEB gold.
+    shape_intent: ShapeIntent | None = None
 
     # Which data tier this came from.
     split: Literal["gold", "llm", "sdg", "adversarial"] = "gold"

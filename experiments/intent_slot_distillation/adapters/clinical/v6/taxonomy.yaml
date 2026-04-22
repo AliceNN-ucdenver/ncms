@@ -1,0 +1,51 @@
+intent_labels:
+- positive
+- negative
+- habitual
+- difficulty
+- choice
+- none
+slot_labels:
+- O
+- B-medication
+- I-medication
+- B-procedure
+- I-procedure
+- B-symptom
+- I-symptom
+- B-severity
+- I-severity
+- B-alternative
+- I-alternative
+- B-frequency
+- I-frequency
+- B-object
+- I-object
+topic_labels:
+- medication
+- imaging
+- surgery
+- therapy
+- lab
+- other
+admission_labels:
+- persist
+- ephemeral
+- discard
+state_change_labels:
+- declaration
+- retirement
+- none
+shape_intent_labels:
+- current_state
+- before_named
+- concurrent
+- origin
+- retirement
+- sequence
+- predecessor
+- transitive_cause
+- causal_chain
+- ordinal_first
+- ordinal_last
+- none

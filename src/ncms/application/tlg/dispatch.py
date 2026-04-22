@@ -595,12 +595,38 @@ def _intent_to_lg_intent(qs: QueryStructure) -> LGIntent:
     )
 
 
+#: Map from SLM ``shape_intent_head`` labels to the ``qs.intent``
+#: strings used by the dispatcher's ``_INTENT_DISPATCHERS`` table.
+#: Most labels are 1:1; a few collapse to shared walkers:
+#:
+#: * ``ordinal_first`` → ``origin`` (first-in-chain walker)
+#: * ``ordinal_last``  → ``current`` (current / most-recent walker)
+#: * ``causal_chain``  → ``cause_of`` (ancestor-walk dispatcher)
+_SLM_SHAPE_TO_DISPATCH_INTENT: dict[str, str] = {
+    "current_state":    "current",
+    "before_named":     "before_named",
+    "concurrent":       "concurrent",
+    "origin":           "origin",
+    "retirement":       "retirement",
+    "sequence":         "sequence",
+    "predecessor":      "predecessor",
+    "transitive_cause": "transitive_cause",
+    "causal_chain":     "cause_of",
+    "interval":         "interval",
+    "ordinal_first":    "origin",
+    "ordinal_last":     "current",
+    "none":             "none",
+}
+
+
 async def retrieve_lg(
     query: str,
     *,
     store: object,
     vocabulary_cache: object,
     shape_cache: object | None = None,
+    slm_shape_intent: str | None = None,
+    slm_abstained: bool = False,
 ) -> LGTrace:
     """Classify + dispatch a query against the grammar layer.
 
@@ -663,22 +689,70 @@ async def retrieve_lg(
             )
             cache_hit = True
     if qs is None:
+        # analyze_query now produces subject + target_entity only
+        # (post-v6).  Intent is always None on return; the SLM
+        # override below fills it in.  Shape-cache learning moved
+        # to happen AFTER the SLM override so the cache captures the
+        # SLM-assigned intent rather than a permanent None.
         qs = analyze_query(query, ctx)
-        if shape_cache is not None and qs.intent not in ("none", "abstain"):
+
+    trace = LGTrace(query=query, intent=LGIntent(kind=""))
+    if cache_hit and qs.intent is not None:
+        trace.proof = f"shape-cache hit: intent={qs.intent}"
+
+    # ── SLM shape classification (v6+) — sole intent source ───────
+    # The SLM's ``shape_intent_head`` classifies the query; we map
+    # its 12 + none label space to the dispatcher's existing
+    # walker-intent strings via ``_SLM_SHAPE_TO_DISPATCH_INTENT``.
+    # ``slm_abstained=True`` or ``slm_shape_intent is None`` short
+    # circuit to grammar abstain — the zero-confidently-wrong
+    # invariant.  The regex-intent classifier that used to live in
+    # ``query_parser.py`` was deleted in the v6 cleanup; there is no
+    # fallback path.
+    if slm_shape_intent is not None:
+        mapped = _SLM_SHAPE_TO_DISPATCH_INTENT.get(slm_shape_intent)
+        if mapped is None or mapped == "none":
+            trace.proof = (
+                f"SLM shape_intent={slm_shape_intent!r}: "
+                "unmappable or none — grammar does not apply"
+            )
+            trace.confidence = Confidence.NONE
+            return trace
+        import dataclasses as _dc
+        qs = _dc.replace(
+            qs, intent=mapped, detected_marker="slm_shape_intent",
+        )
+        trace = LGTrace(query=query, intent=_intent_to_lg_intent(qs))
+        trace.proof = (
+            f"slm_shape_intent={slm_shape_intent!r} -> "
+            f"dispatch intent={mapped!r}"
+        )
+        # Shape-cache learn — cache the SLM-classified intent so the
+        # skeleton-match fast path picks it up on future queries.
+        if shape_cache is not None:
             try:
                 await shape_cache.learn(  # type: ignore[attr-defined]
-                    store, query, qs.intent, ctx.vocabulary,
+                    store, query, mapped, ctx.vocabulary,
                 )
             except Exception:  # pragma: no cover — defensive guard
                 logger.debug("TLG: shape-cache learn failed", exc_info=True)
+    else:
+        # slm_abstained=True OR the caller didn't pass an SLM result
+        # (pre-v6 adapter).  Either way, grammar doesn't apply.
+        if slm_abstained:
+            trace.proof = (
+                "SLM shape_intent_head abstained; grammar does not apply"
+            )
+        else:
+            trace.proof = (
+                "no SLM shape_intent supplied; grammar does not apply "
+                "(regex intent classifier deleted in v6 cleanup)"
+            )
+        trace.confidence = Confidence.NONE
+        return trace
 
-    intent = _intent_to_lg_intent(qs)
-    trace = LGTrace(query=query, intent=intent)
-    if cache_hit:
-        trace.proof = f"shape-cache hit: intent={qs.intent}"
-
-    if qs.intent == "none":
-        trace.proof = "no LG intent matched; grammar did not apply"
+    if qs.intent is None or qs.intent == "none":
+        trace.proof = "no LG intent assigned; grammar does not apply"
         trace.confidence = Confidence.NONE
         return trace
 
@@ -945,12 +1019,10 @@ async def _dispatch_cause_of_intent(
 _INTENT_DISPATCHERS = {
     "current": _dispatch_current_intent,
     "origin": _dispatch_origin_intent,
-    "still": _dispatch_still_intent,
     "retirement": _dispatch_retirement_intent,
     "sequence": _dispatch_sequence_intent,
     "predecessor": _dispatch_predecessor_intent,
     "interval": _dispatch_interval_intent,
-    "range": _dispatch_range_intent,
     "before_named": _dispatch_before_named_intent,
     "transitive_cause": _dispatch_transitive_cause_intent,
     "concurrent": _dispatch_concurrent_intent,

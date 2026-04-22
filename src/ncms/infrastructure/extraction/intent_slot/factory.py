@@ -60,6 +60,25 @@ class ChainedExtractor:
             [b.name for b in backends], confidence_threshold,
         )
 
+    @property
+    def adapter_domain(self) -> str | None:
+        """Return the primary backend's adapter domain when available.
+
+        Convenience accessor for callers that need to know "which
+        adapter did this chain load?" — e.g. to pass the right
+        ``domain`` arg to :meth:`extract` without having to thread
+        it through from the construction site.  Returns ``None``
+        when the primary backend has no manifest (heuristic-only
+        chains).
+        """
+        primary = self._backends[0]
+        manifest = getattr(primary, "_manifest", None) or getattr(
+            primary, "manifest", None,
+        )
+        if manifest is not None:
+            return getattr(manifest, "domain", None)
+        return None
+
     def extract(self, text: str, *, domain: str) -> ExtractedLabel:
         """Run backends in order, merge confident heads.
 

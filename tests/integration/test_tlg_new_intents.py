@@ -127,6 +127,7 @@ class TestSequence:
             "What came after OAuth for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="sequence",
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.HIGH
@@ -142,6 +143,7 @@ class TestSequence:
             "What came after passkeys for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="sequence",
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.ABSTAIN
@@ -157,6 +159,7 @@ class TestPredecessor:
             "What came before OAuth for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="predecessor",
         )
         assert trace.intent.kind == "predecessor"
         assert trace.confidence == Confidence.HIGH
@@ -171,6 +174,7 @@ class TestBeforeNamed:
             "Did session cookies come before OAuth?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="before_named",
         )
         assert trace.intent.kind == "before_named"
         assert trace.confidence == Confidence.HIGH
@@ -187,6 +191,7 @@ class TestInterval:
             "What happened between session cookies and passkeys?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="interval",
         )
         assert trace.intent.kind == "interval"
         assert trace.confidence == Confidence.HIGH
@@ -194,21 +199,11 @@ class TestInterval:
         assert trace.grammar_answer == v2.id
 
 
-class TestRange:
-    async def test_q1_range_filter(self, store: SQLiteStore) -> None:
-        await _auth_chain(store)
-        cache = VocabularyCache()
-        trace = await retrieve_lg(
-            "What happened to authentication in Q1 2024?",
-            store=store,
-            vocabulary_cache=cache,
-        )
-        # January 2024 — only v1 (cookies) at 2024-01-01 is in Q1.
-        assert trace.intent.kind == "range"
-        assert trace.confidence == Confidence.HIGH
-        # Grammar returns earliest memory in range.
-        assert trace.grammar_answer is not None
 
+# NOTE: ``TestRange`` was removed in the v6 cleanup — the
+# dispatcher it exercised is no longer reachable via the SLM
+# ``shape_intent_head`` taxonomy.  See docs for the v6 deletion
+# rationale.
 
 class TestTransitiveCause:
     async def test_eventually_led_to_walks_ancestors(
@@ -220,6 +215,7 @@ class TestTransitiveCause:
             "What eventually led to passkeys for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="transitive_cause",
         )
         assert trace.intent.kind == "transitive_cause"
         assert trace.confidence == Confidence.HIGH
@@ -246,6 +242,7 @@ class TestConcurrent:
             "What was happening during OAuth rollout?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="concurrent",
         )
         assert trace.intent.kind == "concurrent"
         # In-subject concurrent is MEDIUM confidence by design.
@@ -262,6 +259,7 @@ class TestRetirement:
             "did we retire session cookies?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="retirement",
         )
         assert trace.intent.kind == "retirement"
         # v2 is the retirement announcement for session cookies.
@@ -279,6 +277,7 @@ class TestUnresolvedEntity:
             "What came after smoke signals for authentication?",
             store=store,
             vocabulary_cache=cache,
+            slm_shape_intent="sequence",
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.ABSTAIN

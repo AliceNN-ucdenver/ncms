@@ -72,7 +72,11 @@ def _pick_device() -> str:
 
 
 class LoraJointModel(nn.Module):
-    """BERT (or BERT+LoRA) + five classification heads.
+    """BERT (or BERT+LoRA) + six classification heads.
+
+    Six heads (v6+): intent, slot, topic, admission, state_change,
+    shape_intent.  The last (query-shape) is the replacement for
+    the hand-coded regex classifier in ``domain/tlg/query_parser.py``.
 
     Construction is two-step so training and inference share code
     without peft double-wrapping.  Training calls
@@ -89,6 +93,7 @@ class LoraJointModel(nn.Module):
         n_topics: int,
         n_admission: int,
         n_state_change: int,
+        n_shape_intents: int = 0,
     ) -> None:
         super().__init__()
         self.encoder = AutoModel.from_pretrained(encoder_name)
@@ -102,6 +107,11 @@ class LoraJointModel(nn.Module):
         self.topic_head = nn.Linear(hidden, max(n_topics, 1))
         self.admission_head = nn.Linear(hidden, max(n_admission, 1))
         self.state_change_head = nn.Linear(hidden, max(n_state_change, 1))
+        # 6th head (v6+): query-shape classifier.  ``n_shape_intents=0``
+        # is the pre-v6 compatibility path — head exists but is a
+        # no-op linear layer; callers ignore its output when the
+        # adapter manifest's ``shape_intent_labels`` list is empty.
+        self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
 
     def wrap_encoder_with_lora(
         self,
@@ -142,11 +152,12 @@ class LoraJointModel(nn.Module):
             "topic": self.topic_head(pooled),
             "admission": self.admission_head(pooled),
             "state_change": self.state_change_head(pooled),
+            "shape_intent": self.shape_intent_head(pooled),
             "slot": self.slot_head(sequence),
         }
 
     def save_heads(self, path: Path) -> None:
-        """Dump the five heads to a single safetensors file."""
+        """Dump the six heads to a single safetensors file."""
         state = {
             f"{head}.{param}": tensor
             for head, head_state in [
@@ -155,6 +166,7 @@ class LoraJointModel(nn.Module):
                 ("topic_head", dict(self.topic_head.state_dict())),
                 ("admission_head", dict(self.admission_head.state_dict())),
                 ("state_change_head", dict(self.state_change_head.state_dict())),
+                ("shape_intent_head", dict(self.shape_intent_head.state_dict())),
             ]
             for param, tensor in head_state.items()
         }
@@ -231,6 +243,7 @@ class LoraJointBert:
             n_topics=len(manifest.topic_labels),
             n_admission=len(manifest.admission_labels),
             n_state_change=len(manifest.state_change_labels),
+            n_shape_intents=len(manifest.shape_intent_labels),
         )
         # Replace the raw encoder with the saved LoRA adapter.
         self._model.encoder = PeftModel.from_pretrained(
@@ -273,6 +286,12 @@ class LoraJointBert:
         state_change, state_change_conf = self._argmax_one_hot(
             logits["state_change"][0], self._manifest.state_change_labels,
         )
+        # 6th head — query-shape.  Empty vocab means the adapter
+        # predates the v6 schema; surface ``None`` so callers treat
+        # the output as "abstain" and skip TLG routing.
+        shape_intent, shape_intent_conf = self._argmax_one_hot(
+            logits["shape_intent"][0], self._manifest.shape_intent_labels,
+        )
 
         slot_preds = torch.argmax(logits["slot"][0], dim=-1).tolist()
         slots = self._assemble_slots(text, offsets, slot_preds)
@@ -289,6 +308,18 @@ class LoraJointBert:
             intent = "none"
             intent_conf = 0.0
 
+        # Shape-intent normalisation — anything outside the 12 + none
+        # TLG taxonomy collapses to None (abstain).
+        _VALID_SHAPE_INTENTS = {
+            "current_state", "before_named", "concurrent", "origin",
+            "retirement", "sequence", "predecessor", "transitive_cause",
+            "causal_chain", "interval", "ordinal_first", "ordinal_last",
+            "none",
+        }
+        if shape_intent not in _VALID_SHAPE_INTENTS:
+            shape_intent = None
+            shape_intent_conf = None
+
         return ExtractedLabel(
             intent=intent,  # type: ignore[arg-type]
             intent_confidence=float(intent_conf or 0.0),
@@ -303,6 +334,8 @@ class LoraJointBert:
                 "declaration", "retirement", "none",
             } else None,
             state_change_confidence=state_change_conf,
+            shape_intent=shape_intent,  # type: ignore[arg-type]
+            shape_intent_confidence=shape_intent_conf,
             method=self.name,
             latency_ms=latency_ms,
         )

@@ -1662,7 +1662,9 @@ class MemoryService:
 
     # ── TLG: grammar-layer query dispatch (Phase 3c) ───────────────
 
-    async def retrieve_lg(self, query: str) -> LGTrace:
+    async def retrieve_lg(
+        self, query: str, *, slm_shape_intent: str | None = None,
+    ) -> LGTrace:
         """Dispatch ``query`` through the TLG grammar layer.
 
         Returns an :class:`~ncms.domain.tlg.LGTrace` with a
@@ -1676,6 +1678,11 @@ class MemoryService:
         :attr:`Confidence.NONE` trace when TLG is disabled via
         ``NCMSConfig.temporal_enabled`` — this keeps callers' composition
         logic identical whether TLG is on or off.
+
+        ``slm_shape_intent`` is a test / benchmark hatch — when set,
+        it overrides the SLM classification step and hands the
+        intent directly to the dispatcher.  Production callers leave
+        it ``None`` and let the ingest-time SLM extractor run.
         """
         from ncms.application.tlg import retrieve_lg as _dispatch
         from ncms.domain.tlg import Confidence, LGIntent, LGTrace
@@ -1694,11 +1701,55 @@ class MemoryService:
             except Exception:  # pragma: no cover — defensive guard
                 logger.debug("TLG shape-cache warm failed", exc_info=True)
             self._tlg_shape_cache_warmed = True
+
+        # ── SLM-first shape classification (v6 adapters) ──────────
+        # When the intent-slot chain is wired in and its primary
+        # backend carries a ``shape_intent_head``, classify the
+        # query's shape here and pass the result to the grammar
+        # dispatcher.  This replaces the hand-coded regex intent
+        # classifier deleted in the v6 cleanup.
+        #
+        # When the caller supplied an explicit ``slm_shape_intent``
+        # override (test / benchmark path), use it verbatim and
+        # skip the SLM call.
+        resolved_shape_intent: str | None = slm_shape_intent
+        slm_abstained = False
+        if resolved_shape_intent is None and self._intent_slot is not None:
+            try:
+                adapter_domain = getattr(
+                    self._intent_slot, "adapter_domain", None,
+                ) or "conversational"
+                slm_result = self._intent_slot.extract(
+                    query, domain=adapter_domain,
+                )
+                if slm_result.shape_intent is not None:
+                    conf = slm_result.shape_intent_confidence or 0.0
+                    threshold = self._config.slm_confidence_threshold
+                    if conf >= threshold:
+                        if slm_result.shape_intent == "none":
+                            slm_abstained = True
+                        else:
+                            resolved_shape_intent = slm_result.shape_intent
+                    else:
+                        # Head produced a label but confidence was too
+                        # low — treat as abstain so grammar doesn't
+                        # fire on uncertain classifications.
+                        slm_abstained = True
+                # shape_intent=None means this adapter predates v6;
+                # dispatch will treat absent override as "grammar does
+                # not apply" per the v6 cleanup (regex fallback deleted).
+            except Exception:  # pragma: no cover — defensive guard
+                logger.debug(
+                    "TLG: SLM shape classification failed", exc_info=True,
+                )
+
         trace = await _dispatch(
             query,
             store=self._store,
             vocabulary_cache=self._tlg_vocab_cache,
             shape_cache=self._tlg_shape_cache,
+            slm_shape_intent=resolved_shape_intent,
+            slm_abstained=slm_abstained,
         )
         # Dashboard observability — one event per dispatch; dashboards
         # can aggregate the ``grammar.*`` namespace to visualise intent

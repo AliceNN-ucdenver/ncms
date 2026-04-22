@@ -53,9 +53,13 @@ experiments/intent_slot_distillation/adapters/*/v3_final/
 
 # P2 training corpora — regeneratable from SWE-Gym / SDG via
 # experiments/intent_slot_distillation/corpus_builder.py + train_adapter.py.
-# Commit stats.json (small, reproducibility anchor) but not raw JSONL.
+# Commit stats.json (small, reproducibility anchor) and the MSEB-
+# derived shape_intent gold (747 queries; tiny, benchmark-aligned,
+# exact-reproducibility anchor), but not the large SDG / adversarial
+# / SWE-Gym training JSONL.
 experiments/intent_slot_distillation/corpus/*.jsonl
 !experiments/intent_slot_distillation/corpus/*.stats.json
+!experiments/intent_slot_distillation/corpus/gold_shape_intent_*.jsonl
 *.bak
 
 # Benchmark durable run-logs (~30 MB each from verbose runs; regeneratable)
