@@ -1,0 +1,58 @@
+# Per-domain taxonomy for clinical content.
+
+topic_labels:
+  - medication
+  - imaging
+  - surgery
+  - therapy
+  - lab
+  - other
+
+object_to_topic:
+  # Medications
+  metformin: medication
+  lisinopril: medication
+  atorvastatin: medication
+  levothyroxine: medication
+  ibuprofen: medication
+  acetaminophen: medication
+  amoxicillin: medication
+  sertraline: medication
+  fluoxetine: medication
+  albuterol: medication
+  insulin: medication
+  warfarin: medication
+  opioids: medication
+  ondansetron: medication
+  empagliflozin: medication
+  losartan: medication
+  inhaler: medication
+  cpap: medication
+  anticoagulation regimen: medication
+
+  # Imaging
+  MRI: imaging
+  mri: imaging
+  "CT scan": imaging
+  ct scan: imaging
+
+  # Surgery / procedures
+  "arthroscopic surgery": surgery
+  "arthroscopic meniscectomy": surgery
+  "open repair": surgery
+  stenting: surgery
+  bypass: surgery
+  ventilator weaning: surgery
+
+  # Therapy
+  "physical therapy": therapy
+  "occupational therapy": therapy
+  "surgical evaluation": therapy
+
+  # Symptoms as their own topic — clinical notes reference
+  # chief complaints heavily.  Map to "lab" as the closest
+  # existing bucket, or add a "symptom" topic in future.
+  pain: lab
+  nausea: lab
+  chest pain: lab
+  "BP": lab

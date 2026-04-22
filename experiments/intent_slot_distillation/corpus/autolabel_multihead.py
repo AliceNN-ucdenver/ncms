@@ -27,7 +27,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-from experiments.intent_slot_distillation.corpus.loader import (
+from ncms.application.adapters.corpus.loader import (
     dump_jsonl,
     load_jsonl,
 )

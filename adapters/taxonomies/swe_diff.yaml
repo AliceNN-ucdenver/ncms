@@ -1,0 +1,125 @@
+# Taxonomy for the swe_diff adapter.
+#
+# Unlike software_dev (which covers PROSE state changes in ADRs/RFCs/
+# post-mortems/threat models), swe_diff is trained on raw GitHub
+# artefacts: issue bodies with code snippets, PR discussions,
+# resolving patches in diff format, and test patches.  Topic labels
+# reflect the file-type role of the content.
+#
+# See experiments/intent_slot_distillation/schemas.py::DOMAIN_MANIFESTS
+# for the explicit adapter ↔ corpus wiring.
+
+topic_labels:
+  - core_module       # source code under the project's main package
+  - test_module       # tests/ directory, test_*.py files
+  - docs              # docs/ directory, *.rst / *.md
+  - config            # setup.py, pyproject.toml, setup.cfg, tox.ini
+  - build             # Makefile, Dockerfile, CI yaml, deploy scripts
+  - other
+
+object_to_topic:
+  # --------------------------------------------------------------------
+  # Core modules — shipped as the library's public / internal code.
+  # Mined from actual SWE-bench Verified file paths; covers the
+  # 12 projects in the corpus.
+  # --------------------------------------------------------------------
+  django/db: core_module
+  django/contrib: core_module
+  django/core: core_module
+  django/utils: core_module
+  django/forms: core_module
+  django/template: core_module
+  django/http: core_module
+  django/views: core_module
+  django/urls: core_module
+  django/apps: core_module
+
+  astropy/io: core_module
+  astropy/modeling: core_module
+  astropy/table: core_module
+  astropy/units: core_module
+  astropy/coordinates: core_module
+  astropy/cosmology: core_module
+
+  matplotlib/axes: core_module
+  matplotlib/figure: core_module
+  matplotlib/pyplot: core_module
+  matplotlib/patches: core_module
+  matplotlib/colors: core_module
+  matplotlib/backends: core_module
+  lib/matplotlib: core_module
+
+  sklearn/base: core_module
+  sklearn/cluster: core_module
+  sklearn/linear_model: core_module
+  sklearn/preprocessing: core_module
+  sklearn/metrics: core_module
+  sklearn/tree: core_module
+  sklearn/ensemble: core_module
+
+  sympy/core: core_module
+  sympy/printing: core_module
+  sympy/physics: core_module
+  sympy/polys: core_module
+  sympy/matrices: core_module
+  sympy/functions: core_module
+  sympy/geometry: core_module
+
+  xarray/core: core_module
+  xarray/backends: core_module
+  xarray/coding: core_module
+
+  sphinx/domains: core_module
+  sphinx/ext: core_module
+  sphinx/builders: core_module
+  sphinx/directives: core_module
+
+  src/_pytest: core_module
+  _pytest: core_module
+  pytest: core_module
+
+  src/pylint: core_module
+  pylint/checkers: core_module
+  pylint/extensions: core_module
+
+  pvlib: core_module
+  requests: core_module
+  flask: core_module
+  src/flask: core_module
+
+  # --------------------------------------------------------------------
+  # Test modules
+  # --------------------------------------------------------------------
+  tests/migrations: test_module
+  tests/utils_tests: test_module
+  tests/roots: test_module
+  tests/forms_tests: test_module
+  tests/admin_views: test_module
+  tests/auth_tests: test_module
+  tests/model_fields: test_module
+  tests/queries: test_module
+  astropy/io/tests: test_module
+  astropy/modeling/tests: test_module
+  sklearn/tests: test_module
+  sklearn/cluster/tests: test_module
+  sympy/core/tests: test_module
+  sympy/printing/tests: test_module
+  xarray/tests: test_module
+  sphinx/tests: test_module
+  tests: test_module
+
+  # --------------------------------------------------------------------
+  # Config
+  # --------------------------------------------------------------------
+  setup.py: config
+  setup.cfg: config
+  pyproject.toml: config
+  tox.ini: config
+
+  # --------------------------------------------------------------------
+  # Docs (these are rare in SWE-bench but catch a few examples)
+  # --------------------------------------------------------------------
+  docs/ref: docs
+  docs/topics: docs
+  docs/howto: docs
+  doc/source: docs

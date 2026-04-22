@@ -1,0 +1,95 @@
+# Per-domain taxonomy for conversational content.
+#
+# topic_labels:
+#   - the topic classification vocabulary.  Topic head softmaxes over
+#     this list.  Labels should be disjoint and cover the expected
+#     content distribution; add a catch-all like "other" if your
+#     content is heterogeneous.
+#
+# admission_labels / state_change_labels:
+#   - optional overrides of the schema defaults.  Usually leave empty
+#     and let the schema's enums (ADMISSION_DECISIONS / STATE_CHANGES)
+#     win; populate here only if your deployment uses a custom
+#     admission or state-change vocabulary.
+
+topic_labels:
+  - food_pref          # "I love sushi", "I can't stand cilantro"
+  - hobby              # "I play chess", "my weekend hiking habit"
+  - lifestyle          # "I'm a morning person", "coffee every day"
+  - transit            # "I take the subway", "the aisle seat"
+  - entertainment      # "I love jazz", "live comedy"
+  - shopping_choice    # "went with the red one", "picked the vegetarian"
+  - work_routine       # "I usually review PRs Fridays"
+  - other              # catch-all for unmatched
+
+# Token → topic map used by the SDG expander + autolabel_multihead
+# to auto-tag rows.  Extended in Sprint 3 to cover the actual
+# surface forms present in hand-labeled gold (cold weather,
+# calculus final, spicy food, etc.) so gold Topic F1 isn't
+# penalized by "other" fallbacks.
+object_to_topic:
+  # Food & drink
+  sushi: food_pref
+  ramen: food_pref
+  dark chocolate: food_pref
+  cold brew coffee: food_pref
+  coffee: food_pref
+  decaf: food_pref
+  craft breweries: food_pref
+  farmer's markets: food_pref
+  spicy food: food_pref
+  lunch: food_pref
+  italian place: food_pref
+  vegetarian option: food_pref
+  the vegetarian option: food_pref
+  sparkling water: food_pref
+
+  # Hobbies & activities
+  running: hobby
+  cycling: hobby
+  rock climbing: hobby
+  yoga: hobby
+  hiking trails: hobby
+  board games: hobby
+  book club: hobby
+  run five miles: hobby
+  quiet morning with a book: hobby
+
+  # Entertainment
+  standup comedy: entertainment
+  live jazz: entertainment
+  podcasts: entertainment
+  e-books: entertainment
+
+  # Lifestyle & home
+  beach vacations: lifestyle
+  city breaks: lifestyle
+  my morning routine: lifestyle
+  ikea furniture: lifestyle
+  crib: lifestyle
+  grocery shopping: lifestyle
+
+  # Work routine
+  standing desks: work_routine
+  standing desk: work_routine
+  calculus final: work_routine
+  passport renewal: work_routine
+
+  # Transit
+  the aisle seat: transit
+  aisle seat: transit
+  window seat: transit
+  Uber: transit
+  the express line: transit
+  the north face route: transit
+  subway: transit
+  airports: transit
+  traffic on the 101: transit
+
+  # Shopping choices
+  the red one: shopping_choice
+  red one: shopping_choice
+  blue: shopping_choice
+
+  # Weather / environment
+  cold weather: lifestyle

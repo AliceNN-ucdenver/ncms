@@ -1799,5 +1799,13 @@ def export(output: str) -> None:
     asyncio.run(_export())
 
 
+# ``ncms adapters ...`` — managed SLM LoRA adapters as first-class
+# NCMS artifacts (SDG / training / deploy / status).  See
+# ``src/ncms/interfaces/cli/adapters.py`` for the subcommands.
+from ncms.interfaces.cli.adapters import adapters as _adapters_group  # noqa: E402
+
+cli.add_command(_adapters_group)
+
+
 if __name__ == "__main__":
     cli()

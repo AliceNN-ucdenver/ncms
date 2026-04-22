@@ -13,13 +13,13 @@ same intent quality, two forward passes instead of one.
 
 from __future__ import annotations
 
-from experiments.intent_slot_distillation.methods.base import (
+from ncms.application.adapters.methods.base import (
     IntentSlotExtractor,
 )
 from experiments.intent_slot_distillation.methods.e5_zero_shot import (
     E5ZeroShot,
 )
-from experiments.intent_slot_distillation.schemas import (
+from ncms.application.adapters.schemas import (
     SLOT_TAXONOMY,
     Domain,
     ExtractedLabel,

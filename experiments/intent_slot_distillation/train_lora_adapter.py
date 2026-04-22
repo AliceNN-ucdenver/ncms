@@ -44,15 +44,15 @@ try:
 except ImportError:  # pragma: no cover — experiment may run outside repo
     pass
 
-from experiments.intent_slot_distillation.corpus.loader import (
+from ncms.application.adapters.corpus.loader import (
     load_all,
     load_jsonl,
 )
-from experiments.intent_slot_distillation.methods.joint_bert_lora import (
+from ncms.application.adapters.methods.joint_bert_lora import (
     build_manifest,
     train,
 )
-from experiments.intent_slot_distillation.schemas import (
+from ncms.application.adapters.schemas import (
     DOMAINS,
     Domain,
     GoldExample,

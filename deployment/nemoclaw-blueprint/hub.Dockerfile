@@ -56,21 +56,24 @@ COPY --from=base /app /app
 # Copy cached models
 COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
 
-# ── Intent-slot adapters (the P2 five-head SLM, per-domain) ───────────────
+# ── Intent-slot adapters (the P2 six-head SLM, per-domain) ────────────────
 # Adapters ship as compact artifacts (~2.4 MB each × 4 = ~10 MB).  We copy
-# the authoritative ``v4`` (conversational / clinical / software_dev) and
+# the authoritative ``v6`` (conversational / clinical / software_dev) and
 # ``v1`` (swe_diff — trained on SWE-Gym for diff-aware state_change) into
 # the runtime path NCMS looks up via
 # ``~/.ncms/adapters/<domain>/<version>/``.
-# At container start, ``NCMS_INTENT_SLOT_ENABLED=true`` + the domain hint
+# At container start, ``NCMS_SLM_ENABLED=true`` + the domain hint
 # resolves to the matching adapter directory inside the image.
-COPY experiments/intent_slot_distillation/adapters/conversational/v4 \
-     /root/.ncms/adapters/conversational/v4
-COPY experiments/intent_slot_distillation/adapters/clinical/v4 \
-     /root/.ncms/adapters/clinical/v4
-COPY experiments/intent_slot_distillation/adapters/software_dev/v4 \
-     /root/.ncms/adapters/software_dev/v4
-COPY experiments/intent_slot_distillation/adapters/swe_diff/v1 \
+#
+# Source of truth: ``adapters/checkpoints/<domain>/<version>/`` at the
+# repo root (see ``adapters/README.md`` + ``ncms adapters list``).
+COPY adapters/checkpoints/conversational/v6 \
+     /root/.ncms/adapters/conversational/v6
+COPY adapters/checkpoints/clinical/v6 \
+     /root/.ncms/adapters/clinical/v6
+COPY adapters/checkpoints/software_dev/v6 \
+     /root/.ncms/adapters/software_dev/v6
+COPY adapters/checkpoints/swe_diff/v1 \
      /root/.ncms/adapters/swe_diff/v1
 
 # Knowledge is loaded by agent sandboxes on startup (not the hub)

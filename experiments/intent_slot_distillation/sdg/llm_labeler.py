@@ -21,12 +21,12 @@ Why a separate labeler:
 Usage::
 
     # Label a real corpus file (one utterance per line)
-    uv run python -m experiments.intent_slot_distillation.sdg.llm_labeler \\
+    uv run python -m ncms.application.adapters.sdg.llm_labeler \\
         --input /path/to/utterances.txt --domain conversational \\
         --output corpus/llm_conversational.jsonl
 
     # Calibration run against gold
-    uv run python -m experiments.intent_slot_distillation.sdg.llm_labeler \\
+    uv run python -m ncms.application.adapters.sdg.llm_labeler \\
         --calibrate corpus/gold_conversational.jsonl --domain conversational
 """
 
@@ -39,11 +39,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from experiments.intent_slot_distillation.corpus.loader import (
+from ncms.application.adapters.corpus.loader import (
     dump_jsonl,
     load_jsonl,
 )
-from experiments.intent_slot_distillation.schemas import (
+from ncms.application.adapters.schemas import (
     DOMAINS,
     INTENT_CATEGORIES,
     SLOT_TAXONOMY,

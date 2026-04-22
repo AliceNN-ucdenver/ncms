@@ -1,0 +1,100 @@
+# Per-domain taxonomy for software-dev content.
+
+topic_labels:
+  - framework            # FastAPI, Django, Flask, React
+  - language_runtime     # asyncio, gevent, Python versions
+  - infra                # Docker, Kubernetes, Redis, Postgres
+  - testing              # pytest, Playwright
+  - tooling              # Ruff, Black, mypy, linters, IDEs
+  - package_mgmt         # uv, Poetry, pip-tools
+  - editor               # Neovim, VS Code
+  - other
+
+object_to_topic:
+  # Frameworks / libraries
+  FastAPI: framework
+  fastapi: framework
+  Django: framework
+  Flask: framework
+  flask: framework
+  React: framework
+  Vue: framework
+  Pydantic: framework
+  pydantic: framework
+  SQLAlchemy: framework
+  Tailwind: framework
+  tailwind: framework
+
+  # Language runtime / concurrency / language features
+  asyncio: language_runtime
+  async: language_runtime
+  gevent: language_runtime
+  Celery: language_runtime
+  threads: language_runtime
+  coroutines: language_runtime
+  ownership model: language_runtime
+  type hints: language_runtime
+  type coercion: language_runtime
+  race conditions: language_runtime
+  eventual consistency: language_runtime
+  stdlib: language_runtime
+  silently swallowed exceptions: language_runtime
+  tls: language_runtime
+  rust: language_runtime
+  python: language_runtime
+  javascript: language_runtime
+  perl: language_runtime
+  clojure: language_runtime
+  go: language_runtime
+  kotlin: language_runtime
+
+  # Infra / data stores
+  Redis: infra
+  redis: infra
+  Postgres: infra
+  postgres: infra
+  MySQL: infra
+  mysql: infra
+  SQLite: infra
+  sqlite: infra
+  Memcached: infra
+  memcached: infra
+  MongoDB: infra
+  mongo: infra
+  Docker: infra
+  docker: infra
+  Kubernetes: infra
+  kubernetes ingress: infra
+  cuda drivers: infra
+
+  # Testing
+  pytest: testing
+  Playwright: testing
+  tests before implementation: testing
+
+  # Tooling (formatters, linters, build, CI)
+  Ruff: tooling
+  ruff format: tooling
+  Black: tooling
+  mypy: tooling
+  Webpack: tooling
+  webpack: tooling
+  pr: tooling
+  repl: tooling
+  raw css: tooling
+  custom scheduler: tooling
+  refactoring legacy: tooling
+  tech debt: tooling
+  issue queue: tooling
+  sdk migration: tooling
+
+  # Package management
+  Poetry: package_mgmt
+  pip-tools: package_mgmt
+  uv: package_mgmt
+
+  # Editors
+  Neovim: editor
+  neovim: editor
+  "VS Code": editor
+  visual studio: editor

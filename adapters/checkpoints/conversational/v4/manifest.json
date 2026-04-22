@@ -1,0 +1,59 @@
+{
+  "encoder": "bert-base-uncased",
+  "domain": "conversational",
+  "version": "v4",
+  "max_length": 128,
+  "intent_labels": [
+    "positive",
+    "negative",
+    "habitual",
+    "difficulty",
+    "choice",
+    "none"
+  ],
+  "slot_labels": [
+    "O",
+    "B-object",
+    "I-object",
+    "B-frequency",
+    "I-frequency",
+    "B-alternative",
+    "I-alternative"
+  ],
+  "topic_labels": [
+    "food_pref",
+    "hobby",
+    "lifestyle",
+    "transit",
+    "entertainment",
+    "shopping_choice",
+    "work_routine",
+    "other"
+  ],
+  "admission_labels": [
+    "persist",
+    "ephemeral",
+    "discard"
+  ],
+  "state_change_labels": [
+    "declaration",
+    "retirement",
+    "none"
+  ],
+  "lora_r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "lora_target_modules": [
+    "query",
+    "value"
+  ],
+  "trained_on": {
+    "n_examples": 1350,
+    "epochs": 6
+  },
+  "gate_metrics": {
+    "final_train_loss": 0.0288
+  },
+  "trained_at": "2026-04-20T00:21:57.033652+00:00",
+  "corpus_hash": "1152a513e4cbbfb9"
+}

@@ -29,10 +29,10 @@ except ImportError as exc:  # pragma: no cover — experiment-only dep
         "E5ZeroShot requires sentence-transformers + numpy"
     ) from exc
 
-from experiments.intent_slot_distillation.methods.base import (
+from ncms.application.adapters.methods.base import (
     IntentSlotExtractor,
 )
-from experiments.intent_slot_distillation.schemas import (
+from ncms.application.adapters.schemas import (
     INTENT_LABEL_DESCRIPTIONS,
     SLOT_TAXONOMY,
     Domain,
