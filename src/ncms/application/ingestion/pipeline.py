@@ -1066,6 +1066,14 @@ class IngestionPipeline:
                 emit_stage,
             )
 
+        # CTLG v8+: extract causal edges from memory-voice cue tags.
+        # No-op for v7.x adapters (cue_tags empty).  Gated on
+        # temporal_enabled — same flag that governs reconciliation.
+        if self._config.temporal_enabled:
+            await self._extract_and_persist_causal_edges(
+                memory, l1_node, l2_node, emit_stage,
+            )
+
     async def _detect_and_create_l2_node(
         self,
         memory: Memory,
@@ -1357,6 +1365,168 @@ class IngestionPipeline:
             emit_stage(
                 "episode_formation_error",
                 (time.perf_counter() - t0) * 1000,
+                memory_id=memory.id,
+            )
+
+    # ── Stage 6.5: CTLG causal-edge extraction (v8+) ───────────────────
+
+    async def _extract_and_persist_causal_edges(
+        self,
+        memory: Memory,
+        l1_node: MemoryNode,
+        l2_node: MemoryNode | None,
+        emit_stage: Callable,
+    ) -> None:
+        """Extract CAUSED_BY / ENABLES edges from memory-voice cue tags.
+
+        Gated on ``cue_tags`` presence in ``memory.structured["intent_slot"]``.
+        For v7.x adapters (no cue_labels trained) this is a no-op —
+        the cue_tags field is empty.  For v8+ adapters, the SLM's
+        ``shape_cue_head`` produces cue tags at ingest time; this
+        method turns them into typed :class:`CausalEdge` s persisted
+        as :class:`GraphEdge`s.
+
+        Surface resolution: each REFERENT surface in the extracted
+        pair is resolved to a memory id by:
+
+        1. If it matches ``l2_node.metadata["state_value"]`` of the
+           current memory's L2 node → use this memory's L1 id.
+        2. Else look up entity-state nodes whose ``state_value``
+           matches the surface → use their memory id.
+        3. Else drop the pair (dangling edge).
+
+        Any failure (lookup errors, schema mismatch) is logged and
+        swallowed — causal extraction is best-effort; a dropped
+        edge doesn't break ingest.
+        """
+        from ncms.domain.models import EdgeType, GraphEdge
+        from ncms.domain.tlg.causal_extractor import (
+            extract_causal_pairs,
+            pairs_to_causal_edges,
+        )
+        from ncms.domain.tlg.cue_taxonomy import TaggedToken
+
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        cue_tag_dicts = slm_label.get("cue_tags") or []
+        if not cue_tag_dicts:
+            return  # pre-v8 adapter or no cues detected — no-op
+
+        # Convert the serialised dicts back to TaggedToken dataclasses.
+        tokens: list[TaggedToken] = []
+        for t in cue_tag_dicts:
+            try:
+                tokens.append(TaggedToken(
+                    char_start=int(t["char_start"]),
+                    char_end=int(t["char_end"]),
+                    surface=str(t["surface"]),
+                    cue_label=t["cue_label"],
+                    confidence=float(t.get("confidence", 1.0)),
+                ))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if not tokens:
+            return
+
+        t0 = time.perf_counter()
+        try:
+            pairs = extract_causal_pairs(
+                tokens,
+                min_confidence=getattr(
+                    self._config, "ctlg_causal_min_confidence", 0.6,
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "[ctlg] causal extraction failed for memory %s",
+                memory.id, exc_info=True,
+            )
+            return
+        if not pairs:
+            return
+
+        # Build surface → memory_id lookup.  First pass: this
+        # memory's L2 node if present.  Second pass: search
+        # entity_state nodes by state_value match.
+        lookup: dict[str, str] = {}
+        if l2_node is not None:
+            sv = str(l2_node.metadata.get("state_value", "")).lower().strip()
+            eid = str(l2_node.metadata.get("entity_id", "")).lower().strip()
+            if sv:
+                lookup[sv] = memory.id
+            if eid and eid not in lookup:
+                lookup[eid] = memory.id
+
+        # Surfaces we still need to resolve — pull candidate matches
+        # from the graph store's entity_state nodes.
+        needed_surfaces: set[str] = set()
+        for p in pairs:
+            for surf in (p.effect_surface, p.cause_surface):
+                surf_low = surf.lower()
+                if surf_low not in lookup:
+                    needed_surfaces.add(surf_low)
+
+        if needed_surfaces:
+            try:
+                l2_candidates = await self._store.get_memory_nodes_by_type(
+                    "entity_state",
+                )
+                for node in l2_candidates:
+                    sv = str(
+                        node.metadata.get("state_value", ""),
+                    ).lower().strip()
+                    eid = str(
+                        node.metadata.get("entity_id", ""),
+                    ).lower().strip()
+                    if sv and sv in needed_surfaces and sv not in lookup:
+                        lookup[sv] = node.memory_id
+                    if eid and eid in needed_surfaces and eid not in lookup:
+                        lookup[eid] = node.memory_id
+            except Exception:
+                logger.warning(
+                    "[ctlg] entity_state lookup failed — some pairs "
+                    "may be dropped", exc_info=True,
+                )
+
+        edges = pairs_to_causal_edges(
+            pairs, surface_to_memory_id=lookup,
+        )
+        # Persist each as a typed GraphEdge.  The Causal edges have
+        # direction effect->cause (src=effect, dst=cause); the
+        # EdgeType enum values already encode this convention.
+        emitted = 0
+        for edge in edges:
+            edge_type = (
+                EdgeType.CAUSED_BY if edge.edge_type == "caused_by"
+                else EdgeType.ENABLES
+            )
+            try:
+                await self._store.save_graph_edge(GraphEdge(
+                    source_id=edge.src,
+                    target_id=edge.dst,
+                    edge_type=edge_type,
+                    metadata={
+                        "cue_type": edge.cue_type,
+                        "source": "ctlg_cue_head",
+                        "confidence": round(edge.confidence, 3),
+                    },
+                ))
+                emitted += 1
+            except Exception:
+                logger.warning(
+                    "[ctlg] failed to persist causal edge "
+                    "%s -> %s", edge.src, edge.dst, exc_info=True,
+                )
+
+        if emitted > 0:
+            emit_stage(
+                "ctlg_causal_edges",
+                (time.perf_counter() - t0) * 1000,
+                {
+                    "memory_id": memory.id,
+                    "n_pairs_extracted": len(pairs),
+                    "n_edges_persisted": emitted,
+                    "n_pairs_unresolved": len(pairs) - len(edges),
+                },
                 memory_id=memory.id,
             )
 
