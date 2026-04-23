@@ -88,26 +88,29 @@ async def _load_causal_graph(store: object) -> list:
     from ncms.domain.tlg.zones import CausalEdge as _CausalEdge
 
     out: list = []
-    for et in _CTLG_CAUSAL_EDGE_TYPES:
-        try:
-            edges = await store.list_graph_edges_by_type(et)  # type: ignore[attr-defined]
-        except Exception:
-            logger.debug(
-                "[tlg] list_graph_edges_by_type(%s) failed — "
-                "falling back to empty causal graph", et,
-                exc_info=True,
-            )
-            continue
-        for e in edges:
-            meta = getattr(e, "metadata", None) or {}
-            out.append(_CausalEdge(
-                src=e.source_id,
-                dst=e.target_id,
-                edge_type=e.edge_type.value
-                if hasattr(e.edge_type, "value") else str(e.edge_type),
-                cue_type=str(meta.get("cue_type", "")),
-                confidence=float(meta.get("confidence", 1.0)),
-            ))
+    # list_graph_edges_by_type takes a LIST of edge types — pass
+    # all CTLG causal edge types in a single query.
+    try:
+        edges = await store.list_graph_edges_by_type(  # type: ignore[attr-defined]
+            list(_CTLG_CAUSAL_EDGE_TYPES),
+        )
+    except Exception:
+        logger.debug(
+            "[tlg] list_graph_edges_by_type(CTLG) failed — "
+            "falling back to empty causal graph",
+            exc_info=True,
+        )
+        return out
+    for e in edges:
+        meta = getattr(e, "metadata", None) or {}
+        out.append(_CausalEdge(
+            src=e.source_id,
+            dst=e.target_id,
+            edge_type=e.edge_type.value
+            if hasattr(e.edge_type, "value") else str(e.edge_type),
+            cue_type=str(meta.get("cue_type", "")),
+            confidence=float(meta.get("confidence", 1.0)),
+        ))
     return out
 
 
