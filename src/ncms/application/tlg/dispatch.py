@@ -66,6 +66,50 @@ _TRANSITION_FOR_EDGE: dict[str, str] = {
     EdgeType.REFINES.value: "refines",
 }
 
+# CTLG v8+: causal edges the zone grammar consumes via G_tr,c.
+# Loaded lazily by the causal dispatchers — not all queries need
+# them so we avoid the full graph scan per call.
+_CTLG_CAUSAL_EDGE_TYPES: frozenset[str] = frozenset({
+    EdgeType.CAUSED_BY.value,
+    EdgeType.ENABLES.value,
+})
+
+
+async def _load_causal_graph(store: object) -> list:
+    """Load CAUSED_BY + ENABLES edges across the full store and
+    return them as a list of :class:`CausalEdge`.
+
+    CTLG causal zones cross subject boundaries (ctlg-grammar.md §7.3)
+    so this loads the full causal subgraph, not just a subject-
+    scoped slice.  Called once per :func:`retrieve_lg` invocation
+    when the dispatcher enters a causal target; result is cached on
+    the ``_DispatchCtx`` so later dispatchers reuse it.
+    """
+    from ncms.domain.tlg.zones import CausalEdge as _CausalEdge
+
+    out: list = []
+    for et in _CTLG_CAUSAL_EDGE_TYPES:
+        try:
+            edges = await store.list_graph_edges_by_type(et)  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug(
+                "[tlg] list_graph_edges_by_type(%s) failed — "
+                "falling back to empty causal graph", et,
+                exc_info=True,
+            )
+            continue
+        for e in edges:
+            meta = getattr(e, "metadata", None) or {}
+            out.append(_CausalEdge(
+                src=e.source_id,
+                dst=e.target_id,
+                edge_type=e.edge_type.value
+                if hasattr(e.edge_type, "value") else str(e.edge_type),
+                cue_type=str(meta.get("cue_type", "")),
+                confidence=float(meta.get("confidence", 1.0)),
+            ))
+    return out
+
 
 async def _load_subject_zones(
     store: object, subject: str,
@@ -401,14 +445,79 @@ async def _dispatch_before_named(
     trace.confidence = Confidence.HIGH
 
 
+async def _walk_causal_chain(
+    start_memory_id: str,
+    causal_edges: list,
+    *,
+    max_depth: int = 6,
+) -> tuple[list[str], list[str]]:
+    """Walk CAUSED_BY + ENABLES edges backward from an effect node.
+
+    Returns ``(path, edge_types)`` where:
+      * ``path[0]`` is ``start_memory_id`` (the effect), and
+        successive elements are that node's direct/transitive causes
+        (following the src→dst direction of CAUSED_BY).
+      * ``edge_types[i]`` is the edge type used to step from
+        ``path[i]`` to ``path[i+1]``.
+
+    BFS-style traversal picking the highest-confidence outgoing edge
+    at each step.  Stops at ``max_depth`` OR when a cycle is detected
+    OR when the current node has no outgoing causal edges.
+    """
+    # index: src → list of outgoing causal edges (effect→cause direction)
+    out_edges: dict[str, list] = {}
+    for e in causal_edges:
+        out_edges.setdefault(e.src, []).append(e)
+
+    path = [start_memory_id]
+    edge_types: list[str] = []
+    visited = {start_memory_id}
+    cur = start_memory_id
+    while len(path) - 1 < max_depth:
+        outs = out_edges.get(cur, [])
+        if not outs:
+            break
+        # Pick the highest-confidence edge.
+        best = max(outs, key=lambda e: getattr(e, "confidence", 1.0))
+        nxt = best.dst
+        if nxt in visited:
+            break
+        path.append(nxt)
+        edge_types.append(best.edge_type)
+        visited.add(nxt)
+        cur = nxt
+    return path, edge_types
+
+
 async def _dispatch_transitive_cause(
     store: object, trace: LGTrace,
     *,
     node_index: dict[str, MemoryNode],
     zone_edges: list,
+    ctx: _DispatchCtx | None = None,
 ) -> None:
-    """``what eventually led to X`` — walk admissible predecessors to
-    the earliest ancestor."""
+    """``what eventually led to X`` — walk causal chain backward.
+
+    **CTLG v8+ path** (when CAUSED_BY edges exist in the store): walks
+    the typed causal graph via ``G_tr,c``, ranks candidate trajectories
+    by h_explanatory + h_parsimony, returns the highest-scoring
+    ancestor.  Chain traces come from the :func:`_walk_causal_chain`
+    helper; ranking uses the default ``chain_cause_of`` weights from
+    :mod:`ncms.domain.tlg.heuristics`.
+
+    **Pre-CTLG fallback**: if no CAUSED_BY edges are loaded (pre-v8
+    adapter, no ingest-time cue tagger, etc.), the walker drops to
+    the original timestamp-predecessor logic so v7.x deployments
+    continue to work unchanged.
+    """
+    from ncms.domain.tlg.heuristics import (
+        HeuristicContext,
+        Trajectory,
+        rank_trajectories,
+        score_trajectory,
+        weights_for_relation,
+    )
+
     subject = trace.intent.subject
     entity = trace.intent.entity
     if subject is None or not entity:
@@ -420,6 +529,58 @@ async def _dispatch_transitive_cause(
         trace.proof = f"transitive_cause: could not resolve {entity!r}"
         trace.confidence = Confidence.ABSTAIN
         return
+
+    # ── CTLG v8+ path: walk CAUSED_BY graph ────────────────────────
+    causal_edges: list = []
+    if ctx is not None:
+        try:
+            causal_edges = await ctx.get_causal_edges()
+        except Exception:
+            logger.debug(
+                "[tlg] causal graph load failed — falling to v7 path",
+                exc_info=True,
+            )
+            causal_edges = []
+
+    if causal_edges:
+        path, edge_types = await _walk_causal_chain(
+            x_node.memory_id, causal_edges, max_depth=6,
+        )
+        if len(path) > 1:
+            # Build a typed Trajectory so future walkers can pick
+            # among competing chains consistently.
+            traj = Trajectory(
+                kind="causal_chain",
+                memory_ids=tuple(path),
+                edge_types=tuple(edge_types),
+                subject=subject,
+                # Robustness + explanatory fields are 0 here — the
+                # walker has no state-key coverage info; ranking
+                # collapses to h_parsimony which is fine for chain
+                # selection.  Enriched by the composition at §7.3.
+            )
+            h_ctx = HeuristicContext(
+                total_state_keys=1, min_length=2, parsimony_alpha=0.2,
+            )
+            scored = score_trajectory(
+                traj, h_ctx,
+                heuristics=["h_parsimony", "h_explanatory"],
+            )
+            weights = weights_for_relation("chain_cause_of")
+            ranked = rank_trajectories([scored], weights, context=h_ctx)
+            winner = ranked[0]
+            ancestor = winner.memory_ids[-1]
+            trace.grammar_answer = ancestor
+            trace.zone_context = list(winner.memory_ids[1:-1])
+            trace.proof = (
+                f"transitive_cause(CTLG causal chain, subject={subject}, "
+                f"for={entity}): ancestor={ancestor} depth={len(path)-1} "
+                f"edge_types={edge_types} h={winner.heuristic_scores}"
+            )
+            trace.confidence = Confidence.HIGH
+            return
+
+    # ── Fallback: pre-CTLG timestamp-predecessor walk ──────────────
     # Walk dst→src via zone_edges until no predecessor remains.
     by_dst: dict[str, object] = {e.dst: e for e in zone_edges}
     path: list[str] = [x_node.id]
@@ -439,10 +600,10 @@ async def _dispatch_transitive_cause(
         trace.confidence = Confidence.ABSTAIN
         return
     trace.grammar_answer = ancestor
-    trace.zone_context = path[1:-1]  # middle of the chain
+    trace.zone_context = path[1:-1]
     trace.proof = (
-        f"transitive_cause(subject={subject}, for={entity}): "
-        f"earliest ancestor = {ancestor} "
+        f"transitive_cause(pre-CTLG predecessor chain, subject={subject}, "
+        f"for={entity}): earliest ancestor={ancestor} "
         f"(walked {len(path)-1} predecessors)"
     )
     trace.confidence = Confidence.HIGH
@@ -800,6 +961,32 @@ class _DispatchCtx:
     node_index: dict[str, MemoryNode]
     zone_edges: list
     vocabulary_cache: object
+    # CTLG v8+ lazy causal-graph cache.  Loaded on first access by a
+    # causal dispatcher (transitive_cause, cause_of, chain_cause_of)
+    # via :meth:`get_causal_zones`.  ``None`` means "not yet loaded";
+    # empty list means "loaded, no causal edges exist in this store"
+    # (so fallback walker takes over).
+    _causal_edges: list | None = None
+    _causal_zones: list | None = None
+
+    async def get_causal_edges(self) -> list:
+        """Lazy-load the full causal-edge graph.  Cached per-call."""
+        if self._causal_edges is None:
+            self._causal_edges = await _load_causal_graph(self.store)
+        return self._causal_edges
+
+    async def get_causal_zones(self) -> list:
+        """Lazy-build causal zones from the loaded edges.
+
+        Returns a list of :class:`CausalZone` weakly-connected
+        components; empty when no CAUSED_BY / ENABLES edges exist.
+        """
+        if self._causal_zones is not None:
+            return self._causal_zones
+        from ncms.domain.tlg.zones import build_causal_zones
+        edges = await self.get_causal_edges()
+        self._causal_zones = build_causal_zones(edges) if edges else []
+        return self._causal_zones
 
 
 async def _expand_entity_aliases(
@@ -1001,6 +1188,7 @@ async def _dispatch_transitive_cause_intent(
     await _dispatch_transitive_cause(
         ctx.store, trace,
         node_index=ctx.node_index, zone_edges=ctx.zone_edges,
+        ctx=ctx,
     )
 
 
