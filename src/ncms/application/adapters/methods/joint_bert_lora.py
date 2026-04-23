@@ -119,10 +119,20 @@ class AdapterManifest:
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)
+    # v6/v7.x: shape_intent classifier labels (13 flat classes).
+    # DEPRECATED in v8+ — replaced by cue_labels below.  Empty list
+    # on v8+ trains; non-empty on legacy adapters for load-time
+    # detection.  See docs/research/ctlg-design.md.
     shape_intent_labels: list[str] = field(default_factory=list)
 
+    # v8+ CTLG: BIO cue-label vocabulary for the sequence-labeled
+    # 6th head (shape_cue_head).  Replaces shape_intent_labels.
+    # Should always be the full 33-entry list from
+    # ncms.domain.tlg.cue_taxonomy.CUE_LABELS on new trains.
+    cue_labels: list[str] = field(default_factory=list)
+
     # Legacy field — kept on the dataclass for serialisation round-trip
-    # with v6 checkpoints.  New v7 artifacts carry an empty list here;
+    # with v6 checkpoints.  New v7+ artifacts carry an empty list here;
     # loaders that see a populated ``slot_labels`` + empty
     # ``role_labels`` know they're reading a pre-v7 adapter and can
     # handle it (or refuse to load).
@@ -174,6 +184,7 @@ class LoraJointModel(nn.Module):
         n_admission: int,
         n_state_change: int,
         n_shape_intents: int = 0,
+        n_cue_labels: int = 0,
     ) -> None:
         super().__init__()
         self.encoder = AutoModel.from_pretrained(encoder_name)
@@ -185,7 +196,15 @@ class LoraJointModel(nn.Module):
         self.topic_head = nn.Linear(hidden, max(n_topics, 1))
         self.admission_head = nn.Linear(hidden, max(n_admission, 1))
         self.state_change_head = nn.Linear(hidden, max(n_state_change, 1))
+        # Legacy v6/v7.x shape_intent classification head.  Trained
+        # in v6/v7.1/v7.2; retained for checkpoint load compat; NOT
+        # consumed on v8+ inference when ``cue_labels`` is populated.
         self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
+        # v8+ CTLG shape_cue_head — per-token BIO cue classifier.
+        # Same shape as the v6 slot_head machinery (Linear over full
+        # sequence output).  n_cue_labels=0 on legacy adapters; on
+        # v8+ it's len(cue_taxonomy.CUE_LABELS) = 33.
+        self.shape_cue_head = nn.Linear(hidden, max(n_cue_labels, 1))
 
     def wrap_encoder_with_lora(
         self,
@@ -242,6 +261,17 @@ class LoraJointModel(nn.Module):
         output (S, n_roles)."""
         return self.role_head(span_vectors)
 
+    def classify_cues(
+        self, sequence: torch.Tensor,
+    ) -> torch.Tensor:
+        """v8+ CTLG: per-token BIO cue-label classification.
+
+        Input: ``sequence`` of shape (B, L, H) — the full encoder
+        output.  Output: (B, L, n_cue_labels) logits.  Same shape
+        as the v6 slot_head.
+        """
+        return self.shape_cue_head(sequence)
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -260,7 +290,13 @@ class LoraJointModel(nn.Module):
         return logits
 
     def save_heads(self, path: Path) -> None:
-        """Dump the six heads to a single safetensors file."""
+        """Dump all heads to a single safetensors file.
+
+        v8+ carries 7 heads: 5 classification (intent/topic/admission/
+        state_change/shape_intent[deprecated]) + 1 span-pooled (role)
+        + 1 sequence-labeling (shape_cue).  Legacy adapters may
+        be missing shape_cue_head weights; load_heads tolerates.
+        """
         state = {f"{k}.{sk}": v for k, sv in [
             ("intent_head", dict(self.intent_head.state_dict())),
             ("role_head", dict(self.role_head.state_dict())),
@@ -268,6 +304,7 @@ class LoraJointModel(nn.Module):
             ("admission_head", dict(self.admission_head.state_dict())),
             ("state_change_head", dict(self.state_change_head.state_dict())),
             ("shape_intent_head", dict(self.shape_intent_head.state_dict())),
+            ("shape_cue_head", dict(self.shape_cue_head.state_dict())),
         ] for sk, v in sv.items()}
         save_safetensors(state, str(path))
 
@@ -423,6 +460,7 @@ def train(
     admission_labels = manifest.admission_labels
     state_change_labels = manifest.state_change_labels
     shape_intent_labels = manifest.shape_intent_labels
+    cue_labels = manifest.cue_labels  # empty → head is a placeholder; no loss
 
     tokenizer = AutoTokenizer.from_pretrained(manifest.encoder, use_fast=True)
     model = LoraJointModel(
@@ -433,6 +471,7 @@ def train(
         n_admission=len(admission_labels),
         n_state_change=len(state_change_labels),
         n_shape_intents=len(shape_intent_labels),
+        n_cue_labels=len(cue_labels),
     )
     model.wrap_encoder_with_lora(
         lora_r=manifest.lora_r,
@@ -448,6 +487,7 @@ def train(
     admission_idx = {label: i for i, label in enumerate(admission_labels)}
     state_idx = {label: i for i, label in enumerate(state_change_labels)}
     shape_idx = {label: i for i, label in enumerate(shape_intent_labels)}
+    cue_idx = {label: i for i, label in enumerate(cue_labels)}
 
     # ── Build tensor dataset ─────────────────────────────────────
     #
@@ -470,6 +510,15 @@ def train(
     # Per-row list of (token_mask, role_id) pairs.  Empty list when
     # no role_spans were derived (skipped by role loss).
     row_spans: list[list[tuple[list[float], int]]] = []
+    # v8+ CTLG: per-token BIO cue labels.  One int per token in the
+    # encoded sequence; -100 on pad / out-of-text positions so
+    # CrossEntropyLoss ignores them.  cue_row_has_labels[i]=False
+    # means the example didn't carry cue_tags (e.g. legacy v7.x
+    # corpus); the row contributes zero to the cue loss.
+    cue_row_labels: list[list[int]] = []
+    cue_row_has_labels: list[bool] = []
+
+    cue_o_id = cue_idx.get("O", 0) if cue_labels else 0
 
     for ex in examples:
         if ex.domain != domain:
@@ -531,6 +580,47 @@ def train(
             per_row.append((token_mask, role_idx[rs.role]))
         row_spans.append(per_row)
 
+        # v8+ CTLG: per-token BIO cue labels.  Per-token because the
+        # cue head is a sequence labeler (same shape as v6 slot_head).
+        # Labels produce: O for non-cue tokens, B-<TYPE>/I-<TYPE> for
+        # tokens inside a tagged span.  -100 on pad / special-token
+        # positions so CrossEntropyLoss ignores them.
+        row_cues = [-100] * manifest.max_length
+        ex_cue_tags = getattr(ex, "cue_tags", None) or []
+        if cue_labels:
+            # Initialize all non-pad content positions to "O".
+            for i, (ts, te) in enumerate(offsets):
+                if i >= manifest.max_length:
+                    break
+                if ts == 0 and te == 0:
+                    continue  # padding / special token
+                row_cues[i] = cue_o_id
+            # Overlay cue-tagged spans.
+            for tag in ex_cue_tags:
+                # Tag may be a dict (from JSONL loader) or a
+                # TaggedToken dataclass; handle both.
+                if isinstance(tag, dict):
+                    char_start = int(tag["char_start"])
+                    char_end = int(tag["char_end"])
+                    label_str = tag["cue_label"]
+                else:
+                    char_start = int(tag.char_start)
+                    char_end = int(tag.char_end)
+                    label_str = tag.cue_label
+                if label_str == "O" or label_str not in cue_idx:
+                    continue
+                label_id = cue_idx[label_str]
+                for i, (ts, te) in enumerate(offsets):
+                    if i >= manifest.max_length:
+                        break
+                    if ts == 0 and te == 0:
+                        continue
+                    if te <= char_start or ts >= char_end:
+                        continue
+                    row_cues[i] = label_id
+        cue_row_labels.append(row_cues)
+        cue_row_has_labels.append(bool(ex_cue_tags) and bool(cue_labels))
+
     if not ids_rows:
         raise RuntimeError(f"no examples for domain {domain!r}")
 
@@ -555,10 +645,18 @@ def train(
     shape_intent_mask_t = torch.tensor(
         shape_intent_mask, dtype=torch.bool, device=device,
     )
+    cue_labels_t = (
+        torch.tensor(cue_row_labels, dtype=torch.long, device=device)
+        if cue_labels else None
+    )
+    cue_row_mask_t = torch.tensor(
+        cue_row_has_labels, dtype=torch.bool, device=device,
+    ) if cue_labels else None
 
     intent_loss_fn = nn.CrossEntropyLoss()
     role_loss_fn = nn.CrossEntropyLoss()
     head_loss_fn = nn.CrossEntropyLoss(reduction="none")
+    cue_loss_fn = nn.CrossEntropyLoss(ignore_index=-100) if cue_labels else None
 
     optimizer = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
@@ -569,9 +667,13 @@ def train(
     model.train()
     final_avg_loss = float("nan")
     total_role_spans = sum(len(spans) for spans in row_spans)
+    n_cue_rows = sum(cue_row_has_labels)
     logger.info(
-        "[lora] v7 train: %d rows, %d role spans (avg %.1f/row)",
+        "[lora] v7+ train: %d rows, %d role spans (avg %.1f/row), "
+        "%d rows with cue_tags (CTLG head %s)",
         n, total_role_spans, total_role_spans / max(n, 1),
+        n_cue_rows,
+        "ACTIVE" if cue_labels else "INACTIVE (no cue_labels in manifest)",
     )
 
     for epoch in range(epochs):
@@ -662,9 +764,35 @@ def train(
             else:
                 role_loss = torch.tensor(0.0, device=device)
 
+            # v8+ CTLG: per-token cue-head loss.  Applies to rows
+            # whose cue_row_has_labels was True; other rows drop
+            # out via the row mask.  Uses ignore_index=-100 to
+            # skip pad positions.
+            if cue_labels and cue_loss_fn is not None:
+                cue_logits = model.classify_cues(sequence)  # (B, L, n_cue)
+                cue_logits = cue_logits[:, :, :len(cue_labels)]
+                batch_cue_labels = cue_labels_t[batch_idx]  # type: ignore[index]
+                batch_cue_mask = cue_row_mask_t[batch_idx]  # type: ignore[index]
+                # Mask entire rows that don't carry cue labels by
+                # replacing their per-token labels with -100.
+                batch_cue_labels = batch_cue_labels.clone()
+                batch_cue_labels[~batch_cue_mask] = -100
+                cue_loss = cue_loss_fn(
+                    cue_logits.reshape(-1, cue_logits.size(-1)),
+                    batch_cue_labels.reshape(-1),
+                )
+                # cue_loss may be nan when no valid position exists;
+                # guard by replacing with zero so the graph doesn't
+                # backprop garbage.
+                if torch.isnan(cue_loss).any():
+                    cue_loss = torch.tensor(0.0, device=device)
+            else:
+                cue_loss = torch.tensor(0.0, device=device)
+
             loss = (
                 intent_loss + role_loss
                 + topic_loss + admit_loss + state_loss + shape_loss
+                + cue_loss
             )
             optimizer.zero_grad()
             loss.backward()
@@ -680,9 +808,12 @@ def train(
     model.encoder.save_pretrained(str(adapter_dir / "lora_adapter"))
     model.save_heads(adapter_dir / "heads.safetensors")
     manifest.role_labels = role_labels
+    manifest.cue_labels = cue_labels
+    n_cue_rows = sum(cue_row_has_labels)
     manifest.trained_on = {
         "n_examples": n,
         "n_role_spans": total_role_spans,
+        "n_cue_rows": n_cue_rows,
         "epochs": epochs,
     }
     manifest.gate_metrics = {
@@ -702,6 +833,7 @@ def train(
                 "admission_labels": admission_labels,
                 "state_change_labels": state_change_labels,
                 "shape_intent_labels": shape_intent_labels,
+                "cue_labels": cue_labels,
             }, sort_keys=False),
         )
     except ImportError:
@@ -746,6 +878,7 @@ class LoraJointBert(IntentSlotExtractor):
             n_admission=len(self._manifest.admission_labels),
             n_state_change=len(self._manifest.state_change_labels),
             n_shape_intents=len(self._manifest.shape_intent_labels),
+            n_cue_labels=len(self._manifest.cue_labels),
         )
         self._model.encoder = PeftModel.from_pretrained(
             self._model.encoder, str(adapter_dir / "lora_adapter"),
@@ -804,6 +937,9 @@ class LoraJointBert(IntentSlotExtractor):
             sequence[0], offsets, gazetteer_spans,
         )
 
+        # ── 5. CTLG cue head over the full token sequence ────────
+        cue_tags_out = self._classify_cues(text, offsets, sequence[0])
+
         return ExtractedLabel(
             intent=intent,  # type: ignore[arg-type]
             intent_confidence=intent_conf,
@@ -817,8 +953,82 @@ class LoraJointBert(IntentSlotExtractor):
             shape_intent=shape_intent,  # type: ignore[arg-type]
             shape_intent_confidence=shape_intent_conf,
             role_spans=tuple(role_spans_out),
+            cue_tags=tuple(cue_tags_out),
             method=self.name,
         )
+
+    def _classify_cues(
+        self,
+        text: str,
+        offsets: list[tuple[int, int]],
+        sequence_row: torch.Tensor,  # (L, H)
+    ) -> list:
+        """v8+ CTLG: per-token BIO cue classification.
+
+        Returns a list of :class:`TaggedToken` (from
+        :mod:`ncms.domain.tlg.cue_taxonomy`) aggregated to
+        surface-word granularity.  Empty list when the adapter's
+        manifest carries no ``cue_labels`` (legacy v7.x).
+        """
+        cue_labels = self._manifest.cue_labels
+        if not cue_labels:
+            return []
+        # Import here to avoid pulling the domain layer into module
+        # import costs for the training-only code paths.
+        from ncms.domain.tlg.cue_taxonomy import TaggedToken
+
+        with torch.no_grad():
+            logits = self._model.classify_cues(
+                sequence_row.unsqueeze(0),
+            )[0, :, :len(cue_labels)]  # (L, n_cue)
+            probs = torch.softmax(logits, dim=-1)
+            pred_ids = torch.argmax(probs, dim=-1)  # (L,)
+            pred_conf = probs.gather(
+                -1, pred_ids.unsqueeze(-1),
+            ).squeeze(-1)  # (L,)
+
+        # Aggregate BERT wordpieces to surface words.  We walk the
+        # offsets and merge consecutive subwords into one
+        # TaggedToken whose label is the FIRST subword's label
+        # (standard BIO convention for BERT-tokenizer outputs).
+        out: list[TaggedToken] = []
+        i = 0
+        n = len(offsets)
+        while i < n:
+            ts, te = offsets[i]
+            if ts == 0 and te == 0:
+                # Special token (CLS/SEP/pad) — skip.
+                i += 1
+                continue
+            # Extend to include subword continuations
+            # (subword = next token's start == current's end AND
+            # source text has no whitespace gap).
+            word_start = ts
+            word_end = te
+            j = i + 1
+            while j < n:
+                ns, ne = offsets[j]
+                if ns == 0 and ne == 0:
+                    break
+                if ns != word_end:
+                    break  # whitespace break → separate word
+                word_end = ne
+                j += 1
+            # Label = first subword's.
+            label_id = int(pred_ids[i].item())
+            label = cue_labels[label_id] if label_id < len(cue_labels) else "O"
+            conf = float(pred_conf[i].item())
+            surface = text[word_start:word_end]
+            if label != "O":
+                out.append(TaggedToken(
+                    char_start=word_start,
+                    char_end=word_end,
+                    surface=surface,
+                    cue_label=label,  # type: ignore[arg-type]
+                    confidence=conf,
+                ))
+            i = j
+        return out
 
     def _classify_spans(
         self,
@@ -936,6 +1146,7 @@ def build_manifest(
     state_change_labels: list[str] | None = None,
     shape_intent_labels: list[str] | None = None,
     role_labels: list[str] | None = None,
+    cue_labels: list[str] | None = None,
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
@@ -945,12 +1156,23 @@ def build_manifest(
 ) -> AdapterManifest:
     """Compose a manifest ready for :func:`train`.
 
-    Intent + role vocabs default to the shared schemas.  Topic /
-    admission / state-change / shape-intent vocabs come from the
-    caller's taxonomy file (YAML) or training-data discovery.  Empty
-    lists are allowed — the corresponding head still exists but its
-    output is treated as "no label" at inference.
+    Intent + role + (v8+) cue vocabs default to the shared schemas.
+    Topic / admission / state-change / shape-intent vocabs come from
+    the caller's taxonomy file (YAML) or training-data discovery.
+    Empty lists are allowed — the corresponding head still exists
+    but its output is treated as "no label" at inference.
+
+    ``cue_labels`` defaults to the full 33-entry CTLG cue taxonomy
+    (see :mod:`ncms.domain.tlg.cue_taxonomy`).  Pass an empty list
+    to train a v7-style adapter without the cue head.
     """
+    if cue_labels is None:
+        # Default to the full CTLG vocab.  Import late to avoid
+        # pulling the domain layer into the training module's
+        # import footprint during smoke tests.
+        from ncms.domain.tlg.cue_taxonomy import CUE_LABELS as _CUE_LABELS
+        cue_labels = list(_CUE_LABELS)
+
     return AdapterManifest(
         encoder=encoder,
         domain=domain,
@@ -968,6 +1190,7 @@ def build_manifest(
             else list(STATE_CHANGES)
         ),
         shape_intent_labels=shape_intent_labels or [],
+        cue_labels=cue_labels,
         slot_labels=[],   # v7: BIO vocab retired
         lora_r=lora_r,
         lora_alpha=lora_alpha,

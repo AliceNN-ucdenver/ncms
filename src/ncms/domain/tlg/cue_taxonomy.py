@@ -225,17 +225,16 @@ def group_bio_spans(
 
 
 def span_text(tokens: list[TaggedToken]) -> str:
-    """Reconstruct the source text of a span from its constituent tokens."""
+    """Reconstruct the source text of a span from its constituent tokens.
+
+    Callers that have the original text should slice it directly
+    using ``(tokens[0].char_start, tokens[-1].char_end)`` — that
+    preserves any interior whitespace or punctuation.  This helper
+    returns the token surfaces joined by whitespace as a best-effort
+    fallback when the original text isn't in scope.
+    """
     if not tokens:
         return ""
-    # Use char offsets from first-token-start to last-token-end —
-    # preserves any interior whitespace or punctuation.
-    start = tokens[0].char_start
-    end = tokens[-1].char_end
-    # We can't reconstruct the original text without the source
-    # string, so return the token surfaces joined by whitespace.
-    # Callers that have the original text should slice it directly
-    # using (start, end).
     return " ".join(t.surface for t in tokens)
 
 

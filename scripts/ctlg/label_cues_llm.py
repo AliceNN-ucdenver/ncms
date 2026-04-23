@@ -66,23 +66,95 @@ def _label_vocab_block() -> str:
 
 
 PILOT_GUIDELINES = """\
-Apply these disambiguation rules (from docs/research/ctlg-cue-guidelines.md):
+Cue family summary (tag tokens aggressively — most software-dev queries
+have MULTIPLE cue spans):
 
-  - "since" defaults to TEMPORAL_SINCE.  Only tag as CAUSAL_EXPLICIT
-    when substituting "because" preserves meaning AND substituting
-    "ever since" doesn't.
-  - "first" in a temporal-habitual sense (e.g. "first thing every
-    morning") is NOT ORDINAL_FIRST.
-  - Multi-word cues like "led to" / "due to" / "prior to" are ONE
-    span (B + I tags, not two separate B-).
-  - Concrete dates / named periods ("2023", "Q2", "the CRDB era")
-    are TEMPORAL_ANCHOR, regardless of a nearby TEMPORAL_SINCE cue.
-  - Catalog entity names = REFERENT; state-evolving entity being
-    asked about = SUBJECT; slot words ("database", "framework",
-    "tool") = SCOPE.
-  - When in doubt, prefer the MORE SPECIFIC tag.  "O" (outside)
-    is the safe default for tokens that don't clearly match any
-    cue family.
+  CAUSAL_EXPLICIT   = because, due to, since(causal), given that, as(causal), owing to
+  CAUSAL_ALTLEX    = led to, resulted in, drove, caused, motivated, the reason,
+                     one reason, the motivation, made us, behind (the choice)
+  TEMPORAL_BEFORE  = before, prior to, ahead of, predated, until, earlier than
+  TEMPORAL_AFTER   = after, following, once, subsequently, succeeded
+  TEMPORAL_DURING  = during, while, amid, throughout
+  TEMPORAL_SINCE   = since(temporal), as of, ever since, from X on
+  TEMPORAL_ANCHOR  = 2023, Q2, last sprint, yesterday, the monolith era
+  ORDINAL_FIRST    = first, initial, earliest, original, introduction, opens
+  ORDINAL_LAST     = last, latest, final, most recent, current(as ordinal),
+                     closing, summary(closing)
+  ORDINAL_NTH      = second, third, 2nd, 3rd
+  MODAL_HYPOTHETICAL = would have, could have, if not for, had we, suppose, imagine
+  ASK_CURRENT      = now, currently, today, at present, right now
+  ASK_CHANGE       = what changed, what happened, the transition, the migration(as referent)
+  REFERENT         = catalog entity names (Postgres, React, Kubernetes, Bulma, Django, ...)
+  SUBJECT          = state-evolving entity (auth-service, user API, the payment service)
+  SCOPE            = slot words (database, framework, library, tool, platform, orchestrator)
+
+Disambiguation rules:
+
+  - "since" defaults to TEMPORAL_SINCE unless "because" substitution works.
+  - "first thing every morning" is NOT ordinal (it's habitual frequency).
+  - Multi-word cues are ONE span (B-LABEL + I-LABEL, never two B-).
+  - Dates/anchors are TEMPORAL_ANCHOR regardless of nearby TEMPORAL_SINCE.
+  - Whole tokens only — no BERT wordpiece splits.
+
+Here are THREE worked examples with expected labels (study the density):
+
+Example 1:
+  Text: "What decision was adopted in: Decided on Bulma. Open to new CSS framework choices."
+  Labels:
+    What             O
+    decision         O
+    was              O
+    adopted          O
+    in               O
+    :                O
+    Decided          O
+    on               O
+    Bulma            B-REFERENT
+    .                O
+    Open             O
+    to               O
+    new              O
+    CSS              B-REFERENT
+    framework        B-SCOPE
+    choices          O
+    .                O
+
+Example 2:
+  Text: "What problem motivated the decision to migrate from Postgres to CockroachDB?"
+  Labels:
+    What             O
+    problem          O
+    motivated        B-CAUSAL_ALTLEX
+    the              O
+    decision         O
+    to               O
+    migrate          O
+    from             B-TEMPORAL_BEFORE
+    Postgres         B-REFERENT
+    to               O
+    CockroachDB      B-REFERENT
+    ?                O
+
+Example 3:
+  Text: "What would our current database be if we hadn't switched to YugabyteDB?"
+  Labels:
+    What             O
+    would            B-MODAL_HYPOTHETICAL
+    our              O
+    current          B-ASK_CURRENT
+    database         B-SCOPE
+    be               O
+    if               O
+    we               O
+    hadn             I-MODAL_HYPOTHETICAL
+    't               I-MODAL_HYPOTHETICAL
+    switched         O
+    to               O
+    YugabyteDB       B-REFERENT
+    ?                O
+
+Note how example 3 has FIVE cue spans across only 14 tokens — tag AGGRESSIVELY.
+Most real queries will have 2-5 non-O tokens, not zero.
 """
 
 
