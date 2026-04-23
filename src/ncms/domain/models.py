@@ -56,7 +56,16 @@ class EdgeType(StrEnum):
     CURRENT_STATE_OF = "current_state_of"
     # Temporal / causal
     PRECEDES = "precedes"
+    # CTLG v8+: direct causation edges.  CAUSED_BY points from
+    # effect to cause (``effect CAUSED_BY cause``); populated at
+    # ingest-time by the cue-tagging pipeline when CAUSAL_EXPLICIT
+    # or CAUSAL_ALTLEX spans connect two REFERENT entities.
     CAUSED_BY = "caused_by"
+    # CTLG v8+: enabling conditions.  ENABLES points from the
+    # enabler to the enabled; weaker than CAUSED_BY — the enabler
+    # made the effect possible but didn't force it.  Example:
+    # "availability of pgvector ENABLED the Postgres decision".
+    ENABLES = "enables"
 
 
 # ---------------------------------------------------------------------------

@@ -111,6 +111,49 @@ class Zone:
     ended_transition: str | None
 
 
+@dataclass(frozen=True)
+class CausalZone:
+    """CTLG v8+: a connected component under ``CAUSED_BY`` + ``ENABLES``.
+
+    Dual to :class:`Zone` (which is a refines-connected component).
+    Causation is many-to-many — a single event can both cause and
+    be caused by multiple others — so causal zones can span
+    multiple subjects and merge into larger DAGs than refines
+    zones.
+
+    The trajectory grammar's causal subgrammar ``G_{tr,c}``
+    generates walks within a causal zone; the dispatcher uses the
+    zone's ``root_causes`` as starting points for backward walks
+    (``cause_of`` / ``chain_cause_of``) and ``leaf_effects`` for
+    forward walks (``effect_of``).
+
+    Attributes
+    ----------
+    zone_id
+        Stable id within the domain's graph.
+    member_ids
+        Memory ids in this causal zone.  Unordered frozenset because
+        a causal DAG doesn't have a single linear ordering (unlike
+        the refines chain).
+    root_causes
+        Nodes with no incoming ``CAUSED_BY`` edges within the zone
+        — the backward-walk starting points.
+    leaf_effects
+        Nodes with no outgoing ``CAUSED_BY`` edges within the zone
+        — the forward-walk starting points.
+    subject_coverage
+        Subjects touched by this zone.  A causal zone may span
+        multiple subjects (``"audit"`` → ``"auth-service"``,
+        ``"billing-service"``).
+    """
+
+    zone_id: int
+    member_ids: frozenset[str]
+    root_causes: tuple[str, ...]
+    leaf_effects: tuple[str, ...]
+    subject_coverage: frozenset[str] = frozenset()
+
+
 # ---------------------------------------------------------------------------
 # Graph shaping
 # ---------------------------------------------------------------------------
@@ -350,3 +393,113 @@ def retirement_memory(
                 ):
                     return edge.dst
     return None
+
+
+# ---------------------------------------------------------------------------
+# Causal zones (CTLG v8+)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CausalEdge:
+    """A single ``CAUSED_BY`` or ``ENABLES`` edge in the causal graph.
+
+    Distinct from :class:`ZoneEdge` (refines/supersedes/retires), which
+    only admits state-evolution transitions.  Causal edges cross
+    subject boundaries, don't participate in zone closure, and carry
+    cue provenance in ``metadata`` for explainability.
+    """
+
+    src: str             # effect memory id
+    dst: str             # cause memory id
+    edge_type: str       # "caused_by" or "enables"
+    cue_type: str = ""   # "CAUSAL_EXPLICIT" / "CAUSAL_ALTLEX"
+    confidence: float = 1.0
+
+
+def build_causal_zones(
+    causal_edges: Iterable[CausalEdge],
+    memory_subjects: Mapping[str, str] | None = None,
+) -> list[CausalZone]:
+    """Compute causal zones from a set of ``CausalEdge``s.
+
+    A causal zone is a weakly-connected component in the causal
+    graph (``CAUSED_BY`` + ``ENABLES``).  Since causation is
+    many-to-many, zones can span subjects and merge on shared
+    cause/effect nodes.
+
+    The returned zones identify:
+      * ``root_causes`` — nodes with no incoming causal edge
+      * ``leaf_effects`` — nodes with no outgoing causal edge
+      * ``subject_coverage`` — set of subjects touched (from
+        ``memory_subjects`` if provided; empty set otherwise)
+
+    Dispatcher callers use ``root_causes`` as starting points for
+    ``cause_of`` / ``chain_cause_of`` backward walks, and
+    ``leaf_effects`` for ``effect_of`` forward walks.
+    """
+    edges_list = list(causal_edges)
+    if not edges_list:
+        return []
+
+    # Build undirected adjacency for weakly-connected-component BFS.
+    adj: dict[str, set[str]] = defaultdict(set)
+    for e in edges_list:
+        adj[e.src].add(e.dst)
+        adj[e.dst].add(e.src)
+
+    # Track directed in/out degree for root/leaf identification.
+    in_count: dict[str, int] = defaultdict(int)
+    out_count: dict[str, int] = defaultdict(int)
+    for e in edges_list:
+        out_count[e.src] += 1  # src has outgoing edge
+        in_count[e.dst] += 1   # dst has incoming edge
+
+    visited: set[str] = set()
+    zones: list[CausalZone] = []
+    zone_counter = 0
+    for start in adj:
+        if start in visited:
+            continue
+        # BFS to find all nodes in this weakly-connected component.
+        component: set[str] = set()
+        stack = [start]
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.add(node)
+            stack.extend(adj[node] - visited)
+
+        # Within component:
+        #   root_cause = node with no OUTGOING caused_by edge, i.e.
+        #     no cause of its own — it originates the chain.
+        #   leaf_effect = node with no INCOMING caused_by edge, i.e.
+        #     nothing is caused by it — it's a pure terminal effect.
+        # (Recall: CAUSED_BY points effect→cause, so having an
+        # outgoing caused_by means "I have a cause".)
+        roots = tuple(sorted(
+            m for m in component if out_count.get(m, 0) == 0
+        ))
+        leaves = tuple(sorted(
+            m for m in component if in_count.get(m, 0) == 0
+        ))
+        subjects: frozenset[str]
+        if memory_subjects is not None:
+            subjects = frozenset(
+                s for m in component
+                if (s := memory_subjects.get(m)) is not None
+            )
+        else:
+            subjects = frozenset()
+
+        zones.append(CausalZone(
+            zone_id=zone_counter,
+            member_ids=frozenset(component),
+            root_causes=roots,
+            leaf_effects=leaves,
+            subject_coverage=subjects,
+        ))
+        zone_counter += 1
+    return zones
