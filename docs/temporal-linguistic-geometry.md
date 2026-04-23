@@ -2,7 +2,7 @@
 
 **A Grammar-First Theory of Memory-Trajectory Retrieval**
 
-*Pre-paper draft · 2026-04-18 · NCMS integration status updated 2026-04-20*
+*Pre-paper draft · 2026-04-18 · NCMS integration status updated 2026-04-20 · CTLG extension pointer added 2026-04-23*
 
 > **Status: SHIPPED into NCMS (P1 2026-04-19).**  The grammar
 > layer at `src/ncms/domain/tlg/` and `src/ncms/application/tlg/`
@@ -14,6 +14,27 @@
 > the SLM's `state_change_head` emits the ingest-side signal
 > that drives TLG's retirement extractor at zone-induction time.
 > See §7.6 M1 / M2 below for the shipped milestones.
+>
+> **Extension in flight (CTLG, 2026-04-23 pivot):** the machinery
+> in this doc (trajectory grammar, zone grammar, target grammar,
+> confident abstention, zero-confidently-wrong invariant) stays.
+> What's being added: a causal trajectory subgrammar `G_tr,c` over
+> new `CAUSED_BY` / `ENABLES` edges, a typed `Trajectory` class, an
+> explicit causal-heuristic suite that replaces implicit per-walker
+> scoring, and grammar-guided search reduction (instead of the
+> current O(n_memories) walker scans).  The shape_intent classifier
+> in the SLM is replaced by a sequence-labeled cue tagger feeding a
+> compositional synthesizer.  See
+> [`docs/research/ctlg-design.md`](research/ctlg-design.md) (overall
+> pivot),
+> [`docs/research/ctlg-grammar.md`](research/ctlg-grammar.md)
+> (formal grammar extension + causal heuristics),
+> [`docs/research/ctlg-cue-guidelines.md`](research/ctlg-cue-guidelines.md)
+> (annotator contract), and
+> [`docs/research/ctlg-migration-audit.md`](research/ctlg-migration-audit.md)
+> (what stays / reframes / retires).  The shape_intent failure
+> retrospective is at
+> [`docs/completed/failed-experiments/shape-intent-classification.md`](completed/failed-experiments/shape-intent-classification.md).
 
 ---
 
