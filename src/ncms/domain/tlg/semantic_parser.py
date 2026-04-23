@@ -304,7 +304,7 @@ def synthesize(
 
     # ── Rule 5: TEMPORAL_DURING + TEMPORAL_ANCHOR → during_interval ──────
     if cues.temporal_during or (
-        cues.temporal_anchor and not cues.has_ordinal
+        cues.temporal_anchor and not cues.has_ordinal and not cues.temporal_since
     ):
         return TLGQuery(
             axis="temporal",
@@ -314,6 +314,22 @@ def synthesize(
             temporal_anchor=temporal_anchor_canon,
             confidence=0.82,
             matched_rule="temporal_during",
+        )
+
+    # ── Rule 5b: TEMPORAL_SINCE → state_at (current state with anchor) ───
+    # "Since Q2 we've used X" / "as of the last release, what's our Y" —
+    # semantically equivalent to "current state given a start anchor".
+    # If there's also a REFERENT or SCOPE, prefer that context.
+    if cues.temporal_since:
+        return TLGQuery(
+            axis="temporal",
+            relation="state_at",
+            subject=subject_canon,
+            scope=scope_canon,
+            referent=referent_canon,
+            temporal_anchor=temporal_anchor_canon,
+            confidence=0.78,
+            matched_rule="temporal_since",
         )
 
     # ── Rule 6: ASK_CURRENT + SCOPE → current state ──────────────────────
