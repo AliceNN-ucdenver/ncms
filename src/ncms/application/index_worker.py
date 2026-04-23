@@ -736,17 +736,24 @@ class IndexWorkerPool:
         if not (_has_state_change or _has_state_declaration):
             return
 
+        # v7+ async indexing path: also source canonical state_value
+        # from the persisted SLM role_spans when present.  The ingest
+        # stage stashed the full dict under ``memory.structured["intent_slot"]``.
+        slm_label_bg = (memory.structured or {}).get("intent_slot") or None
         node_metadata = self._svc._ingestion.extract_entity_state_meta(
-            memory.content, all_entities,
+            memory.content, all_entities, slm_label=slm_label_bg,
         )
 
         # Validate detected entity exists in GLiNER extraction
-        _entity_names_lower = {
-            e["name"].lower() for e in all_entities
-        }
-        _detected_entity = node_metadata.get("entity_id", "")
-        if _detected_entity.lower() not in _entity_names_lower:
-            return  # suppress L2 creation
+        # (skip for SLM-sourced metadata — the primary canonical is
+        # authoritative even when GLiNER didn't echo it verbatim).
+        if node_metadata.get("source") != "slm_role_span":
+            _entity_names_lower = {
+                e["name"].lower() for e in all_entities
+            }
+            _detected_entity = node_metadata.get("entity_id", "")
+            if _detected_entity.lower() not in _entity_names_lower:
+                return  # suppress L2 creation
 
         if not node_metadata:
             return

@@ -78,12 +78,26 @@ SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
         "alternative", # "instead of X" (choice slot)
     ),
     "software_dev": (
-        "library",     # FastAPI, Pydantic
-        "language",    # Python, Rust
-        "pattern",     # async, threads, event-loop
-        "tool",        # IDE, linter, debugger
-        "alternative",
-        "frequency",   # "before every commit", "on save"
+        # Fine-grained, crisp functional categories for agent-SDLC
+        # retrieval.  Boundary rules live in the LLM labeller prompt
+        # + the SDG template pools — see
+        # ``adapters/sdg/templates.py::SOFTWARE_DEV_TEMPLATES`` and
+        # ``corpus/llm_slot_labeler.py::_SLOT_DESCRIPTIONS``.
+        #
+        # Agent queries expect direct typed handles:
+        #   "what framework is service X?"  -> framework slot
+        #   "what database do we use?"      -> database slot
+        #   "what orchestration platform?"  -> platform slot
+        "language",     # compiled/interpreted: Python, Rust, Go, TS, Java
+        "framework",    # opinionated app framework: Django, React, Rails
+        "library",      # imported dep that isn't a framework: Pydantic, Lodash
+        "database",     # data stores / caches / queues / search indexes:
+                        # Postgres, MongoDB, Redis, Kafka, Elasticsearch
+        "platform",     # runtime / orchestration / cloud: Docker, K8s, AWS
+        "tool",         # dev-time only: ruff, pytest, VS Code, Jenkins
+        "pattern",      # architectural / coding pattern: async, CQRS, DI
+        "alternative",  # contrast partner: "X over Y" / "instead of Y"
+        "frequency",    # timing: "every commit", "on save"
     ),
     "clinical": (
         "medication",   # metformin, aspirin
@@ -279,10 +293,40 @@ class ExtractedLabel:
     admission_confidence: float | None = None
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
-    # 6th head (v6+) — query-shape.  None when the adapter predates
-    # v6 or the head confidence is below the dispatch threshold.
-    shape_intent: "ShapeIntent | None" = None
+    # 6th head (v6/v7.x legacy) — query-shape classification.
+    #
+    # DEPRECATED (v8): this classification-style output is being
+    # replaced by CTLG cue-tagging (see docs/research/ctlg-design.md
+    # + docs/research/ctlg-grammar.md).  The classifier overfit
+    # template scaffolds (100% train / 25.6% held-out on natural
+    # queries — see docs/completed/failed-experiments/
+    # shape-intent-classification.md).  In v8+ this field will be a
+    # computed @property over cue_tags + the compositional
+    # synthesizer; in v9 the field is removed.  Callers should
+    # migrate to ``cue_tags`` + TLG synthesizer output.
+    #
+    # None when the adapter predates v6 or the head confidence is
+    # below the dispatch threshold.
+    shape_intent: ShapeIntent | None = None
     shape_intent_confidence: float | None = None
+
+    # 6th head (v7+) — role-classified gazetteer spans.  Superset of
+    # the ``slots`` dict: ``slots`` is derived from ``role_spans`` at
+    # inference time (primary → typed slot, alternative → alternative
+    # slot, casual/not_relevant → dropped).  Empty tuple when the
+    # adapter predates v7 or no catalog spans were detected.
+    role_spans: tuple[RoleSpan, ...] = field(default_factory=tuple)
+
+    # CTLG head (v8+) — BIO-tagged causal / temporal / ordinal /
+    # modal / referent / subject / scope cues over the query text
+    # (or memory content, when used ingest-side).  Replaces the
+    # classification-style ``shape_intent`` head with a sequence
+    # labeler whose output feeds a compositional synthesizer in
+    # ``ncms.domain.tlg.semantic_parser``.  Empty tuple when the
+    # adapter predates v8 (all current production adapters).
+    # See docs/research/ctlg-cue-guidelines.md for the label
+    # vocabulary and annotator contract.
+    cue_tags: tuple["TaggedToken", ...] = field(default_factory=tuple)
 
     def is_confident(self, threshold: float = 0.7) -> bool:
         return self.intent_confidence >= threshold
@@ -301,6 +345,65 @@ StateChange = Literal[
     "retirement",   # "Deprecated X in favor of Y" — retires prior state
     "none",         # no state transition
 ]
+
+#: Role classification (v7+ replaces the BIO slot head).  Assigned
+#: per detected catalog surface in a row.  The architectural split:
+#: the gazetteer (``catalog.detect_spans``) finds surfaces + their
+#: catalog slot; the role head classifies WHAT THIS SURFACE IS
+#: DOING in the sentence.  Primary spans become typed slot values
+#: (``database=postgres``), alternative spans become the
+#: ``alternative`` slot, casual/not_relevant spans are dropped.
+Role = Literal[
+    "primary",        # the main subject of the row for its slot
+    "alternative",    # the X-vs-Y contrast partner being rejected
+    "casual",         # mentioned in passing, NOT the row's subject
+    "not_relevant",   # distractor / unrelated / noise
+]
+ROLE_LABELS: tuple[Role, ...] = (
+    "primary", "alternative", "casual", "not_relevant",
+)
+
+
+@dataclass(frozen=True)
+class DetectedSpan:
+    """One gazetteer hit inside a row's text.
+
+    ``char_start`` / ``char_end`` are character offsets into the
+    original text (slice-compatible, end-exclusive).  ``surface`` is
+    the exact substring as it appeared in the text; ``canonical`` and
+    ``slot`` come from the authoritative catalog.  ``source_alias``
+    records which catalog alias matched (handy for debugging misses).
+    """
+
+    char_start: int
+    char_end: int
+    surface: str       # literal substring from text
+    canonical: str     # catalog canonical form
+    slot: str          # catalog-authoritative slot
+    topic: str         # catalog topic
+    source_alias: str = ""
+
+
+@dataclass(frozen=True)
+class RoleSpan:
+    """One role-labeled span — either a training target or inference
+    output of the v7+ role head.
+
+    Serialises as a nested dict inside ``GoldExample.role_spans``.  At
+    training time the role label is the ground-truth; at inference
+    time the role head predicts it and the surface + slot come from
+    the gazetteer pass that preceded the model forward.
+    """
+
+    char_start: int
+    char_end: int
+    surface: str
+    canonical: str
+    slot: str
+    role: Role
+    # Optional training-time provenance.
+    source: str = ""
+
 
 #: Query-shape classification (6th head, v6+).  Produced by the
 #: ``shape_intent_head`` on query-voice input.  Replaces the hand-
@@ -369,6 +472,11 @@ class GoldExample:
     # rows (they're not queries); set on query-side training rows
     # imported from MSEB gold.
     shape_intent: ShapeIntent | None = None
+
+    # v7+ role-head ground-truth.  Empty list when the row predates
+    # v7 labelling — the training loop skips the role loss for those
+    # rows (per-example mask, same pattern as topic/admission/state).
+    role_spans: list[RoleSpan] = field(default_factory=list)
 
     # Which data tier this came from.
     split: Literal["gold", "llm", "sdg", "adversarial"] = "gold"

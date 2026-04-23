@@ -1,6 +1,0 @@
-{"text": "brb, grabbing coffee", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "ephemeral", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}
-{"text": "on my way!", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "ephemeral", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}
-{"text": "sounds good, talk later", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "ephemeral", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}
-{"text": "lol", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "discard", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}
-{"text": "k", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "discard", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}
-{"text": "ttyl", "domain": "conversational", "intent": "none", "slots": {}, "topic": "other", "admission": "discard", "state_change": "none", "split": "gold", "source": "hand-labeled 2026-04-19 mixed"}

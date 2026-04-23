@@ -51,7 +51,9 @@ from ncms.application.adapters.schemas import (
     DOMAINS,
     Domain,
     GoldExample,
+    RoleSpan,
 )
+from ncms.application.adapters.sdg.catalog import detect_spans
 from ncms.application.adapters.sdg.templates import (
     TEMPLATE_REGISTRY,
     DomainTemplates,
@@ -130,6 +132,55 @@ def _draw_auxiliary(
         subs["role"] = rng.choice(vocab.roles)
 
 
+def _label_role_spans(
+    text: str, slots: dict[str, str], domain: Domain,
+) -> list[RoleSpan]:
+    """Post-render gazetteer pass → role-labeled spans.
+
+    Every surface the gazetteer detects in the rendered SDG text gets
+    a role assignment:
+
+      - ``primary`` when the span's canonical form matches the
+        value of its own catalog slot in ``slots``.  Templates fill
+        one slot value as ``{primary}`` so the emitted surface and
+        ``slots[template.slot_name]`` line up exactly.
+      - ``alternative`` when the canonical matches ``slots["alternative"]``
+        (``{alt}`` template placeholders).
+      - ``not_relevant`` when the span was detected but does not
+        match any labelled slot value.  Catalog-heavy templates like
+        software_dev "We have standardised on Postgres for the main
+        API, and we have adopted Grafana for dashboards." can
+        generate spurious hits; labelling them as ``not_relevant``
+        explicitly teaches the role head that raw detection is not
+        enough for a positive assignment.
+    """
+    gaz = detect_spans(text, domain=domain)
+    # Normalise slot values to lowercase canonicals for comparison.
+    slot_values_lower = {
+        k: v.lower().strip() for k, v in slots.items() if v
+    }
+    alt_value = slot_values_lower.get("alternative")
+    out: list[RoleSpan] = []
+    for span in gaz:
+        canon = span.canonical.lower()
+        if alt_value is not None and canon == alt_value:
+            role = "alternative"
+        elif slot_values_lower.get(span.slot) == canon:
+            role = "primary"
+        else:
+            role = "not_relevant"
+        out.append(RoleSpan(
+            char_start=span.char_start,
+            char_end=span.char_end,
+            surface=span.surface,
+            canonical=span.canonical,
+            slot=span.slot,
+            role=role,  # type: ignore[arg-type]
+            source="sdg-template",
+        ))
+    return out
+
+
 def _render(
     rng: random.Random,
     domain: Domain,
@@ -158,6 +209,8 @@ def _render(
     except KeyError:
         return None
 
+    role_spans = _label_role_spans(text, slots, domain)
+
     return GoldExample(
         text=text,
         domain=domain,
@@ -166,6 +219,7 @@ def _render(
         topic=pool.topic,
         admission="persist",  # type: ignore[arg-type]
         state_change=template.state_change,  # type: ignore[arg-type]
+        role_spans=role_spans,
         split="sdg",
         source=f"template-v7 seed={rng.getstate()[1][0]}",
     )

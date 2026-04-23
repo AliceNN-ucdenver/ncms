@@ -418,6 +418,27 @@ class MemoryService:
                 ),
                 "method": intent_slot_label.method,
                 "latency_ms": intent_slot_label.latency_ms,
+                # v7+: role-classified spans.  Thread these through so
+                # the L2 ENTITY_STATE builder can source state_value
+                # from the primary-role span's canonical form (e.g.
+                # ``database=postgresql``) instead of the raw sentence.
+                # Serialise to list-of-dicts for JSON round-trip.
+                "role_spans": [
+                    {
+                        "char_start": r.char_start,
+                        "char_end": r.char_end,
+                        "surface": r.surface,
+                        "canonical": r.canonical,
+                        "slot": r.slot,
+                        "role": r.role,
+                    }
+                    for r in getattr(intent_slot_label, "role_spans", ())
+                ],
+                # Also keep the reconstructed slots dict (primary-role
+                # slots + alternative) — the L2 builder checks this as
+                # a fallback when role_spans is empty (e.g. pre-v7
+                # adapters that only populated ``slots``).
+                "slots": dict(getattr(intent_slot_label, "slots", {}) or {}),
             }
 
         memory = Memory(

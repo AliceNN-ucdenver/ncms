@@ -1,24 +1,31 @@
 """LoRA multi-head inference model — production copy.
 
 Self-contained LoRA+heads inference code.  Training driver lives
-at :mod:`ncms.training.intent_slot.train_lora`; this module hosts
-only the nn.Module + the :class:`LoraJointBert` inference class
-plus head save/load helpers shared between training and
-inference.
+at :mod:`ncms.application.adapters.methods.joint_bert_lora`; this
+module hosts only the nn.Module + the :class:`LoraJointBert`
+inference class plus head save/load helpers.
 
-Architecture::
+Architecture (v7+, with v6 compat shim)::
 
     bert-base-uncased (raw) → wrap_encoder_with_lora()
                                     ↓ frozen at production
     LoRA adapter (10-15 MB) + heads:
-       ├── intent_head     (6 classes)
-       ├── topic_head      (domain taxonomy, variable)
+       ├── intent_head     (6 classes, [CLS]-pooled)
+       ├── topic_head      (domain taxonomy, [CLS]-pooled)
        ├── admission_head  (persist / ephemeral / discard)
        ├── state_change    (declaration / retirement / none)
-       └── slot_head       (BIO tags per domain slot)
+       ├── shape_intent    (TLG grammar shape, query-voice)
+       └── role_head       (v7: primary / alternative / casual /
+                             not_relevant — span-pooled over
+                             gazetteer-detected surfaces)
+       └── slot_head       (v6 legacy: BIO tag vocabulary — only
+                             instantiated when the manifest has
+                             ``slot_labels`` but empty ``role_labels``)
 
-One forward pass → all five classification outputs.  Latency on
-Apple Silicon MPS: ~20-65 ms p95 per ingest call.
+v7 adapters: slots are reconstructed at inference from role-
+classified gazetteer spans.  v6 adapters: slots are decoded from
+BIO tags on the shared encoder sequence output.  One forward pass
+covers both paths.  Latency on Apple Silicon MPS: ~20-65 ms p95.
 """
 
 from __future__ import annotations
@@ -44,6 +51,11 @@ from ncms.domain.models import ExtractedLabel
 from ncms.infrastructure.extraction.intent_slot.adapter_loader import (
     AdapterManifest,
 )
+
+try:  # v7 catalog-based gazetteer — optional at runtime
+    from ncms.application.adapters.sdg.catalog import detect_spans
+except ImportError:  # pragma: no cover — catalog package missing
+    detect_spans = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -94,13 +106,17 @@ class LoraJointModel(nn.Module):
         n_admission: int,
         n_state_change: int,
         n_shape_intents: int = 0,
+        n_roles: int = 0,
     ) -> None:
         super().__init__()
         self.encoder = AutoModel.from_pretrained(encoder_name)
         hidden = self.encoder.config.hidden_size
 
         self.intent_head = nn.Linear(hidden, n_intents)
-        self.slot_head = nn.Linear(hidden, n_slots)
+        # Legacy BIO slot head (v6 adapters).  Instantiated even when
+        # ``n_slots=0`` so ``load_heads`` can silently ignore v7
+        # checkpoints where slot_head.weight is absent.
+        self.slot_head = nn.Linear(hidden, max(n_slots, 1))
         # Heads are constructed even with empty vocab (n=0) to keep
         # the forward signature stable; training masks unlabeled
         # heads per-example, inference skips them if vocab empty.
@@ -112,6 +128,11 @@ class LoraJointModel(nn.Module):
         # no-op linear layer; callers ignore its output when the
         # adapter manifest's ``shape_intent_labels`` list is empty.
         self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
+        # v7 role head — primary/alternative/casual/not_relevant
+        # over span-pooled subword representations.  ``n_roles=0``
+        # means a pre-v7 adapter; the load_heads path leaves this as
+        # a random init and the inference path uses the BIO slot_head.
+        self.role_head = nn.Linear(hidden, max(n_roles, 1))
 
     def wrap_encoder_with_lora(
         self,
@@ -154,15 +175,19 @@ class LoraJointModel(nn.Module):
             "state_change": self.state_change_head(pooled),
             "shape_intent": self.shape_intent_head(pooled),
             "slot": self.slot_head(sequence),
+            # ``sequence`` is exposed so the v7 role head can pool
+            # span representations without a second forward pass.
+            "sequence": sequence,
         }
 
     def save_heads(self, path: Path) -> None:
-        """Dump the six heads to a single safetensors file."""
+        """Dump all heads to a single safetensors file."""
         state = {
             f"{head}.{param}": tensor
             for head, head_state in [
                 ("intent_head", dict(self.intent_head.state_dict())),
                 ("slot_head", dict(self.slot_head.state_dict())),
+                ("role_head", dict(self.role_head.state_dict())),
                 ("topic_head", dict(self.topic_head.state_dict())),
                 ("admission_head", dict(self.admission_head.state_dict())),
                 ("state_change_head", dict(self.state_change_head.state_dict())),
@@ -244,6 +269,7 @@ class LoraJointBert:
             n_admission=len(manifest.admission_labels),
             n_state_change=len(manifest.state_change_labels),
             n_shape_intents=len(manifest.shape_intent_labels),
+            n_roles=len(manifest.role_labels),
         )
         # Replace the raw encoder with the saved LoRA adapter.
         self._model.encoder = PeftModel.from_pretrained(
@@ -251,6 +277,16 @@ class LoraJointBert:
         )
         self._model.load_heads(adapter_dir / "heads.safetensors")
         self._model.to(self._device).eval()
+        # v7 dispatch: role_labels populated means gazetteer + role
+        # head; empty + slot_labels populated means legacy BIO path.
+        self._use_role_head = bool(manifest.role_labels)
+        if self._use_role_head and detect_spans is None:
+            logger.warning(
+                "[intent_slot] adapter manifest declares role_labels "
+                "but catalog.detect_spans is unavailable; falling "
+                "back to BIO slot decoding",
+            )
+            self._use_role_head = False
 
     def extract(self, text: str, *, domain: str) -> ExtractedLabel:
         if domain != self._manifest.domain:
@@ -293,8 +329,14 @@ class LoraJointBert:
             logits["shape_intent"][0], self._manifest.shape_intent_labels,
         )
 
-        slot_preds = torch.argmax(logits["slot"][0], dim=-1).tolist()
-        slots = self._assemble_slots(text, offsets, slot_preds)
+        # v7: gazetteer spans + role head; v6 fallback: BIO decode.
+        if self._use_role_head:
+            slots = self._assemble_slots_v7(
+                text, offsets, logits["sequence"][0],
+            )
+        else:
+            slot_preds = torch.argmax(logits["slot"][0], dim=-1).tolist()
+            slots = self._assemble_slots(text, offsets, slot_preds)
 
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -350,12 +392,99 @@ class LoraJointBert:
         idx = int(torch.argmax(probs).item())
         return label_vocab[idx], float(probs[idx].item())
 
+    def _assemble_slots_v7(
+        self,
+        text: str,
+        offsets: list[list[int]],
+        sequence_row: torch.Tensor,   # (L, H)
+    ) -> dict[str, str]:
+        """v7 slot assembly: gazetteer + role-head span pooling.
+
+        1. Run ``catalog.detect_spans`` to get authoritative catalog
+           hits with their canonical form + slot.
+        2. For each span, build a token-mask over ``offsets`` that
+           overlaps the span's character range.
+        3. Mean-pool the span's subword vectors from ``sequence_row``
+           and push through ``role_head`` to get the role.
+        4. Populate the slots dict: primary → typed slot, alternative
+           → ``alternative`` slot.  Casual / not_relevant dropped.
+        """
+        if detect_spans is None:
+            return {}
+        gaz = detect_spans(text, domain=self._manifest.domain)  # type: ignore[arg-type]
+        if not gaz:
+            return {}
+        role_labels = self._manifest.role_labels or [
+            "primary", "alternative", "casual", "not_relevant",
+        ]
+        max_len = self._manifest.max_length
+        span_masks: list[list[float]] = []
+        for s in gaz:
+            mask = [0.0] * max_len
+            for idx, off in enumerate(offsets):
+                if idx >= max_len:
+                    break
+                tok_start = int(off[0])
+                tok_end = int(off[1])
+                if tok_start == 0 and tok_end == 0:
+                    continue
+                if tok_end <= s.char_start or tok_start >= s.char_end:
+                    continue
+                mask[idx] = 1.0
+            span_masks.append(mask)
+
+        valid = [
+            (s, m) for s, m in zip(gaz, span_masks, strict=True)
+            if sum(m) > 0
+        ]
+        if not valid:
+            return {}
+
+        masks_t = torch.tensor(
+            [m for _, m in valid],
+            dtype=torch.float32, device=self._device,
+        )
+        with torch.no_grad():
+            pooled = masks_t @ sequence_row   # (S, L) @ (L, H)
+            pooled = pooled / masks_t.sum(dim=1, keepdim=True).clamp(min=1e-9)
+            role_logits = self._model.role_head(pooled)[:, :len(role_labels)]
+            probs = torch.softmax(role_logits, dim=-1)
+
+        # Max-confidence wins on multi-primary collisions — first-wins
+        # arbitrarily discards equally-valid primary surfaces in rows
+        # that compare two options side-by-side.  See
+        # :meth:`ncms.application.adapters.methods.joint_bert_lora.
+        # LoraJointBert._classify_spans` for the same fix upstream.
+        best_primary: dict[str, tuple[float, str]] = {}
+        best_alternative: tuple[float, str] | None = None
+        for i, (s, _) in enumerate(valid):
+            idx = int(torch.argmax(probs[i]).item())
+            role = role_labels[idx]
+            conf = float(probs[i][idx].item())
+            if role == "primary":
+                prev = best_primary.get(s.slot)
+                if prev is None or conf > prev[0]:
+                    best_primary[s.slot] = (conf, s.canonical)
+            elif role == "alternative":
+                if best_alternative is None or conf > best_alternative[0]:
+                    best_alternative = (conf, s.canonical)
+        slots: dict[str, str] = {
+            slot: canon for slot, (_, canon) in best_primary.items()
+        }
+        if best_alternative is not None:
+            slots["alternative"] = best_alternative[1]
+        return slots
+
     def _assemble_slots(
         self,
         text: str,
         offsets: list[list[int]],
         tag_ids: list[int],
     ) -> dict[str, str]:
+        """Legacy v6 BIO slot decoder.  Only invoked when the
+        manifest does not ship ``role_labels``."""
+        if not self._manifest.slot_labels:
+            return {}
         slots: dict[str, str] = {}
         cur_slot: str | None = None
         cur_start: int | None = None

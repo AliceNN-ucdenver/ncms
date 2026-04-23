@@ -74,8 +74,20 @@ _DEFAULT_RESULTS_DIR = Path(__file__).parent / "results"
 def _macro_f1(
     predictions: list[str], gold: list[str], labels: list[str],
 ) -> tuple[float, dict[str, float]]:
-    """Macro F1 across ``labels``; returns (macro, per-label)."""
+    """Macro F1 across labels that have GOLD support.
+
+    Labels with zero gold samples AND zero predictions are skipped
+    (not counted as F1=0) — they contribute no signal.  A label with
+    zero gold but non-zero predictions IS counted (all false
+    positives → F1=0).
+
+    This fixes the common "macro F1 artificially low because rare
+    classes have no gold in the eval split" issue.  Per-label F1
+    is still reported for every label in ``labels`` so callers see
+    the full per-class breakdown.
+    """
     per_label: dict[str, float] = {}
+    supported: list[float] = []
     for label in labels:
         tp = sum(
             1 for p, g in zip(predictions, gold, strict=False)
@@ -89,12 +101,19 @@ def _macro_f1(
             1 for p, g in zip(predictions, gold, strict=False)
             if p != label and g == label
         )
+        gold_support = tp + fn  # number of gold occurrences of `label`
+        pred_support = tp + fp
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
         f1 = (2 * precision * recall / (precision + recall)
               if (precision + recall) else 0.0)
         per_label[label] = f1
-    macro = sum(per_label.values()) / len(labels) if labels else 0.0
+        # Only include in macro when there's at least one gold
+        # instance (so the label is actually part of the task here)
+        # OR when the model emitted it (then it's measurable as FP).
+        if gold_support > 0 or pred_support > 0:
+            supported.append(f1)
+    macro = sum(supported) / len(supported) if supported else 0.0
     return macro, per_label
 
 

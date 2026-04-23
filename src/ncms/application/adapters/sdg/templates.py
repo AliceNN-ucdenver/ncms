@@ -230,320 +230,269 @@ CONVERSATIONAL_TEMPLATES = DomainTemplates(
 # ===========================================================================
 # Software development
 #
-# Slot taxonomy: library / language / pattern / tool / alternative /
-# frequency.  The v6 adapter only ever emitted library + alternative
-# because the old SDG only filled those slots.  v7 covers every slot.
+# Slot taxonomy (9 slots, agent-SDLC retrieval-friendly):
+#   language / framework / library / database / platform / tool /
+#   pattern / alternative / frequency
 #
-# State-change declaration templates deliberately mirror REAL ADR
-# decision language we observed being mis-labelled `none` by the v6
-# adapter at 0.96+ confidence on the MSEB softwaredev mini corpus:
-#   "After considering the pros and cons, we have decided to use X..."
-#   "Decided on X. Open to new choices as they arrive."
-#   "The decision to adopt X as our standard..."
+# Each pool maps ONE surface to ONE slot — no library↔tool overlap,
+# no database↔platform overlap.  Crisp functional rules (see
+# ``llm_slot_labeler.py::_SLOT_DESCRIPTIONS`` for the matching
+# prompt) drive both SDG and LLM-label classification so the model
+# sees a consistent single-best label for each surface.
+#
+# Boundary rules:
+#   language      — compiled / interpreted language you write programs in
+#   framework     — opinionated app/UI structure that dictates how you write
+#   library       — imported dep that's NOT a framework (utility functionality)
+#   database      — stores / queries / queues / indexes data structurally
+#                   (includes caches + message queues + search indexes)
+#   platform      — runtime / orchestration environment where apps run
+#   tool          — dev-time only, does NOT run in production
+#   pattern       — architectural / coding pattern (concept, not a tool)
+#   alternative   — contrast partner used in "X over Y" / "instead of Y"
+#   frequency     — timing expression
+#
+# State_change declaration templates target the v6 adapter's 9% recall
+# gap on "we have decided to use X" ADR language.
 # ===========================================================================
 
 
-_SWE_LIBRARY_POOL = SlotPool(
-    slot_name="library",
-    topic="framework",
-    values=(
-        # Web / API frameworks
-        "FastAPI", "Django", "Flask", "Rails", "Express", "Koa",
-        "NestJS", "Spring Boot", "Phoenix", "Sinatra", "Gin",
-        # Front-end frameworks / libs
-        "React", "Vue", "Svelte", "SvelteKit", "Next.js", "Angular",
-        "Remix", "Solid", "Astro", "HTMX",
-        # Data / ORM / validation
-        "SQLAlchemy", "ActiveRecord", "Prisma", "Ecto", "TypeORM",
-        "Pydantic", "Zod", "Marshmallow", "GORM",
-        # Styling / UI component libs
-        "Tailwind", "Bootstrap", "Chakra UI", "Material UI",
-        "shadcn/ui",
-        # HTTP / async client
-        "Requests", "httpx", "Axios", "Got", "aiohttp",
-        # Messaging / background work
-        "Celery", "RQ", "Sidekiq", "BullMQ",
-    ),
-)
+from ncms.application.adapters.sdg.catalog import pool_values as _pool_values
 
 _SWE_LANGUAGE_POOL = SlotPool(
     slot_name="language",
     topic="language_runtime",
-    values=(
-        "Python", "Rust", "Go", "TypeScript", "JavaScript",
-        "Ruby", "Java", "Kotlin", "Swift", "C++", "C#",
-        "Elixir", "Scala", "Clojure", "Haskell", "OCaml",
-        "PHP", "Perl", "Lua", "Zig", "Nim",
-    ),
+    values=_pool_values("software_dev", "language"),
 )
 
-_SWE_PATTERN_POOL = SlotPool(
-    slot_name="pattern",
-    topic="language_runtime",
-    values=(
-        "async/await", "event-loop concurrency", "threads", "fibers",
-        "callback-style code", "promise-based flow", "reactive streams",
-        "pub/sub", "CQRS", "event sourcing", "hexagonal architecture",
-        "clean architecture", "dependency injection", "observer pattern",
-        "strategy pattern", "repository pattern", "unit of work",
-        "microservices", "monolith-first", "server-side rendering",
-        "client-side rendering", "static site generation",
-    ),
+_SWE_FRAMEWORK_POOL = SlotPool(
+    slot_name="framework",
+    topic="framework",
+    values=_pool_values("software_dev", "framework"),
+)
+
+_SWE_LIBRARY_POOL = SlotPool(
+    slot_name="library",
+    topic="framework",
+    values=_pool_values("software_dev", "library"),
+)
+
+_SWE_DATABASE_POOL = SlotPool(
+    slot_name="database",
+    topic="infra",
+    values=_pool_values("software_dev", "database"),
+)
+
+_SWE_PLATFORM_POOL = SlotPool(
+    slot_name="platform",
+    topic="infra",
+    values=_pool_values("software_dev", "platform"),
 )
 
 _SWE_TOOL_POOL = SlotPool(
     slot_name="tool",
     topic="tooling",
-    values=(
-        # Linters / formatters / type checkers
-        "Ruff", "Black", "mypy", "ESLint", "Prettier", "Biome",
-        "pyright", "dprint", "rubocop",
-        # Package / build tools
-        "Poetry", "uv", "pip-tools", "pnpm", "npm", "yarn", "Cargo",
-        "Bundler", "Go modules", "Maven", "Gradle",
-        # Editors / IDEs
-        "VS Code", "Neovim", "JetBrains IDEs", "Cursor", "Emacs",
-        # Testing frameworks
-        "pytest", "Playwright", "Jest", "Vitest", "Cypress", "JUnit",
-        "RSpec",
-        # Bundlers / transpilers
-        "Webpack", "Vite", "esbuild", "Rollup", "Parcel", "SWC",
-        "Turbopack",
-        # CI / CD
-        "GitHub Actions", "Jenkins", "CircleCI", "GitLab CI",
-        "Buildkite", "ArgoCD", "Drone",
-    ),
+    values=_pool_values("software_dev", "tool"),
 )
 
-# Infra / data / orchestration — surfaced under the ``tool`` slot
-# with ``topic='infra'`` so the topic head learns the distinction
-# without expanding the slot schema.
-_SWE_INFRA_POOL = SlotPool(
-    slot_name="tool",
-    topic="infra",
-    values=(
-        # Data stores
-        "Postgres", "MySQL", "SQLite", "MongoDB", "Cassandra",
-        "DynamoDB", "CockroachDB", "SQL Server", "Oracle",
-        # Caches / queues
-        "Redis", "Memcached", "Kafka", "RabbitMQ", "NATS", "SQS",
-        # Orchestration
-        "Docker", "Docker Swarm", "Kubernetes", "Nomad", "ECS",
-        # Cloud platforms
-        "AWS", "GCP", "Azure", "Vercel", "Fly.io", "Heroku",
-        "Cloudflare Workers", "DigitalOcean",
-        # Observability
-        "Prometheus", "Grafana", "Datadog", "New Relic",
-        "OpenTelemetry", "Sentry",
-    ),
+_SWE_PATTERN_POOL = SlotPool(
+    slot_name="pattern",
+    topic="language_runtime",
+    values=_pool_values("software_dev", "pattern"),
 )
 
 _SWE_FREQUENCY_POOL = SlotPool(
     slot_name="frequency",
     topic="tooling",
-    values=(
-        "before every commit", "on save", "every morning", "every sprint",
-        "in every PR", "during stand-up", "every release",
-        "nightly in CI", "on each push", "after every migration",
-        "at feature-flag rollout", "at deploy time", "weekly",
-    ),
+    values=_pool_values("software_dev", "frequency"),
 )
 
+# Alternative pool — surfaces used in X-vs-Y contrast role.
+# Drawn from the union of every other pool's canonicals so LLM
+# labels tagged 'alternative' normalise against the same universe.
 _SWE_ALTERNATIVE_POOL = SlotPool(
     slot_name="alternative",
     topic="other",
-    values=(
-        "threads", "gevent", "raw CSS", "Webpack", "MySQL",
-        "Memcached", "subversion", "callback-style code",
-        "JSON over HTTP", "REST", "GraphQL", "SOAP",
-        "Vue", "Angular", "React", "Svelte",
-        "MongoDB", "Redis", "Postgres",
-        "Django", "Rails", "Flask", "Express",
-        "Jenkins", "CircleCI", "GitHub Actions",
-        "VS Code", "Neovim", "JetBrains IDEs",
-        "Docker Swarm", "Nomad", "ECS",
-    ),
+    values=tuple(sorted(set(
+        _pool_values("software_dev", "framework")
+        + _pool_values("software_dev", "library")
+        + _pool_values("software_dev", "language")
+        + _pool_values("software_dev", "database")
+        + _pool_values("software_dev", "platform")
+        + _pool_values("software_dev", "tool")
+        + _pool_values("software_dev", "pattern")
+    ))),
 )
 
 _SWE_TEMPLATES: tuple[SlotTemplate, ...] = (
     # ── Positive preference, per slot type ────────────────────────
-    SlotTemplate("I {verb} {primary}.",                  "library",  "positive"),
-    SlotTemplate("{primary} has saved me countless hours.", "library", "positive"),
-    SlotTemplate("I {verb} writing {primary}.",          "language", "positive"),
+    SlotTemplate("I {verb} writing {primary}.",           "language", "positive"),
     SlotTemplate("Writing {primary} makes me productive.", "language", "positive"),
-    SlotTemplate("I {verb} {primary} for concurrency.",  "pattern",  "positive"),
-    SlotTemplate("{primary} has the cleanest mental model.", "pattern", "positive"),
-    SlotTemplate("I {verb} {primary} for our dev loop.", "tool",     "positive"),
+    SlotTemplate("I {verb} {primary} as a framework.",    "framework", "positive"),
+    SlotTemplate("{primary} has saved us countless hours.", "framework", "positive"),
+    SlotTemplate("I {verb} {primary}.",                   "library",  "positive"),
+    SlotTemplate("{primary} is my go-to for day-to-day code.", "library", "positive"),
+    SlotTemplate("I {verb} {primary} as our data store.", "database", "positive"),
+    SlotTemplate("{primary} has been rock-solid for us.", "database", "positive"),
+    SlotTemplate("I {verb} {primary} for production workloads.", "platform", "positive"),
+    SlotTemplate("{primary} simplifies our deploy path.", "platform", "positive"),
+    SlotTemplate("I {verb} {primary} for our dev loop.",  "tool", "positive"),
     SlotTemplate("{primary} is fantastic for our workflow.", "tool", "positive"),
+    SlotTemplate("I {verb} {primary} for concurrency.",   "pattern", "positive"),
+    SlotTemplate("{primary} has the cleanest mental model.", "pattern", "positive"),
 
     # ── Negative ─────────────────────────────────────────────────
-    SlotTemplate("I {verb} {primary}.",                  "library",  "negative"),
-    SlotTemplate("{primary} is the worst part of my day.", "library", "negative"),
-    SlotTemplate("I {verb} {primary} as a language.",    "language", "negative"),
-    SlotTemplate("I {verb} debugging {primary}.",        "pattern",  "negative"),
-    SlotTemplate("{primary} wastes half my sprint.",     "tool",     "negative"),
+    SlotTemplate("I {verb} writing {primary}.",           "language", "negative"),
+    SlotTemplate("I {verb} {primary} as a framework.",    "framework", "negative"),
+    SlotTemplate("{primary} is the worst part of my day.", "framework", "negative"),
+    SlotTemplate("I {verb} {primary}.",                   "library",  "negative"),
+    SlotTemplate("I {verb} debugging {primary} issues.",  "database", "negative"),
+    SlotTemplate("{primary} has been giving us trouble.", "platform", "negative"),
+    SlotTemplate("{primary} wastes half my sprint.",      "tool", "negative"),
+    SlotTemplate("I {verb} debugging {primary}.",         "pattern", "negative"),
 
     # ── Difficulty ───────────────────────────────────────────────
-    SlotTemplate("{primary} {phrase}.",                  "library",  "difficulty"),
-    SlotTemplate("Debugging {primary} {phrase}.",        "library",  "difficulty"),
-    SlotTemplate("Setting up {primary} {phrase}.",       "tool",     "difficulty"),
-    SlotTemplate("Migrating away from {primary} {phrase}.", "tool",  "difficulty"),
+    SlotTemplate("{primary} {phrase}.",                   "language", "difficulty"),
+    SlotTemplate("{primary} {phrase}.",                   "framework", "difficulty"),
+    SlotTemplate("Debugging {primary} {phrase}.",         "library", "difficulty"),
+    SlotTemplate("Tuning {primary} {phrase}.",            "database", "difficulty"),
+    SlotTemplate("Setting up {primary} {phrase}.",        "platform", "difficulty"),
+    SlotTemplate("Configuring {primary} {phrase}.",       "tool", "difficulty"),
+    SlotTemplate("Adopting {primary} {phrase}.",          "pattern", "difficulty"),
 
     # ── Choice (uses alternative pool for {alt}) ─────────────────
-    SlotTemplate("We chose {primary} over {alt}.",       "library",  "choice"),
-    SlotTemplate("I went with {primary} instead of {alt}.", "library", "choice"),
-    SlotTemplate("Our team picked {primary} over {alt} for {area}.", "library", "choice"),
-    SlotTemplate("We standardised on {primary} instead of {alt}.", "tool", "choice"),
-    SlotTemplate("We moved from {alt} to {primary} last quarter.", "tool", "choice"),
+    SlotTemplate("We chose {primary} over {alt} for {area}.", "language", "choice"),
+    SlotTemplate("We went with {primary} instead of {alt}.",  "framework", "choice"),
+    SlotTemplate("Our team picked {primary} over {alt}.",     "library", "choice"),
+    SlotTemplate("We standardised on {primary} instead of {alt}.", "database", "choice"),
+    SlotTemplate("We moved from {alt} to {primary} last quarter.", "platform", "choice"),
+    SlotTemplate("We selected {primary} over {alt} for our CI path.", "tool", "choice"),
+    SlotTemplate("We adopted {primary} instead of {alt} architecturally.", "pattern", "choice"),
 
     # ── Habitual (frequency slot primary) ────────────────────────
-    SlotTemplate("I run {primary} in every PR.",         "tool",     "habitual"),
-    SlotTemplate("We run {primary} {freq}.",             "tool",     "habitual"),
-    SlotTemplate("I lint with {primary} on save.",       "tool",     "habitual"),
+    SlotTemplate("We run {primary} {freq}.",              "tool", "habitual"),
+    SlotTemplate("I run {primary} in every PR.",          "tool", "habitual"),
+    SlotTemplate("I lint with {primary} on save.",        "tool", "habitual"),
+    SlotTemplate("We deploy to {primary} {freq}.",        "platform", "habitual"),
 
-    # ── Neutral (none) narratives per slot ───────────────────────
-    SlotTemplate("The {primary} documentation is comprehensive.", "library", "none"),
-    SlotTemplate("{primary} is widely used in modern services.",  "library", "none"),
-    SlotTemplate("This document describes the context and trade-offs for {primary}.", "library", "none"),
-    SlotTemplate("See the {primary} documentation for configuration details.", "library", "none"),
-    SlotTemplate("The {primary} ecosystem has grown significantly over the past year.", "library", "none"),
+    # ── Neutral / none narratives per slot ───────────────────────
     SlotTemplate("{primary} is a popular choice for new backend services.", "language", "none"),
     SlotTemplate("The team is evaluating {primary} alongside other candidates.", "language", "none"),
-    SlotTemplate("{primary} simplifies concurrent IO significantly.", "pattern", "none"),
-    SlotTemplate("There are documented patterns for combining {primary} with existing services.", "pattern", "none"),
+    SlotTemplate("{primary} remains our default for new services.", "framework", "none"),
+    SlotTemplate("The {primary} ecosystem has grown significantly.", "framework", "none"),
+    SlotTemplate("{primary} documentation is comprehensive.", "library", "none"),
+    SlotTemplate("See the {primary} documentation for configuration details.", "library", "none"),
+    SlotTemplate("{primary} stores the operational dataset.", "database", "none"),
+    SlotTemplate("Our primary data store is {primary}.", "database", "none"),
+    SlotTemplate("All services deploy to {primary}.", "platform", "none"),
+    SlotTemplate("The {primary} environment hosts our production fleet.", "platform", "none"),
     SlotTemplate("{primary} is one of several options under consideration.", "tool", "none"),
     SlotTemplate("We plan to benchmark {primary} against our baseline next sprint.", "tool", "none"),
-    SlotTemplate("The {primary} module lives under the core package.", "tool", "none"),
+    SlotTemplate("{primary} simplifies concurrent IO significantly.", "pattern", "none"),
+    SlotTemplate("There are documented examples of combining {primary} with existing services.", "pattern", "none"),
 
-    # ── Declaration — REAL ADR phrasings we observed the v6 adapter
-    #    mislabel as intent=none state_change=none at 0.96+ conf.
-    SlotTemplate(
-        "We have decided to use {primary} for our {area}.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "After considering the pros and cons, we have decided to use {primary}.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Decided on {primary}. {aside}.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "The decision to adopt {primary} as our {role} was unanimous.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Our team went with {primary}.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Status: Accepted. We hereby adopt {primary} for all new services.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Going forward, all new modules will use {primary}.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Effective immediately, {primary} is the recommended pattern.",
-        "library", "none", "declaration",
-    ),
-    SlotTemplate(
-        "We have decided to use {primary} as our primary {role}.",
-        "language", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Final decision: the backend will be written in {primary}.",
-        "language", "none", "declaration",
-    ),
-    SlotTemplate(
-        "We are standardising on {primary} for {area}.",
-        "language", "none", "declaration",
-    ),
-    SlotTemplate(
-        "The architecture will follow {primary} going forward.",
-        "pattern", "none", "declaration",
-    ),
-    SlotTemplate(
-        "We will adopt {primary} for all new services.",
-        "pattern", "none", "declaration",
-    ),
-    SlotTemplate(
-        "We have decided to use {primary} as our {role}.",
-        "tool", "none", "declaration",
-    ),
-    SlotTemplate(
-        "After careful consideration, {primary} is the right choice for {area}.",
-        "tool", "none", "declaration",
-    ),
-    SlotTemplate(
-        "The decision is to proceed with {primary} as our orchestration platform.",
-        "tool", "none", "declaration",
-    ),
-    SlotTemplate(
-        "Decided: {primary} over all alternatives considered.",
-        "tool", "none", "declaration",
-    ),
+    # ── Declaration — REAL ADR phrasings ─────────────────────────
+    SlotTemplate("We have decided to use {primary} for our {area}.",               "language", "none", "declaration"),
+    SlotTemplate("Final decision: the backend will be written in {primary}.",      "language", "none", "declaration"),
+    SlotTemplate("We are standardising on {primary} for {area}.",                  "language", "none", "declaration"),
+    SlotTemplate("We have decided to use {primary} for our {area}.",               "framework", "none", "declaration"),
+    SlotTemplate("After considering the pros and cons, we have decided to use {primary}.", "framework", "none", "declaration"),
+    SlotTemplate("Decided on {primary}. {aside}.",                                 "framework", "none", "declaration"),
+    SlotTemplate("The decision to adopt {primary} as our {role} was unanimous.",   "framework", "none", "declaration"),
+    SlotTemplate("Our team went with {primary}.",                                  "framework", "none", "declaration"),
+    SlotTemplate("Status: Accepted. We hereby adopt {primary} for all new services.", "framework", "none", "declaration"),
+    SlotTemplate("Going forward, all new modules will use {primary}.",             "library", "none", "declaration"),
+    SlotTemplate("We now standardise on {primary} across services.",               "library", "none", "declaration"),
+    SlotTemplate("We have decided to use {primary} as our primary data store.",    "database", "none", "declaration"),
+    SlotTemplate("After evaluation, {primary} is our chosen database.",            "database", "none", "declaration"),
+    SlotTemplate("Decided: {primary} for the operational data path.",              "database", "none", "declaration"),
+    SlotTemplate("The decision is to proceed with {primary} as our orchestration platform.", "platform", "none", "declaration"),
+    SlotTemplate("We are moving all services to {primary}.",                       "platform", "none", "declaration"),
+    SlotTemplate("After careful consideration, {primary} is the right choice for {area}.", "platform", "none", "declaration"),
+    SlotTemplate("We have decided to use {primary} as our {role}.",                "tool", "none", "declaration"),
+    SlotTemplate("Effective immediately, {primary} is the recommended tool.",      "tool", "none", "declaration"),
+    SlotTemplate("Decided: {primary} over all alternatives considered.",           "tool", "none", "declaration"),
+    SlotTemplate("The architecture will follow {primary} going forward.",          "pattern", "none", "declaration"),
+    SlotTemplate("We will adopt {primary} for all new services.",                  "pattern", "none", "declaration"),
 
     # ── Retirement — supersession / deprecation / migration ──────
-    SlotTemplate(
-        "This decision supersedes the previous approach using {primary}.",
-        "library", "none", "retirement",
-    ),
-    SlotTemplate(
-        "{primary} is deprecated in favor of {alt}.",
-        "library", "none", "retirement",
-    ),
-    SlotTemplate(
-        "We are migrating away from {primary} to {alt}.",
-        "library", "none", "retirement",
-    ),
-    SlotTemplate(
-        "{primary} has been superseded by {alt}.",
-        "library", "none", "retirement",
-    ),
-    SlotTemplate(
-        "{primary} is sunset and will be removed in the next major release.",
-        "library", "none", "retirement",
-    ),
-    SlotTemplate(
-        "We have stopped writing new code in {primary}.",
-        "language", "none", "retirement",
-    ),
-    SlotTemplate(
-        "{primary} is deprecated for new services.",
-        "language", "none", "retirement",
-    ),
-    SlotTemplate(
-        "Our team is migrating off {primary}.",
-        "language", "none", "retirement",
-    ),
-    SlotTemplate(
-        "The prior {primary} approach was abandoned.",
-        "pattern", "none", "retirement",
-    ),
-    SlotTemplate(
-        "{primary} is no longer recommended for new code.",
-        "tool", "none", "retirement",
-    ),
-    SlotTemplate(
-        "The prior {primary} implementation will be retired over the next quarter.",
-        "tool", "none", "retirement",
-    ),
-    SlotTemplate(
-        "We are replacing {primary} with {alt} across the stack.",
-        "tool", "none", "retirement",
-    ),
+    #
+    # CONVENTION (v7.2+): ``{primary}`` ALWAYS carries the ADOPTED /
+    # CURRENT value, ``{alt}`` carries the RETIRED / LEFT value.
+    # This matches the LLM gold labeler convention
+    # ("transition from Java to Go" → primary=go, alt=java).  Prior
+    # templates had {primary} on the left-hand term which trained
+    # the role head to flip direction on migration prose; v7.1
+    # forensics caught it (see docs/forensics/v7.1-tlg-forensics.md).
+    #
+    # Single-slot retirements (no alt) — no migration direction to
+    # get wrong; these describe a retirement without naming what
+    # replaces it.
+    SlotTemplate("We have stopped writing new code in {primary}.",     "language", "none", "retirement"),
+    SlotTemplate("{primary} is deprecated for new services.",          "language", "none", "retirement"),
+    SlotTemplate("We are migrating off {primary} across the stack.",   "language", "none", "retirement"),
+    SlotTemplate("{primary} is sunset and will be removed next quarter.", "language", "none", "retirement"),
+    SlotTemplate("{primary} is being retired across all services.",    "database", "none", "retirement"),
+    SlotTemplate("{primary} is no longer the target platform for new code.", "platform", "none", "retirement"),
+    SlotTemplate("{primary} is no longer recommended for new code.",   "tool", "none", "retirement"),
+    SlotTemplate("The prior {primary} approach was abandoned.",        "pattern", "none", "retirement"),
+
+    # Migration retirements (primary = ADOPTED, alt = LEFT).
+    SlotTemplate("We have migrated from {alt} to {primary} for {area}.", "framework", "none", "retirement"),
+    SlotTemplate("{alt} has been deprecated in favor of {primary}.",     "framework", "none", "retirement"),
+    SlotTemplate("This decision supersedes the previous {alt} approach; {primary} is the new standard.", "framework", "none", "retirement"),
+    SlotTemplate("We replaced {alt} with {primary} across services.",    "library", "none", "retirement"),
+    SlotTemplate("{alt} has been superseded by {primary}.",              "library", "none", "retirement"),
+    SlotTemplate("We are deprecating {alt} in favor of {primary} as our data store.", "database", "none", "retirement"),
+    SlotTemplate("Migrated from {alt} to {primary} for the operational data path.", "database", "none", "retirement"),
+    SlotTemplate("Sunset {alt}; {primary} is the new primary database.", "database", "none", "retirement"),
+    SlotTemplate("We have migrated from {alt} to {primary} for container orchestration.", "platform", "none", "retirement"),
+    SlotTemplate("{alt} is being retired; {primary} is the new deploy target.", "platform", "none", "retirement"),
+    SlotTemplate("We are replacing {alt} with {primary} in the CI pipeline.", "tool", "none", "retirement"),
+    SlotTemplate("Deprecated {alt} — all builds now run {primary}.",     "tool", "none", "retirement"),
+    SlotTemplate("The prior {alt} implementation has been retired; {primary} is the standard going forward.", "tool", "none", "retirement"),
+    SlotTemplate("Moved off {alt}; we now follow {primary} across the stack.", "pattern", "none", "retirement"),
+    SlotTemplate("{alt} was abandoned in favor of {primary}.",           "pattern", "none", "retirement"),
+
+    # ── Subject-voice declarations ────────────────────────────────
+    #
+    # "{subject} uses {primary}" / "{subject} now uses {primary}"
+    # patterns caught v7.1 out completely (state_change head
+    # predicted NONE on every one).  Hard-coded subjects are fine —
+    # the role-head target is ``{primary}``, the subject is just
+    # scaffolding that varies surface form.
+    SlotTemplate("Decision: the user service uses {primary}.",       "database", "none", "declaration"),
+    SlotTemplate("Decision: the auth service uses {primary}.",       "database", "none", "declaration"),
+    SlotTemplate("Decision: the billing service uses {primary}.",    "database", "none", "declaration"),
+    SlotTemplate("Decision: the notification service uses {primary}.", "database", "none", "declaration"),
+    SlotTemplate("Decision: the API gateway runs on {primary}.",     "framework", "none", "declaration"),
+    SlotTemplate("The auth service now uses {primary}.",             "database", "none", "declaration"),
+    SlotTemplate("The user service now uses {primary}.",             "database", "none", "declaration"),
+    SlotTemplate("The payment service has been updated to use {primary}.", "framework", "none", "declaration"),
+    SlotTemplate("Our auth service is now built on {primary}.",      "framework", "none", "declaration"),
+    SlotTemplate("The inventory service runs on {primary} as of this release.", "platform", "none", "declaration"),
+    SlotTemplate("{primary} is the selected database for the user service.", "database", "none", "declaration"),
+    SlotTemplate("{primary} is the chosen framework for the auth service.", "framework", "none", "declaration"),
+    SlotTemplate("{primary} is our platform for the billing service.", "platform", "none", "declaration"),
+
+    # Subject-voice migrations (also retirement — subject's state changed).
+    SlotTemplate("Migrated the user service from {alt} to {primary}.", "database", "none", "retirement"),
+    SlotTemplate("The auth service has been migrated from {alt} to {primary}.", "database", "none", "retirement"),
+    SlotTemplate("The payment service moved off {alt}; it now uses {primary}.", "framework", "none", "retirement"),
+    SlotTemplate("The ingestion service switched from {alt} to {primary}.", "library", "none", "retirement"),
+    SlotTemplate("The API gateway was rebuilt on {primary}, replacing {alt}.", "framework", "none", "retirement"),
+    SlotTemplate("Moved the notification service from {alt} to {primary} last quarter.", "database", "none", "retirement"),
 )
 
 SOFTWARE_DEV_TEMPLATES = DomainTemplates(
     slot_pools=(
-        _SWE_LIBRARY_POOL,
         _SWE_LANGUAGE_POOL,
-        _SWE_PATTERN_POOL,
+        _SWE_FRAMEWORK_POOL,
+        _SWE_LIBRARY_POOL,
+        _SWE_DATABASE_POOL,
+        _SWE_PLATFORM_POOL,
         _SWE_TOOL_POOL,
-        _SWE_INFRA_POOL,
+        _SWE_PATTERN_POOL,
         _SWE_FREQUENCY_POOL,
         _SWE_ALTERNATIVE_POOL,
     ),

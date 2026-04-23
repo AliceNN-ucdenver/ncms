@@ -43,7 +43,13 @@ class AdapterManifest:
     max_length: int = 128
 
     intent_labels: list[str] = field(default_factory=list)
+    # Legacy v6 BIO tag vocabulary.  Populated on old adapters;
+    # v7+ adapters carry an empty list here and use ``role_labels``.
     slot_labels: list[str] = field(default_factory=list)
+    # v7 role-head vocabulary (primary / alternative / casual /
+    # not_relevant).  Empty on pre-v7 adapters — the inference
+    # path falls back to BIO slot decoding when this is empty.
+    role_labels: list[str] = field(default_factory=list)
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)

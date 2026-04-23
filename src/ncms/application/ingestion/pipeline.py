@@ -152,11 +152,22 @@ class IngestionPipeline:
 
     @staticmethod
     def extract_entity_state_meta(
-        content: str, entities: list[dict],
+        content: str,
+        entities: list[dict],
+        slm_label: dict | None = None,
     ) -> dict:
-        """Extract entity state metadata from content + GLiNER entities.
+        """Extract entity state metadata from content + SLM output.
 
-        Heuristic patterns (tried in order):
+        **v7+ preferred path** — when ``slm_label["role_spans"]``
+        contains a ``primary``-role entry, use the span's catalog
+        canonical (e.g. ``"postgresql"``) as ``state_value`` and its
+        catalog slot (``"database"``, ``"framework"``, ...) as
+        ``state_key``.  This gives reconciliation a stable comparison
+        key so supersedes/refines edges can actually fire.  Falls
+        back to the legacy regex patterns when role_spans is empty
+        or doesn't contain a primary.
+
+        Heuristic patterns (tried in order, post-SLM):
 
         1. ``EntityName: key = value`` — structured assignment
         2. ``EntityName key changed/updated from X to Y`` — transition
@@ -168,8 +179,58 @@ class IngestionPipeline:
 
         Returns a dict suitable for ``MemoryNode.metadata`` with
         ``entity_id``, ``state_key``, ``state_value``, and optionally
-        ``state_previous`` or ``state_scope``.
+        ``state_previous``, ``state_scope``, ``state_alternative``,
+        ``source`` (where this metadata came from).
         """
+        # ── v7+ SLM role-span path (preferred) ──────────────────────
+        # When the role head produced a primary-role catalog hit we
+        # use its canonical form as state_value and its slot as
+        # state_key.  The entity_id comes from the first GLiNER
+        # entity (the memory's subject) or from the caller.  When
+        # role_spans also contains an alternative, record it too —
+        # reconciliation can use it to verify the supersession.
+        if slm_label and slm_label.get("role_spans"):
+            role_spans = slm_label["role_spans"]
+            primary = next(
+                (r for r in role_spans if r.get("role") == "primary"),
+                None,
+            )
+            if primary:
+                alt = next(
+                    (r for r in role_spans if r.get("role") == "alternative"),
+                    None,
+                )
+                # Pick the subject entity — prefer a GLiNER entity
+                # that isn't itself the primary/alternative canonical
+                # (so the state belongs to something other than the
+                # value that CHANGED).  Example narrative:
+                # "auth-service migrated from PostgreSQL to CockroachDB"
+                # — GLiNER finds {auth-service, PostgreSQL, CockroachDB};
+                # primary=CockroachDB, alt=PostgreSQL, so subject
+                # should be auth-service.
+                primary_canon = primary["canonical"].lower()
+                alt_canon = alt["canonical"].lower() if alt else None
+                subject_entity = None
+                for ent in entities:
+                    name_l = ent["name"].lower()
+                    if name_l == primary_canon:
+                        continue
+                    if alt_canon and name_l == alt_canon:
+                        continue
+                    subject_entity = ent["name"]
+                    break
+                meta = {
+                    "entity_id": subject_entity or primary["canonical"],
+                    "state_key": primary["slot"],
+                    "state_value": primary["canonical"],
+                    "source": "slm_role_span",
+                }
+                if alt:
+                    meta["state_previous"] = alt["canonical"]
+                    meta["state_alternative"] = alt["canonical"]
+                return meta
+
+        # ── Legacy regex patterns (fallback when no role_spans) ────
         # Pattern 1: "EntityName: key = value"
         p_assign = re.compile(
             r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
@@ -1054,20 +1115,44 @@ class IngestionPipeline:
             and slm_state_conf >= self._config.slm_confidence_threshold
         )
         if subject and slm_state_change_confident:
-            # Always state_key="status" on the caller-asserted path.
-            # The SLM topic head produces coarse domain labels
-            # (framework/infra/tooling) that misclassify content
-            # (observed on real data: a team-culture ADR got
-            # topic='tooling' at conf 0.81).  Pinning state_key
-            # keeps reconciliation lookup consistent per subject.
-            snippet = content.strip()[:200] or "(empty)"
-            node_metadata = {
-                "entity_id": subject,
-                "state_key": "status",
-                "state_value": snippet,
-                "source": "caller_subject_slm_state_change",
-                "slm_state_change": slm_state,
-            }
+            # v7+ canonical state_value from role head (when present):
+            # prefer the primary-role catalog canonical over the raw
+            # content snippet so reconciliation has a stable
+            # comparison key across memories.  Falls back to the
+            # snippet when no role_spans (pre-v7 adapter or out-of-
+            # catalog content).
+            primary_span = None
+            alt_span = None
+            for r in slm_label.get("role_spans") or ():
+                if r.get("role") == "primary" and primary_span is None:
+                    primary_span = r
+                elif r.get("role") == "alternative" and alt_span is None:
+                    alt_span = r
+            if primary_span:
+                node_metadata = {
+                    "entity_id": subject,
+                    "state_key": primary_span["slot"],
+                    "state_value": primary_span["canonical"],
+                    "source": "caller_subject_slm_role_span",
+                    "slm_state_change": slm_state,
+                }
+                if alt_span:
+                    node_metadata["state_previous"] = alt_span["canonical"]
+                    node_metadata["state_alternative"] = alt_span["canonical"]
+            else:
+                # Pin state_key="status" on the fallback since the
+                # SLM topic head can misclassify domain-specific
+                # content (a team-culture ADR observed as topic=
+                # 'tooling' at conf 0.81).  Reconciliation lookup
+                # stays consistent per subject.
+                snippet = content.strip()[:200] or "(empty)"
+                node_metadata = {
+                    "entity_id": subject,
+                    "state_key": "status",
+                    "state_value": snippet,
+                    "source": "caller_subject_slm_state_change",
+                    "slm_state_change": slm_state,
+                }
             l2_node = MemoryNode(
                 memory_id=memory.id,
                 node_type=NodeType.ENTITY_STATE,
@@ -1136,17 +1221,27 @@ class IngestionPipeline:
         if not (_has_state_change or _has_state_declaration):
             return None
 
+        # Pass the full SLM label dict through so the role-span path
+        # in ``extract_entity_state_meta`` can source a canonical
+        # state_value (the catalog's primary entry) instead of
+        # falling through to the raw-sentence regex heuristics.
         node_metadata = self.extract_entity_state_meta(
-            content, all_entities,
+            content, all_entities, slm_label=slm_label,
         )
 
-        # Validate detected entity exists in GLiNER extraction set
-        _entity_names_lower = {
-            e["name"].lower() for e in all_entities
-        }
-        _detected_entity = node_metadata.get("entity_id", "")
-        if _detected_entity.lower() not in _entity_names_lower:
-            return None
+        # Validate detected entity exists in GLiNER extraction set.
+        # Skip this guard when the metadata came from the SLM role
+        # span path — the primary-canonical form (``"postgresql"``,
+        # ``"yugabytedb"``) is authoritative and may not appear in
+        # the GLiNER entity names as-is (GLiNER often outputs
+        # mixed-case variants like ``"PostgreSQL"``).
+        if node_metadata.get("source") != "slm_role_span":
+            _entity_names_lower = {
+                e["name"].lower() for e in all_entities
+            }
+            _detected_entity = node_metadata.get("entity_id", "")
+            if _detected_entity.lower() not in _entity_names_lower:
+                return None
 
         if not node_metadata:
             return None

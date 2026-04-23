@@ -47,6 +47,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
+import json
 import logging
 import sys
 import time
@@ -75,9 +77,29 @@ from ncms.application.adapters.sdg.expander import (
     _dedupe,
     expand_domain,
 )
-from ncms.application.adapters.train_lora_adapter import (
-    _corpus_hash,
-)
+
+
+def _corpus_hash(examples: list[GoldExample]) -> str:
+    """Deterministic hash of an ordered example list.
+
+    Used for manifest provenance — re-running the same training on
+    the same input produces the same hash, so downstream tooling
+    can detect when two adapters were trained on different data.
+    Previously lived in ``train_lora_adapter.py`` (research); moved
+    inline here so the production path has no experiments/ imports.
+    """
+    h = hashlib.sha256()
+    for ex in examples:
+        row = json.dumps({
+            "text": ex.text,
+            "intent": ex.intent,
+            "slots": ex.slots,
+            "topic": ex.topic,
+            "admission": ex.admission,
+            "state_change": ex.state_change,
+        }, sort_keys=True).encode("utf-8")
+        h.update(row)
+    return h.hexdigest()[:16]
 from ncms.application.adapters.training.adversarial import (
     generate_adversarial,
 )
@@ -304,11 +326,11 @@ def phase4_finetune_and_gate(
 
     logger.info(
         "[phase4] training — domain=%s n_raw=%d n_training=%d "
-        "(gold×%d + sdg + adversarial×%d) topic_labels=%d slot_labels=%d "
+        "(gold×%d + sdg + adversarial×%d) topic_labels=%d role_labels=%d "
         "epochs=%d lora_r=%d",
         domain, len(hash_input), len(combined),
         gold_upsample, adversarial_upsample,
-        len(manifest.topic_labels), len(manifest.slot_labels),
+        len(manifest.topic_labels), len(manifest.role_labels),
         epochs, lora_r,
     )
     train(
@@ -561,6 +583,8 @@ def run_training(
     *,
     domain: str,
     version: str,
+    target_size: int = 3000,
+    adversarial_size: int = 300,
     epochs: int | None = None,
     batch_size: int | None = None,
     learning_rate: float | None = None,
@@ -586,6 +610,8 @@ def run_training(
         "--corpus-dir", str(manifest.gold_jsonl.parent),
         "--taxonomy", str(manifest.taxonomy_yaml),
         "--version", version,
+        "--target-size", str(target_size),
+        "--adversarial-size", str(adversarial_size),
     ]
     if epochs is not None:
         argv += ["--epochs", str(epochs)]

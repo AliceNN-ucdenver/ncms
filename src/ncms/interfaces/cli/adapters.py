@@ -129,17 +129,22 @@ def adapters_generate_sdg(
 @adapters.command("train")
 @click.option("--domain", required=True)
 @click.option("--version", required=True, help="Target adapter version (e.g. v7)")
+@click.option("--target-size", type=int, default=3000,
+              help="SDG pre-dedup target (default 3000 — matches the v7 rewrite)")
+@click.option("--adversarial-size", type=int, default=300,
+              help="Adversarial examples to generate (default 300)")
 @click.option("--epochs", type=int, default=None)
 @click.option("--batch-size", type=int, default=None)
 @click.option("--learning-rate", type=float, default=None)
 @click.option("--device", default=None,
               help="Force device: cpu / cuda / mps (auto by default)")
 @click.option("--skip-sdg", is_flag=True,
-              help="Reuse existing adapters/corpora/sdg_<domain>.jsonl")
+              help="Reuse existing adapters/corpora/sdg_<domain>.jsonl as-is")
 @click.option("--skip-adversarial", is_flag=True,
               help="Skip adversarial augmentation phase")
 def adapters_train(
     domain: str, version: str,
+    target_size: int, adversarial_size: int,
     epochs: int | None, batch_size: int | None,
     learning_rate: float | None,
     device: str | None,
@@ -154,17 +159,160 @@ def adapters_train(
     """
     from ncms.application.adapters.train import run_training
 
-    # Delegate to the training entry point (defined in train.py's
-    # `run_training` — a thin wrapper around the research-style main()).
     run_training(
         domain=domain,
         version=version,
+        target_size=target_size,
+        adversarial_size=adversarial_size,
         epochs=epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
         device=device,
         skip_sdg=skip_sdg,
         skip_adversarial=skip_adversarial,
+    )
+
+
+@adapters.command("label-slots")
+@click.option("--domain", required=True)
+@click.option("--source", type=click.Path(path_type=Path, exists=True),
+              required=True,
+              help="JSONL file whose rows have a content field")
+@click.option("--output", type=click.Path(path_type=Path), required=True,
+              help="Output JSONL (GoldExample rows)")
+@click.option("--limit", type=int, default=None,
+              help="Max rows to label (useful for smoke tests)")
+@click.option("--text-field", default="content",
+              help="Name of the content-bearing field in source rows")
+@click.option("--topic", default=None,
+              help="Seed topic label for every row (leave unset to keep None)")
+@click.option("--model", default="ollama_chat/qwen3.5:35b-a3b",
+              help="LLM model (litellm identifier)")
+@click.option("--api-base", default=None,
+              help="Optional LLM API base (for vLLM / Spark etc.)")
+def adapters_label_slots(
+    domain: str, source: Path, output: Path, limit: int | None,
+    text_field: str, topic: str | None, model: str, api_base: str | None,
+) -> None:
+    """Use an LLM to typed-slot label real corpus content.
+
+    Produces :class:`GoldExample` JSONL rows with typed slots
+    matching the domain's ``SLOT_TAXONOMY``.  Useful for closing
+    the gold-coverage gap after a slot schema expansion: feed real
+    domain content (MSEB corpus, LongMemEval dialog, case reports)
+    and get typed-slot labels out.
+
+    Hallucinations are rejected post-hoc: slot values not present
+    in the content (even with fuzzy prefix matching) are dropped.
+    """
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    from ncms.application.adapters.corpus.llm_slot_labeler import (
+        sync_label_corpus,
+    )
+
+    n = sync_label_corpus(
+        source=source, domain=domain, output=output,  # type: ignore[arg-type]
+        model=model, api_base=api_base, limit=limit,
+        text_field=text_field, topic=topic,
+    )
+    click.echo(f"[adapters label-slots] wrote {n} GoldExample rows → {output}")
+
+
+@adapters.command("judge-gold")
+@click.option("--domain", required=True)
+@click.option("--gold-path", type=click.Path(path_type=Path),
+              default=None,
+              help="Override gold path (default: manifest's gold_jsonl)")
+@click.option("--n", "n_samples", type=int, default=25,
+              help="Rows to sample for judging (default 25)")
+@click.option("--seed", type=int, default=42)
+@click.option("--model", default="openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+              help="Judge LLM (defaults to Spark Nemotron)")
+@click.option("--api-base", default="http://spark-ee7d.local:8000/v1",
+              help="Judge LLM endpoint")
+@click.option("--min-pct-correct", type=float, default=90.0,
+              help="Fail (exit 1) if pct_correct below this threshold")
+@click.option("--show-failures", type=int, default=10,
+              help="Max failing rows to print (default 10)")
+def adapters_judge_gold(
+    domain: str, gold_path: Path | None, n_samples: int,
+    seed: int, model: str, api_base: str,
+    min_pct_correct: float, show_failures: int,
+) -> None:
+    """Validate gold-label quality BEFORE training to avoid doom-loop retrains.
+
+    Samples ``--n`` rows from the domain's gold JSONL, asks a judge
+    LLM to grade each row's slots / state_change / intent, and
+    reports:
+
+      - Aggregate verdict counts (correct / partially_wrong / severely_wrong).
+      - Top issue types (histogram of issues seen across failing rows).
+      - Sample failing rows with LLM-suggested corrections.
+
+    Exits 1 when pct_correct < ``--min-pct-correct`` so the operator
+    can gate training scripts on clean data.
+    """
+    import logging
+    import sys
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    from ncms.application.adapters.corpus.gold_judge import (
+        sync_judge_gold,
+    )
+    from ncms.application.adapters.schemas import get_domain_manifest
+
+    manifest = get_domain_manifest(domain)  # type: ignore[arg-type]
+    path = gold_path or manifest.gold_jsonl
+
+    click.echo(f"[judge-gold] domain={domain} gold={path} n={n_samples}")
+    report = sync_judge_gold(
+        domain=domain,  # type: ignore[arg-type]
+        gold_path=path,
+        n_samples=n_samples,
+        model=model,
+        api_base=api_base,
+        seed=seed,
+    )
+
+    click.echo()
+    click.echo(f"=== Aggregate ===")
+    click.echo(f"  sampled: {report['n_sampled']}")
+    for k, v in report['verdicts'].items():
+        pct = v / report['n_sampled'] * 100 if report['n_sampled'] else 0.0
+        click.echo(f"  {k:20s}: {v:3d}  ({pct:4.1f}%)")
+    click.echo(f"  pct_correct: {report['pct_correct']:.1f}%  "
+               f"(threshold: {min_pct_correct:.1f}%)")
+
+    if report['issue_histogram']:
+        click.echo()
+        click.echo("=== Top issue types ===")
+        for issue, n in list(report['issue_histogram'].items())[:10]:
+            click.echo(f"  {n:3d}×  {issue}")
+
+    if report['failures'] and show_failures > 0:
+        click.echo()
+        click.echo(f"=== Sample failures (first {min(show_failures, len(report['failures']))}) ===")
+        for f in report['failures'][:show_failures]:
+            click.echo(f"\n  [{f['verdict']}] slots={f['slots']}")
+            click.echo(f"    content[:140]: {f['text'][:140]!r}")
+            for issue in f['issues']:
+                click.echo(f"    - {issue}")
+            if f['corrections']:
+                click.echo(f"    corrections: {f['corrections']}")
+
+    if report['pct_correct'] < min_pct_correct:
+        click.echo()
+        click.echo(
+            f"[judge-gold] FAIL: {report['pct_correct']:.1f}% < {min_pct_correct:.1f}% — "
+            f"fix gold / labeller / canonical map before retraining.",
+            err=True,
+        )
+        sys.exit(1)
+    click.echo()
+    click.echo(
+        f"[judge-gold] PASS: {report['pct_correct']:.1f}% ≥ {min_pct_correct:.1f}%",
     )
 
 

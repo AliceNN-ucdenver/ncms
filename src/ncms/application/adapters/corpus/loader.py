@@ -22,10 +22,12 @@ from ncms.application.adapters.schemas import (
     ADMISSION_DECISIONS,
     DOMAINS,
     INTENT_CATEGORIES,
+    ROLE_LABELS,
     SHAPE_INTENTS,
     SLOT_TAXONOMY,
     STATE_CHANGES,
     GoldExample,
+    RoleSpan,
 )
 
 
@@ -94,6 +96,43 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
             f"{path}:{line_no} unknown shape_intent {shape_intent!r}"
         )
 
+    # v7+: role_spans (role head ground-truth).  Optional; validated
+    # per-entry when present.  Rows that predate v7 roll forward with
+    # an empty list — training loop masks the role loss for those
+    # rows (same pattern as topic/admission).
+    role_spans_raw = row.get("role_spans") or []
+    if not isinstance(role_spans_raw, list):
+        raise CorpusValidationError(
+            f"{path}:{line_no} role_spans must be a list, got "
+            f"{type(role_spans_raw)!r}",
+        )
+    role_spans: list[RoleSpan] = []
+    for idx, entry in enumerate(role_spans_raw):
+        if not isinstance(entry, dict):
+            raise CorpusValidationError(
+                f"{path}:{line_no} role_spans[{idx}] must be a dict",
+            )
+        try:
+            role_val = entry["role"]
+            if role_val not in ROLE_LABELS:
+                raise CorpusValidationError(
+                    f"{path}:{line_no} role_spans[{idx}] "
+                    f"unknown role {role_val!r}",
+                )
+            role_spans.append(RoleSpan(
+                char_start=int(entry["char_start"]),
+                char_end=int(entry["char_end"]),
+                surface=str(entry["surface"]),
+                canonical=str(entry["canonical"]),
+                slot=str(entry["slot"]),
+                role=role_val,
+                source=str(entry.get("source", "")),
+            ))
+        except KeyError as exc:
+            raise CorpusValidationError(
+                f"{path}:{line_no} role_spans[{idx}] missing field {exc}",
+            ) from exc
+
     return GoldExample(
         text=row["text"],
         domain=domain,
@@ -103,6 +142,7 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         admission=admission,
         state_change=state_change,
         shape_intent=shape_intent,
+        role_spans=role_spans,
         split=split,
         source=row.get("source", ""),
         note=row.get("note", ""),
@@ -172,4 +212,17 @@ def dump_jsonl(
                 row["state_change"] = ex.state_change
             if ex.shape_intent is not None:
                 row["shape_intent"] = ex.shape_intent
+            if ex.role_spans:
+                row["role_spans"] = [
+                    {
+                        "char_start": s.char_start,
+                        "char_end": s.char_end,
+                        "surface": s.surface,
+                        "canonical": s.canonical,
+                        "slot": s.slot,
+                        "role": s.role,
+                        "source": s.source,
+                    }
+                    for s in ex.role_spans
+                ]
             fh.write(json.dumps(row) + "\n")

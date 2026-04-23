@@ -1,31 +1,40 @@
-"""Tier 3 — LoRA adapter + multi-head Joint BERT (Sprint 1 + Sprint 2).
+"""Tier 3 — LoRA adapter + multi-head Joint BERT (v7 six-head).
 
-Architecture::
+Architecture (v7+)::
 
     bert-base-uncased            ← frozen at production
       └── LoRA adapter           ← 10-15 MB, per deployment
-             ├── intent_head     ← preference: 6 classes
-             ├── topic_head      ← domain taxonomy (variable size)
+             ├── intent_head     ← preference: 6 classes (pooled [CLS])
+             ├── topic_head      ← domain taxonomy (pooled [CLS])
              ├── admission_head  ← persist / ephemeral / discard
              ├── state_change    ← declaration / retirement / none
-             └── slot_head       ← BIO tags, domain-specific
+             ├── shape_intent    ← TLG grammar shape (query-voice)
+             └── role_head       ← primary / alternative / casual /
+                                    not_relevant (per gazetteer span,
+                                    span-pooled over subwords)
 
-The encoder is shared across all heads (one forward pass →
-six classification decisions), and LoRA keeps the trainable
-parameter count small enough to ship as a single artifact per
-deployment (vs. ~400 MB for full fine-tuning).
+v7 architectural shift: head 6 (previously a BIO slot tagger) is
+replaced by a **role classifier**.  Slot detection is now owned by
+the gazetteer (:func:`ncms.application.adapters.sdg.catalog.detect_spans`)
+— the authoritative 567-entry software_dev catalog beats the BIO
+tagger on coverage (0.589 vs 0.464 F1 on held-out gold).  The SLM's
+job is the nuance the gazetteer can't see: is this surface the
+primary subject of the utterance, an alternative being rejected, a
+casual mention, or irrelevant noise?  Final ``slots`` dict is
+reconstructed from role-labeled spans at inference time.
 
 Per-example multi-head label masking: if a row only carries
-``intent`` + ``slots`` (the original corpus schema), the topic /
-admission / state_change heads skip loss contribution on that row.
-New corpora can be labelled incrementally without re-flowing
-existing data.
+``intent`` + ``slots`` (legacy v6 schema), the role head derives
+training targets from the slots dict via the gazetteer; topic /
+admission / state_change heads skip loss contribution per-row as
+before.
 
 Artifact format::
 
     adapters/<domain>/<version>/
       ├── lora_adapter/        ← peft save_pretrained dir
-      ├── heads.safetensors    ← intent/topic/admission/state/slot heads
+      ├── heads.safetensors    ← 6 heads (intent/topic/admission/
+      │                          state/shape/role)
       ├── manifest.json        ← encoder, label vocabs, train metrics
       ├── taxonomy.yaml        ← human-readable label vocab snapshot
       └── eval_report.md       ← gate metrics at promotion time
@@ -56,24 +65,21 @@ from ncms.application.adapters.methods.base import (
 from ncms.application.adapters.schemas import (
     ADMISSION_DECISIONS,
     INTENT_CATEGORIES,
-    SLOT_TAXONOMY,
+    ROLE_LABELS,
     STATE_CHANGES,
+    DetectedSpan,
     Domain,
     ExtractedLabel,
     GoldExample,
+    RoleSpan,
 )
+from ncms.application.adapters.sdg.catalog import detect_spans
 
 logger = logging.getLogger(__name__)
 
 
 def _pick_device() -> str:
-    """Resolve best device (CUDA > MPS > CPU).
-
-    Delegates to the shared NCMS hardware resolver when the package
-    is importable so the experiment respects ``NCMS_DEVICE`` /
-    ``NCMS_JOINT_BERT_DEVICE`` overrides.  Falls back to an inline
-    check when run outside the NCMS checkout.
-    """
+    """Resolve best device (CUDA > MPS > CPU)."""
     try:
         from ncms.infrastructure.hardware import resolve_device
         return resolve_device("NCMS_JOINT_BERT_DEVICE")
@@ -87,7 +93,7 @@ def _pick_device() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Manifest + taxonomy
+# Manifest
 # ---------------------------------------------------------------------------
 
 
@@ -95,9 +101,11 @@ def _pick_device() -> str:
 class AdapterManifest:
     """Persisted alongside every adapter artifact.
 
-    Captures the exact labels the adapter was trained on so inference
-    code can materialise the right head shapes, plus enough provenance
-    to gate promotions against prior versions.
+    v7 schema shift: ``slot_labels`` (the BIO tag vocabulary) is
+    replaced by ``role_labels`` (primary/alternative/casual/
+    not_relevant).  Inference continues to populate
+    :attr:`ExtractedLabel.slots` for downstream compatibility — the
+    dict is rebuilt from role-classified spans at extract time.
     """
 
     encoder: str = "bert-base-uncased"
@@ -106,13 +114,19 @@ class AdapterManifest:
     max_length: int = 128
 
     intent_labels: list[str] = field(default_factory=list)
-    slot_labels: list[str] = field(default_factory=list)
+    # v7: role labels (4 categories) replace the BIO slot tag list.
+    role_labels: list[str] = field(default_factory=list)
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)
-    # 6th head (v6+) — query-shape intent.  Empty list = the adapter
-    # predates the v6 schema; inference ignores this head.
     shape_intent_labels: list[str] = field(default_factory=list)
+
+    # Legacy field — kept on the dataclass for serialisation round-trip
+    # with v6 checkpoints.  New v7 artifacts carry an empty list here;
+    # loaders that see a populated ``slot_labels`` + empty
+    # ``role_labels`` know they're reading a pre-v7 adapter and can
+    # handle it (or refuse to load).
+    slot_labels: list[str] = field(default_factory=list)
 
     lora_r: int = 8
     lora_alpha: int = 16
@@ -134,54 +148,28 @@ class AdapterManifest:
         return cls(**json.loads(path.read_text()))
 
 
-def _build_slot_labels(domain: Domain) -> list[str]:
-    """BIO tag list for a domain's slot taxonomy.
-
-    ``O`` + ``B-<slot>`` + ``I-<slot>`` per slot name.  ``object`` is
-    added as a domain-common catch-all so conversational gold
-    round-trips.
-    """
-    slots = list(SLOT_TAXONOMY[domain]) + ["object"]
-    labels: list[str] = ["O"]
-    for slot in slots:
-        labels.append(f"B-{slot}")
-        labels.append(f"I-{slot}")
-    # Dedupe while preserving order — ``object`` may already be in
-    # SLOT_TAXONOMY for conversational domain.
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for label in labels:
-        if label not in seen:
-            seen.add(label)
-            deduped.append(label)
-    return deduped
-
-
 # ---------------------------------------------------------------------------
 # Multi-head model
 # ---------------------------------------------------------------------------
 
 
 class LoraJointModel(nn.Module):
-    """BERT (or BERT+LoRA) + six classification heads.
+    """BERT (or BERT+LoRA) + six classification heads (v7).
 
-    Six heads (v6+): intent, slot, topic, admission, state_change,
-    shape_intent.  The last is the query-shape classifier that
-    replaces the hand-coded regex parser in
-    ``ncms.domain.tlg.query_parser``.
+    Heads: intent, topic, admission, state_change, shape_intent,
+    role.  The first five consume the pooled [CLS] representation;
+    the role head consumes span-pooled subword representations
+    (mean-pooled over the tokens that cover a gazetteer span).
 
     Construction is two-step so training and inference share code
-    without peft double-wrapping.  Training path builds the heads +
-    raw encoder, then calls :meth:`wrap_encoder_with_lora`; inference
-    path builds the heads + raw encoder, then replaces
-    ``self.encoder`` with a ``PeftModel.from_pretrained(...)``.
+    without peft double-wrapping.
     """
 
     def __init__(
         self,
         encoder_name: str,
         n_intents: int,
-        n_slots: int,
+        n_roles: int,
         n_topics: int,
         n_admission: int,
         n_state_change: int,
@@ -192,11 +180,8 @@ class LoraJointModel(nn.Module):
         hidden = self.encoder.config.hidden_size
 
         self.intent_head = nn.Linear(hidden, n_intents)
-        self.slot_head = nn.Linear(hidden, n_slots)
-        # Topic / admission / state-change / shape-intent heads are
-        # constructed even when the taxonomy is empty (n=0) to keep
-        # the forward signature stable; training code masks unlabeled
-        # heads per-example.
+        # v7 role head — 4 classes, consumes span-pooled representation.
+        self.role_head = nn.Linear(hidden, max(n_roles, 1))
         self.topic_head = nn.Linear(hidden, max(n_topics, 1))
         self.admission_head = nn.Linear(hidden, max(n_admission, 1))
         self.state_change_head = nn.Linear(hidden, max(n_state_change, 1))
@@ -210,13 +195,7 @@ class LoraJointModel(nn.Module):
         lora_dropout: float = 0.05,
         lora_target_modules: list[str] | None = None,
     ) -> None:
-        """Replace ``self.encoder`` with a fresh peft LoRA wrapper.
-
-        Called from the training path only.  Inference uses
-        :func:`peft.PeftModel.from_pretrained` to load the saved
-        adapter directly onto the raw encoder, avoiding the
-        ``multiple adapters`` warning from peft.
-        """
+        """Replace ``self.encoder`` with a fresh peft LoRA wrapper."""
         lora_cfg = LoraConfig(
             r=lora_r,
             lora_alpha=lora_alpha,
@@ -226,30 +205,65 @@ class LoraJointModel(nn.Module):
         )
         self.encoder = get_peft_model(self.encoder, lora_cfg)
 
-    def forward(
+    def encode(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run the shared encoder; return ``(sequence, pooled)``.
+
+        ``sequence`` is (B, L, H) — needed by the role head for
+        span pooling.  ``pooled`` is (B, H) — needed by the other
+        five heads.
+        """
         out = self.encoder(
             input_ids=input_ids, attention_mask=attention_mask,
         )
         sequence = out.last_hidden_state       # (B, L, H)
         pooled = sequence[:, 0, :]              # [CLS]
+        return sequence, pooled
+
+    def classify_pooled(
+        self, pooled: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Apply the 5 [CLS]-pooled heads."""
         return {
             "intent": self.intent_head(pooled),
             "topic": self.topic_head(pooled),
             "admission": self.admission_head(pooled),
             "state_change": self.state_change_head(pooled),
             "shape_intent": self.shape_intent_head(pooled),
-            "slot": self.slot_head(sequence),
         }
+
+    def classify_roles(
+        self, span_vectors: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply the role head to span-pooled vectors.  Input (S, H);
+        output (S, n_roles)."""
+        return self.role_head(span_vectors)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> dict[str, torch.Tensor]:
+        """Minimal forward for pooled heads only.
+
+        The role head needs explicit span info and is therefore
+        invoked through :meth:`classify_roles` from the train/infer
+        paths rather than from this forward.  This signature mirrors
+        the v6 interface so unrelated callers don't break.
+        """
+        sequence, pooled = self.encode(input_ids, attention_mask)
+        logits = self.classify_pooled(pooled)
+        logits["sequence"] = sequence
+        return logits
 
     def save_heads(self, path: Path) -> None:
         """Dump the six heads to a single safetensors file."""
         state = {f"{k}.{sk}": v for k, sv in [
             ("intent_head", dict(self.intent_head.state_dict())),
-            ("slot_head", dict(self.slot_head.state_dict())),
+            ("role_head", dict(self.role_head.state_dict())),
             ("topic_head", dict(self.topic_head.state_dict())),
             ("admission_head", dict(self.admission_head.state_dict())),
             ("state_change_head", dict(self.state_change_head.state_dict())),
@@ -258,12 +272,10 @@ class LoraJointModel(nn.Module):
         save_safetensors(state, str(path))
 
     def load_heads(self, path: Path) -> None:
-        """Restore the heads from safetensors.
-
-        Tolerates shape mismatches where the checkpoint has a ``n=1``
-        placeholder head and the current instance was constructed with
-        the real taxonomy (or vice versa) — skips the mismatch so
-        callers can wire the right head later.
+        """Restore the heads from safetensors.  Tolerates shape
+        mismatches (e.g. loading v6 adapter which had slot_head
+        instead of role_head) — skips the mismatch so callers can
+        wire the right head later.
         """
         state = load_safetensors(str(path))
         for key, tensor in state.items():
@@ -287,64 +299,89 @@ class LoraJointModel(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Dataset helpers
+# Role span derivation (legacy gold bootstrap)
 # ---------------------------------------------------------------------------
 
 
-def _bio_tags_for_example(
-    text: str,
-    slots: dict[str, str],
-    tokenizer,
-    slot_labels: list[str],
-    max_length: int,
-) -> tuple[list[int], list[int]]:
-    """Produce ``(input_ids, bio_tag_ids)`` aligned to the tokenizer.
+def derive_role_spans_from_slots(
+    text: str, slots: dict[str, str], domain: Domain,
+) -> list[RoleSpan]:
+    """Bootstrap ``role_spans`` from a legacy v6 GoldExample.
 
-    Pad / special-token positions get tag ``-100`` so
-    :class:`CrossEntropyLoss` ignores them; real content tokens get
-    ``O`` unless covered by a slot surface-form match.  This mirrors
-    the mask convention from :mod:`.joint_bert`.
+    Legacy corpora have a ``slots`` dict but no per-span roles.  To
+    train the role head on them, we run the gazetteer to get
+    candidate spans, then label each span:
+
+      - ``primary`` — span.canonical matches a non-alternative entry
+        in ``slots``, i.e. ``slots[span.slot] == span.canonical``.
+      - ``alternative`` — span.canonical matches ``slots["alternative"]``
+        regardless of its catalog slot (so "MongoDB" detected as
+        database but labeled alternative in gold stays alternative).
+      - ``not_relevant`` — detected but not referenced in slots at all
+        (distractor or casual mention the labeller skipped).
+
+    No ``casual`` label is emitted from this derivation — legacy gold
+    didn't distinguish casual mentions from genuinely unrelated
+    detections.  The SDG + LLM labeler paths will emit ``casual``
+    directly when they know.
     """
-    encoded = tokenizer(
-        text,
-        padding="max_length",
-        truncation=True,
-        max_length=max_length,
-        return_offsets_mapping=True,
-    )
-    input_ids: list[int] = encoded["input_ids"]
-    offsets: list[tuple[int, int]] = encoded["offset_mapping"]
+    gazetteer_spans = detect_spans(text, domain=domain)
+    # Normalize slot values for comparison.
+    slot_values_lower: dict[str, str] = {
+        k: v.lower().strip() for k, v in slots.items() if v
+    }
+    alt_value = slot_values_lower.get("alternative")
+    out: list[RoleSpan] = []
+    for s in gazetteer_spans:
+        canon_lower = s.canonical.lower()
+        role: str
+        if alt_value is not None and canon_lower == alt_value:
+            role = "alternative"
+        elif slot_values_lower.get(s.slot) == canon_lower:
+            role = "primary"
+        else:
+            role = "not_relevant"
+        out.append(RoleSpan(
+            char_start=s.char_start,
+            char_end=s.char_end,
+            surface=s.surface,
+            canonical=s.canonical,
+            slot=s.slot,
+            role=role,  # type: ignore[arg-type]
+            source="derived-from-slots",
+        ))
+    return out
 
-    label_to_id = {label: i for i, label in enumerate(slot_labels)}
-    tags: list[int] = [-100] * len(input_ids)
+
+# ---------------------------------------------------------------------------
+# Dataset helpers — per-span role batching
+# ---------------------------------------------------------------------------
+
+
+def _char_span_to_token_mask(
+    offsets: list[tuple[int, int]],
+    char_start: int,
+    char_end: int,
+    max_length: int,
+) -> list[float]:
+    """Return a 0/1 float mask of length ``max_length`` selecting the
+    subword tokens whose character offsets overlap [char_start, char_end).
+
+    Special tokens ([CLS], [SEP], padding) have offset (0,0) and are
+    never selected.  When a span fell outside the truncated window
+    (every overlap would be empty) the mask is all-zeros — callers
+    detect and skip that span.
+    """
+    mask: list[float] = [0.0] * max_length
     for idx, (tok_start, tok_end) in enumerate(offsets):
+        if idx >= max_length:
+            break
         if tok_start == 0 and tok_end == 0:
             continue
-        tags[idx] = label_to_id["O"]
-
-    text_lower = text.lower()
-    for slot_name, surface in slots.items():
-        if not surface:
+        if tok_end <= char_start or tok_start >= char_end:
             continue
-        needle = surface.lower()
-        start = text_lower.find(needle)
-        if start < 0:
-            continue
-        end = start + len(needle)
-        first = True
-        for idx, (tok_start, tok_end) in enumerate(offsets):
-            if tok_start == 0 and tok_end == 0:
-                continue
-            if tok_end <= start or tok_start >= end:
-                continue
-            prefix = "B-" if first else "I-"
-            key = f"{prefix}{slot_name}"
-            tag_id = label_to_id.get(key)
-            if tag_id is None:
-                continue
-            tags[idx] = tag_id
-            first = False
-    return input_ids, tags
+        mask[idx] = 1.0
+    return mask
 
 
 # ---------------------------------------------------------------------------
@@ -362,30 +399,25 @@ def train(
     batch_size: int = 16,
     learning_rate: float = 3e-4,
     device: str | None = None,
-    slot_non_o_weight: float = 5.0,
 ) -> AdapterManifest:
-    """Fine-tune the LoRA adapter + heads on ``examples``.
+    """Fine-tune the LoRA adapter + heads on ``examples`` (v7).
 
-    ``manifest`` is the source of truth for head sizes + label
-    vocabularies; the caller composes it from the corpus + taxonomy
-    files before calling in.  This function updates
-    ``manifest.gate_metrics`` and ``manifest.trained_on`` in place and
-    writes the full artifact to ``adapter_dir``.
+    Per-head loss:
+      * intent, topic, admission, state_change, shape_intent —
+        cross-entropy, skipped per-example when the label is ``None``
+        (per-head mask).
+      * role — cross-entropy over span-pooled representations.  Rows
+        with zero role_spans (after derivation fallback) contribute
+        nothing to the role loss.
+      * Total loss = sum of non-skipped heads, unweighted.
 
-    Multi-head loss composition:
-
-    * intent, topic, admission, state_change — cross-entropy; skipped
-      per-example when the label is ``None`` (per-head mask).
-    * slot — class-weighted cross-entropy with ``ignore_index=-100``
-      (same loss-masking convention as the full-FT baseline).
-    * Total loss = sum of non-skipped heads.  Unweighted for now —
-      balancing knob is a Sprint 2 follow-up if any single head
-      dominates in practice.
+    v6 rows that only carry ``slots`` (no explicit ``role_spans``)
+    are auto-labeled via :func:`derive_role_spans_from_slots`.
     """
     adapter_dir.mkdir(parents=True, exist_ok=True)
     device = device or _pick_device()
 
-    slot_labels = manifest.slot_labels
+    role_labels = manifest.role_labels or list(ROLE_LABELS)
     intent_labels = manifest.intent_labels
     topic_labels = manifest.topic_labels
     admission_labels = manifest.admission_labels
@@ -396,7 +428,7 @@ def train(
     model = LoraJointModel(
         encoder_name=manifest.encoder,
         n_intents=len(intent_labels),
-        n_slots=len(slot_labels),
+        n_roles=len(role_labels),
         n_topics=len(topic_labels),
         n_admission=len(admission_labels),
         n_state_change=len(state_change_labels),
@@ -411,14 +443,21 @@ def train(
     model = model.to(device)
 
     intent_idx = {label: i for i, label in enumerate(intent_labels)}
+    role_idx = {label: i for i, label in enumerate(role_labels)}
     topic_idx = {label: i for i, label in enumerate(topic_labels)}
     admission_idx = {label: i for i, label in enumerate(admission_labels)}
     state_idx = {label: i for i, label in enumerate(state_change_labels)}
     shape_idx = {label: i for i, label in enumerate(shape_intent_labels)}
 
-    # Build tensor dataset (small enough to stay resident).
+    # ── Build tensor dataset ─────────────────────────────────────
+    #
+    # Row-aligned tensors: ids / attention / per-head labels / masks.
+    # Span-indexed sidetables (rebuilt per-batch below): record the
+    # role target + per-token selector mask for every span in every
+    # row.  At train time we select spans belonging to the current
+    # batch by (span.row_idx in batch) to form the per-span tensors.
     ids_rows: list[list[int]] = []
-    tag_rows: list[list[int]] = []
+    offsets_rows: list[list[tuple[int, int]]] = []
     intents: list[int] = []
     topics: list[int] = []
     admissions: list[int] = []
@@ -428,17 +467,27 @@ def train(
     admission_mask: list[int] = []
     state_change_mask: list[int] = []
     shape_intent_mask: list[int] = []
+    # Per-row list of (token_mask, role_id) pairs.  Empty list when
+    # no role_spans were derived (skipped by role loss).
+    row_spans: list[list[tuple[list[float], int]]] = []
 
     for ex in examples:
         if ex.domain != domain:
             continue
-        input_ids, tags = _bio_tags_for_example(
-            ex.text, ex.slots, tokenizer, slot_labels, manifest.max_length,
+        encoded = tokenizer(
+            ex.text,
+            padding="max_length",
+            truncation=True,
+            max_length=manifest.max_length,
+            return_offsets_mapping=True,
         )
+        input_ids = encoded["input_ids"]
+        offsets = [tuple(p) for p in encoded["offset_mapping"]]
+
         ids_rows.append(input_ids)
-        tag_rows.append(tags)
-        intents.append(intent_idx[ex.intent])
-        # Per-head label masks: -100 → skipped by CrossEntropyLoss.
+        offsets_rows.append(offsets)
+        intents.append(intent_idx.get(ex.intent, 0))
+
         if ex.topic is not None and ex.topic in topic_idx:
             topics.append(topic_idx[ex.topic])
             topic_mask.append(1)
@@ -451,32 +500,42 @@ def train(
         else:
             admissions.append(0)
             admission_mask.append(0)
-        if (
-            ex.state_change is not None
-            and ex.state_change in state_idx
-        ):
+        if ex.state_change is not None and ex.state_change in state_idx:
             state_changes.append(state_idx[ex.state_change])
             state_change_mask.append(1)
         else:
             state_changes.append(0)
             state_change_mask.append(0)
-        # Shape-intent label mask — only MSEB gold query rows carry
-        # this label; memory-voice SDG + adversarial rows have
-        # shape_intent=None and get masked out.
-        shape_intent_val = getattr(ex, "shape_intent", None)
-        if shape_intent_val is not None and shape_intent_val in shape_idx:
-            shape_intents.append(shape_idx[shape_intent_val])
+        shape_val = getattr(ex, "shape_intent", None)
+        if shape_val is not None and shape_val in shape_idx:
+            shape_intents.append(shape_idx[shape_val])
             shape_intent_mask.append(1)
         else:
             shape_intents.append(0)
             shape_intent_mask.append(0)
+
+        # Role-span targets.  Bootstrap from legacy ``slots`` when
+        # absent so v6 corpora train without a separate pre-pass.
+        role_spans = ex.role_spans or derive_role_spans_from_slots(
+            ex.text, ex.slots, ex.domain,
+        )
+        per_row: list[tuple[list[float], int]] = []
+        for rs in role_spans:
+            if rs.role not in role_idx:
+                continue
+            token_mask = _char_span_to_token_mask(
+                offsets, rs.char_start, rs.char_end, manifest.max_length,
+            )
+            if sum(token_mask) == 0:
+                continue  # span fell outside the truncated window
+            per_row.append((token_mask, role_idx[rs.role]))
+        row_spans.append(per_row)
 
     if not ids_rows:
         raise RuntimeError(f"no examples for domain {domain!r}")
 
     ids_t = torch.tensor(ids_rows, dtype=torch.long, device=device)
     mask_t = (ids_t != tokenizer.pad_token_id).long()
-    tags_t = torch.tensor(tag_rows, dtype=torch.long, device=device)
     intents_t = torch.tensor(intents, dtype=torch.long, device=device)
     topics_t = torch.tensor(topics, dtype=torch.long, device=device)
     admissions_t = torch.tensor(admissions, dtype=torch.long, device=device)
@@ -497,17 +556,8 @@ def train(
         shape_intent_mask, dtype=torch.bool, device=device,
     )
 
-    # Class-weighted slot loss — non-O tags upweighted to counter
-    # ~100:1 token imbalance on pre-pad content.  Same convention as
-    # the full-FT baseline in :mod:`.joint_bert`.
-    slot_weights = torch.ones(len(slot_labels), device=device)
-    for i, label in enumerate(slot_labels):
-        if label != "O":
-            slot_weights[i] = slot_non_o_weight
-    slot_loss_fn = nn.CrossEntropyLoss(
-        weight=slot_weights, ignore_index=-100,
-    )
     intent_loss_fn = nn.CrossEntropyLoss()
+    role_loss_fn = nn.CrossEntropyLoss()
     head_loss_fn = nn.CrossEntropyLoss(reduction="none")
 
     optimizer = torch.optim.AdamW(
@@ -518,23 +568,30 @@ def train(
     n = ids_t.size(0)
     model.train()
     final_avg_loss = float("nan")
+    total_role_spans = sum(len(spans) for spans in row_spans)
+    logger.info(
+        "[lora] v7 train: %d rows, %d role spans (avg %.1f/row)",
+        n, total_role_spans, total_role_spans / max(n, 1),
+    )
+
     for epoch in range(epochs):
         total_loss = 0.0
         perm = torch.randperm(n, device=device)
         for start in range(0, n, batch_size):
-            batch_idx = perm[start:start + batch_size]
-            logits = model(ids_t[batch_idx], mask_t[batch_idx])
+            batch_idx_cpu = perm[start:start + batch_size].cpu().tolist()
+            batch_idx = torch.tensor(
+                batch_idx_cpu, dtype=torch.long, device=device,
+            )
 
+            sequence, pooled = model.encode(
+                ids_t[batch_idx], mask_t[batch_idx],
+            )
+            logits = model.classify_pooled(pooled)
+
+            # Pooled-head losses.
             intent_loss = intent_loss_fn(
                 logits["intent"], intents_t[batch_idx],
             )
-            slot_loss = slot_loss_fn(
-                logits["slot"].reshape(-1, logits["slot"].size(-1)),
-                tags_t[batch_idx].reshape(-1),
-            )
-
-            # Per-head masked losses — mean only over rows that carry
-            # that head's label.
             topic_per = head_loss_fn(
                 logits["topic"][:, :len(topic_labels) or 1],
                 topics_t[batch_idx],
@@ -572,8 +629,41 @@ def train(
                 if shape_m.sum() > 0 else torch.tensor(0.0, device=device)
             )
 
+            # Role-head loss — collect this batch's role spans,
+            # compute span-pooled vectors, CE over them.
+            span_row_idx_list: list[int] = []
+            span_masks_list: list[list[float]] = []
+            span_role_list: list[int] = []
+            for batch_pos, row_idx in enumerate(batch_idx_cpu):
+                for token_mask, role_id in row_spans[row_idx]:
+                    span_row_idx_list.append(batch_pos)
+                    span_masks_list.append(token_mask)
+                    span_role_list.append(role_id)
+
+            if span_masks_list:
+                span_row_idx_t = torch.tensor(
+                    span_row_idx_list, dtype=torch.long, device=device,
+                )
+                span_masks_t = torch.tensor(
+                    span_masks_list, dtype=torch.float32, device=device,
+                )  # (S, L)
+                span_roles_t = torch.tensor(
+                    span_role_list, dtype=torch.long, device=device,
+                )
+                # Gather the corresponding hidden sequences and pool.
+                selected = sequence[span_row_idx_t]     # (S, L, H)
+                mask_ = span_masks_t.unsqueeze(-1)      # (S, L, 1)
+                pooled_spans = (selected * mask_).sum(dim=1) / \
+                    span_masks_t.sum(dim=1, keepdim=True).clamp(min=1e-9)
+                role_logits = model.classify_roles(
+                    pooled_spans,
+                )[:, :len(role_labels) or 1]
+                role_loss = role_loss_fn(role_logits, span_roles_t)
+            else:
+                role_loss = torch.tensor(0.0, device=device)
+
             loss = (
-                intent_loss + slot_loss
+                intent_loss + role_loss
                 + topic_loss + admit_loss + state_loss + shape_loss
             )
             optimizer.zero_grad()
@@ -589,7 +679,12 @@ def train(
     # Save adapter + heads + manifest.
     model.encoder.save_pretrained(str(adapter_dir / "lora_adapter"))
     model.save_heads(adapter_dir / "heads.safetensors")
-    manifest.trained_on = {"n_examples": n, "epochs": epochs}
+    manifest.role_labels = role_labels
+    manifest.trained_on = {
+        "n_examples": n,
+        "n_role_spans": total_role_spans,
+        "epochs": epochs,
+    }
     manifest.gate_metrics = {
         **manifest.gate_metrics,
         "final_train_loss": round(final_avg_loss, 4),
@@ -602,7 +697,7 @@ def train(
         (adapter_dir / "taxonomy.yaml").write_text(
             yaml.safe_dump({
                 "intent_labels": intent_labels,
-                "slot_labels": slot_labels,
+                "role_labels": role_labels,
                 "topic_labels": topic_labels,
                 "admission_labels": admission_labels,
                 "state_change_labels": state_change_labels,
@@ -622,7 +717,7 @@ def train(
 
 
 class LoraJointBert(IntentSlotExtractor):
-    """Inference wrapper around a trained LoRA adapter artifact."""
+    """Inference wrapper around a trained LoRA adapter artifact (v7)."""
 
     name = "joint_bert_lora"
 
@@ -640,16 +735,13 @@ class LoraJointBert(IntentSlotExtractor):
             self._manifest.encoder, use_fast=True,
         )
 
-        # Build heads + raw encoder; don't pre-wrap with LoRA.
-        # Replace the raw encoder with the saved adapter via
-        # ``PeftModel.from_pretrained``.  This avoids the peft
-        # ``multiple adapters`` warning.
         from peft import PeftModel
 
+        role_labels = self._manifest.role_labels or list(ROLE_LABELS)
         self._model = LoraJointModel(
             encoder_name=self._manifest.encoder,
             n_intents=len(self._manifest.intent_labels),
-            n_slots=len(self._manifest.slot_labels),
+            n_roles=len(role_labels),
             n_topics=len(self._manifest.topic_labels),
             n_admission=len(self._manifest.admission_labels),
             n_state_change=len(self._manifest.state_change_labels),
@@ -669,6 +761,11 @@ class LoraJointBert(IntentSlotExtractor):
                 "[lora] cross-domain call: adapter=%s request=%s",
                 self._manifest.domain, domain,
             )
+
+        # ── 1. Gazetteer pass (catalog-authoritative span detection) ──
+        gazetteer_spans = detect_spans(text, domain=self._manifest.domain)
+
+        # ── 2. Encoder forward pass ──────────────────────────────
         encoded = self._tokenizer(
             text,
             padding="max_length",
@@ -679,10 +776,13 @@ class LoraJointBert(IntentSlotExtractor):
         )
         input_ids = encoded["input_ids"].to(self._device)
         mask = encoded["attention_mask"].to(self._device)
-        offsets = encoded["offset_mapping"][0].tolist()
-        with torch.no_grad():
-            logits = self._model(input_ids, mask)
+        offsets = [tuple(p) for p in encoded["offset_mapping"][0].tolist()]
 
+        with torch.no_grad():
+            sequence, pooled = self._model.encode(input_ids, mask)
+            logits = self._model.classify_pooled(pooled)
+
+        # ── 3. Pooled-head decoding ──────────────────────────────
         intent, intent_conf = self._argmax_one_hot(
             logits["intent"][0], self._manifest.intent_labels,
         )
@@ -699,8 +799,11 @@ class LoraJointBert(IntentSlotExtractor):
             logits["shape_intent"][0], self._manifest.shape_intent_labels,
         )
 
-        slot_preds = torch.argmax(logits["slot"][0], dim=-1).tolist()
-        slots = self._assemble_slots(text, offsets, slot_preds)
+        # ── 4. Role head over gazetteer spans ────────────────────
+        role_spans_out, slots = self._classify_spans(
+            sequence[0], offsets, gazetteer_spans,
+        )
+
         return ExtractedLabel(
             intent=intent,  # type: ignore[arg-type]
             intent_confidence=intent_conf,
@@ -713,18 +816,104 @@ class LoraJointBert(IntentSlotExtractor):
             state_change_confidence=state_change_conf,
             shape_intent=shape_intent,  # type: ignore[arg-type]
             shape_intent_confidence=shape_intent_conf,
+            role_spans=tuple(role_spans_out),
             method=self.name,
         )
+
+    def _classify_spans(
+        self,
+        sequence_row: torch.Tensor,          # (L, H)
+        offsets: list[tuple[int, int]],
+        gazetteer_spans: tuple[DetectedSpan, ...],
+    ) -> tuple[list[RoleSpan], dict[str, str]]:
+        """Run the role head over every gazetteer span; rebuild slots.
+
+        Returns ``(role_spans, slots)``:
+          * ``role_spans`` — one :class:`RoleSpan` per detected
+            catalog surface, in detection order (left-to-right).
+          * ``slots`` — reconstructed slot dict:
+              primary-role spans → ``slots[catalog_slot] = canonical``
+              alternative-role spans → ``slots["alternative"] = canonical``
+              (first occurrence wins per slot key)
+            casual / not_relevant spans are NOT surfaced in ``slots``
+            but ARE returned in ``role_spans`` for downstream use.
+        """
+        role_labels = self._manifest.role_labels or list(ROLE_LABELS)
+        if not gazetteer_spans:
+            return [], {}
+
+        # Build token masks for each span.
+        span_masks: list[list[float]] = []
+        for s in gazetteer_spans:
+            span_masks.append(_char_span_to_token_mask(
+                offsets, s.char_start, s.char_end, self._manifest.max_length,
+            ))
+
+        # Drop spans that fell outside the truncated window.
+        valid_pairs: list[tuple[DetectedSpan, list[float]]] = [
+            (s, m) for s, m in zip(gazetteer_spans, span_masks, strict=True)
+            if sum(m) > 0
+        ]
+        if not valid_pairs:
+            return [], {}
+
+        masks_t = torch.tensor(
+            [m for _, m in valid_pairs],
+            dtype=torch.float32, device=self._device,
+        )
+        # sequence_row is (L, H); broadcast to per-span pool.
+        # (S, L) * (L, H) via outer: use einsum for clarity.
+        with torch.no_grad():
+            pooled = masks_t @ sequence_row  # (S, L) @ (L, H) = (S, H)
+            pooled = pooled / masks_t.sum(dim=1, keepdim=True).clamp(min=1e-9)
+            logits = self._model.classify_roles(
+                pooled,
+            )[:, :len(role_labels) or 1]
+            probs = torch.softmax(logits, dim=-1)
+
+        role_spans_out: list[RoleSpan] = []
+        # Track best-confidence primary per slot + best-confidence
+        # alternative.  Multiple same-slot surfaces with role=primary
+        # are common when a row compares two options side by side
+        # ("Playwright (by Microsoft) | Selenium (by the Selenium Project)"
+        # — both tools legitimately primary).  First-wins discarded
+        # the equally-valid later one; max-confidence picks the one
+        # the role head was most sure about.
+        best_primary: dict[str, tuple[float, str]] = {}
+        best_alternative: tuple[float, str] | None = None
+        for i, (s, _) in enumerate(valid_pairs):
+            idx = int(torch.argmax(probs[i]).item())
+            role = role_labels[idx]
+            conf = float(probs[i][idx].item())
+            rs = RoleSpan(
+                char_start=s.char_start,
+                char_end=s.char_end,
+                surface=s.surface,
+                canonical=s.canonical,
+                slot=s.slot,
+                role=role,  # type: ignore[arg-type]
+                source="role-head",
+            )
+            role_spans_out.append(rs)
+            if role == "primary":
+                prev = best_primary.get(s.slot)
+                if prev is None or conf > prev[0]:
+                    best_primary[s.slot] = (conf, s.canonical)
+            elif role == "alternative":
+                if best_alternative is None or conf > best_alternative[0]:
+                    best_alternative = (conf, s.canonical)
+
+        slots: dict[str, str] = {
+            slot: canon for slot, (_, canon) in best_primary.items()
+        }
+        if best_alternative is not None:
+            slots["alternative"] = best_alternative[1]
+        return role_spans_out, slots
 
     def _argmax_one_hot(
         self, head_logits: torch.Tensor, label_vocab: list[str],
     ) -> tuple[str | None, float | None]:
-        """Softmax argmax over a single head.
-
-        Returns ``(None, None)`` when the head has an empty vocab
-        (untrained head in the adapter).  Confidence is the softmax
-        probability of the winning class.
-        """
+        """Softmax argmax over a single head."""
         if not label_vocab:
             return None, None
         n = len(label_vocab)
@@ -732,45 +921,10 @@ class LoraJointBert(IntentSlotExtractor):
         idx = int(torch.argmax(probs).item())
         return label_vocab[idx], float(probs[idx].item())
 
-    def _assemble_slots(
-        self,
-        text: str,
-        offsets: list[list[int]],
-        tag_ids: list[int],
-    ) -> dict[str, str]:
-        """Walk BIO tags + offsets to reconstruct surface-form slot values."""
-        slots: dict[str, str] = {}
-        cur_slot: str | None = None
-        cur_start: int | None = None
-        cur_end: int | None = None
 
-        def _flush() -> None:
-            nonlocal cur_slot, cur_start, cur_end
-            if cur_slot and cur_start is not None and cur_end is not None:
-                slots.setdefault(cur_slot, text[cur_start:cur_end].strip())
-            cur_slot = None
-            cur_start = None
-            cur_end = None
-
-        for (tok_start, tok_end), tag_id in zip(
-            offsets, tag_ids, strict=False,
-        ):
-            label = self._manifest.slot_labels[tag_id]
-            if label == "O" or (tok_start == 0 and tok_end == 0):
-                _flush()
-                continue
-            prefix, _, slot_name = label.partition("-")
-            if prefix == "B":
-                _flush()
-                cur_slot = slot_name
-                cur_start = tok_start
-                cur_end = tok_end
-            elif prefix == "I" and slot_name == cur_slot:
-                cur_end = tok_end
-            else:
-                _flush()
-        _flush()
-        return slots
+# ---------------------------------------------------------------------------
+# Manifest builder
+# ---------------------------------------------------------------------------
 
 
 def build_manifest(
@@ -781,6 +935,7 @@ def build_manifest(
     admission_labels: list[str] | None = None,
     state_change_labels: list[str] | None = None,
     shape_intent_labels: list[str] | None = None,
+    role_labels: list[str] | None = None,
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
@@ -790,7 +945,7 @@ def build_manifest(
 ) -> AdapterManifest:
     """Compose a manifest ready for :func:`train`.
 
-    Intent + slot vocabs are fixed by the shared schemas.  Topic /
+    Intent + role vocabs default to the shared schemas.  Topic /
     admission / state-change / shape-intent vocabs come from the
     caller's taxonomy file (YAML) or training-data discovery.  Empty
     lists are allowed — the corresponding head still exists but its
@@ -802,7 +957,7 @@ def build_manifest(
         version=version,
         max_length=max_length,
         intent_labels=list(INTENT_CATEGORIES),
-        slot_labels=_build_slot_labels(domain),
+        role_labels=role_labels or list(ROLE_LABELS),
         topic_labels=topic_labels or [],
         admission_labels=(
             admission_labels if admission_labels is not None
@@ -813,6 +968,7 @@ def build_manifest(
             else list(STATE_CHANGES)
         ),
         shape_intent_labels=shape_intent_labels or [],
+        slot_labels=[],   # v7: BIO vocab retired
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
@@ -825,5 +981,6 @@ __all__ = [
     "LoraJointBert",
     "LoraJointModel",
     "build_manifest",
+    "derive_role_spans_from_slots",
     "train",
 ]
