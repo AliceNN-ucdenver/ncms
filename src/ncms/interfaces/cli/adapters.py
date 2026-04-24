@@ -401,6 +401,74 @@ def adapters_judge_v9(
         )
 
 
+@adapters.command("sanity-v9")
+@click.option("--domain", required=True,
+              help="Domain name (see `ncms adapters list`)")
+@click.option("--corpus-path", type=click.Path(path_type=Path),
+              default=None,
+              help="Corpus JSONL to check (defaults to the domain's "
+                   "sdg_jsonl path from DOMAIN_MANIFESTS).")
+@click.option("--report-path", type=click.Path(path_type=Path),
+              default=None,
+              help="Optional path to write the full JSON sanity report; "
+                   "terminal summary is printed either way.")
+@click.option("--fail-on-violation/--no-fail-on-violation",
+              default=True,
+              help="Exit non-zero when any invariant violation is found "
+                   "(default: true).  Pass --no-fail-on-violation to "
+                   "run the check for reporting only.")
+def adapters_sanity_v9(
+    domain: str,
+    corpus_path: Path | None,
+    report_path: Path | None,
+    fail_on_violation: bool,
+) -> None:
+    """Offline v9 corpus sanity check — no LLM cost.
+
+    Validates every row against the invariants the trainer + judge
+    both assume: non-None labels across all five heads, non-empty
+    slots + role_spans where the archetype declared them,
+    role-span composition matches the archetype, primary /
+    alternative surfaces appear in text, no placeholder leakage,
+    length envelope.
+
+    Runs in <1s on a ~3k-row corpus.  Use BEFORE the (expensive)
+    LLM judge — cheap tests first, expensive ones on already-clean
+    data.
+    """
+    from ncms.application.adapters.domain_loader import load_domain
+    from ncms.application.adapters.schemas import get_domain_manifest
+    from ncms.application.adapters.sdg.v9 import (
+        format_sanity_report,
+        sanity_check,
+        write_report_json,
+    )
+
+    manifest = get_domain_manifest(domain)  # type: ignore[arg-type]
+    path = corpus_path or manifest.sdg_jsonl
+    if not path.is_file():
+        raise click.ClickException(f"corpus not found: {path}")
+
+    domain_dir = _find_domain_source_dir(domain)
+    if domain_dir is None:
+        raise click.ClickException(
+            f"domain {domain!r}: YAML plugin not found under adapters/domains/",
+        )
+    spec = load_domain(domain_dir)
+
+    report = sanity_check(path, spec)
+    click.echo(format_sanity_report(report))
+
+    if report_path is not None:
+        write_report_json(report, report_path)
+        click.echo(f"         → full report: {report_path}")
+
+    if fail_on_violation and not report.ok:
+        raise click.ClickException(
+            f"sanity check FAILED: {report.summary()}",
+        )
+
+
 @adapters.command("train")
 @click.option("--domain", required=True)
 @click.option("--version", required=True, help="Target adapter version (e.g. v7)")

@@ -53,6 +53,15 @@ from ncms.application.adapters.sdg.v9.judge import (
     sync_judge_corpus,
 )
 from ncms.application.adapters.sdg.v9.prompts import build_archetype_prompt
+from ncms.application.adapters.sdg.v9.sanity import (
+    InvariantFailure,
+    SanityReport,
+    sanity_check,
+    write_report_json,
+)
+from ncms.application.adapters.sdg.v9.sanity import (
+    format_report as format_sanity_report,
+)
 from ncms.application.adapters.sdg.v9.validation import (
     ValidationOutcome,
     validate_and_label,
@@ -63,17 +72,22 @@ __all__ = [
     "CoverageGap",
     "DomainJudgeResult",
     "GenerationStats",
+    "InvariantFailure",
     "LLMBackend",
     "RoleSpec",
+    "SanityReport",
     "SparkBackend",
     "TemplateBackend",
     "ValidationOutcome",
     "build_archetype_prompt",
     "format_report",
+    "format_sanity_report",
     "generate_domain",
     "generate_for_archetype",
     "judge_corpus",
+    "sanity_check",
     "sync_judge_corpus",
     "validate_and_label",
     "validate_archetype_coverage",
+    "write_report_json",
 ]

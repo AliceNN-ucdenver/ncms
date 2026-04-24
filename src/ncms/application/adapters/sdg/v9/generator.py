@@ -104,15 +104,28 @@ def _sample_entities(
     spec: DomainSpec,
     archetype: ArchetypeSpec,
     rng: random.Random,
-) -> dict[tuple[str, str], str]:
+) -> tuple[dict[tuple[str, str], str], str | None]:
     """Pick one surface per ``(role, slot)`` required by the archetype.
 
-    Returns a mapping ``{(role, slot): surface, ...}``.  Keys are
-    unique because each ``RoleSpec(role, slot, count)`` with ``count > 1``
-    would need multiple surfaces — we handle that by appending
-    ``#i`` disambiguators per extra count.  (Practical archetypes
-    ship with ``count=1`` for each role_span; multi-count is a
-    forward-looking extension.)
+    Returns a pair ``(entities, topic)`` where:
+
+    * ``entities`` maps ``{(role, slot): surface, ...}``.  Keys are
+      unique because each ``RoleSpec(role, slot, count)`` with
+      ``count > 1`` would need multiple surfaces — we handle that by
+      appending ``#i`` disambiguators per extra count.  (Practical
+      archetypes ship with ``count=1`` for each role_span; multi-
+      count is a forward-looking extension.)
+    * ``topic`` is the topic the emitted row should carry on its
+      :attr:`GoldExample.topic` field.  Derivation rule:
+
+      - If the archetype declares an explicit ``topic``, it wins
+        (author-level override).
+      - Otherwise, the primary-role entity's topic wins — from
+        its gazetteer entry for catalog-backed slots, or from the
+        source diversity node's ``topic_hint`` for inline slots.
+      - Falls back to ``None`` only when neither source carries a
+        topic (open-vocab node without a topic_hint — not a shape
+        the domain loader currently accepts).
 
     Sampling rules:
 
@@ -133,6 +146,8 @@ def _sample_entities(
 
     out: dict[tuple[str, str], str] = {}
     used_per_slot: dict[str, set[str]] = {}
+    primary_topic: str | None = None
+    first_any_topic: str | None = None
     # Iterate in a stable order so seed determinism holds across
     # reruns; role_spans is a tuple so its order is already stable.
     for rs in archetype.role_spans:
@@ -141,7 +156,7 @@ def _sample_entities(
         for i in range(rs.count):
             key_suffix = "" if rs.count == 1 else f"#{i}"
             key = (rs.role, rs.slot + key_suffix)
-            surface = _draw_one(
+            draw = _draw_one(
                 slot=rs.slot,
                 gaz_by_slot=gaz_by_slot,
                 inline_nodes=inline_nodes,
@@ -149,38 +164,68 @@ def _sample_entities(
                 already_used=used_per_slot.setdefault(rs.slot, set()),
                 rng=rng,
             )
-            if surface is None:
+            if draw is None:
                 # No entity available for this (role, slot) pair —
-                # signal via an empty value so the caller can skip
+                # signal via an empty dict so the caller can skip
                 # this archetype for this run.  We prefer a crisp
                 # skip over silently emitting unlabeled rows.
-                return {}
+                return {}, None
+            surface, source_topic = draw
             used_per_slot[rs.slot].add(surface.lower())
             out[key] = surface
-    return out
+            # Topic inheritance — prefer the first PRIMARY entity's
+            # topic, but fall back to the first entity of any role
+            # so archetypes built from casual-only role_spans
+            # (``neutral_*_outcome`` in clinical, ``neutral_object_casual``
+            # in conversational) still emit a labelled topic.  The
+            # topic is what the topic-head trains on, and training
+            # can't learn from None.
+            if source_topic is not None:
+                if first_any_topic is None:
+                    first_any_topic = source_topic
+                if rs.role == "primary" and primary_topic is None:
+                    primary_topic = source_topic
+
+    # Precedence: archetype.topic override → primary entity's topic
+    # → any entity's topic → None (domain has no topics — shouldn't
+    # happen for the three shipped domains).
+    if archetype.topic is not None:
+        topic = archetype.topic
+    elif primary_topic is not None:
+        topic = primary_topic
+    else:
+        topic = first_any_topic
+    return out, topic
 
 
 def _draw_one(
     *,
     slot: str,
-    gaz_by_slot: dict[str, tuple],
-    inline_nodes: tuple[DiversityNode, ...],
+    gaz_by_slot: "dict[str, tuple]",
+    inline_nodes: "tuple[DiversityNode, ...]",
     archetype: ArchetypeSpec,
     already_used: set[str],
     rng: random.Random,
-) -> str | None:
-    """Return one surface for ``slot`` not in ``already_used``; None if
-    the pool is exhausted or nonexistent.
+) -> tuple[str, str | None] | None:
+    """Return ``(surface, source_topic)`` for ``slot`` not in ``already_used``,
+    or ``None`` when the pool is exhausted / nonexistent.
+
+    The returned ``source_topic`` is the topic the row should
+    inherit when this draw is the primary-role entity:
+
+    * Gazetteer path → the chosen catalog entry's ``topic``.
+    * Inline path → the chosen diversity node's ``topic_hint``.
     """
     # Gazetteer path.
     gaz_entries = gaz_by_slot.get(slot, ())
     if gaz_entries:
         candidates = [
-            e.canonical for e in gaz_entries
+            e for e in gaz_entries
             if e.canonical.lower() not in already_used
         ]
         if candidates:
-            return rng.choice(candidates)
+            picked = rng.choice(candidates)
+            return picked.canonical, picked.topic
         return None
 
     # Open-vocab path: filter inline nodes by slot compatibility
@@ -214,18 +259,18 @@ def _draw_one(
     candidates = [
         ex for ex in node.examples if ex.lower() not in already_used
     ]
-    if not candidates:
-        # Try a different slot-compatible node if this one was exhausted.
-        for n in matching:
-            if n is node:
-                continue
-            candidates = [
-                ex for ex in n.examples if ex.lower() not in already_used
-            ]
-            if candidates:
-                return rng.choice(candidates)
-        return None
-    return rng.choice(candidates)
+    if candidates:
+        return rng.choice(candidates), node.topic_hint
+    # Try a different slot-compatible node if this one was exhausted.
+    for n in matching:
+        if n is node:
+            continue
+        candidates = [
+            ex for ex in n.examples if ex.lower() not in already_used
+        ]
+        if candidates:
+            return rng.choice(candidates), n.topic_hint
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +328,9 @@ def generate_for_archetype(
         # batch_n rows all using that one entity, which collapsed
         # to eight paraphrases of the same sentence.
         entity_rows: list[dict[tuple[str, str], str]] = []
+        topic_rows: list[str | None] = []
         for _ in range(batch_n):
-            entities = _sample_entities(spec, archetype, rng)
+            entities, topic = _sample_entities(spec, archetype, rng)
             if not entities and archetype.role_spans:
                 # Domain has no entity source for this archetype; we
                 # still need SOMETHING to hand the validator.  An
@@ -298,6 +344,7 @@ def generate_for_archetype(
                     archetype.name,
                 )
             entity_rows.append(entities)
+            topic_rows.append(topic)
 
         # Abort this archetype if every row sampled empty — typically
         # means the domain has no gazetteer coverage AND no inline
@@ -345,6 +392,7 @@ def generate_for_archetype(
                 # LLM overshoot past the requested count — drop.
                 break
             row_entities = entity_rows[i]
+            row_topic = topic_rows[i]
             norm = text.strip()
             if norm in seen_texts:
                 stats.duplicates += 1
@@ -365,7 +413,7 @@ def generate_for_archetype(
                 domain=spec.name,  # type: ignore[arg-type]
                 intent=archetype.intent,
                 slots=_build_slots_from_entities(row_entities),
-                topic=archetype.topic,
+                topic=row_topic,
                 admission=archetype.admission,
                 state_change=archetype.state_change,
                 role_spans=list(outcome.role_spans),

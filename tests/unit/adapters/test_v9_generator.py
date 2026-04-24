@@ -660,6 +660,60 @@ class TestPerRowEntitySampling:
             pytest.skip(f"clinical domain not present at {d}")
         return load_domain(d)
 
+    def test_row_topic_inherits_from_gazetteer_entry(self, clinical_spec):
+        """Emitted GoldExample.topic must match the primary entity's
+        gazetteer-declared topic — NOT None.
+
+        Regression guard for the B'.4 full-run bug where every
+        emitted row carried ``topic=None`` because the generator
+        only looked at ``archetype.topic`` (unset on all three
+        shipped domains) and ignored gazetteer-entry topics.
+        """
+        arch = next(
+            a for a in clinical_spec.archetypes
+            if a.name == "habitual_medication_regimen"
+        )
+        rows, _ = generate_for_archetype(
+            clinical_spec, arch,
+            n=5, backend=TemplateBackend(), seed=17,
+        )
+        topics = [r.topic for r in rows]
+        assert all(t is not None for t in topics), (
+            f"expected non-None topics, got {topics}"
+        )
+        # Topic must be a valid clinical-domain topic drawn from the
+        # gazetteer entry (not None, not an unknown string).
+        allowed = set(clinical_spec.topics)
+        for t in topics:
+            assert t in allowed, (
+                f"topic {t!r} not in clinical topic vocab {sorted(allowed)}"
+            )
+
+    def test_row_topic_inherits_from_inline_node(self, conversational_spec):
+        """Open-vocab domain: topic must come from the sampled
+        inline node's ``topic_hint``.
+        """
+        arch = next(
+            a for a in conversational_spec.archetypes
+            if a.name == "positive_object_adoption"
+        )
+        rows, _ = generate_for_archetype(
+            conversational_spec, arch,
+            n=10, backend=TemplateBackend(), seed=17,
+        )
+        # Every row's topic must be in the conversational topic vocab
+        # (not None, not "habit_pref" — since frequency nodes are
+        # filter_slots-scoped, they can't supply object-slot entities).
+        allowed_object_topics = set(conversational_spec.topics) - {"habit_pref"}
+        for r in rows:
+            assert r.topic is not None, (
+                f"row had None topic: {r.text}"
+            )
+            assert r.topic in allowed_object_topics, (
+                f"row topic {r.topic!r} not in "
+                f"{sorted(allowed_object_topics)}: {r.text}"
+            )
+
     def test_batch_uses_multiple_medications(self, clinical_spec):
         """Across a 10-row batch from habitual_medication_regimen,
         more than one medication must appear in slots."""
@@ -748,7 +802,7 @@ class TestInlineNodeSlotScoping:
         drawn = []
         rng_state = random.Random(123)
         for _ in range(50):
-            surface = _draw_one(
+            draw = _draw_one(
                 slot="object",
                 gaz_by_slot={},  # no gazetteer for conversational
                 inline_nodes=inline_nodes,
@@ -756,7 +810,8 @@ class TestInlineNodeSlotScoping:
                 already_used=set(),
                 rng=rng_state,
             )
-            if surface is not None:
+            if draw is not None:
+                surface, _topic = draw
                 drawn.append(surface.lower())
 
         assert drawn, "expected _draw_one to return SOMETHING"
@@ -784,7 +839,7 @@ class TestInlineNodeSlotScoping:
         rng_state = random.Random(99)
         drawn: list[str] = []
         for _ in range(30):
-            surface = _draw_one(
+            draw = _draw_one(
                 slot="frequency",
                 gaz_by_slot={},
                 inline_nodes=inline_nodes,
@@ -792,7 +847,8 @@ class TestInlineNodeSlotScoping:
                 already_used=set(),
                 rng=rng_state,
             )
-            if surface is not None:
+            if draw is not None:
+                surface, _topic = draw
                 drawn.append(surface.lower())
         assert drawn, "frequency-slot sampling returned nothing"
         # At least one draw must come from the frequency-scoped pool
