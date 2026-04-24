@@ -379,7 +379,7 @@ def train(
     batch_size: int = 16,
     learning_rate: float = 3e-4,
     device: str | None = None,
-    cue_loss_weight: float = 3.0,
+    cue_loss_weight: float = 1.5,
 ) -> AdapterManifest:
     """Fine-tune the LoRA adapter + heads on ``examples`` (v8.1).
 
@@ -582,7 +582,57 @@ def train(
     intent_loss_fn = nn.CrossEntropyLoss()
     role_loss_fn = nn.CrossEntropyLoss()
     head_loss_fn = nn.CrossEntropyLoss(reduction="none")
-    cue_loss_fn = nn.CrossEntropyLoss(ignore_index=-100) if cue_labels else None
+
+    # v8.1 fix: the cue head (33-label BIO sequence labeler) is
+    # extremely class-imbalanced — the ``O`` tag dominates because
+    # most tokens in a sentence are not causal / temporal / ordinal
+    # / modal cues.  Unweighted CrossEntropyLoss collapses to
+    # predicting ``O`` everywhere.  Fix: compute inverse-frequency
+    # class weights from the actual training-label distribution,
+    # clamp to keep rare-class weights sane, and pass them to CE.
+    cue_class_weights = None
+    if cue_labels:
+        from collections import Counter as _Counter
+        counts: _Counter[int] = _Counter()
+        for row_cues in cue_row_labels:
+            for lbl in row_cues:
+                if lbl >= 0:
+                    counts[lbl] += 1
+        total_tokens = sum(counts.values())
+        n_cls = len(cue_labels)
+        weights = torch.ones(n_cls, dtype=torch.float32, device=device)
+        for i in range(n_cls):
+            cnt = counts.get(i, 0)
+            if cnt > 0:
+                # Inverse-frequency: class_weight = total / (n_cls * count)
+                weights[i] = total_tokens / max(n_cls * cnt, 1)
+            else:
+                # Unseen class: give it weight 1.0 (no signal to upweight)
+                weights[i] = 1.0
+        # Clamp tight: don't let any single rare class dominate,
+        # don't let the O class collapse to zero influence.  The
+        # looser [0.2, 8.0] range on v8.1-v2 drove the cue head to
+        # over-predict rare classes (high recall, low precision);
+        # [0.5, 3.0] keeps the amplification modest.
+        weights = torch.clamp(weights, min=0.5, max=3.0)
+        cue_class_weights = weights
+        # Log top-5 and O weights so we can see the balance.
+        o_idx = cue_labels.index("O") if "O" in cue_labels else -1
+        o_weight = float(weights[o_idx]) if o_idx >= 0 else float("nan")
+        logger.info(
+            "[lora] cue class weights: O=%.3f  non-O mean=%.3f  "
+            "min=%.3f max=%.3f (from %d tokens over %d classes)",
+            o_weight,
+            float(weights[torch.arange(n_cls) != o_idx].mean())
+            if o_idx >= 0 else float(weights.mean()),
+            float(weights.min()), float(weights.max()),
+            total_tokens, n_cls,
+        )
+    cue_loss_fn = (
+        nn.CrossEntropyLoss(
+            weight=cue_class_weights, ignore_index=-100,
+        ) if cue_labels else None
+    )
 
     optimizer = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],
@@ -709,10 +759,12 @@ def train(
             else:
                 cue_loss = torch.tensor(0.0, device=device)
 
-            # v8.1: cue head weighted 3× by default — the 33-label
-            # BIO sequence task is harder than the [CLS]-pooled heads
-            # and was underfit at equal weight.  See docs for the
-            # v8 held-out macro F1 = 0.276 that triggered this change.
+            # v8.1: cue head weighted 1.5× by default.  The 33-label
+            # BIO task is harder than the [CLS]-pooled heads, but
+            # the v8.1-v1 attempt at 3× collapsed the head to
+            # predict ``O`` everywhere.  The right fix was
+            # inverse-frequency class weighting (above), so this
+            # multiplier just provides a mild nudge — not a hammer.
             loss = (
                 intent_loss + role_loss
                 + topic_loss + admit_loss + state_loss

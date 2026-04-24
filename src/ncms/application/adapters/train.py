@@ -134,7 +134,7 @@ def _evaluate_heldout(
     head that scores well on the training gold but drops on
     held-out has overfit.
     """
-    from collections import Counter
+    from collections import Counter, defaultdict
     from ncms.application.adapters.methods.joint_bert_lora import (
         AdapterManifest,
         LoraJointBert,
@@ -146,27 +146,33 @@ def _evaluate_heldout(
     # Per-head hit counts (numerator) + labeled-row counts (denominator).
     hits: Counter[str] = Counter()
     labeled: Counter[str] = Counter()
+    # Per-head per-class confusion accounting (for macro F1).  Keys
+    # look like ("intent", "positive") → Counter({"tp": X, "fp": Y,
+    # "fn": Z}).  Catches class-collapse that accuracy hides.
+    class_tpfpfn: dict[str, dict[str, Counter[str]]] = defaultdict(
+        lambda: defaultdict(Counter),
+    )
     # Cue-span accounting (exact char_start,char_end,cue_label match).
     cue_tp = cue_fp = cue_fn = 0
 
+    def _record_head(head: str, gold: str | None, pred: str | None) -> None:
+        if gold is None:
+            return
+        labeled[head] += 1
+        if pred == gold:
+            hits[head] += 1
+            class_tpfpfn[head][gold]["tp"] += 1
+        else:
+            class_tpfpfn[head][gold]["fn"] += 1
+            if pred is not None:
+                class_tpfpfn[head][pred]["fp"] += 1
+
     for ex in heldout:
         pred = extractor.extract(ex.text, domain=domain)
-        # intent is always present on both sides.
-        labeled["intent"] += 1
-        if pred.intent == ex.intent:
-            hits["intent"] += 1
-        if ex.topic is not None:
-            labeled["topic"] += 1
-            if pred.topic == ex.topic:
-                hits["topic"] += 1
-        if ex.admission is not None:
-            labeled["admission"] += 1
-            if pred.admission == ex.admission:
-                hits["admission"] += 1
-        if ex.state_change is not None:
-            labeled["state_change"] += 1
-            if pred.state_change == ex.state_change:
-                hits["state_change"] += 1
+        _record_head("intent", ex.intent, pred.intent)
+        _record_head("topic", ex.topic, pred.topic)
+        _record_head("admission", ex.admission, pred.admission)
+        _record_head("state_change", ex.state_change, pred.state_change)
         # Cue spans: exact match on (char_start, char_end, cue_label).
         gold_spans = {
             (int(t["char_start"]), int(t["char_end"]), str(t["cue_label"]))
@@ -189,6 +195,25 @@ def _evaluate_heldout(
         for head in labeled
         if labeled[head] > 0
     }
+    # Macro F1 per head — exposes class-collapse (e.g. "model always
+    # predicts intent=none") that accuracy hides when one class
+    # dominates the held-out split.
+    for head, per_class in class_tpfpfn.items():
+        f1s: list[float] = []
+        for _cls, counts in per_class.items():
+            t = counts["tp"]
+            fp_ = counts["fp"]
+            fn_ = counts["fn"]
+            if t + fp_ + fn_ == 0:
+                continue
+            p = t / (t + fp_) if t + fp_ else 0.0
+            r = t / (t + fn_) if t + fn_ else 0.0
+            f1 = 2 * p * r / (p + r) if (p + r) else 0.0
+            f1s.append(f1)
+        if f1s:
+            metrics[f"heldout_{head}_f1_macro"] = round(
+                sum(f1s) / len(f1s), 4,
+            )
     if cue_tp + cue_fp + cue_fn > 0:
         precision = cue_tp / (cue_tp + cue_fp) if cue_tp + cue_fp else 0.0
         recall = cue_tp / (cue_tp + cue_fn) if cue_tp + cue_fn else 0.0
@@ -212,13 +237,21 @@ def _evaluate_heldout(
     manifest.save(adapter_dir / "manifest.json")
 
     logger.info(
-        "[phase4] held-out eval (n=%d): intent=%.3f topic=%.3f "
-        "admission=%.3f state_change=%.3f cue_f1=%.3f",
+        "[phase4] held-out eval (n=%d): "
+        "intent acc=%.3f f1_macro=%.3f | "
+        "topic acc=%.3f f1_macro=%.3f | "
+        "admission acc=%.3f f1_macro=%.3f | "
+        "state_change acc=%.3f f1_macro=%.3f | "
+        "cue_f1=%.3f",
         n,
         metrics.get("heldout_intent_acc", float("nan")),
+        metrics.get("heldout_intent_f1_macro", float("nan")),
         metrics.get("heldout_topic_acc", float("nan")),
+        metrics.get("heldout_topic_f1_macro", float("nan")),
         metrics.get("heldout_admission_acc", float("nan")),
+        metrics.get("heldout_admission_f1_macro", float("nan")),
         metrics.get("heldout_state_change_acc", float("nan")),
+        metrics.get("heldout_state_change_f1_macro", float("nan")),
         metrics.get("heldout_cue_f1", float("nan")),
     )
 
@@ -566,11 +599,13 @@ def main() -> None:
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--device", default=None)
     parser.add_argument(
-        "--cue-loss-weight", type=float, default=3.0,
+        "--cue-loss-weight", type=float, default=1.5,
         help=(
             "Multiplier on the CTLG cue head's loss contribution.  "
-            "v8.1 default 3.0 — the 33-label BIO sequence task was "
-            "underfit at equal weight on v8 held-out (macro F1=0.276)."
+            "v8.1 default 1.5 — paired with inverse-frequency class "
+            "weighting on the cue CE loss (which handles the O-class "
+            "imbalance properly).  v8.1-v1 used 3.0 and collapsed the "
+            "head; don't go above 2.0 without knowing why."
         ),
     )
     parser.add_argument(
