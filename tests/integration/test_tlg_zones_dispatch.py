@@ -28,6 +28,7 @@ from ncms.domain.models import (
 )
 from ncms.domain.tlg import Confidence
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from tests.integration._tlg_helpers import tlg_query_for
 
 
 @pytest_asyncio.fixture
@@ -121,7 +122,7 @@ class TestRefinesChain:
             "What is the current authentication method?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         assert trace.confidence == Confidence.HIGH
         # Terminal of the chain = c (it was refined from b from a).
@@ -176,7 +177,7 @@ class TestMultiZoneSupersession:
             "What was the original authentication method?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="origin",
+            tlg_query=tlg_query_for("origin"),
         )
         assert origin_trace.confidence == Confidence.HIGH
         assert origin_trace.grammar_answer == v1.id
@@ -185,7 +186,7 @@ class TestMultiZoneSupersession:
             "What is the current authentication method?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         assert current_trace.confidence == Confidence.HIGH
         assert current_trace.grammar_answer == v3.id
@@ -234,7 +235,7 @@ class TestMultiZoneSupersession:
             "When were session cookies retired?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="retirement",
+            tlg_query=tlg_query_for("retirement"),
         )
         assert trace.confidence == Confidence.HIGH
         # The retirement extractor finds the supersession closest to

@@ -759,27 +759,39 @@ def _intent_to_lg_intent(qs: QueryStructure) -> LGIntent:
     )
 
 
-#: Map from SLM ``shape_intent_head`` labels to the ``qs.intent``
-#: strings used by the dispatcher's ``_INTENT_DISPATCHERS`` table.
-#: Most labels are 1:1; a few collapse to shared walkers:
+#: Map from :class:`ncms.domain.tlg.semantic_parser.TLGQuery.relation`
+#: values to the ``qs.intent`` strings used by
+#: ``_INTENT_DISPATCHERS`` below.  Most relations collapse onto a
+#: shared walker: ``first`` + ``declared`` → ``origin``; ``last`` +
+#: ``current`` → ``current``; every causal flavour → ``cause_of``.
 #:
-#: * ``ordinal_first`` → ``origin`` (first-in-chain walker)
-#: * ``ordinal_last``  → ``current`` (current / most-recent walker)
-#: * ``causal_chain``  → ``cause_of`` (ancestor-walk dispatcher)
-_SLM_SHAPE_TO_DISPATCH_INTENT: dict[str, str] = {
-    "current_state":    "current",
-    "before_named":     "before_named",
-    "concurrent":       "concurrent",
-    "origin":           "origin",
-    "retirement":       "retirement",
-    "sequence":         "sequence",
-    "predecessor":      "predecessor",
-    "transitive_cause": "transitive_cause",
-    "causal_chain":     "cause_of",
-    "interval":         "interval",
-    "ordinal_first":    "origin",
-    "ordinal_last":     "current",
-    "none":             "none",
+#: Unmapped relations (``would_be_current_if`` / ``could_have_been``
+#: etc.) produce ``Confidence.NONE`` — the dispatcher has no
+#: counterfactual walker yet (future work; see ctlg-design.md §5.4).
+_TLG_RELATION_TO_DISPATCH_INTENT: dict[str, str] = {
+    # state axis
+    "current":                "current",
+    "retired":                "retirement",
+    "declared":               "origin",
+    # temporal axis
+    "state_at":               "current",
+    "before_named":           "before_named",
+    "after_named":            "sequence",
+    "between":                "interval",
+    "concurrent_with":        "concurrent",
+    "during_interval":        "interval",
+    "predecessor":            "predecessor",
+    # causal axis
+    "cause_of":               "cause_of",
+    "effect_of":              "cause_of",
+    "chain_cause_of":         "transitive_cause",
+    "trigger_of":             "cause_of",
+    "contributing_factor":    "cause_of",
+    # ordinal axis
+    "first":                  "origin",
+    "last":                   "current",
+    "nth":                    "sequence",
+    # modal axis (counterfactual) — no walker yet; grammar abstains.
 }
 
 
@@ -789,7 +801,7 @@ async def retrieve_lg(
     store: object,
     vocabulary_cache: object,
     shape_cache: object | None = None,
-    slm_shape_intent: str | None = None,
+    tlg_query: object | None = None,
     slm_abstained: bool = False,
 ) -> LGTrace:
     """Classify + dispatch a query against the grammar layer.
@@ -864,35 +876,50 @@ async def retrieve_lg(
     if cache_hit and qs.intent is not None:
         trace.proof = f"shape-cache hit: intent={qs.intent}"
 
-    # ── SLM shape classification (v6+) — sole intent source ───────
-    # The SLM's ``shape_intent_head`` classifies the query; we map
-    # its 12 + none label space to the dispatcher's existing
-    # walker-intent strings via ``_SLM_SHAPE_TO_DISPATCH_INTENT``.
-    # ``slm_abstained=True`` or ``slm_shape_intent is None`` short
-    # circuit to grammar abstain — the zero-confidently-wrong
-    # invariant.  The regex-intent classifier that used to live in
-    # ``query_parser.py`` was deleted in the v6 cleanup; there is no
-    # fallback path.
-    if slm_shape_intent is not None:
-        mapped = _SLM_SHAPE_TO_DISPATCH_INTENT.get(slm_shape_intent)
-        if mapped is None or mapped == "none":
+    # ── CTLG dispatch (v8.1) — synthesizer-composed TLGQuery ──────
+    # The SLM's cue_head tags causal / temporal / ordinal / modal /
+    # referent / subject / scope cues; the compositional synthesizer
+    # (``ncms.domain.tlg.semantic_parser.synthesize``) folds them
+    # into a :class:`TLGQuery` logical form.  We map the query's
+    # ``relation`` onto the dispatcher's walker-intent strings via
+    # ``_TLG_RELATION_TO_DISPATCH_INTENT``.
+    #
+    # ``slm_abstained=True`` or ``tlg_query is None`` short-circuits
+    # to grammar abstain — the zero-confidently-wrong invariant.
+    # The regex-intent classifier that used to live in
+    # ``query_parser.py`` and the v6/v7.x ``shape_intent_head``
+    # classifier were both deleted in the v8.1 cleanup.
+    if tlg_query is not None:
+        relation = getattr(tlg_query, "relation", None)
+        mapped = _TLG_RELATION_TO_DISPATCH_INTENT.get(relation or "")
+        if mapped is None:
             trace.proof = (
-                f"SLM shape_intent={slm_shape_intent!r}: "
-                "unmappable or none — grammar does not apply"
+                f"TLG relation={relation!r}: no dispatcher (modal / "
+                "counterfactual not yet walkable) — grammar abstains"
             )
             trace.confidence = Confidence.NONE
             return trace
         import dataclasses as _dc
+        # Prefer the synthesizer's referent/subject when present —
+        # analyze_query's heuristic extraction was only useful when
+        # the dispatcher had no structured signal.
+        new_subject = getattr(tlg_query, "subject", None) or qs.subject
+        new_target = getattr(tlg_query, "referent", None) or qs.target_entity
         qs = _dc.replace(
-            qs, intent=mapped, detected_marker="slm_shape_intent",
+            qs,
+            intent=mapped,
+            subject=new_subject,
+            target_entity=new_target,
+            detected_marker="tlg_synthesizer",
         )
         trace = LGTrace(query=query, intent=_intent_to_lg_intent(qs))
         trace.proof = (
-            f"slm_shape_intent={slm_shape_intent!r} -> "
-            f"dispatch intent={mapped!r}"
+            f"TLG axis={getattr(tlg_query, 'axis', '?')!r} "
+            f"relation={relation!r} -> dispatch intent={mapped!r} "
+            f"(rule={getattr(tlg_query, 'matched_rule', '')!r})"
         )
-        # Shape-cache learn — cache the SLM-classified intent so the
-        # skeleton-match fast path picks it up on future queries.
+        # Shape-cache learn — cache the synthesizer-assigned intent
+        # so the skeleton-match fast path picks it up on future queries.
         if shape_cache is not None:
             try:
                 await shape_cache.learn(  # type: ignore[attr-defined]
@@ -901,16 +928,19 @@ async def retrieve_lg(
             except Exception:  # pragma: no cover — defensive guard
                 logger.debug("TLG: shape-cache learn failed", exc_info=True)
     else:
-        # slm_abstained=True OR the caller didn't pass an SLM result
-        # (pre-v6 adapter).  Either way, grammar doesn't apply.
+        # slm_abstained=True OR the caller didn't pass a TLGQuery
+        # (pre-v8 adapter, or synthesizer produced no structured
+        # form).  Either way, grammar doesn't apply — fall through
+        # to pure hybrid retrieval.
         if slm_abstained:
             trace.proof = (
-                "SLM shape_intent_head abstained; grammar does not apply"
+                "SLM cue head / synthesizer abstained; "
+                "grammar does not apply"
             )
         else:
             trace.proof = (
-                "no SLM shape_intent supplied; grammar does not apply "
-                "(regex intent classifier deleted in v6 cleanup)"
+                "no TLGQuery supplied; grammar does not apply "
+                "(regex + shape_intent classifiers deleted in v8.1)"
             )
         trace.confidence = Confidence.NONE
         return trace

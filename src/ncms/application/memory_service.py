@@ -1756,7 +1756,7 @@ class MemoryService:
     # ── TLG: grammar-layer query dispatch (Phase 3c) ───────────────
 
     async def retrieve_lg(
-        self, query: str, *, slm_shape_intent: str | None = None,
+        self, query: str, *, tlg_query: Any | None = None,
     ) -> LGTrace:
         """Dispatch ``query`` through the TLG grammar layer.
 
@@ -1769,16 +1769,19 @@ class MemoryService:
 
         Safe to call on any store state.  Returns a
         :attr:`Confidence.NONE` trace when TLG is disabled via
-        ``NCMSConfig.temporal_enabled`` — this keeps callers' composition
-        logic identical whether TLG is on or off.
+        ``NCMSConfig.temporal_enabled`` — this keeps callers'
+        composition logic identical whether TLG is on or off.
 
-        ``slm_shape_intent`` is a test / benchmark hatch — when set,
-        it overrides the SLM classification step and hands the
-        intent directly to the dispatcher.  Production callers leave
-        it ``None`` and let the ingest-time SLM extractor run.
+        ``tlg_query`` is a test / benchmark hatch — when set,
+        it overrides the cue-head + synthesizer step and hands the
+        composed :class:`TLGQuery` directly to the dispatcher.
+        Production callers leave it ``None`` and let the
+        ingest-time SLM chain run the cue head + synthesizer.
         """
         from ncms.application.tlg import retrieve_lg as _dispatch
         from ncms.domain.tlg import Confidence, LGIntent, LGTrace
+        from ncms.domain.tlg.cue_taxonomy import TaggedToken
+        from ncms.domain.tlg.semantic_parser import synthesize
 
         if not self._config.temporal_enabled:
             return LGTrace(
@@ -1795,19 +1798,17 @@ class MemoryService:
                 logger.debug("TLG shape-cache warm failed", exc_info=True)
             self._tlg_shape_cache_warmed = True
 
-        # ── SLM-first shape classification (v6 adapters) ──────────
-        # When the intent-slot chain is wired in and its primary
-        # backend carries a ``shape_intent_head``, classify the
-        # query's shape here and pass the result to the grammar
-        # dispatcher.  This replaces the hand-coded regex intent
-        # classifier deleted in the v6 cleanup.
+        # ── CTLG cue head + synthesizer (v8+) ─────────────────────
+        # The SLM's ``shape_cue_head`` tags each token with a BIO
+        # cue label; the synthesizer composes the tags into a
+        # structured :class:`TLGQuery`.  Pass the TLGQuery straight
+        # to the dispatcher.
         #
-        # When the caller supplied an explicit ``slm_shape_intent``
-        # override (test / benchmark path), use it verbatim and
-        # skip the SLM call.
-        resolved_shape_intent: str | None = slm_shape_intent
+        # When the caller supplied an explicit ``tlg_query``
+        # override (test / benchmark path), use it verbatim.
+        resolved_tlg_query = tlg_query
         slm_abstained = False
-        if resolved_shape_intent is None and self._intent_slot is not None:
+        if resolved_tlg_query is None and self._intent_slot is not None:
             try:
                 adapter_domain = getattr(
                     self._intent_slot, "adapter_domain", None,
@@ -1815,25 +1816,30 @@ class MemoryService:
                 slm_result = self._intent_slot.extract(
                     query, domain=adapter_domain,
                 )
-                if slm_result.shape_intent is not None:
-                    conf = slm_result.shape_intent_confidence or 0.0
-                    threshold = self._config.slm_confidence_threshold
-                    if conf >= threshold:
-                        if slm_result.shape_intent == "none":
-                            slm_abstained = True
-                        else:
-                            resolved_shape_intent = slm_result.shape_intent
-                    else:
-                        # Head produced a label but confidence was too
-                        # low — treat as abstain so grammar doesn't
-                        # fire on uncertain classifications.
+                cue_tag_dicts = list(getattr(slm_result, "cue_tags", ()) or ())
+                if cue_tag_dicts:
+                    # Convert list[dict] boundary type back to
+                    # TaggedToken dataclasses for the synthesizer.
+                    tokens = [
+                        TaggedToken(
+                            char_start=int(d["char_start"]),
+                            char_end=int(d["char_end"]),
+                            surface=str(d["surface"]),
+                            cue_label=str(d["cue_label"]),
+                            confidence=float(d.get("confidence", 1.0)),
+                        )
+                        for d in cue_tag_dicts
+                    ]
+                    resolved_tlg_query = synthesize(tokens)
+                    if resolved_tlg_query is None:
+                        # Synthesizer matched no rule — grammar abstains.
                         slm_abstained = True
-                # shape_intent=None means this adapter predates v6;
-                # dispatch will treat absent override as "grammar does
-                # not apply" per the v6 cleanup (regex fallback deleted).
+                else:
+                    # Adapter ships no cue head (pre-v8) — abstain.
+                    slm_abstained = True
             except Exception:  # pragma: no cover — defensive guard
                 logger.debug(
-                    "TLG: SLM shape classification failed", exc_info=True,
+                    "TLG: cue-head synthesizer failed", exc_info=True,
                 )
 
         trace = await _dispatch(
@@ -1841,7 +1847,7 @@ class MemoryService:
             store=self._store,
             vocabulary_cache=self._tlg_vocab_cache,
             shape_cache=self._tlg_shape_cache,
-            slm_shape_intent=resolved_shape_intent,
+            tlg_query=resolved_tlg_query,
             slm_abstained=slm_abstained,
         )
         # Dashboard observability — one event per dispatch; dashboards

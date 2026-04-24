@@ -126,7 +126,7 @@ async def main() -> None:
 
             # Run retrieve_lg
             trace = await svc.retrieve_lg(
-                qtext, slm_shape_intent=slm_shape if slm_shape else None,
+                qtext,
             )
             conf = trace.confidence.value if trace.confidence else None
             grammar_hit[conf] += 1

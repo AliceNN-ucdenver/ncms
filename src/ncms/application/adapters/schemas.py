@@ -296,23 +296,6 @@ class ExtractedLabel:
     admission_confidence: float | None = None
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
-    # 6th head (v6/v7.x legacy) — query-shape classification.
-    #
-    # DEPRECATED (v8): this classification-style output is being
-    # replaced by CTLG cue-tagging (see docs/research/ctlg-design.md
-    # + docs/research/ctlg-grammar.md).  The classifier overfit
-    # template scaffolds (100% train / 25.6% held-out on natural
-    # queries — see docs/completed/failed-experiments/
-    # shape-intent-classification.md).  In v8+ this field will be a
-    # computed @property over cue_tags + the compositional
-    # synthesizer; in v9 the field is removed.  Callers should
-    # migrate to ``cue_tags`` + TLG synthesizer output.
-    #
-    # None when the adapter predates v6 or the head confidence is
-    # below the dispatch threshold.
-    shape_intent: ShapeIntent | None = None
-    shape_intent_confidence: float | None = None
-
     # 6th head (v7+) — role-classified gazetteer spans.  Superset of
     # the ``slots`` dict: ``slots`` is derived from ``role_spans`` at
     # inference time (primary → typed slot, alternative → alternative
@@ -408,33 +391,13 @@ class RoleSpan:
     source: str = ""
 
 
-#: Query-shape classification (6th head, v6+).  Produced by the
-#: ``shape_intent_head`` on query-voice input.  Replaces the hand-
-#: coded regex parser in ``ncms.domain.tlg.query_parser``.  ``none``
-#: means the query does not match any TLG grammar shape — dispatcher
-#: returns pure hybrid retrieval unchanged (zero-confidently-wrong
-#: invariant preserved).
-ShapeIntent = Literal[
-    "current_state",
-    "before_named",
-    "concurrent",
-    "origin",
-    "retirement",
-    "sequence",
-    "predecessor",
-    "transitive_cause",
-    "causal_chain",
-    "interval",
-    "ordinal_first",
-    "ordinal_last",
-    "none",
-]
-SHAPE_INTENTS: tuple[ShapeIntent, ...] = (
-    "current_state", "before_named", "concurrent", "origin",
-    "retirement", "sequence", "predecessor", "transitive_cause",
-    "causal_chain", "interval", "ordinal_first", "ordinal_last",
-    "none",
-)
+# The ``ShapeIntent`` literal + ``SHAPE_INTENTS`` tuple were removed
+# in v8.1 along with the failed ``shape_intent_head`` classifier.
+# Query-shape classification is now produced compositionally by the
+# CTLG synthesizer (:func:`ncms.domain.tlg.semantic_parser.synthesize`)
+# from the cue-tag head's BIO-labeled output.
+
+
 STATE_CHANGES: tuple[StateChange, ...] = ("declaration", "retirement", "none")
 
 
@@ -471,10 +434,6 @@ class GoldExample:
     topic: str | None = None
     admission: AdmissionDecision | None = None
     state_change: StateChange | None = None
-    # 6th head (v6+) — query-shape.  None on ingest-side training
-    # rows (they're not queries); set on query-side training rows
-    # imported from MSEB gold.
-    shape_intent: ShapeIntent | None = None
 
     # v7+ role-head ground-truth.  Empty list when the row predates
     # v7 labelling — the training loop skips the role loss for those

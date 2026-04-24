@@ -89,7 +89,6 @@ async def trace_domain(
             # (matches the production MemoryService path).
             trace = await svc.retrieve_lg(
                 q.text,
-                slm_shape_intent=slm_shape if slm_shape else None,
             )
 
             gold_shape = gold.get("shape", "noise")

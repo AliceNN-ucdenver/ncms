@@ -23,7 +23,6 @@ from ncms.application.adapters.schemas import (
     DOMAINS,
     INTENT_CATEGORIES,
     ROLE_LABELS,
-    SHAPE_INTENTS,
     SLOT_TAXONOMY,
     STATE_CHANGES,
     GoldExample,
@@ -97,11 +96,9 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         raise CorpusValidationError(
             f"{path}:{line_no} topic must be a string, got {type(topic)!r}"
         )
-    shape_intent = row.get("shape_intent")
-    if shape_intent is not None and shape_intent not in SHAPE_INTENTS:
-        raise CorpusValidationError(
-            f"{path}:{line_no} unknown shape_intent {shape_intent!r}"
-        )
+    # v6/v7.x ``shape_intent`` field — silently dropped in v8.1.  Corpus
+    # rows that carry the legacy field load cleanly; the field just
+    # isn't threaded through to GoldExample or the training targets.
 
     # v7+: role_spans (role head ground-truth).  Optional; validated
     # per-entry when present.  Rows that predate v7 roll forward with
@@ -177,7 +174,6 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         topic=topic,
         admission=admission,
         state_change=state_change,
-        shape_intent=shape_intent,
         role_spans=role_spans,
         cue_tags=cue_tags,
         split=split,
@@ -247,8 +243,6 @@ def dump_jsonl(
                 row["admission"] = ex.admission
             if ex.state_change is not None:
                 row["state_change"] = ex.state_change
-            if ex.shape_intent is not None:
-                row["shape_intent"] = ex.shape_intent
             if ex.role_spans:
                 row["role_spans"] = [
                     {

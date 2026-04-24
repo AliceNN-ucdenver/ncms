@@ -139,18 +139,13 @@ class ChainedExtractor:
             ):
                 merged.state_change = label.state_change
                 merged.state_change_confidence = label.state_change_confidence
-            # 6th head — shape_intent (v6+).  Fallback backends (E5 +
-            # heuristic) don't produce this head; only the primary
-            # LoRA adapter does.  Admit the primary's value whenever
-            # it's set and confident, or whenever it's set and we're
-            # in the floor-setting last-backend pass.
-            if label.shape_intent is not None and (
-                label.shape_intent_confidence is None
-                or label.shape_intent_confidence >= self._threshold
-                or is_last_backend
-            ):
-                merged.shape_intent = label.shape_intent
-                merged.shape_intent_confidence = label.shape_intent_confidence
+            # v7+ role_spans + v8+ cue_tags — only the primary
+            # LoRA backend produces these; fallbacks always return
+            # empty lists.  Take whichever backend set them.
+            if label.role_spans:
+                merged.role_spans = list(label.role_spans)
+            if label.cue_tags:
+                merged.cue_tags = list(label.cue_tags)
             chain_notes.append(f"{backend.name}:ok")
 
         merged.method = self._backends[0].name

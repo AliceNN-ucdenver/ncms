@@ -125,19 +125,17 @@ def phase1_bootstrap(
 
     Returns both tagged (multi-head labels present) and untagged
     rows — the training loop's per-head masking handles mixed
-    labelling gracefully.  Includes query-voice MSEB gold rows
-    (``gold_shape_intent_<domain>.jsonl``) when present — those
-    rows carry ``shape_intent`` labels for the 6th head and
-    ``split="gold"`` so they pass the loader's validation and
-    appear alongside memory-voice gold.
+    labelling gracefully.  v8+ cue-gold rows
+    (``gold_cues_<domain>.jsonl``) are included when present; the
+    loader tolerates the v6/v7.x ``shape_intent`` field and drops
+    it silently.
     """
     gold = [ex for ex in load_all(corpus_dir, split="gold")
             if ex.domain == domain]
-    shape_gold = [ex for ex in gold
-                  if ex.shape_intent is not None]
+    cue_gold = [ex for ex in gold if ex.cue_tags]
     logger.info(
-        "[phase1] domain=%s gold_rows=%d (of which %d carry shape_intent)",
-        domain, len(gold), len(shape_gold),
+        "[phase1] domain=%s gold_rows=%d (of which %d carry cue_tags)",
+        domain, len(gold), len(cue_gold),
     )
     return gold
 
@@ -266,30 +264,10 @@ def phase4_finetune_and_gate(
             "state_change_labels": list(data.get("state_change_labels") or []),
         }
 
-    # Derive shape_intent_labels from the training data — whichever
-    # shapes MSEB gold labelled for this domain show up in the head's
-    # vocabulary.  Adapters for domains without any shape-intent-
-    # labelled gold get an empty list; the head is still constructed
-    # (placeholder size 1) but produces no useful output — callers
-    # read ``shape_intent=None`` and skip TLG routing.
-    shape_intent_seen = {
-        ex.shape_intent for ex in (gold + sdg + adversarial_train)
-        if ex.shape_intent is not None
-    }
-    # Stable ordering — SHAPE_INTENTS registry order, filtered by
-    # what appeared in training data.
-    from ncms.application.adapters.schemas import SHAPE_INTENTS
-    shape_intent_labels = [s for s in SHAPE_INTENTS if s in shape_intent_seen]
-    if shape_intent_labels:
-        logger.info(
-            "[phase4] shape_intent head: %d labels trained (%s)",
-            len(shape_intent_labels), shape_intent_labels,
-        )
-    else:
-        logger.info(
-            "[phase4] shape_intent head: no labels in training data — "
-            "head will be a placeholder and extract() will return None",
-        )
+    # v8.1: the v6/v7.x shape_intent classifier head was removed.
+    # Query-shape classification is now produced compositionally at
+    # inference by the CTLG synthesizer over the cue head's output —
+    # see ncms.domain.tlg.semantic_parser.synthesize.
 
     manifest = build_manifest(
         domain=domain,
@@ -303,7 +281,6 @@ def phase4_finetune_and_gate(
             taxonomy["state_change_labels"]
             if taxonomy.get("state_change_labels") else None
         ),
-        shape_intent_labels=shape_intent_labels,
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,

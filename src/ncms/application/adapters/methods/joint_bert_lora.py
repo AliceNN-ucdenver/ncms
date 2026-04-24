@@ -1,6 +1,6 @@
-"""Tier 3 — LoRA adapter + multi-head Joint BERT (v7 six-head).
+"""Tier 3 — LoRA adapter + multi-head Joint BERT (v8.1 six-head).
 
-Architecture (v7+)::
+Architecture (v8.1+)::
 
     bert-base-uncased            ← frozen at production
       └── LoRA adapter           ← 10-15 MB, per deployment
@@ -8,33 +8,40 @@ Architecture (v7+)::
              ├── topic_head      ← domain taxonomy (pooled [CLS])
              ├── admission_head  ← persist / ephemeral / discard
              ├── state_change    ← declaration / retirement / none
-             ├── shape_intent    ← TLG grammar shape (query-voice)
-             └── role_head       ← primary / alternative / casual /
-                                    not_relevant (per gazetteer span,
-                                    span-pooled over subwords)
+             ├── role_head       ← primary / alternative / casual /
+             │                     not_relevant (per gazetteer span,
+             │                     span-pooled over subwords)
+             └── shape_cue_head  ← v8+ CTLG per-token BIO tagger over
+                                    the 33 causal / temporal / ordinal /
+                                    modal / referent / subject / scope
+                                    cues; output feeds the compositional
+                                    synthesizer (ncms.domain.tlg.
+                                    semantic_parser) which composes a
+                                    TLGQuery for the dispatcher.
 
-v7 architectural shift: head 6 (previously a BIO slot tagger) is
-replaced by a **role classifier**.  Slot detection is now owned by
-the gazetteer (:func:`ncms.application.adapters.sdg.catalog.detect_spans`)
-— the authoritative 567-entry software_dev catalog beats the BIO
-tagger on coverage (0.589 vs 0.464 F1 on held-out gold).  The SLM's
-job is the nuance the gazetteer can't see: is this surface the
-primary subject of the utterance, an alternative being rejected, a
-casual mention, or irrelevant noise?  Final ``slots`` dict is
-reconstructed from role-labeled spans at inference time.
+Catalog-gazetteer split: slot detection is owned by the catalog
+(:func:`ncms.application.adapters.sdg.catalog.detect_spans`) — the
+authoritative software_dev catalog beats a learned BIO tagger on
+coverage.  The SLM's job is the nuance the gazetteer can't see: is
+this surface the primary subject of the utterance, an alternative
+being rejected, a casual mention, or irrelevant noise?  Final
+``slots`` dict is reconstructed from role-labeled spans at
+inference time.
 
-Per-example multi-head label masking: if a row only carries
-``intent`` + ``slots`` (legacy v6 schema), the role head derives
-training targets from the slots dict via the gazetteer; topic /
-admission / state_change heads skip loss contribution per-row as
-before.
+v8.1 removed the v6 ``slot_head`` (retired BIO tagger, replaced by
+role head in v7) and the v7.x ``shape_intent_head`` (13-class
+query-shape classifier that overfit template scaffolds — see
+``docs/completed/failed-experiments/shape-intent-classification.md``).
+
+Per-example multi-head label masking: rows without a given
+label (topic / admission / state_change / role / cue) contribute
+zero loss for that head.
 
 Artifact format::
 
     adapters/<domain>/<version>/
       ├── lora_adapter/        ← peft save_pretrained dir
-      ├── heads.safetensors    ← 6 heads (intent/topic/admission/
-      │                          state/shape/role)
+      ├── heads.safetensors    ← 6 live heads
       ├── manifest.json        ← encoder, label vocabs, train metrics
       ├── taxonomy.yaml        ← human-readable label vocab snapshot
       └── eval_report.md       ← gate metrics at promotion time
@@ -101,16 +108,14 @@ def _pick_device() -> str:
 class AdapterManifest:
     """Persisted alongside every adapter artifact.
 
-    v7+ head layout (v6 BIO ``slot_labels`` removed):
+    v8.1 head layout (v6 slot_labels + v7.x shape_intent_labels removed):
       * ``intent_labels``         — 6-class preference intent
       * ``role_labels``           — primary/alternative/casual/
                                      not_relevant (span-pooled)
       * ``topic_labels``          — domain taxonomy
       * ``admission_labels``      — persist/ephemeral/discard
       * ``state_change_labels``   — declaration/retirement/none
-      * ``shape_intent_labels``   — v6/v7.x query-shape classes
-                                     (deprecated; v9 removes)
-      * ``cue_labels``            — v8+ CTLG BIO cue vocab
+      * ``cue_labels``            — CTLG BIO cue vocab (33 tags)
     """
 
     encoder: str = "bert-base-uncased"
@@ -124,16 +129,9 @@ class AdapterManifest:
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
     state_change_labels: list[str] = field(default_factory=list)
-    # v6/v7.x: shape_intent classifier labels (13 flat classes).
-    # DEPRECATED in v8+ — replaced by cue_labels below.  Empty list
-    # on v8+ trains; non-empty on legacy adapters for load-time
-    # detection.  See docs/research/ctlg-design.md.
-    shape_intent_labels: list[str] = field(default_factory=list)
-
     # v8+ CTLG: BIO cue-label vocabulary for the sequence-labeled
-    # 6th head (shape_cue_head).  Replaces shape_intent_labels.
-    # Should always be the full 33-entry list from
-    # ncms.domain.tlg.cue_taxonomy.CUE_LABELS on new trains.
+    # 6th head (shape_cue_head).  Should always be the full 33-entry
+    # list from ncms.domain.tlg.cue_taxonomy.CUE_LABELS on new trains.
     cue_labels: list[str] = field(default_factory=list)
 
     lora_r: int = 8
@@ -170,12 +168,11 @@ class AdapterManifest:
 
 
 class LoraJointModel(nn.Module):
-    """BERT (or BERT+LoRA) + six classification heads (v7).
+    """BERT (or BERT+LoRA) + six v8.1 heads.
 
-    Heads: intent, topic, admission, state_change, shape_intent,
-    role.  The first five consume the pooled [CLS] representation;
-    the role head consumes span-pooled subword representations
-    (mean-pooled over the tokens that cover a gazetteer span).
+    Heads: intent, topic, admission, state_change (four [CLS]-pooled
+    heads), role (span-pooled over gazetteer surfaces), shape_cue
+    (per-token BIO sequence labeler).
 
     Construction is two-step so training and inference share code
     without peft double-wrapping.
@@ -189,7 +186,6 @@ class LoraJointModel(nn.Module):
         n_topics: int,
         n_admission: int,
         n_state_change: int,
-        n_shape_intents: int = 0,
         n_cue_labels: int = 0,
     ) -> None:
         super().__init__()
@@ -202,10 +198,6 @@ class LoraJointModel(nn.Module):
         self.topic_head = nn.Linear(hidden, max(n_topics, 1))
         self.admission_head = nn.Linear(hidden, max(n_admission, 1))
         self.state_change_head = nn.Linear(hidden, max(n_state_change, 1))
-        # Legacy v6/v7.x shape_intent classification head.  Trained
-        # in v6/v7.1/v7.2; retained for checkpoint load compat; NOT
-        # consumed on v8+ inference when ``cue_labels`` is populated.
-        self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
         # v8+ CTLG shape_cue_head — per-token BIO cue classifier
         # (Linear over the full sequence output, one logit vector
         # per encoder position).  n_cue_labels=0 on legacy adapters;
@@ -238,8 +230,8 @@ class LoraJointModel(nn.Module):
         """Run the shared encoder; return ``(sequence, pooled)``.
 
         ``sequence`` is (B, L, H) — needed by the role head for
-        span pooling.  ``pooled`` is (B, H) — needed by the other
-        five heads.
+        span pooling and the cue head for per-token classification.
+        ``pooled`` is (B, H) — needed by the four [CLS]-pooled heads.
         """
         out = self.encoder(
             input_ids=input_ids, attention_mask=attention_mask,
@@ -251,13 +243,12 @@ class LoraJointModel(nn.Module):
     def classify_pooled(
         self, pooled: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
-        """Apply the 5 [CLS]-pooled heads."""
+        """Apply the 4 [CLS]-pooled heads."""
         return {
             "intent": self.intent_head(pooled),
             "topic": self.topic_head(pooled),
             "admission": self.admission_head(pooled),
             "state_change": self.state_change_head(pooled),
-            "shape_intent": self.shape_intent_head(pooled),
         }
 
     def classify_roles(
@@ -295,12 +286,11 @@ class LoraJointModel(nn.Module):
         return logits
 
     def save_heads(self, path: Path) -> None:
-        """Dump all heads to a single safetensors file.
+        """Dump the 6 live v8.1 heads to a single safetensors file.
 
-        v8+ carries 7 heads: 5 classification (intent/topic/admission/
-        state_change/shape_intent[deprecated]) + 1 span-pooled (role)
-        + 1 sequence-labeling (shape_cue).  Legacy adapters may
-        be missing shape_cue_head weights; load_heads tolerates.
+        v8.1 heads: intent, role, topic, admission, state_change,
+        shape_cue.  Retired in v8.1: slot_head (v6 BIO),
+        shape_intent_head (v7.x classifier).
         """
         state = {f"{k}.{sk}": v for k, sv in [
             ("intent_head", dict(self.intent_head.state_dict())),
@@ -308,7 +298,6 @@ class LoraJointModel(nn.Module):
             ("topic_head", dict(self.topic_head.state_dict())),
             ("admission_head", dict(self.admission_head.state_dict())),
             ("state_change_head", dict(self.state_change_head.state_dict())),
-            ("shape_intent_head", dict(self.shape_intent_head.state_dict())),
             ("shape_cue_head", dict(self.shape_cue_head.state_dict())),
         ] for sk, v in sv.items()}
         save_safetensors(state, str(path))
@@ -316,11 +305,12 @@ class LoraJointModel(nn.Module):
     def load_heads(self, path: Path) -> None:
         """Restore the heads from safetensors.
 
-        Tolerates unknown keys and shape mismatches so pre-v8
-        checkpoints (which carry a retired ``slot_head`` tensor)
-        still load cleanly — the mismatched tensor is logged and
-        skipped.  Useful for hot-swapping v7.x adapters onto a
-        v8+ runtime without re-training.
+        Tolerates unknown keys and shape mismatches so pre-v8.1
+        checkpoints (which carry retired ``slot_head`` and/or
+        ``shape_intent_head`` tensors) still load cleanly — the
+        retired tensors are logged as "unknown head" and skipped.
+        Useful for hot-swapping v7.x / v8 adapters onto a v8.1+
+        runtime without re-training.
         """
         state = load_safetensors(str(path))
         for key, tensor in state.items():
@@ -390,12 +380,11 @@ def train(
     learning_rate: float = 3e-4,
     device: str | None = None,
 ) -> AdapterManifest:
-    """Fine-tune the LoRA adapter + heads on ``examples`` (v7).
+    """Fine-tune the LoRA adapter + heads on ``examples`` (v8.1).
 
     Per-head loss:
-      * intent, topic, admission, state_change, shape_intent —
-        cross-entropy, skipped per-example when the label is ``None``
-        (per-head mask).
+      * intent, topic, admission, state_change — cross-entropy,
+        skipped per-example when the label is ``None`` (per-head mask).
       * role — cross-entropy over span-pooled representations.  Rows
         with zero explicit ``role_spans`` contribute nothing to the
         role loss (per-row mask).
@@ -411,7 +400,6 @@ def train(
     topic_labels = manifest.topic_labels
     admission_labels = manifest.admission_labels
     state_change_labels = manifest.state_change_labels
-    shape_intent_labels = manifest.shape_intent_labels
     cue_labels = manifest.cue_labels  # empty → head is a placeholder; no loss
 
     tokenizer = AutoTokenizer.from_pretrained(manifest.encoder, use_fast=True)
@@ -422,7 +410,6 @@ def train(
         n_topics=len(topic_labels),
         n_admission=len(admission_labels),
         n_state_change=len(state_change_labels),
-        n_shape_intents=len(shape_intent_labels),
         n_cue_labels=len(cue_labels),
     )
     model.wrap_encoder_with_lora(
@@ -438,7 +425,6 @@ def train(
     topic_idx = {label: i for i, label in enumerate(topic_labels)}
     admission_idx = {label: i for i, label in enumerate(admission_labels)}
     state_idx = {label: i for i, label in enumerate(state_change_labels)}
-    shape_idx = {label: i for i, label in enumerate(shape_intent_labels)}
     cue_idx = {label: i for i, label in enumerate(cue_labels)}
 
     # ── Build tensor dataset ─────────────────────────────────────
@@ -454,11 +440,9 @@ def train(
     topics: list[int] = []
     admissions: list[int] = []
     state_changes: list[int] = []
-    shape_intents: list[int] = []
     topic_mask: list[int] = []
     admission_mask: list[int] = []
     state_change_mask: list[int] = []
-    shape_intent_mask: list[int] = []
     # Per-row list of (token_mask, role_id) pairs.  Empty list when
     # no role_spans were derived (skipped by role loss).
     row_spans: list[list[tuple[list[float], int]]] = []
@@ -507,13 +491,6 @@ def train(
         else:
             state_changes.append(0)
             state_change_mask.append(0)
-        shape_val = getattr(ex, "shape_intent", None)
-        if shape_val is not None and shape_val in shape_idx:
-            shape_intents.append(shape_idx[shape_val])
-            shape_intent_mask.append(1)
-        else:
-            shape_intents.append(0)
-            shape_intent_mask.append(0)
 
         # Role-span targets.  Rows without explicit role_spans
         # (legacy v6 corpora) contribute nothing to the role loss
@@ -586,18 +563,12 @@ def train(
     state_changes_t = torch.tensor(
         state_changes, dtype=torch.long, device=device,
     )
-    shape_intents_t = torch.tensor(
-        shape_intents, dtype=torch.long, device=device,
-    )
     topic_mask_t = torch.tensor(topic_mask, dtype=torch.bool, device=device)
     admission_mask_t = torch.tensor(
         admission_mask, dtype=torch.bool, device=device,
     )
     state_change_mask_t = torch.tensor(
         state_change_mask, dtype=torch.bool, device=device,
-    )
-    shape_intent_mask_t = torch.tensor(
-        shape_intent_mask, dtype=torch.bool, device=device,
     )
     cue_labels_t = (
         torch.tensor(cue_row_labels, dtype=torch.long, device=device)
@@ -675,15 +646,6 @@ def train(
                 (state_per * state_m).sum() / (state_m.sum() + 1e-9)
                 if state_m.sum() > 0 else torch.tensor(0.0, device=device)
             )
-            shape_per = head_loss_fn(
-                logits["shape_intent"][:, :len(shape_intent_labels) or 1],
-                shape_intents_t[batch_idx],
-            )
-            shape_m = shape_intent_mask_t[batch_idx].float()
-            shape_loss = (
-                (shape_per * shape_m).sum() / (shape_m.sum() + 1e-9)
-                if shape_m.sum() > 0 else torch.tensor(0.0, device=device)
-            )
 
             # Role-head loss — collect this batch's role spans,
             # compute span-pooled vectors, CE over them.
@@ -745,7 +707,7 @@ def train(
 
             loss = (
                 intent_loss + role_loss
-                + topic_loss + admit_loss + state_loss + shape_loss
+                + topic_loss + admit_loss + state_loss
                 + cue_loss
             )
             optimizer.zero_grad()
@@ -786,7 +748,6 @@ def train(
                 "topic_labels": topic_labels,
                 "admission_labels": admission_labels,
                 "state_change_labels": state_change_labels,
-                "shape_intent_labels": shape_intent_labels,
                 "cue_labels": cue_labels,
             }, sort_keys=False),
         )
@@ -803,7 +764,7 @@ def train(
 
 
 class LoraJointBert(IntentSlotExtractor):
-    """Inference wrapper around a trained LoRA adapter artifact (v7)."""
+    """Inference wrapper around a trained LoRA adapter artifact (v8.1+)."""
 
     name = "joint_bert_lora"
 
@@ -831,7 +792,6 @@ class LoraJointBert(IntentSlotExtractor):
             n_topics=len(self._manifest.topic_labels),
             n_admission=len(self._manifest.admission_labels),
             n_state_change=len(self._manifest.state_change_labels),
-            n_shape_intents=len(self._manifest.shape_intent_labels),
             n_cue_labels=len(self._manifest.cue_labels),
         )
         self._model.encoder = PeftModel.from_pretrained(
@@ -882,9 +842,6 @@ class LoraJointBert(IntentSlotExtractor):
         state_change, state_change_conf = self._argmax_one_hot(
             logits["state_change"][0], self._manifest.state_change_labels,
         )
-        shape_intent, shape_intent_conf = self._argmax_one_hot(
-            logits["shape_intent"][0], self._manifest.shape_intent_labels,
-        )
 
         # ── 4. Role head over gazetteer spans ────────────────────
         role_spans_out, slots = self._classify_spans(
@@ -904,8 +861,6 @@ class LoraJointBert(IntentSlotExtractor):
             admission_confidence=admission_conf,
             state_change=state_change,  # type: ignore[arg-type]
             state_change_confidence=state_change_conf,
-            shape_intent=shape_intent,  # type: ignore[arg-type]
-            shape_intent_confidence=shape_intent_conf,
             role_spans=tuple(role_spans_out),
             cue_tags=tuple(cue_tags_out),
             method=self.name,
@@ -1098,7 +1053,6 @@ def build_manifest(
     topic_labels: list[str] | None = None,
     admission_labels: list[str] | None = None,
     state_change_labels: list[str] | None = None,
-    shape_intent_labels: list[str] | None = None,
     role_labels: list[str] | None = None,
     cue_labels: list[str] | None = None,
     lora_r: int = 8,
@@ -1110,15 +1064,15 @@ def build_manifest(
 ) -> AdapterManifest:
     """Compose a manifest ready for :func:`train`.
 
-    Intent + role + (v8+) cue vocabs default to the shared schemas.
-    Topic / admission / state-change / shape-intent vocabs come from
-    the caller's taxonomy file (YAML) or training-data discovery.
-    Empty lists are allowed — the corresponding head still exists
-    but its output is treated as "no label" at inference.
+    Intent + role + cue vocabs default to the shared schemas; topic,
+    admission, and state_change vocabs come from the caller's
+    taxonomy file (YAML) or training-data discovery.  Empty lists
+    are allowed — the corresponding head still exists but its
+    output is treated as "no label" at inference.
 
     ``cue_labels`` defaults to the full 33-entry CTLG cue taxonomy
     (see :mod:`ncms.domain.tlg.cue_taxonomy`).  Pass an empty list
-    to train a v7-style adapter without the cue head.
+    to disable the cue head (e.g. for a pure-preference ablation).
     """
     if cue_labels is None:
         # Default to the full CTLG vocab.  Import late to avoid
@@ -1143,7 +1097,6 @@ def build_manifest(
             state_change_labels if state_change_labels is not None
             else list(STATE_CHANGES)
         ),
-        shape_intent_labels=shape_intent_labels or [],
         cue_labels=cue_labels,
         lora_r=lora_r,
         lora_alpha=lora_alpha,

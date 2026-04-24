@@ -24,6 +24,7 @@ from ncms.domain.models import (
 )
 from ncms.domain.tlg import Confidence
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from tests.integration._tlg_helpers import tlg_query_for
 
 
 @pytest_asyncio.fixture
@@ -127,7 +128,7 @@ class TestSequence:
             "What came after OAuth for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="sequence",
+            tlg_query=tlg_query_for("sequence"),
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.HIGH
@@ -143,7 +144,7 @@ class TestSequence:
             "What came after passkeys for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="sequence",
+            tlg_query=tlg_query_for("sequence"),
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.ABSTAIN
@@ -159,7 +160,7 @@ class TestPredecessor:
             "What came before OAuth for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="predecessor",
+            tlg_query=tlg_query_for("predecessor"),
         )
         assert trace.intent.kind == "predecessor"
         assert trace.confidence == Confidence.HIGH
@@ -174,7 +175,7 @@ class TestBeforeNamed:
             "Did session cookies come before OAuth?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="before_named",
+            tlg_query=tlg_query_for("before_named"),
         )
         assert trace.intent.kind == "before_named"
         assert trace.confidence == Confidence.HIGH
@@ -191,7 +192,7 @@ class TestInterval:
             "What happened between session cookies and passkeys?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="interval",
+            tlg_query=tlg_query_for("interval"),
         )
         assert trace.intent.kind == "interval"
         assert trace.confidence == Confidence.HIGH
@@ -215,7 +216,7 @@ class TestTransitiveCause:
             "What eventually led to passkeys for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="transitive_cause",
+            tlg_query=tlg_query_for("transitive_cause"),
         )
         assert trace.intent.kind == "transitive_cause"
         assert trace.confidence == Confidence.HIGH
@@ -242,7 +243,7 @@ class TestConcurrent:
             "What was happening during OAuth rollout?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="concurrent",
+            tlg_query=tlg_query_for("concurrent"),
         )
         assert trace.intent.kind == "concurrent"
         # In-subject concurrent is MEDIUM confidence by design.
@@ -259,7 +260,7 @@ class TestRetirement:
             "did we retire session cookies?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="retirement",
+            tlg_query=tlg_query_for("retirement"),
         )
         assert trace.intent.kind == "retirement"
         # v2 is the retirement announcement for session cookies.
@@ -277,7 +278,7 @@ class TestUnresolvedEntity:
             "What came after smoke signals for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="sequence",
+            tlg_query=tlg_query_for("sequence"),
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.ABSTAIN

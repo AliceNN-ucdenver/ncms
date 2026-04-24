@@ -33,6 +33,7 @@ from ncms.domain.models import (
 )
 from ncms.domain.tlg import Confidence, compose
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from tests.integration._tlg_helpers import tlg_query_for
 
 
 @pytest_asyncio.fixture
@@ -126,7 +127,7 @@ class TestCurrentIntent:
             "What is the current auth method for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         assert trace.intent.kind == "current"
         assert trace.intent.subject == "auth-svc"
@@ -142,7 +143,7 @@ class TestCurrentIntent:
             "What is the current auth method?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="origin",
+            tlg_query=tlg_query_for("origin"),
         )
         assert trace.confidence == Confidence.ABSTAIN
         assert trace.grammar_answer is None
@@ -157,7 +158,7 @@ class TestOriginIntent:
             "What was the original authentication method?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="origin",
+            tlg_query=tlg_query_for("origin"),
         )
         assert trace.intent.kind == "origin"
         assert trace.grammar_answer == origin.id
@@ -200,7 +201,7 @@ class TestComposition:
             "What is the current auth method for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         # Simulated BM25 ranking that doesn't surface `current` at rank 1.
         bm25 = ["other-memory-1", "other-memory-2", current.id]

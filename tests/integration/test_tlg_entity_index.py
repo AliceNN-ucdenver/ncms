@@ -25,6 +25,7 @@ from ncms.domain.models import (
 )
 from ncms.domain.tlg import Confidence
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from tests.integration._tlg_helpers import tlg_query_for
 
 
 @pytest_asyncio.fixture
@@ -154,7 +155,7 @@ class TestDispatchUsesIndex:
             "What came after session cookies for authentication?",
             store=store,
             vocabulary_cache=cache,
-            slm_shape_intent="sequence",
+            tlg_query=tlg_query_for("sequence"),
         )
         assert trace.intent.kind == "sequence"
         assert trace.confidence == Confidence.HIGH

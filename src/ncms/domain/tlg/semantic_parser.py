@@ -44,7 +44,7 @@ TLGAxis = Literal["temporal", "causal", "ordinal", "modal", "state"]
 TLGRelation = Literal[
     # temporal
     "state_at", "before_named", "after_named", "between",
-    "concurrent_with", "during_interval",
+    "concurrent_with", "during_interval", "predecessor",
     # causal
     "cause_of", "effect_of", "chain_cause_of", "trigger_of",
     "contributing_factor",

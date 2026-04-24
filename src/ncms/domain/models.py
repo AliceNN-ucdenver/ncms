@@ -907,27 +907,14 @@ AdmissionDecision = Literal["persist", "ephemeral", "discard"]
 
 StateChange = Literal["declaration", "retirement", "none"]
 
-# Query-shape taxonomy produced by the 6th SLM head.  Mirrors the
-# TLG grammar's production rules — classifies an incoming query
-# into one of 12 structural shapes that map to HTMG walk strategies.
-# ``none`` means the query does not match any grammar shape, so the
-# dispatcher should return pure hybrid retrieval unchanged.  Replaces
-# the hand-coded regex classifier in ``domain/tlg/query_parser.py``.
-ShapeIntent = Literal[
-    "current_state",
-    "before_named",
-    "concurrent",
-    "origin",
-    "retirement",
-    "sequence",
-    "predecessor",
-    "transitive_cause",
-    "causal_chain",
-    "interval",
-    "ordinal_first",
-    "ordinal_last",
-    "none",
-]
+# The v6/v7.x ``ShapeIntent`` literal (a 13-class query-shape
+# enum produced by the ``shape_intent_head``) was removed in v8.1
+# and replaced by the CTLG sequence-labeled ``shape_cue_head`` +
+# compositional synthesizer.  The synthesizer produces a
+# :class:`ncms.domain.tlg.semantic_parser.TLGQuery`, which is the
+# structured logical form the TLG dispatcher now consumes directly.
+# Retrospective: ``docs/completed/failed-experiments/
+# shape-intent-classification.md``.
 
 
 class ExtractedLabel(BaseModel):
@@ -964,13 +951,6 @@ class ExtractedLabel(BaseModel):
 
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
-
-    # Query-shape intent (6th head, v6/v7.x legacy).  Kept for
-    # checkpoint load-compat with legacy adapters.  In v8+ this is
-    # superseded by ``cue_tags`` below + the compositional
-    # synthesizer; ingest-voice callers should prefer cue_tags.
-    shape_intent: ShapeIntent | None = None
-    shape_intent_confidence: float | None = None
 
     # v7+ role-classified gazetteer spans.  Each entry is a dict
     # with ``char_start``, ``char_end``, ``surface``, ``canonical``,
@@ -1019,10 +999,4 @@ class ExtractedLabel(BaseModel):
         return (
             self.state_change_confidence is not None
             and self.state_change_confidence >= threshold
-        )
-
-    def is_shape_intent_confident(self, threshold: float = 0.7) -> bool:
-        return (
-            self.shape_intent_confidence is not None
-            and self.shape_intent_confidence >= threshold
         )

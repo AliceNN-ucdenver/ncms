@@ -78,8 +78,6 @@ def _to_domain_label(src: _AdapterExtractedLabel) -> ExtractedLabel:
         admission_confidence=src.admission_confidence,
         state_change=src.state_change,  # type: ignore[arg-type]
         state_change_confidence=src.state_change_confidence,
-        shape_intent=src.shape_intent,  # type: ignore[arg-type]
-        shape_intent_confidence=src.shape_intent_confidence,
         role_spans=role_spans,
         cue_tags=cue_tags,
         method=src.method or "joint_bert_lora",

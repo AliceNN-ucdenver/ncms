@@ -223,7 +223,6 @@ async def main() -> None:
                 slm_shape = head.get("shape_intent")
                 trace = await svc.retrieve_lg(
                     qtext,
-                    slm_shape_intent=slm_shape if slm_shape else None,
                 )
                 grammar_conf = trace.confidence.value if trace.confidence else None
                 grammar_proof = trace.proof

@@ -27,18 +27,46 @@ from ncms.domain.models import (
 from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
+from tests.integration._tlg_helpers import tlg_query_for
 
 
 class _StubIntentSlotExtractor:
-    """Test stub that returns a canned ``shape_intent`` for any input.
+    """Test stub that returns a canned cue-tag set for any input.
 
-    The MemoryService consults its ``_intent_slot`` at query time to
-    classify the query's TLG shape; production uses a real LoRA
-    adapter.  Tests that need the grammar composition path to fire
-    without loading a 2.4 MB adapter supply this stub wired to the
-    shape the test is exercising.
+    The MemoryService consults its ``_intent_slot`` at query time
+    to run the cue head → synthesizer pipeline; production uses a
+    real LoRA adapter.  Tests that need the grammar composition
+    path to fire without loading a 2.4 MB adapter supply this stub
+    wired to the ``shape_intent`` label the test is exercising —
+    the stub translates that into the cue_tag sequence the v8.1
+    synthesizer would emit for that shape.
     """
     name = "test_stub"
+
+    # Minimal cue-tag fixture per legacy shape — enough for the
+    # synthesizer to match the corresponding rule.
+    # Canned cue-tag fixtures chosen so the compositional synthesizer
+    # lands on the TLGQuery shape the test is exercising:
+    #
+    #   * ASK_CURRENT                 → Rule 6 → axis=state, relation=current
+    #   * ORDINAL_FIRST               → Rule 7 → axis=ordinal, relation=first
+    #   * ASK_CHANGE + TEMPORAL_BEFORE → Rule 10 → axis=state, relation=retired
+    _CUES_BY_SHAPE: dict[str, list[dict]] = {
+        "current_state": [
+            {"char_start": 0, "char_end": 3, "surface": "now",
+             "cue_label": "B-ASK_CURRENT", "confidence": 0.99},
+        ],
+        "origin": [
+            {"char_start": 0, "char_end": 5, "surface": "first",
+             "cue_label": "B-ORDINAL_FIRST", "confidence": 0.99},
+        ],
+        "retirement": [
+            {"char_start": 0, "char_end": 12, "surface": "what happened",
+             "cue_label": "B-ASK_CHANGE", "confidence": 0.99},
+            {"char_start": 13, "char_end": 19, "surface": "before",
+             "cue_label": "B-TEMPORAL_BEFORE", "confidence": 0.99},
+        ],
+    }
 
     def __init__(self, shape: str, *, adapter_domain: str = "conversational"):
         self._shape = shape
@@ -49,8 +77,7 @@ class _StubIntentSlotExtractor:
         return ExtractedLabel(
             intent="none",
             intent_confidence=0.0,
-            shape_intent=self._shape,  # type: ignore[arg-type]
-            shape_intent_confidence=0.99,
+            cue_tags=list(self._CUES_BY_SHAPE.get(self._shape, [])),
             method=self.name,
         )
 
@@ -223,7 +250,7 @@ class TestIngestInvalidatesVocabularyCache:
         # Warm cache — empty corpus → empty vocabulary.
         trace1 = await svc_tlg_on.retrieve_lg(
             "What is the current authentication method?",
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         assert trace1.confidence.value == "abstain"  # no subject known
 
@@ -243,7 +270,7 @@ class TestIngestInvalidatesVocabularyCache:
 
         trace2 = await svc_tlg_on.retrieve_lg(
             "What is the current authentication method?",
-            slm_shape_intent="current_state",
+            tlg_query=tlg_query_for("current_state"),
         )
         assert trace2.confidence.value == "high"
         assert trace2.grammar_answer is not None
