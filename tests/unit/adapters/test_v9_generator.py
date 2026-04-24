@@ -3,26 +3,28 @@
 Covers:
 
 * :class:`TemplateBackend` — deterministic, phrasings-driven filler.
+* :class:`SparkBackend` — mock-based tests for retry / short-count
+  / malformed-response handling.  The live-endpoint test path is
+  in the Phase B'.4 integration harness, not here.
 * :func:`validate_and_label` — length / placeholder / entity / role
   composition checks.
 * :func:`generate_for_archetype` and :func:`generate_domain` — the
   end-to-end orchestrator, using TemplateBackend + the shipped
   clinical / conversational / software_dev YAML plugins.
-
-Live LLM generation via :class:`SparkBackend` is exercised in
-the Phase B'.4 integration harness, not here.
 """
 
 from __future__ import annotations
 
 import random
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from ncms.application.adapters.domain_loader import load_domain
 from ncms.application.adapters.sdg.v9 import (
     GenerationStats,
+    SparkBackend,
     TemplateBackend,
     generate_domain,
     generate_for_archetype,
@@ -429,3 +431,108 @@ class TestGenerateDomain:
         t2 = {r.text for r in rows2}
         overlap = len(t1 & t2) / max(len(t1 | t2), 1)
         assert overlap < 0.95, f"seeds produced near-identical corpora: {overlap}"
+
+
+# ---------------------------------------------------------------------------
+# SparkBackend (mocked — no live LLM spend)
+# ---------------------------------------------------------------------------
+
+
+class TestSparkBackend:
+    """Mock-based tests for SparkBackend.
+
+    We patch :meth:`SparkBackend._call_once` with an
+    :class:`unittest.mock.AsyncMock` — its ``return_value`` /
+    ``side_effect`` appear AFTER the await, so the backend's
+    ``asyncio.run(self._call_once(...))`` path receives the raw
+    value without any coroutine plumbing in the test.  This is
+    critical because :class:`MagicMock` with a coroutine in
+    ``return_value`` breaks on the first retry (coroutines can
+    only be awaited once).
+    """
+
+    def _rng(self) -> random.Random:
+        return random.Random(0)
+
+    def _patch_call_once(self, **async_mock_kwargs):
+        """Shorthand: replace ``SparkBackend._call_once`` with an AsyncMock."""
+        return patch.object(
+            SparkBackend, "_call_once",
+            new_callable=AsyncMock, **async_mock_kwargs,
+        )
+
+    def test_happy_path_returns_rows(self):
+        be = SparkBackend(model="openai/test", api_base="http://x")
+        with self._patch_call_once(return_value=["row one", "row two", "row three"]):
+            rows = be.generate(prompt="ignored", n=3, rng=self._rng())
+        assert rows == ["row one", "row two", "row three"]
+
+    def test_cap_to_requested_n(self):
+        """Model overshoots; we cap silently to the requested count."""
+        be = SparkBackend(model="openai/test", api_base="http://x")
+        with self._patch_call_once(return_value=["a", "b", "c", "d", "e"]):
+            rows = be.generate(prompt="ignored", n=3, rng=self._rng())
+        assert rows == ["a", "b", "c"]
+
+    def test_short_count_logged_not_raised(self, caplog):
+        """Model returns fewer rows than asked — WARNING logged, no exception."""
+        import logging
+        be = SparkBackend(model="openai/test", api_base="http://x")
+        with caplog.at_level(
+            logging.WARNING,
+            logger="ncms.application.adapters.sdg.v9.backends",
+        ):
+            with self._patch_call_once(return_value=["only one"]):
+                rows = be.generate(prompt="ignored", n=5, rng=self._rng())
+        assert rows == ["only one"]
+        assert any("short-count" in rec.message for rec in caplog.records)
+
+    def test_strips_blank_and_nonstring(self):
+        be = SparkBackend(model="openai/test", api_base="http://x")
+        with self._patch_call_once(
+            return_value=["  row one  ", "", None, 42, "row two"],
+        ):
+            rows = be.generate(prompt="ignored", n=5, rng=self._rng())
+        # "" and None drop; integer 42 coerces to "42"; rows trim.
+        assert rows == ["row one", "42", "row two"]
+
+    def test_non_list_response_retries_then_raises(self):
+        """call_llm_json returned a dict — malformed; retry then fail."""
+        be = SparkBackend(
+            model="openai/test", api_base="http://x",
+            max_attempts=2, backoff_base_seconds=0.0,
+        )
+        with self._patch_call_once(
+            side_effect=[{"wrong": "shape"}, {"still": "wrong"}],
+        ):
+            with pytest.raises(RuntimeError, match="malformed"):
+                be.generate(prompt="ignored", n=3, rng=self._rng())
+
+    def test_transient_error_retried_then_succeeds(self):
+        """First call raises a network-style error; second succeeds."""
+        be = SparkBackend(
+            model="openai/test", api_base="http://x",
+            max_attempts=3, backoff_base_seconds=0.0,
+        )
+        with self._patch_call_once(
+            side_effect=[
+                ConnectionError("temporary 503"),
+                ["recovered", "row"],
+            ],
+        ):
+            rows = be.generate(prompt="ignored", n=2, rng=self._rng())
+        assert rows == ["recovered", "row"]
+
+    def test_all_attempts_fail_raises_with_last_error(self):
+        be = SparkBackend(
+            model="openai/test", api_base="http://x",
+            max_attempts=2, backoff_base_seconds=0.0,
+        )
+        with self._patch_call_once(
+            side_effect=[
+                TimeoutError("attempt 1"),
+                TimeoutError("attempt 2"),
+            ],
+        ):
+            with pytest.raises(RuntimeError, match="all 2 attempts failed"):
+                be.generate(prompt="ignored", n=2, rng=self._rng())

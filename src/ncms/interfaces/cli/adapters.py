@@ -115,6 +115,15 @@ def adapters_list() -> None:
                    "(e.g. http://spark-ee7d.local:8000/v1)")
 @click.option("--temperature", type=float, default=0.8,
               help="LLM sampling temperature (spark backend only)")
+@click.option("--archetype", "archetype_filter", multiple=True,
+              help="Restrict generation to specific archetype(s) "
+                   "(repeatable).  Useful for spot-checking a single "
+                   "archetype with --backend spark before a full run.")
+@click.option("--limit", type=int, default=None,
+              help="Override the archetype's n_gold/n_sdg target with "
+                   "this row count.  Combined with --archetype, enables "
+                   "tiny probes (e.g. --archetype positive_medication_start "
+                   "--limit 5 for a 5-row Spark spot-check).")
 @click.option("--seed", type=int, default=17)
 @click.option("--output", type=click.Path(path_type=Path), default=None,
               help="Output JSONL (defaults to the domain's sdg_jsonl path "
@@ -122,6 +131,7 @@ def adapters_list() -> None:
 def adapters_generate_sdg(
     domain: str, split: str, backend: str,
     model: str | None, api_base: str | None, temperature: float,
+    archetype_filter: tuple[str, ...], limit: int | None,
     seed: int, output: Path | None,
 ) -> None:
     """Run the v9 stratified-archetype SDG generator for one domain.
@@ -139,6 +149,17 @@ def adapters_generate_sdg(
     * ``--backend spark`` — live generation via an OpenAI-compatible
       endpoint (vLLM on DGX Spark, Ollama, etc.).  Requires
       ``--model`` and ``--api-base``.
+
+    Spot-check workflow:
+
+    \b
+      1. Probe ONE archetype with a tiny row count via Spark:
+         ncms adapters generate-sdg --domain clinical --backend spark \\
+             --model openai/nvidia/... --api-base http://spark.../v1 \\
+             --archetype positive_medication_start --limit 5 \\
+             --output /tmp/probe.jsonl
+      2. Eyeball /tmp/probe.jsonl for quality.
+      3. If acceptable, drop --archetype / --limit for the full run.
     """
     from ncms.application.adapters.corpus.loader import dump_jsonl
     from ncms.application.adapters.domain_loader import load_domain
@@ -147,6 +168,7 @@ def adapters_generate_sdg(
         SparkBackend,
         TemplateBackend,
         generate_domain,
+        generate_for_archetype,
     )
 
     # Resolve the domain directory.  We could keep a parallel registry
@@ -177,14 +199,55 @@ def adapters_generate_sdg(
     else:  # unreachable — click validates
         raise click.ClickException(f"unknown backend {backend!r}")
 
+    # If --archetype was passed, validate the names early so the
+    # operator doesn't burn Spark compute on a typo.
+    if archetype_filter:
+        arch_names = {a.name for a in spec.archetypes}
+        unknown = [n for n in archetype_filter if n not in arch_names]
+        if unknown:
+            raise click.ClickException(
+                f"unknown archetype(s) {unknown} for domain {domain!r}.  "
+                f"Known: {sorted(arch_names)}",
+            )
+
     # Output path — respect the manifest defaults for each split.
     out = output or (
         manifest.sdg_jsonl if split == "sdg" else manifest.gold_jsonl
     )
 
-    rows, stats_by = generate_domain(
-        spec, backend=be, split=split, seed=seed,  # type: ignore[arg-type]
-    )
+    # Fast path: no filter and no limit → use the one-shot
+    # ``generate_domain`` helper.
+    use_fast_path = not archetype_filter and limit is None
+    if use_fast_path:
+        rows, stats_by = generate_domain(
+            spec, backend=be, split=split, seed=seed,  # type: ignore[arg-type]
+        )
+    else:
+        # Filtered / limited path — iterate archetypes manually so we
+        # can apply the overrides without mutating the frozen spec.
+        from ncms.application.adapters.sdg.v9 import GenerationStats
+        rows = []
+        stats_by = {}
+        selected = [
+            a for a in spec.archetypes
+            if not archetype_filter or a.name in archetype_filter
+        ]
+        for i, arch in enumerate(selected):
+            n = limit if limit is not None else (
+                arch.n_gold if split == "gold" else arch.n_sdg
+            )
+            if n <= 0:
+                continue
+            arch_seed = seed + i * 101
+            arch_rows, arch_stats = generate_for_archetype(
+                spec, arch,
+                n=n, backend=be,  # type: ignore[arg-type]
+                split=split,  # type: ignore[arg-type]
+                seed=arch_seed,
+            )
+            rows.extend(arch_rows)
+            stats_by[arch.name] = arch_stats
+
     dump_jsonl(rows, out)
 
     # Summary.
@@ -195,7 +258,9 @@ def adapters_generate_sdg(
     yield_pct = (100.0 * total_acc / total_gen) if total_gen else 0.0
     click.echo(
         f"[v9 sdg] domain={domain} split={split} backend={backend} "
-        f"archetypes={len(spec.archetypes)}",
+        f"archetypes={len(stats_by)}/{len(spec.archetypes)}"
+        + (f" filter={list(archetype_filter)}" if archetype_filter else "")
+        + (f" limit={limit}" if limit is not None else ""),
     )
     click.echo(
         f"         requested={total_req} generated={total_gen} "
