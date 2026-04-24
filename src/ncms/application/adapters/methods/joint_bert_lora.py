@@ -379,6 +379,7 @@ def train(
     batch_size: int = 16,
     learning_rate: float = 3e-4,
     device: str | None = None,
+    cue_loss_weight: float = 3.0,
 ) -> AdapterManifest:
     """Fine-tune the LoRA adapter + heads on ``examples`` (v8.1).
 
@@ -594,11 +595,14 @@ def train(
     total_role_spans = sum(len(spans) for spans in row_spans)
     n_cue_rows = sum(cue_row_has_labels)
     logger.info(
-        "[lora] v7+ train: %d rows, %d role spans (avg %.1f/row), "
-        "%d rows with cue_tags (CTLG head %s)",
+        "[lora] v8.1 train: %d rows, %d role spans (avg %.1f/row), "
+        "%d rows with cue_tags (CTLG head %s, cue_loss_weight=%.1f, "
+        "lora_r=%d lora_alpha=%d)",
         n, total_role_spans, total_role_spans / max(n, 1),
         n_cue_rows,
         "ACTIVE" if cue_labels else "INACTIVE (no cue_labels in manifest)",
+        cue_loss_weight,
+        manifest.lora_r, manifest.lora_alpha,
     )
 
     for epoch in range(epochs):
@@ -705,10 +709,14 @@ def train(
             else:
                 cue_loss = torch.tensor(0.0, device=device)
 
+            # v8.1: cue head weighted 3× by default — the 33-label
+            # BIO sequence task is harder than the [CLS]-pooled heads
+            # and was underfit at equal weight.  See docs for the
+            # v8 held-out macro F1 = 0.276 that triggered this change.
             loss = (
                 intent_loss + role_loss
                 + topic_loss + admit_loss + state_loss
-                + cue_loss
+                + cue_loss_weight * cue_loss
             )
             optimizer.zero_grad()
             loss.backward()
@@ -1055,8 +1063,8 @@ def build_manifest(
     state_change_labels: list[str] | None = None,
     role_labels: list[str] | None = None,
     cue_labels: list[str] | None = None,
-    lora_r: int = 8,
-    lora_alpha: int = 16,
+    lora_r: int = 32,
+    lora_alpha: int = 64,
     lora_dropout: float = 0.05,
     lora_target_modules: list[str] | None = None,
     max_length: int = 128,
@@ -1064,11 +1072,14 @@ def build_manifest(
 ) -> AdapterManifest:
     """Compose a manifest ready for :func:`train`.
 
-    Intent + role + cue vocabs default to the shared schemas; topic,
-    admission, and state_change vocabs come from the caller's
-    taxonomy file (YAML) or training-data discovery.  Empty lists
-    are allowed — the corresponding head still exists but its
-    output is treated as "no label" at inference.
+    v8.1 defaults: LoRA rank 32 / alpha 64 (the 2:1 alpha:r ratio
+    PEFT literature recommends), tuned up from the v8 rank 8
+    because the cue head underfit at low rank on the 33-label
+    sequence task.  Intent + role + cue vocabs default to the
+    shared schemas; topic / admission / state_change come from the
+    caller's taxonomy file (YAML) or training-data discovery.
+    Empty vocabs are allowed — the corresponding head still
+    exists but its output is treated as "no label" at inference.
 
     ``cue_labels`` defaults to the full 33-entry CTLG cue taxonomy
     (see :mod:`ncms.domain.tlg.cue_taxonomy`).  Pass an empty list

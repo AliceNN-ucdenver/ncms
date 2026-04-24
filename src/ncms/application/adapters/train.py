@@ -113,6 +113,116 @@ from ncms.application.adapters.training.gate import (
 logger = logging.getLogger(__name__)
 
 
+def _evaluate_heldout(
+    adapter_dir: Path,
+    heldout: list[GoldExample],
+    *,
+    domain: Domain,
+    device: str | None,
+) -> None:
+    """Run the freshly-trained adapter over the held-out split.
+
+    Computes per-head micro-accuracy and a simple cue-level exact-
+    span-F1 on the 20% held-out gold.  Writes results to
+    ``adapter_dir/heldout_eval.json`` and appends a ``heldout_*``
+    entry block to ``adapter_dir/manifest.json`` via
+    ``gate_metrics`` so the audit trail keeps everything in one place.
+
+    This is separate from the main gate (``run_gate``) which
+    evaluates across gold + adversarial corpora for promotion
+    decisions.  The held-out eval catches train/eval leakage — a
+    head that scores well on the training gold but drops on
+    held-out has overfit.
+    """
+    from collections import Counter
+    from ncms.application.adapters.methods.joint_bert_lora import (
+        AdapterManifest,
+        LoraJointBert,
+    )
+
+    extractor = LoraJointBert(adapter_dir, device=device)
+
+    n = len(heldout)
+    # Per-head hit counts (numerator) + labeled-row counts (denominator).
+    hits: Counter[str] = Counter()
+    labeled: Counter[str] = Counter()
+    # Cue-span accounting (exact char_start,char_end,cue_label match).
+    cue_tp = cue_fp = cue_fn = 0
+
+    for ex in heldout:
+        pred = extractor.extract(ex.text, domain=domain)
+        # intent is always present on both sides.
+        labeled["intent"] += 1
+        if pred.intent == ex.intent:
+            hits["intent"] += 1
+        if ex.topic is not None:
+            labeled["topic"] += 1
+            if pred.topic == ex.topic:
+                hits["topic"] += 1
+        if ex.admission is not None:
+            labeled["admission"] += 1
+            if pred.admission == ex.admission:
+                hits["admission"] += 1
+        if ex.state_change is not None:
+            labeled["state_change"] += 1
+            if pred.state_change == ex.state_change:
+                hits["state_change"] += 1
+        # Cue spans: exact match on (char_start, char_end, cue_label).
+        gold_spans = {
+            (int(t["char_start"]), int(t["char_end"]), str(t["cue_label"]))
+            for t in (ex.cue_tags or [])
+        }
+        pred_spans = {
+            (
+                int(t.char_start),
+                int(t.char_end),
+                str(t.cue_label),
+            )
+            for t in (pred.cue_tags or ())
+        }
+        cue_tp += len(gold_spans & pred_spans)
+        cue_fp += len(pred_spans - gold_spans)
+        cue_fn += len(gold_spans - pred_spans)
+
+    metrics: dict[str, float] = {
+        f"heldout_{head}_acc": hits[head] / labeled[head]
+        for head in labeled
+        if labeled[head] > 0
+    }
+    if cue_tp + cue_fp + cue_fn > 0:
+        precision = cue_tp / (cue_tp + cue_fp) if cue_tp + cue_fp else 0.0
+        recall = cue_tp / (cue_tp + cue_fn) if cue_tp + cue_fn else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision + recall else 0.0
+        )
+        metrics["heldout_cue_precision"] = round(precision, 4)
+        metrics["heldout_cue_recall"] = round(recall, 4)
+        metrics["heldout_cue_f1"] = round(f1, 4)
+    metrics["heldout_n"] = float(n)
+
+    # Persist: JSON next to the adapter + update manifest.gate_metrics.
+    (adapter_dir / "heldout_eval.json").write_text(
+        json.dumps(metrics, indent=2, sort_keys=True),
+    )
+    manifest = AdapterManifest.load(adapter_dir / "manifest.json")
+    manifest.gate_metrics = {**manifest.gate_metrics, **{
+        k: round(v, 4) for k, v in metrics.items()
+    }}
+    manifest.save(adapter_dir / "manifest.json")
+
+    logger.info(
+        "[phase4] held-out eval (n=%d): intent=%.3f topic=%.3f "
+        "admission=%.3f state_change=%.3f cue_f1=%.3f",
+        n,
+        metrics.get("heldout_intent_acc", float("nan")),
+        metrics.get("heldout_topic_acc", float("nan")),
+        metrics.get("heldout_admission_acc", float("nan")),
+        metrics.get("heldout_state_change_acc", float("nan")),
+        metrics.get("heldout_cue_f1", float("nan")),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Bootstrap
 # ---------------------------------------------------------------------------
@@ -251,8 +361,23 @@ def phase4_finetune_and_gate(
     eval_splits: list[str],
     gold_upsample: int = 1,
     adversarial_upsample: int = 1,
+    cue_loss_weight: float = 3.0,
+    heldout_fraction: float = 0.2,
+    holdout_seed: int = 42,
 ) -> bool:
-    """Train the LoRA adapter, run the gate, persist report."""
+    """Train the LoRA adapter, run the gate, persist report.
+
+    v8.1 additions:
+
+    * ``heldout_fraction`` > 0 splits gold 80/20 (seeded, stable);
+      training sees only the 80%, the 20% gets written to
+      ``adapter_dir/heldout_gold.jsonl`` and evaluated after training
+      for honest per-head metrics.  Set 0.0 to train on all gold.
+    * ``cue_loss_weight`` multiplies the CTLG cue head's loss
+      contribution (default 3×) — the sequence task underfits at
+      equal weight on the 33-label taxonomy.
+    """
+    import random as _random
     import yaml
 
     taxonomy: dict[str, list[str]] = {}
@@ -288,13 +413,37 @@ def phase4_finetune_and_gate(
         max_length=max_length,
         version=version,
     )
+    # ── v8.1 held-out split: honest per-head evaluation ───────────
+    # Splits gold into train_gold + heldout_gold via a seeded
+    # shuffle so reruns are stable.  Training sees only train_gold
+    # (plus SDG + adversarial); heldout_gold is saved to disk and
+    # evaluated after training.  SDG + adversarial are NOT held out
+    # — they're always in the train mix because they're synthetic /
+    # target the role head's corner cases.
+    heldout_gold: list[GoldExample] = []
+    train_gold = gold
+    if heldout_fraction > 0.0 and gold:
+        rng = _random.Random(holdout_seed)
+        shuffled = list(gold)
+        rng.shuffle(shuffled)
+        cut = max(1, int(len(shuffled) * heldout_fraction))
+        heldout_gold = shuffled[:cut]
+        train_gold = shuffled[cut:]
+        logger.info(
+            "[phase4] held-out split: %d gold rows (%.0f%%) held out "
+            "for post-train evaluation (seed=%d); %d rows used for training",
+            len(heldout_gold), heldout_fraction * 100,
+            holdout_seed, len(train_gold),
+        )
+
     # Upsample — repeat gold / adversarial rows in the training mix
     # to counter SDG-dilution on the slot head.  Corpus hash uses the
-    # un-upsampled rows so hash stability doesn't depend on mix
-    # ratios, but the training loop sees the expanded set.
-    hash_input = gold + sdg + adversarial_train
+    # un-upsampled TRAIN rows so hash stability doesn't depend on mix
+    # ratios; held-out rows are excluded from the hash so re-training
+    # with a different seed produces the same hash.
+    hash_input = train_gold + sdg + adversarial_train
     combined = (
-        gold * gold_upsample
+        train_gold * gold_upsample
         + sdg
         + adversarial_train * adversarial_upsample
     )
@@ -303,12 +452,13 @@ def phase4_finetune_and_gate(
 
     logger.info(
         "[phase4] training — domain=%s n_raw=%d n_training=%d "
-        "(gold×%d + sdg + adversarial×%d) topic_labels=%d role_labels=%d "
-        "epochs=%d lora_r=%d",
+        "(train_gold×%d + sdg + adversarial×%d) n_heldout=%d "
+        "topic_labels=%d role_labels=%d epochs=%d lora_r=%d "
+        "lora_alpha=%d cue_loss_weight=%.1f",
         domain, len(hash_input), len(combined),
-        gold_upsample, adversarial_upsample,
+        gold_upsample, adversarial_upsample, len(heldout_gold),
         len(manifest.topic_labels), len(manifest.role_labels),
-        epochs, lora_r,
+        epochs, lora_r, lora_alpha, cue_loss_weight,
     )
     train(
         combined,
@@ -319,7 +469,22 @@ def phase4_finetune_and_gate(
         batch_size=batch_size,
         learning_rate=learning_rate,
         device=device,
+        cue_loss_weight=cue_loss_weight,
     )
+
+    # Dump held-out rows for audit + future re-evaluation without
+    # re-training.  JSONL path next to the adapter; the train corpus
+    # hash in manifest.corpus_hash pins the split contract.
+    if heldout_gold:
+        from ncms.application.adapters.corpus.loader import dump_jsonl
+        dump_jsonl(heldout_gold, adapter_dir / "heldout_gold.jsonl")
+        logger.info(
+            "[phase4] wrote held-out corpus to %s",
+            adapter_dir / "heldout_gold.jsonl",
+        )
+        _evaluate_heldout(
+            adapter_dir, heldout_gold, domain=domain, device=device,
+        )
 
     # Gate
     logger.info("[phase4] gate — running eval + threshold check...")
@@ -392,12 +557,34 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--lora-r", type=int, default=16)
-    parser.add_argument("--lora-alpha", type=int, default=32)
+    parser.add_argument("--lora-r", type=int, default=32,
+                        help="LoRA rank (v8.1 default: 32).")
+    parser.add_argument("--lora-alpha", type=int, default=64,
+                        help="LoRA alpha (v8.1 default: 64 = 2×rank).")
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-targets", default="query,value")
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--device", default=None)
+    parser.add_argument(
+        "--cue-loss-weight", type=float, default=3.0,
+        help=(
+            "Multiplier on the CTLG cue head's loss contribution.  "
+            "v8.1 default 3.0 — the 33-label BIO sequence task was "
+            "underfit at equal weight on v8 held-out (macro F1=0.276)."
+        ),
+    )
+    parser.add_argument(
+        "--heldout-fraction", type=float, default=0.2,
+        help=(
+            "Fraction of gold rows to hold out of training for honest "
+            "per-head evaluation.  Default 0.2 (80/20 split).  Set to "
+            "0.0 to train on all gold (disables held-out eval)."
+        ),
+    )
+    parser.add_argument(
+        "--holdout-seed", type=int, default=42,
+        help="RNG seed for the held-out shuffle (stable splits).",
+    )
 
     # Gate thresholds
     parser.add_argument("--intent-f1-min", type=float, default=0.70)
@@ -546,6 +733,9 @@ def main() -> None:
         baseline_adapter_dir=args.baseline_adapter_dir,
         device=args.device,
         eval_splits=eval_splits,
+        cue_loss_weight=args.cue_loss_weight,
+        heldout_fraction=args.heldout_fraction,
+        holdout_seed=args.holdout_seed,
     )
 
     elapsed = time.perf_counter() - t0
