@@ -36,7 +36,10 @@ class CorpusValidationError(ValueError):
 
 
 def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
-    required = {"text", "domain", "intent", "slots"}
+    # Minimum required shape: text + domain.  Other fields default
+    # to sensible neutrals so CTLG cue-gold rows (query-voice, no
+    # intent or slots) load cleanly alongside classical gold.
+    required = {"text", "domain"}
     missing = required - row.keys()
     if missing:
         raise CorpusValidationError(
@@ -47,12 +50,16 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         raise CorpusValidationError(
             f"{path}:{line_no} unknown domain {domain!r}"
         )
-    intent = row["intent"]
+    # Default intent to "none" for rows that don't carry one (e.g.
+    # query-voice cue-gold rows where the notion of preference
+    # doesn't apply).
+    intent = row.get("intent", "none")
     if intent not in INTENT_CATEGORIES:
         raise CorpusValidationError(
             f"{path}:{line_no} unknown intent {intent!r}"
         )
-    slots = row["slots"]
+    # Default slots to empty dict when absent.
+    slots = row.get("slots", {})
     if not isinstance(slots, dict):
         raise CorpusValidationError(
             f"{path}:{line_no} slots must be a dict, got {type(slots)!r}"
@@ -133,6 +140,35 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
                 f"{path}:{line_no} role_spans[{idx}] missing field {exc}",
             ) from exc
 
+    # v8+ CTLG cue_tags.  Accept two serialisation shapes for
+    # back-compat: the canonical ``cue_tags`` field, OR the raw
+    # ``tokens`` field used by cue-labeling scripts
+    # (scripts/ctlg/label_cues_llm.py, gen_gap_queries.py).  Either
+    # shape is a list of {char_start, char_end, surface, cue_label,
+    # confidence} dicts.  Stored on GoldExample as list[dict] —
+    # training loop re-parses into TaggedToken shape.
+    cue_tags_raw = row.get("cue_tags") or row.get("tokens") or []
+    if not isinstance(cue_tags_raw, list):
+        raise CorpusValidationError(
+            f"{path}:{line_no} cue_tags/tokens must be a list",
+        )
+    cue_tags: list[dict] = []
+    for t in cue_tags_raw:
+        if not isinstance(t, dict):
+            continue
+        # Require the core fields; skip silently on malformed
+        # entries rather than failing the whole corpus load.
+        try:
+            cue_tags.append({
+                "char_start": int(t["char_start"]),
+                "char_end": int(t["char_end"]),
+                "surface": str(t["surface"]),
+                "cue_label": str(t["cue_label"]),
+                "confidence": float(t.get("confidence", 1.0)),
+            })
+        except (KeyError, TypeError, ValueError):
+            continue
+
     return GoldExample(
         text=row["text"],
         domain=domain,
@@ -143,6 +179,7 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         state_change=state_change,
         shape_intent=shape_intent,
         role_spans=role_spans,
+        cue_tags=cue_tags,
         split=split,
         source=row.get("source", ""),
         note=row.get("note", ""),
@@ -225,4 +262,6 @@ def dump_jsonl(
                     }
                     for s in ex.role_spans
                 ]
+            if ex.cue_tags:
+                row["cue_tags"] = list(ex.cue_tags)
             fh.write(json.dumps(row) + "\n")

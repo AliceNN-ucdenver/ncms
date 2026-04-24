@@ -20,7 +20,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from ncms.domain.tlg.cue_taxonomy import TaggedToken
 
 # ---------------------------------------------------------------------------
 # Intent taxonomy
@@ -326,7 +329,7 @@ class ExtractedLabel:
     # adapter predates v8 (all current production adapters).
     # See docs/research/ctlg-cue-guidelines.md for the label
     # vocabulary and annotator contract.
-    cue_tags: tuple["TaggedToken", ...] = field(default_factory=tuple)
+    cue_tags: tuple[TaggedToken, ...] = field(default_factory=tuple)
 
     def is_confident(self, threshold: float = 0.7) -> bool:
         return self.intent_confidence >= threshold
@@ -477,6 +480,16 @@ class GoldExample:
     # v7 labelling — the training loop skips the role loss for those
     # rows (per-example mask, same pattern as topic/admission/state).
     role_spans: list[RoleSpan] = field(default_factory=list)
+
+    # v8+ CTLG cue-head ground-truth — per-token BIO cue labels over
+    # the row's text.  Each entry is a dict with the TaggedToken
+    # shape (char_start, char_end, surface, cue_label, confidence).
+    # Empty list when the row pre-dates v8 cue labelling; training
+    # loop skips the cue loss for those rows (per-example mask).
+    # Stored as list[dict] rather than list[TaggedToken] for
+    # zero-dependency JSONL round-trip — the training loop handles
+    # both shapes.
+    cue_tags: list[dict] = field(default_factory=list)
 
     # Which data tier this came from.
     split: Literal["gold", "llm", "sdg", "adversarial"] = "gold"
