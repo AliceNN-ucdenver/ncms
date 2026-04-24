@@ -62,10 +62,10 @@ INTENT_LABEL_DESCRIPTIONS: dict[Intent, str] = {
 # Domains + slot taxonomies
 # ---------------------------------------------------------------------------
 
-Domain = Literal["conversational", "software_dev", "clinical", "swe_diff"]
+Domain = Literal["conversational", "software_dev", "clinical"]
 
 DOMAINS: tuple[Domain, ...] = (
-    "conversational", "software_dev", "clinical", "swe_diff",
+    "conversational", "software_dev", "clinical",
 )
 
 #: Slot tag universe per domain.  Used both by the hand-labelling
@@ -106,14 +106,6 @@ SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
         "severity",     # mild, severe
         "alternative",  # "X instead of Y" choices
         "frequency",    # "every 6 hours", "twice daily"
-    ),
-    "swe_diff": (
-        "file_path",   # astropy/modeling/separable.py
-        "function",    # _cstack, URLValidator
-        "symbol",      # class / variable / module identifier from a diff
-        "test_path",   # tests/modeling/test_separable.py
-        "issue_ref",   # "#12345" / upstream tracker IDs
-        "alternative", # preceding implementation the patch replaces
     ),
 }
 
@@ -202,8 +194,8 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
         intended_content=(
             "Natural-language state changes about software: 'Decision: "
             "use Postgres.  Supersedes ADR-003.' / 'Root cause: config "
-            "drift after v2.3 rollout.'  NOT raw git diffs — see "
-            "'swe_diff' for the diff-aware adapter."
+            "drift after v2.3 rollout.'  Prose only — diff content "
+            "is out of scope for v9."
         ),
         gold_jsonl=_CORPUS_ROOT / "gold_software_dev.jsonl",
         sdg_jsonl=_CORPUS_ROOT / "sdg_software_dev.jsonl",
@@ -232,29 +224,6 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
         adapter_output_root=_ADAPTER_ROOT / "clinical",
         deployed_adapter_root=_DEPLOYED_ROOT / "clinical",
         default_version="v6",
-    ),
-    "swe_diff": DomainManifest(
-        name="swe_diff",
-        description=(
-            "Software engineering diff-aware corpus — SWE-bench "
-            "Verified style issue bodies + PR discussions + resolving "
-            "patches + test patches."
-        ),
-        intended_content=(
-            "Raw GitHub issue/PR artefacts with diff headers, function "
-            "signatures, file paths.  State changes = resolving_patch "
-            "retires prior impl / test_patch declares new invariant.  "
-            "Distinct from 'software_dev' which covers PROSE software "
-            "documentation — this adapter parses code-shaped content."
-        ),
-        gold_jsonl=_CORPUS_ROOT / "gold_swe_diff.jsonl",
-        sdg_jsonl=_CORPUS_ROOT / "sdg_swe_diff.jsonl",
-        adversarial_train_jsonl=_CORPUS_ROOT
-        / "adversarial_train_swe_diff.jsonl",
-        taxonomy_yaml=_TAXONOMY_ROOT / "swe_diff.yaml",
-        adapter_output_root=_ADAPTER_ROOT / "swe_diff",
-        deployed_adapter_root=_DEPLOYED_ROOT / "swe_diff",
-        default_version="v1",
     ),
 }
 

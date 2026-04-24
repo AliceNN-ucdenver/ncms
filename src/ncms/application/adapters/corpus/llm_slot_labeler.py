@@ -180,30 +180,6 @@ _SLOT_DESCRIPTIONS: dict[Domain, dict[str, str]] = {
             "'not Y'"
         ),
     },
-    "swe_diff": {
-        "file_path": (
-            "source file paths mentioned — e.g. "
-            "'astropy/modeling/separable.py'"
-        ),
-        "function": (
-            "function / method identifiers — e.g. _cstack, "
-            "URLValidator"
-        ),
-        "symbol": (
-            "class / variable / module names — e.g. CompoundModel, "
-            "MAX_RETRIES"
-        ),
-        "test_path": (
-            "test file paths — e.g. tests/unit/test_auth.py"
-        ),
-        "issue_ref": (
-            "GitHub issue / PR references — '#12345', "
-            "'owner/repo#123'"
-        ),
-        "alternative": (
-            "prior implementation the patch replaces"
-        ),
-    },
 }
 
 

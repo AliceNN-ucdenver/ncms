@@ -591,8 +591,7 @@ def main() -> None:
         help=(
             "Skip phase 2 (template-SDG expansion).  Appropriate when "
             "the gold corpus is already large enough to train without "
-            "synthetic augmentation — e.g. the swe_diff adapter's 1,835 "
-            "rule-labeled examples from MSEB-SWE."
+            "synthetic augmentation."
         ),
     )
     parser.add_argument(

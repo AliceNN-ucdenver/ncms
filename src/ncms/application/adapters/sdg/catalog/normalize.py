@@ -58,12 +58,6 @@ def _ensure_loaded() -> None:
         _ENTRIES_BY_SLOT["conversational"] = conversational.ENTRIES_BY_SLOT
     except ImportError:  # pragma: no cover
         pass
-    try:
-        from ncms.application.adapters.sdg.catalog import swe_diff
-        _REGISTRY["swe_diff"] = swe_diff.CATALOG
-        _ENTRIES_BY_SLOT["swe_diff"] = swe_diff.ENTRIES_BY_SLOT
-    except ImportError:  # pragma: no cover
-        pass
 
 
 def lookup(surface: str, *, domain: Domain) -> CatalogEntry | None:

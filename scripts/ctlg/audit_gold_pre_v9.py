@@ -47,7 +47,7 @@ from ncms.application.adapters.schemas import (  # noqa: E402
 )
 from ncms.application.adapters.sdg.catalog import detect_spans  # noqa: E402
 
-DOMAINS = ("conversational", "clinical", "software_dev", "swe_diff")
+DOMAINS = ("conversational", "clinical", "software_dev")
 SPLITS = ("gold", "sdg", "adversarial_train")
 
 
