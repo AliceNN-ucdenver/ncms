@@ -1,0 +1,780 @@
+# v9 conversational diversity taxonomy.
+#
+# Hierarchical entity-type taxonomy used at generation time to
+# ensure training-data breadth across the open-vocabulary `object`
+# slot.  All nodes are source=inline because the domain has no
+# gazetteer (see domain.yaml rationale).
+#
+# ~900 example members across 28 leaf nodes.  The generator rotates
+# through subcategories within an archetype batch so no single
+# subcategory dominates (avoids the "100 pizza rows" failure mode).
+#
+# Topic hints match the topic-head vocabulary in domain.yaml.
+
+foods:
+  cuisines:
+    description: "World / regional cuisines users express preferences about."
+    topic_hint: food_pref
+    source: inline
+    n_examples_per_batch: 6
+    examples:
+      - Italian
+      - Japanese
+      - Mexican
+      - Thai
+      - Indian
+      - Chinese
+      - French
+      - Korean
+      - Vietnamese
+      - Greek
+      - Lebanese
+      - Ethiopian
+      - Peruvian
+      - Turkish
+      - Spanish
+      - Moroccan
+      - Oaxacan
+      - Sichuanese
+      - Cantonese
+      - Neapolitan
+      - Tex-Mex
+      - Cajun
+      - Creole
+      - Southern
+      - Ashkenazi
+      - Szechuan
+      - Filipino
+      - Nigerian
+      - Brazilian
+      - Argentinian
+
+  dishes:
+    description: "Specific dishes — named foods, not cuisines."
+    topic_hint: food_pref
+    source: inline
+    n_examples_per_batch: 8
+    examples:
+      - pho
+      - bibimbap
+      - carbonara
+      - paella
+      - ramen
+      - pizza
+      - sushi
+      - tacos
+      - burritos
+      - pad thai
+      - massaman curry
+      - shakshuka
+      - chilaquiles
+      - biryani
+      - dumplings
+      - gnocchi
+      - kimchi stew
+      - croissants
+      - bagels
+      - chicken tikka masala
+      - lasagna
+      - tom yum
+      - bao
+      - khichdi
+      - arepas
+      - empanadas
+      - jollof rice
+      - beef stew
+      - sourdough bread
+      - gazpacho
+      - mole
+      - shawarma
+      - falafel
+      - hummus
+
+  beverages:
+    description: "Drinks — coffee, tea, cocktails, soft drinks, etc."
+    topic_hint: food_pref
+    source: inline
+    n_examples_per_batch: 6
+    examples:
+      - coffee
+      - espresso
+      - cortado
+      - flat white
+      - pour-over coffee
+      - matcha
+      - matcha latte
+      - green tea
+      - oolong
+      - chai
+      - kombucha
+      - natural wine
+      - mezcal
+      - negroni
+      - old-fashioned
+      - IPA
+      - sour beer
+      - sparkling water
+      - seltzer
+      - cold brew
+      - chai latte
+      - hot chocolate
+      - smoothies
+      - fresh juice
+      - whiskey
+      - gin
+      - craft beer
+      - bubble tea
+
+  dietary_approaches:
+    description: "Eating styles and dietary patterns."
+    topic_hint: food_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - vegetarian
+      - vegan
+      - pescatarian
+      - keto
+      - paleo
+      - Mediterranean diet
+      - plant-forward
+      - gluten-free
+      - dairy-free
+      - low-carb
+      - intermittent fasting
+      - whole30
+      - flexitarian
+      - halal
+      - kosher
+      - sugar-free
+      - raw food
+      - macrobiotic
+
+activities:
+  sports:
+    description: "Sports and athletic activities people practice."
+    topic_hint: activity_pref
+    source: inline
+    n_examples_per_batch: 6
+    examples:
+      - tennis
+      - pickleball
+      - bouldering
+      - rock climbing
+      - soccer
+      - basketball
+      - running
+      - trail running
+      - gravel cycling
+      - road cycling
+      - mountain biking
+      - swimming
+      - open-water swimming
+      - ultimate frisbee
+      - volleyball
+      - skiing
+      - snowboarding
+      - surfing
+      - skateboarding
+      - kayaking
+      - paddle boarding
+      - golf
+      - badminton
+      - table tennis
+      - squash
+      - fencing
+      - martial arts
+      - jiu-jitsu
+
+  creative:
+    description: "Creative pursuits and artistic practices."
+    topic_hint: activity_pref
+    source: inline
+    n_examples_per_batch: 6
+    examples:
+      - watercolor
+      - oil painting
+      - acrylic painting
+      - screenprinting
+      - photography
+      - film photography
+      - writing
+      - songwriting
+      - poetry
+      - pottery
+      - woodworking
+      - knitting
+      - crochet
+      - embroidery
+      - leatherworking
+      - jewelry making
+      - illustration
+      - digital art
+      - calligraphy
+      - bookbinding
+      - sewing
+      - quilting
+      - metalworking
+      - glassblowing
+      - linocut printing
+
+  fitness:
+    description: "Structured fitness activities and workout styles."
+    topic_hint: activity_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - yoga
+      - pilates
+      - barre
+      - crossfit
+      - kettlebell training
+      - weightlifting
+      - powerlifting
+      - calisthenics
+      - HIIT
+      - Zumba
+      - spin class
+      - boot camp
+      - cycling class
+      - functional training
+      - bodyweight training
+      - stretching
+      - mobility work
+      - swimming laps
+
+  outdoor:
+    description: "Outdoor pursuits and nature-oriented activities."
+    topic_hint: activity_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - hiking
+      - backpacking
+      - camping
+      - birding
+      - foraging
+      - fishing
+      - fly fishing
+      - kayaking
+      - canoeing
+      - sailing
+      - rock climbing
+      - trail running
+      - gardening
+      - beekeeping
+      - wildlife photography
+      - stargazing
+      - mushroom hunting
+      - orienteering
+
+  leisure:
+    description: "Relaxed leisure activities — reading, gaming, etc."
+    topic_hint: activity_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - reading
+      - puzzles
+      - board games
+      - video games
+      - mobile gaming
+      - chess
+      - crosswords
+      - sudoku
+      - watching movies
+      - listening to podcasts
+      - meditation
+      - journaling
+      - cooking
+      - baking
+      - gardening
+      - collecting vinyl
+      - bird-watching
+
+entertainment:
+  movie_genres:
+    description: "Film genres and film movements."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - sci-fi
+      - horror
+      - rom-com
+      - thriller
+      - drama
+      - documentary
+      - noir
+      - A24 indie
+      - action
+      - animation
+      - anime
+      - foreign films
+      - French New Wave
+      - psychological thrillers
+      - period dramas
+      - biopics
+      - sports documentaries
+      - Miyazaki films
+      - Wes Anderson films
+      - courtroom dramas
+
+  tv_shows:
+    description: "Named television series users express preferences about."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 5
+    examples:
+      - Succession
+      - Severance
+      - Abbott Elementary
+      - The Bear
+      - Ted Lasso
+      - The Crown
+      - Breaking Bad
+      - The Wire
+      - Mad Men
+      - Game of Thrones
+      - The Last of Us
+      - Better Call Saul
+      - Chernobyl
+      - Atlanta
+      - Barry
+      - Fleabag
+      - Dark
+      - Arcane
+      - Reservation Dogs
+      - The Good Place
+      - Parks and Recreation
+      - 30 Rock
+      - The Office
+      - Friends
+      - Seinfeld
+      - Avatar The Last Airbender
+
+  music_genres:
+    description: "Music genres and styles."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 5
+    examples:
+      - indie rock
+      - shoegaze
+      - ambient
+      - bossa nova
+      - jazz
+      - bebop
+      - classical
+      - baroque
+      - bluegrass
+      - folk
+      - hip-hop
+      - lo-fi hip-hop
+      - r&b
+      - soul
+      - funk
+      - electronic
+      - techno
+      - house
+      - drum and bass
+      - metal
+      - death metal
+      - progressive rock
+      - country
+      - post-punk
+      - new wave
+      - synthwave
+      - k-pop
+      - afrobeat
+      - reggaeton
+      - dub
+      - reggae
+
+  books:
+    description: "Specific books or book genres."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - Piranesi
+      - Project Hail Mary
+      - The Overstory
+      - Station Eleven
+      - Exhalation
+      - Klara and the Sun
+      - A Gentleman in Moscow
+      - Trust
+      - Demon Copperhead
+      - Lessons in Chemistry
+      - The Seven Husbands of Evelyn Hugo
+      - fantasy novels
+      - literary fiction
+      - non-fiction essays
+      - memoirs
+      - biographies
+      - sci-fi short stories
+      - Murakami novels
+      - historical fiction
+      - mystery novels
+      - poetry collections
+
+  games:
+    description: "Specific games or gaming genres."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - Balatro
+      - Zelda Tears of the Kingdom
+      - Elden Ring
+      - Slay the Spire
+      - Stardew Valley
+      - Hollow Knight
+      - Celeste
+      - Hades
+      - Outer Wilds
+      - Disco Elysium
+      - Baldur's Gate 3
+      - Factorio
+      - Civilization VI
+      - Minecraft
+      - roguelikes
+      - puzzle games
+      - rhythm games
+      - strategy games
+      - indie platformers
+      - JRPGs
+
+  podcasts:
+    description: "Named podcasts or podcast genres."
+    topic_hint: entertainment_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - Radiolab
+      - This American Life
+      - Freakonomics
+      - Hardcore History
+      - 99% Invisible
+      - Reply All
+      - Serial
+      - The Daily
+      - Song Exploder
+      - Planet Money
+      - history podcasts
+      - true crime podcasts
+      - tech podcasts
+      - comedy podcasts
+      - interview podcasts
+
+travel:
+  countries:
+    description: "Countries users travel to or dream about."
+    topic_hint: travel_pref
+    source: inline
+    n_examples_per_batch: 5
+    examples:
+      - Japan
+      - Portugal
+      - Italy
+      - Greece
+      - Morocco
+      - Mexico
+      - Peru
+      - Iceland
+      - Norway
+      - New Zealand
+      - Thailand
+      - Vietnam
+      - South Korea
+      - Argentina
+      - Brazil
+      - Kenya
+      - Tanzania
+      - Turkey
+      - Jordan
+      - Egypt
+      - Spain
+      - France
+      - Germany
+      - Croatia
+      - Slovenia
+
+  cities:
+    description: "Specific cities users visit or like."
+    topic_hint: travel_pref
+    source: inline
+    n_examples_per_batch: 5
+    examples:
+      - Lisbon
+      - Tokyo
+      - Mexico City
+      - Reykjavik
+      - Copenhagen
+      - Amsterdam
+      - Berlin
+      - Barcelona
+      - Vienna
+      - Prague
+      - Kyoto
+      - Osaka
+      - Hanoi
+      - Seoul
+      - Singapore
+      - Bangkok
+      - Marrakech
+      - Istanbul
+      - Florence
+      - Rome
+      - Paris
+      - London
+      - New York
+      - San Francisco
+      - Montreal
+
+  natural_settings:
+    description: "Types of places defined by their natural geography."
+    topic_hint: travel_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - the beach
+      - the mountains
+      - coastal villages
+      - high desert
+      - alpine lakes
+      - tropical islands
+      - rainforests
+      - glacier country
+      - pine forests
+      - prairie
+      - canyons
+      - fjords
+      - reef diving spots
+      - ski resorts
+      - surf breaks
+      - national parks
+
+lifestyle:
+  brands_tech:
+    description: "Tech brands and specific tech products users prefer."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 4
+    examples:
+      - iPhone
+      - Pixel
+      - Framework laptop
+      - MacBook Pro
+      - Kindle
+      - AirPods Pro
+      - Sony WH-1000XM
+      - Sonos
+      - Nintendo Switch
+      - Steam Deck
+      - iPad
+      - Apple Watch
+      - Fitbit
+      - Garmin
+      - Ray-Ban Meta glasses
+      - Bose QuietComfort
+      - DJI Mini drone
+      - Analog cameras
+
+  brands_fashion:
+    description: "Fashion brands and clothing styles."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - Uniqlo
+      - Patagonia
+      - Allbirds
+      - Nike
+      - Adidas
+      - Levi's
+      - Muji
+      - Everlane
+      - Outdoor Voices
+      - COS
+      - Reformation
+      - Filson
+      - Blundstone boots
+      - Birkenstocks
+      - Converse
+      - Doc Martens
+      - New Balance
+
+  brands_vehicles:
+    description: "Cars, bikes, and other vehicles."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - Subaru Outback
+      - Honda Civic
+      - Toyota Tacoma
+      - Tesla Model 3
+      - Rivian R1T
+      - Ford Bronco
+      - Miata
+      - Mini Cooper
+      - Brompton
+      - Surly LHT
+      - Specialized Roubaix
+      - Trek Emonda
+      - Cannondale Topstone
+      - REI Co-op
+      - Vespa
+      - Honda Rebel
+
+  work_styles:
+    description: "Work-life preferences — remote, hybrid, schedule patterns."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - fully remote work
+      - 4-day work week
+      - async-first collaboration
+      - hybrid schedule
+      - pair programming
+      - deep work blocks
+      - no-meeting Wednesdays
+      - shipping in public
+      - quarterly planning
+      - quiet mornings
+      - sprints over fixed cadence
+      - working from coffee shops
+      - co-working spaces
+      - working from cabins
+
+  social_styles:
+    description: "Social preferences — small vs large, indoor vs outdoor."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 2
+    examples:
+      - small dinner parties
+      - game nights
+      - solo travel
+      - group bike rides
+      - potluck dinners
+      - running clubs
+      - book clubs
+      - happy hours
+      - cabin weekends
+      - festival weekends
+      - casual picnics
+      - city-scooting with friends
+
+  values:
+    description: "Life values and orientations."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 2
+    examples:
+      - sustainability
+      - minimalism
+      - thrift
+      - craftsmanship
+      - intentional living
+      - digital minimalism
+      - slow living
+      - frugality
+      - luxury
+      - abundance
+      - community
+      - self-reliance
+      - simplicity
+
+  routines:
+    description: "Personal routines and rituals."
+    topic_hint: lifestyle_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - morning pages
+      - cold showers
+      - Sunday meal prep
+      - evening walks
+      - bedtime reading
+      - sauna sessions
+      - afternoon naps
+      - daily journaling
+      - weekly long runs
+      - morning meditation
+      - evening stretching
+      - before-bed stretching
+      - weekend hikes
+      - coffee walks
+
+times:
+  times_of_day:
+    description: "Time-of-day markers for frequency slot."
+    topic_hint: habit_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - in the morning
+      - before breakfast
+      - mid-morning
+      - at lunch
+      - in the afternoon
+      - after work
+      - before dinner
+      - in the evening
+      - after dinner
+      - before bed
+      - at dawn
+      - at dusk
+      - first thing
+      - last thing at night
+
+  frequencies:
+    description: "Recurrence patterns for frequency slot."
+    topic_hint: habit_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - every day
+      - daily
+      - twice a day
+      - every morning
+      - every evening
+      - weekly
+      - twice a week
+      - three times a week
+      - every other day
+      - on weekends
+      - on weekdays
+      - monthly
+      - occasionally
+      - rarely
+      - almost never
+      - yearly
+      - once a week
+      - every Saturday
+      - every Sunday
+
+  periods:
+    description: "Named seasons, periods, windows of time."
+    topic_hint: habit_pref
+    source: inline
+    n_examples_per_batch: 3
+    examples:
+      - during the holidays
+      - summer weekends
+      - the school year
+      - the off-season
+      - winter months
+      - summer months
+      - the rainy season
+      - late spring
+      - early fall
+      - end-of-quarter
+      - holiday season
+      - marathon training blocks
+      - exam periods
+      - leading up to a trip

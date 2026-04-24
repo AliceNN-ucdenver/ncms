@@ -1,0 +1,44 @@
+# v9 conversational domain spec.
+#
+# User-voice preference utterances — foods, activities, hobbies,
+# entertainment, places, people, lifestyle choices.  Short natural
+# language ("I prefer X over Y", "I usually X on weekends").
+#
+# **No gazetteer.**  The `object` slot is fundamentally open-
+# vocabulary — any noun a user cares about can be the object of
+# a preference.  A closed catalog would either leak entities
+# (incomplete) or bias training toward its narrow enumeration.
+# Instead, the diversity taxonomy below rotates through entity
+# *types* with example members; GLiNER handles the long tail at
+# inference time.
+
+name: conversational
+description: >-
+  User-voice preference utterances about foods, activities,
+  entertainment, places, people, and lifestyle choices.
+intended_content: |
+  Short natural-language preference statements:
+  "I love pho, especially Vietnamese."
+  "Switched from coffee to matcha this year."
+  "I go bouldering twice a week."
+  "Really into A24 films lately."
+
+slots:
+  - object        # the thing the preference is about (open-vocab)
+  - alternative   # contrast partner for choice preferences
+  - frequency     # habitual time pattern ("every morning", "weekly")
+
+topics:
+  - food_pref
+  - activity_pref
+  - entertainment_pref
+  - travel_pref
+  - lifestyle_pref
+  - habit_pref
+  - other
+
+# No gazetteer_path — conversational is open-vocab.
+diversity_path: diversity.yaml
+archetypes_path: archetypes.yaml
+
+default_adapter_version: v9

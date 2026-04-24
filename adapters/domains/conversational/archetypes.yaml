@@ -1,0 +1,163 @@
+# v9 conversational archetypes — starter set.
+#
+# Six archetypes covering the major joint label combinations for
+# user-voice preference utterances.  Full 16-archetype stratified
+# set (with discard/not_relevant/query-voice archetypes) lands in
+# Phase B'.2 once the generator pipeline is wired to Spark.
+#
+# The role_spans here reference slots `object`, `alternative`, and
+# `frequency` — all open-vocabulary, fulfilled at generation time
+# by sampling from the inline diversity taxonomy in
+# diversity.yaml.  GLiNER handles the tail at inference.
+
+archetypes:
+  - name: positive_object_adoption
+    intent: positive
+    admission: persist
+    state_change: declaration
+    role_spans:
+      - {role: primary, slot: object, count: 1}
+    n_gold: 50
+    n_sdg: 180
+    target_min_chars: 20
+    target_max_chars: 140
+    batch_size: 10
+    description: >-
+      User declares they've adopted a new food / activity / item
+      into their rotation with positive sentiment.
+    example_utterances:
+      - "I've really started loving pho lately."
+      - "Added gravel cycling to my weekend rotation."
+      - "Finally got into sourdough baking — so satisfying."
+      - "Taylor Swift's latest album has been on repeat."
+    phrasings:
+      - "Really getting into {primary}."
+      - "Adopted {primary} — it's been great."
+      - "{primary} has become a regular part of my {context}."
+      - "Added {primary} to my rotation."
+
+  - name: choice_object_vs_alternative
+    intent: choice
+    admission: persist
+    state_change: declaration
+    role_spans:
+      - {role: primary, slot: object, count: 1}
+      - {role: alternative, slot: alternative, count: 1}
+    n_gold: 50
+    n_sdg: 180
+    target_min_chars: 25
+    target_max_chars: 160
+    batch_size: 10
+    description: >-
+      User expresses a preference for X over Y — two named
+      alternatives with a chosen winner.
+    example_utterances:
+      - "I go with matcha over coffee most mornings now."
+      - "Switched from Vietnamese to Thai food this month."
+      - "Prefer hiking over running for the quiet."
+      - "Picked up pickleball instead of tennis — easier on the knees."
+    phrasings:
+      - "I prefer {primary} over {alternative}."
+      - "Switched from {alternative} to {primary}."
+      - "Going with {primary} instead of {alternative} these days."
+      - "Picked {primary} over {alternative} — {rationale}."
+
+  - name: habitual_routine
+    intent: habitual
+    admission: persist
+    state_change: none
+    role_spans:
+      - {role: primary, slot: object, count: 1}
+      - {role: primary, slot: frequency, count: 1}
+    n_gold: 50
+    n_sdg: 180
+    target_min_chars: 20
+    target_max_chars: 140
+    batch_size: 10
+    description: >-
+      User describes a recurring routine — activity plus cadence.
+      The frequency slot gets its own primary role-span so the
+      role head learns to distinguish object preferences from
+      timing markers.
+    example_utterances:
+      - "I do yoga every morning before work."
+      - "Bouldering twice a week at the gym downtown."
+      - "Cold showers first thing after I wake up."
+      - "Sunday meal prep every weekend."
+    phrasings:
+      - "{primary} every {frequency}."
+      - "I do {primary} {frequency}."
+      - "{frequency} I try to {primary}."
+      - "Make sure to {primary} {frequency}."
+
+  - name: negative_object_retirement
+    intent: negative
+    admission: persist
+    state_change: retirement
+    role_spans:
+      - {role: primary, slot: object, count: 1}
+    n_gold: 30
+    n_sdg: 120
+    target_min_chars: 25
+    target_max_chars: 140
+    batch_size: 10
+    description: >-
+      User retires / drops a habit or preference with negative
+      sentiment or deliberate shift.
+    example_utterances:
+      - "Finally cut out soda — feels better already."
+      - "Dropping reality TV, it's just noise."
+      - "Stopped drinking coffee after lunch — was ruining my sleep."
+      - "Quit running for a while, my knees need a break."
+    phrasings:
+      - "Dropped {primary} — not worth it."
+      - "Stopped doing {primary}."
+      - "Finally quit {primary}."
+      - "Retiring {primary} from my routine."
+
+  - name: neutral_object_casual
+    intent: none
+    admission: persist
+    state_change: none
+    role_spans:
+      - {role: casual, slot: object, count: 1}
+    n_gold: 30
+    n_sdg: 120
+    target_min_chars: 25
+    target_max_chars: 160
+    batch_size: 10
+    description: >-
+      Factual or narrative statement mentioning an object
+      casually, no expressed preference.
+    example_utterances:
+      - "My neighbor runs a small bakery downtown."
+      - "They served pho at the party last weekend."
+      - "The office has a Nintendo Switch in the break room."
+      - "Japan has amazing train infrastructure."
+    phrasings:
+      - "{context} {casual}."
+      - "There's {casual} at {context}."
+      - "{casual} showed up at {context}."
+
+  - name: difficulty_temporary
+    intent: difficulty
+    admission: ephemeral
+    state_change: none
+    role_spans:
+      - {role: primary, slot: object, count: 1}
+    n_gold: 20
+    n_sdg: 100
+    target_min_chars: 25
+    target_max_chars: 140
+    batch_size: 10
+    description: >-
+      Transient frustration with something — shouldn't persist.
+    example_utterances:
+      - "Yoga was tough this morning, couldn't focus."
+      - "The new sourdough recipe didn't rise right today."
+      - "Pickleball hurts my shoulder this week."
+      - "Couldn't stick with meditation today."
+    phrasings:
+      - "{primary} was tough today."
+      - "Struggling with {primary} this week."
+      - "{primary} isn't clicking right now."
