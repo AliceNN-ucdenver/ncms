@@ -182,7 +182,7 @@ _FRAMEWORKS: tuple[CatalogEntry, ...] = (
     CatalogEntry("bootstrap",      "framework", "framework", ("bootstrap css",), "wikidata:Q5302358"),
     CatalogEntry("foundation",     "framework", "framework", ("zurb foundation",), "wikidata:Q4154943"),
     CatalogEntry("pure.css",       "framework", "framework", ("purecss",), "github-topic:purecss"),
-    CatalogEntry("semantic ui",    "framework", "framework", ("semanticui",), "github-topic:semantic-ui"),
+    CatalogEntry("semantic ui",    "framework", "framework", ("semanticui", "semantic"), "github-topic:semantic-ui"),
 
     # Mobile / cross-platform app frameworks
     CatalogEntry("flutter",        "framework", "framework", (), "wikidata:Q41819"),
@@ -201,6 +201,23 @@ _FRAMEWORKS: tuple[CatalogEntry, ...] = (
     CatalogEntry("godot",          "framework", "framework", (), "wikidata:Q16964444"),
     CatalogEntry("bevy",           "framework", "framework", (), "github-topic:bevy"),
     CatalogEntry("phaser",         "framework", "framework", (), "github-topic:phaserjs"),
+
+    # ── v9 coverage-audit backfill ──
+    # Modern meta-frameworks (gaps in existing catalog)
+    CatalogEntry("astro",          "framework", "framework", (), "wikidata:Q108980884"),
+    CatalogEntry("solid",          "framework", "framework", ("solidjs",), "github-topic:solidjs"),
+    CatalogEntry("qwik",           "framework", "framework", (), "github-topic:qwik"),
+    CatalogEntry("hono",           "framework", "framework", (), "github-topic:hono"),
+    CatalogEntry("encore",         "framework", "framework", (), "github-topic:encore"),
+    CatalogEntry("htmx",           "framework", "framework", (), "wikidata:Q124003149"),
+    CatalogEntry("alpinejs",       "framework", "framework", ("alpine.js",), "github-topic:alpinejs"),
+    CatalogEntry("lit",            "framework", "framework", ("lit-element", "lit-html"), "github-topic:lit"),
+    CatalogEntry("stencil",        "framework", "framework", ("stenciljs",), "github-topic:stenciljs"),
+    # AI / ML frameworks (heavily referenced in modern ADRs)
+    CatalogEntry("langchain",      "framework", "framework", (), "wikidata:Q115949144"),
+    CatalogEntry("llamaindex",     "framework", "framework", ("llama index",), "github-topic:llamaindex"),
+    CatalogEntry("haystack",       "framework", "framework", (), "github-topic:haystack"),
+    CatalogEntry("dspy",           "framework", "framework", (), "github-topic:dspy"),
 )
 
 
@@ -325,6 +342,17 @@ _LIBRARIES: tuple[CatalogEntry, ...] = (
 
     # Component libs
     CatalogEntry("svar",           "library", "framework", (), "github-topic:svar"),  # observed in MSEB
+
+    # ── v9 coverage-audit backfill (from MSEB software_dev benchmarks) ──
+    CatalogEntry("jquery",         "library", "framework", ("jquery ui",), "wikidata:Q76736"),
+    CatalogEntry("grpc",           "library", "framework", ("grpc-web", "grpc-gateway"), "wikidata:Q27134141"),
+    CatalogEntry("d3.js",          "library", "framework", ("d3", "d3js"), "wikidata:Q1135511"),
+    CatalogEntry("chart.js",       "library", "framework", ("chartjs",), "wikidata:Q85692663"),
+    CatalogEntry("echarts",        "library", "framework", ("apache echarts",), "wikidata:Q26842593"),
+    CatalogEntry("highcharts",     "library", "framework", (), "wikidata:Q1619840"),
+    CatalogEntry("plotly",         "library", "framework", ("plotly.js", "plotly.py"), "wikidata:Q28045407"),
+    CatalogEntry("protocol buffers", "library", "framework", ("protobuf", "protobufs"), "wikidata:Q3066430"),
+    CatalogEntry("apache thrift",  "library", "framework", ("thrift",), "wikidata:Q1091443"),
 )
 
 
@@ -432,6 +460,34 @@ _DATABASES: tuple[CatalogEntry, ...] = (
     CatalogEntry("redshift",       "database", "infra", ("amazon redshift",), "wikidata:Q17068048"),
     CatalogEntry("databricks",     "database", "infra", (), "wikidata:Q24945013"),
     CatalogEntry("duckdb",         "database", "infra", (), "github-topic:duckdb"),
+
+    # ── v9 coverage-audit backfill (MSEB + modern additions) ──
+    CatalogEntry("clickhouse",     "database", "infra", (), "wikidata:Q55568627"),
+    CatalogEntry("timescaledb",    "database", "infra", (), "wikidata:Q56268420"),
+    CatalogEntry("questdb",        "database", "infra", (), "github-topic:questdb"),
+    CatalogEntry("cockroachdb",    "database", "infra", ("cockroach",), "wikidata:Q27966145"),
+    CatalogEntry("yugabytedb",     "database", "infra", ("yugabyte",), "github-topic:yugabyte"),
+    CatalogEntry("vitess",         "database", "infra", (), "wikidata:Q24938655"),
+    CatalogEntry("rds",            "database", "infra", ("amazon rds", "aws rds"), "wikidata:Q1430347"),
+    CatalogEntry("aurora",         "database", "infra", ("amazon aurora", "aws aurora"), "wikidata:Q50813948"),
+    CatalogEntry("cosmos db",      "database", "infra", ("cosmosdb", "azure cosmos", "azure cosmos db"), "wikidata:Q28797178"),
+    CatalogEntry("dynamodb",       "database", "infra", ("amazon dynamodb", "aws dynamodb"), "wikidata:Q1071728"),
+    # Vector / search
+    CatalogEntry("pinecone",       "database", "infra", (), "github-topic:pinecone"),
+    CatalogEntry("qdrant",         "database", "infra", (), "github-topic:qdrant"),
+    CatalogEntry("weaviate",       "database", "infra", (), "github-topic:weaviate"),
+    CatalogEntry("chroma",         "database", "infra", ("chromadb",), "github-topic:chroma"),
+    CatalogEntry("milvus",         "database", "infra", (), "github-topic:milvus"),
+    # ELK stack components
+    CatalogEntry("logstash",       "database", "infra", (), "wikidata:Q19892385"),
+    CatalogEntry("kibana",         "database", "infra", (), "wikidata:Q17091601"),
+    # Graph
+    CatalogEntry("neo4j",          "database", "infra", (), "wikidata:Q1628290"),
+    CatalogEntry("arangodb",       "database", "infra", (), "wikidata:Q17004014"),
+    CatalogEntry("dgraph",         "database", "infra", (), "github-topic:dgraph"),
+    # Emerging SQLite-in-cloud
+    CatalogEntry("turso",          "database", "infra", (), "github-topic:turso"),
+    CatalogEntry("libsql",         "database", "infra", (), "github-topic:libsql"),
 )
 
 
@@ -441,7 +497,7 @@ _DATABASES: tuple[CatalogEntry, ...] = (
 _PLATFORMS: tuple[CatalogEntry, ...] = (
     # Containers / orchestration
     CatalogEntry("docker",         "platform", "infra", (), "wikidata:Q15206305"),
-    CatalogEntry("docker swarm",   "platform", "infra", (), "wikipedia:Docker_Swarm"),
+    CatalogEntry("docker swarm",   "platform", "infra", ("swarm",), "wikipedia:Docker_Swarm"),
     CatalogEntry("podman",         "platform", "infra", (), "wikidata:Q64086710"),
     CatalogEntry("containerd",     "platform", "infra", (), "github-topic:containerd"),
     CatalogEntry("cri-o",          "platform", "infra", ("crio",), "github-topic:cri-o"),
@@ -491,6 +547,24 @@ _PLATFORMS: tuple[CatalogEntry, ...] = (
     CatalogEntry("cloudflare",     "platform", "infra", (), "wikidata:Q5176426"),
     CatalogEntry("fastly",         "platform", "infra", (), "wikidata:Q4000559"),
     CatalogEntry("akamai",         "platform", "infra", ("akamai technologies",), "wikidata:Q374715"),
+
+    # ── v9 coverage-audit backfill ──
+    # Managed Kubernetes offerings
+    CatalogEntry("eks",            "platform", "infra", ("amazon eks", "aws eks"), "wikipedia:Amazon_Elastic_Kubernetes_Service"),
+    CatalogEntry("gke",            "platform", "infra", ("google kubernetes engine",), "wikipedia:Google_Kubernetes_Engine"),
+    CatalogEntry("aks",            "platform", "infra", ("azure kubernetes service",), "wikipedia:Azure_Kubernetes_Service"),
+    # Serverless compute (missing)
+    CatalogEntry("fargate",        "platform", "infra", ("aws fargate",), "wikipedia:AWS_Fargate"),
+    CatalogEntry("app engine",     "platform", "infra", ("google app engine", "gae"), "wikidata:Q1115120"),
+    CatalogEntry("cloud functions","platform", "infra", ("google cloud functions",), "wikipedia:Google_Cloud_Functions"),
+    CatalogEntry("beam",           "platform", "infra", ("google cloud beam", "apache beam"), "wikidata:Q27517264"),
+    # App platforms
+    CatalogEntry("app runner",     "platform", "infra", ("aws app runner",), "wikipedia:AWS_App_Runner"),
+    CatalogEntry("elastic beanstalk","platform", "infra", ("aws elastic beanstalk", "beanstalk"), "wikidata:Q2496321"),
+    # Supabase / Firebase etc (backend platforms)
+    CatalogEntry("supabase",       "platform", "infra", (), "wikidata:Q110178064"),
+    CatalogEntry("firebase",       "platform", "infra", (), "wikidata:Q17053695"),
+    CatalogEntry("planetscale",    "platform", "infra", (), "github-topic:planetscale"),
 )
 
 
@@ -671,6 +745,59 @@ _TOOLS: tuple[CatalogEntry, ...] = (
     CatalogEntry("pulumi",         "tool", "tooling", (), "wikidata:Q58753651"),
     CatalogEntry("packer",         "tool", "tooling", (), "github-topic:packer"),
     CatalogEntry("vault",          "tool", "tooling", ("hashicorp vault",), "wikidata:Q56406408"),
+
+    # ── v9 coverage-audit backfill (MSEB + modern additions) ──
+    # Monitoring / observability (heavily mentioned in ADR corpora)
+    CatalogEntry("prometheus",     "tool", "tooling", (), "wikidata:Q20620649"),
+    CatalogEntry("alertmanager",   "tool", "tooling", (), "github-topic:alertmanager"),
+    CatalogEntry("pagerduty",      "tool", "tooling", (), "wikidata:Q16927655"),
+    CatalogEntry("opsgenie",       "tool", "tooling", (), "wikidata:Q24916441"),
+    CatalogEntry("datadog",        "tool", "tooling", (), "wikidata:Q17078765"),
+    CatalogEntry("new relic",      "tool", "tooling", (), "wikidata:Q7015562"),
+    CatalogEntry("splunk",         "tool", "tooling", (), "wikidata:Q2307714"),
+    CatalogEntry("sentry",         "tool", "tooling", (), "wikidata:Q56062459"),
+    CatalogEntry("honeycomb",      "tool", "tooling", ("honeycomb.io",), "github-topic:honeycomb"),
+    CatalogEntry("grafana loki",   "tool", "tooling", ("loki",), "github-topic:grafana-loki"),
+    CatalogEntry("jaeger",         "tool", "tooling", (), "wikidata:Q62005184"),
+    CatalogEntry("zipkin",         "tool", "tooling", (), "wikidata:Q24875049"),
+    CatalogEntry("opentelemetry",  "tool", "tooling", ("otel",), "github-topic:opentelemetry"),
+    # Communication / collab (used in dev workflows)
+    CatalogEntry("slack",          "tool", "tooling", (), "wikidata:Q16996553"),
+    CatalogEntry("microsoft teams","tool", "tooling", ("ms teams", "teams"), "wikidata:Q28406404"),
+    CatalogEntry("discord",        "tool", "tooling", (), "wikidata:Q28490564"),
+    CatalogEntry("zoom",           "tool", "tooling", ("zoom meetings",), "wikidata:Q39095085"),
+    # CI/CD + build
+    CatalogEntry("buildkite",      "tool", "tooling", (), "wikidata:Q107537540"),
+    CatalogEntry("turborepo",      "tool", "tooling", ("turbo",), "github-topic:turborepo"),
+    CatalogEntry("nx",             "tool", "tooling", ("nx monorepo",), "github-topic:nx"),
+    CatalogEntry("rush",           "tool", "tooling", (), "github-topic:rushjs"),
+    CatalogEntry("lerna",          "tool", "tooling", (), "wikidata:Q104772275"),
+    CatalogEntry("bazel",          "tool", "tooling", (), "wikidata:Q26938940"),
+    CatalogEntry("dagger",         "tool", "tooling", (), "github-topic:dagger"),
+    CatalogEntry("earthly",        "tool", "tooling", (), "github-topic:earthly"),
+    # Python toolchain gaps
+    CatalogEntry("hatch",          "tool", "tooling", (), "github-topic:hatch"),
+    CatalogEntry("pdm",            "tool", "tooling", (), "github-topic:pdm"),
+    CatalogEntry("rye",            "tool", "tooling", (), "github-topic:rye"),
+    # JS / TS toolchain gaps
+    CatalogEntry("biome",          "tool", "tooling", (), "github-topic:biome"),
+    CatalogEntry("rome",           "tool", "tooling", (), "github-topic:rome"),
+    CatalogEntry("swc",            "tool", "tooling", (), "github-topic:swc"),
+    CatalogEntry("esbuild",        "tool", "tooling", (), "github-topic:esbuild"),
+    CatalogEntry("bun",            "tool", "tooling", ("bun.sh",), "github-topic:bun"),
+    CatalogEntry("pnpm",           "tool", "tooling", (), "wikidata:Q89920306"),
+    # Secrets / security
+    CatalogEntry("confidant",      "tool", "tooling", (), "github-topic:confidant"),
+    CatalogEntry("1password",      "tool", "tooling", ("1password cli",), "wikidata:Q2636858"),
+    CatalogEntry("sops",           "tool", "tooling", (), "github-topic:sops"),
+    # AI coding assistants (now a significant part of dev workflow)
+    CatalogEntry("copilot",        "tool", "tooling", ("github copilot",), "wikidata:Q108139345"),
+    CatalogEntry("chatgpt",        "tool", "tooling", (), "wikidata:Q115564437"),
+    CatalogEntry("claude",         "tool", "tooling", ("claude code",), "wikidata:Q118093204"),
+    CatalogEntry("cursor",         "tool", "tooling", ("cursor editor",), "github-topic:cursor"),
+    CatalogEntry("codeium",        "tool", "tooling", (), "github-topic:codeium"),
+    CatalogEntry("tabnine",        "tool", "tooling", (), "wikidata:Q85784555"),
+    CatalogEntry("windsurf",       "tool", "tooling", (), "github-topic:windsurf"),
 )
 
 
@@ -843,6 +970,104 @@ _PATTERNS: tuple[CatalogEntry, ...] = (
         ("zero trust architecture", "zta"), "nist:sp-800-207"),
     CatalogEntry("defense in depth", "pattern", "language_runtime",
         (), "nist:csrc:defense-in-depth"),
+
+    # ── v9 coverage-audit backfill (MSEB + process patterns) ──
+    # Methodology
+    CatalogEntry("agile", "pattern", "language_runtime",
+        ("agile methodology", "agile software development"), "wikidata:Q471061"),
+    CatalogEntry("scrum", "pattern", "language_runtime",
+        (), "wikidata:Q863514"),
+    CatalogEntry("kanban", "pattern", "language_runtime",
+        (), "wikidata:Q1053531"),
+    CatalogEntry("waterfall", "pattern", "language_runtime",
+        ("waterfall model",), "wikidata:Q1064411"),
+    CatalogEntry("xp", "pattern", "language_runtime",
+        ("extreme programming",), "wikidata:Q184251"),
+    CatalogEntry("tdd", "pattern", "language_runtime",
+        ("test-driven development", "test driven development"), "wikidata:Q830132"),
+    CatalogEntry("bdd", "pattern", "language_runtime",
+        ("behavior-driven development", "behavior driven development"), "wikidata:Q828581"),
+    CatalogEntry("ddd", "pattern", "language_runtime",
+        ("domain-driven design", "domain driven design"), "wikidata:Q271218"),
+    # CI / CD / DevOps
+    CatalogEntry("devops", "pattern", "language_runtime",
+        (), "wikidata:Q1224892"),
+    CatalogEntry("ci/cd", "pattern", "language_runtime",
+        ("ci", "cd", "continuous integration", "continuous deployment",
+         "continuous delivery", "ci-cd", "ci cd"),
+        "wikipedia:CI/CD"),
+    CatalogEntry("gitops", "pattern", "language_runtime",
+        (), "github-topic:gitops"),
+    CatalogEntry("mlops", "pattern", "language_runtime",
+        (), "wikipedia:MLOps"),
+    CatalogEntry("sre", "pattern", "language_runtime",
+        ("site reliability engineering",), "wikipedia:Site_reliability_engineering"),
+    CatalogEntry("platform engineering", "pattern", "language_runtime",
+        (), "github-topic:platform-engineering"),
+    CatalogEntry("trunk-based development", "pattern", "language_runtime",
+        ("trunk based development",), "wikipedia:Trunk-based_development"),
+    CatalogEntry("gitflow", "pattern", "language_runtime",
+        ("git flow",), "wikipedia:Git#Gitflow_workflow"),
+    # Auth patterns (observed in MSEB)
+    CatalogEntry("oauth", "pattern", "language_runtime",
+        ("oauth2", "oauth 2.0", "oauth 2"), "wikidata:Q475294"),
+    CatalogEntry("openid connect", "pattern", "language_runtime",
+        ("oidc", "openid"), "wikidata:Q1139141"),
+    CatalogEntry("saml", "pattern", "language_runtime",
+        (), "wikidata:Q185353"),
+    CatalogEntry("jwt", "pattern", "language_runtime",
+        ("json web token",), "wikidata:Q18030489"),
+    CatalogEntry("mtls", "pattern", "language_runtime",
+        ("mutual tls",), "wikipedia:Mutual_authentication"),
+    # API patterns
+    CatalogEntry("graphql", "pattern", "language_runtime",
+        (), "wikidata:Q25104379"),
+    CatalogEntry("rest", "pattern", "language_runtime",
+        ("restful", "rest api", "restful api"), "wikidata:Q652751"),
+    CatalogEntry("grpc", "pattern", "language_runtime",
+        (), "wikidata:Q27134141"),
+    CatalogEntry("websocket", "pattern", "language_runtime",
+        ("websockets",), "wikidata:Q379217"),
+    CatalogEntry("server-sent events", "pattern", "language_runtime",
+        ("sse",), "wikidata:Q6131954"),
+    CatalogEntry("webhooks", "pattern", "language_runtime",
+        ("webhook",), "wikidata:Q2101686"),
+    # Data / content patterns
+    CatalogEntry("elk stack", "pattern", "language_runtime",
+        ("elk", "elastic stack"), "wikipedia:Elastic_Stack"),
+    CatalogEntry("ai/ml", "pattern", "language_runtime",
+        ("ai", "ml", "machine learning", "artificial intelligence"),
+        "wikipedia:Artificial_intelligence"),
+    CatalogEntry("rag", "pattern", "language_runtime",
+        ("retrieval augmented generation", "retrieval-augmented generation"),
+        "wikipedia:Retrieval-augmented_generation"),
+    # Serialization / data formats
+    CatalogEntry("json", "pattern", "language_runtime",
+        (), "wikidata:Q2063"),
+    CatalogEntry("yaml", "pattern", "language_runtime",
+        (), "wikidata:Q281876"),
+    CatalogEntry("xml", "pattern", "language_runtime",
+        (), "wikidata:Q2115"),
+    CatalogEntry("toml", "pattern", "language_runtime",
+        (), "wikidata:Q28449455"),
+    CatalogEntry("csv", "pattern", "language_runtime",
+        (), "wikidata:Q935809"),
+    # Frontend patterns
+    CatalogEntry("spa", "pattern", "language_runtime",
+        ("single page application", "single-page application"), "wikidata:Q1571410"),
+    CatalogEntry("ssr", "pattern", "language_runtime",
+        ("server-side rendering", "server side rendering"), "wikipedia:Server-side_scripting"),
+    CatalogEntry("jamstack", "pattern", "language_runtime",
+        (), "wikipedia:Jamstack"),
+    CatalogEntry("pwa", "pattern", "language_runtime",
+        ("progressive web app",), "wikidata:Q22965425"),
+    # Role / architectural layers (common ADR terminology)
+    CatalogEntry("frontend", "pattern", "language_runtime",
+        ("front-end", "front end"), "wikipedia:Frontend_and_backend"),
+    CatalogEntry("backend", "pattern", "language_runtime",
+        ("back-end", "back end"), "wikipedia:Frontend_and_backend"),
+    CatalogEntry("fullstack", "pattern", "language_runtime",
+        ("full-stack", "full stack"), "wikipedia:Full-stack_development"),
 )
 
 
