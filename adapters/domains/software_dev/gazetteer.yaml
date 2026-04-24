@@ -1,0 +1,3569 @@
+# Auto-generated from src/ncms/application/adapters/sdg/catalog/software_dev.py
+# in Phase B'.0b.5b (re-run with alias merging to preserve all aliases
+# across duplicate canonicals).  Edit here going forward; the Python
+# module stays as a deprecation shim until the normalize.py cut-over.
+
+entries:
+- canonical: activemq
+  slot: database
+  topic: infra
+  aliases:
+  - apache activemq
+  source: wikidata:Q624253
+- canonical: algolia
+  slot: database
+  topic: infra
+  source: wikidata:Q28006024
+- canonical: apache druid
+  slot: database
+  topic: infra
+  aliases:
+  - druid
+  source: wikidata:Q24082867
+- canonical: arangodb
+  slot: database
+  topic: infra
+  source: wikidata:Q15275212
+- canonical: aurora
+  slot: database
+  topic: infra
+  aliases:
+  - amazon aurora
+  - aws aurora
+  source: wikidata:Q19575725
+- canonical: bigquery
+  slot: database
+  topic: infra
+  aliases:
+  - google bigquery
+  source: wikidata:Q17068048
+- canonical: bigtable
+  slot: database
+  topic: infra
+  aliases:
+  - google bigtable
+  source: wikidata:Q1130036
+- canonical: cassandra
+  slot: database
+  topic: infra
+  aliases:
+  - apache cassandra
+  source: wikidata:Q487897
+- canonical: chroma
+  slot: database
+  topic: infra
+  aliases:
+  - chromadb
+  source: github-topic:chroma
+- canonical: clickhouse
+  slot: database
+  topic: infra
+  source: wikidata:Q54866192
+- canonical: cockroachdb
+  slot: database
+  topic: infra
+  aliases:
+  - cockroach
+  source: wikidata:Q29953626
+- canonical: consul
+  slot: database
+  topic: infra
+  aliases:
+  - hashicorp consul
+  source: wikidata:Q28966779
+- canonical: cosmos db
+  slot: database
+  topic: infra
+  aliases:
+  - cosmosdb
+  - azure cosmos db
+  - azure cosmos
+  source: wikidata:Q28801820
+- canonical: couchbase
+  slot: database
+  topic: infra
+  source: wikidata:Q5175314
+- canonical: couchdb
+  slot: database
+  topic: infra
+  aliases:
+  - apache couchdb
+  source: wikidata:Q304529
+- canonical: databricks
+  slot: database
+  topic: infra
+  source: wikidata:Q24945013
+- canonical: db2
+  slot: database
+  topic: infra
+  aliases:
+  - ibm db2
+  source: wikidata:Q232386
+- canonical: dgraph
+  slot: database
+  topic: infra
+  source: github-topic:dgraph
+- canonical: duckdb
+  slot: database
+  topic: infra
+  source: github-topic:duckdb
+- canonical: dynamodb
+  slot: database
+  topic: infra
+  aliases:
+  - amazon dynamodb
+  - aws dynamodb
+  source: wikidata:Q7853252
+- canonical: elasticsearch
+  slot: database
+  topic: infra
+  source: wikidata:Q3050461
+- canonical: etcd
+  slot: database
+  topic: infra
+  source: wikidata:Q22062404
+- canonical: eventbridge
+  slot: database
+  topic: infra
+  aliases:
+  - aws eventbridge
+  source: github-topic:aws-eventbridge
+- canonical: firebird
+  slot: database
+  topic: infra
+  aliases:
+  - firebird sql
+  source: wikidata:Q685289
+- canonical: firestore
+  slot: database
+  topic: infra
+  aliases:
+  - google firestore
+  source: wikidata:Q46748
+- canonical: google pub/sub
+  slot: database
+  topic: infra
+  aliases:
+  - google cloud pub/sub
+  source: wikidata:Q2001552
+- canonical: h2
+  slot: database
+  topic: infra
+  aliases:
+  - h2 database
+  source: wikidata:Q5629464
+- canonical: hazelcast
+  slot: database
+  topic: infra
+  source: wikidata:Q15080389
+- canonical: hbase
+  slot: database
+  topic: infra
+  aliases:
+  - apache hbase
+  source: wikidata:Q1125816
+- canonical: ignite
+  slot: database
+  topic: infra
+  aliases:
+  - apache ignite
+  source: wikidata:Q23019902
+- canonical: influxdb
+  slot: database
+  topic: infra
+  source: wikidata:Q21998975
+- canonical: janusgraph
+  slot: database
+  topic: infra
+  source: wikidata:Q30633878
+- canonical: kafka
+  slot: database
+  topic: infra
+  aliases:
+  - apache kafka
+  source: wikidata:Q16172024
+- canonical: kibana
+  slot: database
+  topic: infra
+  source: wikidata:Q17091601
+- canonical: kinesis
+  slot: database
+  topic: infra
+  aliases:
+  - amazon kinesis
+  source: wikidata:Q17013267
+- canonical: lancedb
+  slot: database
+  topic: infra
+  source: github-topic:lancedb
+- canonical: libsql
+  slot: database
+  topic: infra
+  source: github-topic:libsql
+- canonical: logstash
+  slot: database
+  topic: infra
+  source: wikidata:Q19892385
+- canonical: mariadb
+  slot: database
+  topic: infra
+  source: wikidata:Q787177
+- canonical: meilisearch
+  slot: database
+  topic: infra
+  source: github-topic:meilisearch
+- canonical: memcached
+  slot: database
+  topic: infra
+  source: wikidata:Q131594
+- canonical: milvus
+  slot: database
+  topic: infra
+  source: github-topic:milvus
+- canonical: mongodb
+  slot: database
+  topic: infra
+  aliases:
+  - mongo
+  source: wikidata:Q1166233
+- canonical: mysql
+  slot: database
+  topic: infra
+  source: wikidata:Q850
+- canonical: nats
+  slot: database
+  topic: infra
+  aliases:
+  - nats.io
+  source: github-topic:nats-io
+- canonical: neo4j
+  slot: database
+  topic: infra
+  source: wikidata:Q1628290
+- canonical: neptune
+  slot: database
+  topic: infra
+  aliases:
+  - amazon neptune
+  source: wikidata:Q43024611
+- canonical: opensearch
+  slot: database
+  topic: infra
+  source: wikidata:Q94313917
+- canonical: oracle
+  slot: database
+  topic: infra
+  aliases:
+  - oracle database
+  - oracle db
+  source: wikidata:Q44940
+- canonical: percona
+  slot: database
+  topic: infra
+  aliases:
+  - percona server
+  source: wikidata:Q7169108
+- canonical: pgvector
+  slot: database
+  topic: infra
+  source: github-topic:pgvector
+- canonical: pinecone
+  slot: database
+  topic: infra
+  source: github-topic:pinecone
+- canonical: pinot
+  slot: database
+  topic: infra
+  aliases:
+  - apache pinot
+  source: github-topic:apache-pinot
+- canonical: planetscale
+  slot: database
+  topic: infra
+  source: github-topic:planetscale
+  notes: '[also appears in slot=''platform'' in legacy catalog]'
+- canonical: postgres
+  slot: database
+  topic: infra
+  aliases:
+  - postgresql
+  - postgres sql
+  - pg
+  source: wikidata:Q192490
+- canonical: prometheus
+  slot: database
+  topic: infra
+  aliases:
+  - prometheus db
+  - prometheus tsdb
+  source: wikidata:Q56467477
+  notes: '[also appears in slot=''tool'' in legacy catalog]'
+- canonical: pulsar
+  slot: database
+  topic: infra
+  aliases:
+  - apache pulsar
+  source: wikidata:Q54949906
+- canonical: qdrant
+  slot: database
+  topic: infra
+  source: github-topic:qdrant
+- canonical: questdb
+  slot: database
+  topic: infra
+  source: github-topic:questdb
+- canonical: rabbitmq
+  slot: database
+  topic: infra
+  source: wikidata:Q1037826
+- canonical: rds
+  slot: database
+  topic: infra
+  aliases:
+  - amazon rds
+  - aws rds
+  source: wikidata:Q1430347
+- canonical: redis
+  slot: database
+  topic: infra
+  source: wikidata:Q2136322
+- canonical: redshift
+  slot: database
+  topic: infra
+  aliases:
+  - amazon redshift
+  source: wikidata:Q17068048
+- canonical: rethinkdb
+  slot: database
+  topic: infra
+  source: wikidata:Q3511786
+- canonical: riak
+  slot: database
+  topic: infra
+  source: wikidata:Q2704381
+- canonical: scylladb
+  slot: database
+  topic: infra
+  aliases:
+  - scylla
+  source: wikidata:Q20712389
+- canonical: singlestore
+  slot: database
+  topic: infra
+  aliases:
+  - memsql
+  source: wikidata:Q22337128
+- canonical: snowflake
+  slot: database
+  topic: infra
+  source: wikidata:Q28055441
+- canonical: solr
+  slot: database
+  topic: infra
+  aliases:
+  - apache solr
+  source: wikidata:Q2367919
+- canonical: spanner
+  slot: database
+  topic: infra
+  aliases:
+  - google spanner
+  - cloud spanner
+  source: wikidata:Q21063836
+- canonical: sphinx search
+  slot: database
+  topic: infra
+  aliases:
+  - sphinx
+  source: wikidata:Q1462098
+- canonical: sql server
+  slot: database
+  topic: infra
+  aliases:
+  - mssql
+  - microsoft sql server
+  source: wikidata:Q215819
+- canonical: sqlite
+  slot: database
+  topic: infra
+  source: wikidata:Q319417
+- canonical: sqs
+  slot: database
+  topic: infra
+  aliases:
+  - amazon sqs
+  source: wikidata:Q4744893
+- canonical: sybase
+  slot: database
+  topic: infra
+  source: wikidata:Q1342523
+- canonical: tidb
+  slot: database
+  topic: infra
+  aliases:
+  - ti-db
+  source: wikidata:Q66339263
+- canonical: tigergraph
+  slot: database
+  topic: infra
+  source: github-topic:tigergraph
+- canonical: timescaledb
+  slot: database
+  topic: infra
+  source: wikidata:Q66327077
+- canonical: turso
+  slot: database
+  topic: infra
+  source: github-topic:turso
+- canonical: typesense
+  slot: database
+  topic: infra
+  source: github-topic:typesense
+- canonical: victoriametrics
+  slot: database
+  topic: infra
+  source: github-topic:victoriametrics
+- canonical: vitess
+  slot: database
+  topic: infra
+  source: wikidata:Q24938655
+- canonical: weaviate
+  slot: database
+  topic: infra
+  source: github-topic:weaviate
+- canonical: yugabytedb
+  slot: database
+  topic: infra
+  aliases:
+  - yugabyte
+  - yugabyte db
+  source: wikidata:Q108137987
+- canonical: zeromq
+  slot: database
+  topic: infra
+  aliases:
+  - 0mq
+  source: wikidata:Q1193817
+- canonical: .net
+  slot: framework
+  topic: framework
+  aliases:
+  - dotnet
+  - .net core
+  source: wikidata:Q5276
+- canonical: actix
+  slot: framework
+  topic: framework
+  aliases:
+  - actix-web
+  source: github-topic:actix-web
+- canonical: adonisjs
+  slot: framework
+  topic: framework
+  aliases:
+  - adonis
+  source: github-topic:adonisjs
+- canonical: alpine.js
+  slot: framework
+  topic: framework
+  aliases:
+  - alpinejs
+  - alpine
+  source: github-topic:alpinejs
+- canonical: alpinejs
+  slot: framework
+  topic: framework
+  aliases:
+  - alpine.js
+  source: github-topic:alpinejs
+- canonical: angular
+  slot: framework
+  topic: framework
+  aliases:
+  - angularjs
+  - angular2
+  source: wikidata:Q19707865
+- canonical: asp.net
+  slot: framework
+  topic: framework
+  aliases:
+  - aspnet
+  - asp.net core
+  source: wikidata:Q2220433
+- canonical: astro
+  slot: framework
+  topic: framework
+  source: github-topic:astro
+- canonical: axum
+  slot: framework
+  topic: framework
+  source: github-topic:axum
+- canonical: backbone
+  slot: framework
+  topic: framework
+  aliases:
+  - backbone.js
+  source: wikidata:Q4837909
+- canonical: beego
+  slot: framework
+  topic: framework
+  source: github-topic:beego
+- canonical: bevy
+  slot: framework
+  topic: framework
+  source: github-topic:bevy
+- canonical: bootstrap
+  slot: framework
+  topic: framework
+  aliases:
+  - bootstrap css
+  source: wikidata:Q5302358
+- canonical: bulma
+  slot: framework
+  topic: framework
+  source: github-topic:bulma
+- canonical: chi
+  slot: framework
+  topic: framework
+  source: github-topic:chi
+- canonical: codeigniter
+  slot: framework
+  topic: framework
+  source: wikidata:Q1276830
+- canonical: django
+  slot: framework
+  topic: framework
+  source: wikidata:Q213907
+- canonical: dropwizard
+  slot: framework
+  topic: framework
+  source: github-topic:dropwizard
+- canonical: dspy
+  slot: framework
+  topic: framework
+  source: github-topic:dspy
+- canonical: echo
+  slot: framework
+  topic: framework
+  aliases:
+  - labstack/echo
+  source: github-topic:echo
+- canonical: ember
+  slot: framework
+  topic: framework
+  aliases:
+  - ember.js
+  - emberjs
+  source: wikidata:Q6887833
+- canonical: encore
+  slot: framework
+  topic: framework
+  source: github-topic:encore
+- canonical: express
+  slot: framework
+  topic: framework
+  aliases:
+  - expressjs
+  - express.js
+  source: wikidata:Q16876055
+- canonical: fastapi
+  slot: framework
+  topic: framework
+  source: wikidata:Q105187478
+- canonical: fastify
+  slot: framework
+  topic: framework
+  source: github-topic:fastify
+- canonical: fiber
+  slot: framework
+  topic: framework
+  aliases:
+  - gofiber
+  source: github-topic:gofiber
+- canonical: flask
+  slot: framework
+  topic: framework
+  source: wikidata:Q16924931
+- canonical: flutter
+  slot: framework
+  topic: framework
+  source: wikidata:Q41819
+- canonical: foundation
+  slot: framework
+  topic: framework
+  aliases:
+  - zurb foundation
+  source: wikidata:Q4154943
+- canonical: gatsby
+  slot: framework
+  topic: framework
+  aliases:
+  - gatsbyjs
+  source: wikidata:Q63966451
+- canonical: gin
+  slot: framework
+  topic: framework
+  aliases:
+  - gin-gonic
+  source: github-topic:gin-gonic
+- canonical: godot
+  slot: framework
+  topic: framework
+  source: wikidata:Q16964444
+- canonical: hanami
+  slot: framework
+  topic: framework
+  source: github-topic:hanami
+- canonical: hapi
+  slot: framework
+  topic: framework
+  source: github-topic:hapi
+- canonical: haystack
+  slot: framework
+  topic: framework
+  source: github-topic:haystack
+- canonical: hono
+  slot: framework
+  topic: framework
+  source: github-topic:hono
+- canonical: htmx
+  slot: framework
+  topic: framework
+  source: github-topic:htmx
+- canonical: huggingface
+  slot: framework
+  topic: framework
+  aliases:
+  - hugging face
+  - hf
+  source: wikidata:Q108943604
+- canonical: ionic
+  slot: framework
+  topic: framework
+  source: wikidata:Q18344221
+- canonical: jax
+  slot: framework
+  topic: framework
+  source: github-topic:jax
+- canonical: jetpack compose
+  slot: framework
+  topic: framework
+  aliases:
+  - compose
+  source: github-topic:jetpack-compose
+- canonical: keras
+  slot: framework
+  topic: framework
+  source: wikidata:Q24981894
+- canonical: koa
+  slot: framework
+  topic: framework
+  aliases:
+  - koajs
+  source: github-topic:koa
+- canonical: ktor
+  slot: framework
+  topic: framework
+  source: github-topic:ktor
+- canonical: langchain
+  slot: framework
+  topic: framework
+  source: github-topic:langchain
+- canonical: laravel
+  slot: framework
+  topic: framework
+  source: wikidata:Q5891589
+- canonical: lit
+  slot: framework
+  topic: framework
+  aliases:
+  - lit-html
+  - lit-element
+  source: github-topic:lit
+- canonical: llamaindex
+  slot: framework
+  topic: framework
+  aliases:
+  - llama-index
+  - llama index
+  source: github-topic:llamaindex
+- canonical: maui
+  slot: framework
+  topic: framework
+  aliases:
+  - .net maui
+  source: wikidata:Q107460001
+- canonical: meteor
+  slot: framework
+  topic: framework
+  aliases:
+  - meteor.js
+  source: wikidata:Q6817482
+- canonical: micronaut
+  slot: framework
+  topic: framework
+  source: wikidata:Q54848828
+- canonical: nativescript
+  slot: framework
+  topic: framework
+  source: wikidata:Q22959245
+- canonical: nestjs
+  slot: framework
+  topic: framework
+  aliases:
+  - nest.js
+  - nest
+  source: github-topic:nestjs
+- canonical: next.js
+  slot: framework
+  topic: framework
+  aliases:
+  - nextjs
+  source: wikidata:Q87811196
+- canonical: nuxt
+  slot: framework
+  topic: framework
+  aliases:
+  - nuxt.js
+  - nuxtjs
+  source: wikidata:Q55235213
+- canonical: phaser
+  slot: framework
+  topic: framework
+  source: github-topic:phaserjs
+- canonical: phoenix
+  slot: framework
+  topic: framework
+  source: wikidata:Q16995380
+- canonical: play
+  slot: framework
+  topic: framework
+  aliases:
+  - play framework
+  source: wikidata:Q7205599
+- canonical: preact
+  slot: framework
+  topic: framework
+  source: github-topic:preact
+- canonical: pure.css
+  slot: framework
+  topic: framework
+  aliases:
+  - purecss
+  source: github-topic:purecss
+- canonical: pyramid
+  slot: framework
+  topic: framework
+  source: wikidata:Q4067528
+- canonical: pytorch
+  slot: framework
+  topic: framework
+  source: wikidata:Q47509047
+- canonical: quarkus
+  slot: framework
+  topic: framework
+  source: wikidata:Q62043672
+- canonical: qwik
+  slot: framework
+  topic: framework
+  source: github-topic:qwik
+- canonical: rails
+  slot: framework
+  topic: framework
+  aliases:
+  - ruby on rails
+  - ror
+  source: wikidata:Q189621
+- canonical: react
+  slot: framework
+  topic: framework
+  aliases:
+  - reactjs
+  source: wikidata:Q19799061
+- canonical: react native
+  slot: framework
+  topic: framework
+  aliases:
+  - react-native
+  source: wikidata:Q24982615
+- canonical: remix
+  slot: framework
+  topic: framework
+  aliases:
+  - remix-run
+  source: github-topic:remix-run
+- canonical: rocket
+  slot: framework
+  topic: framework
+  source: github-topic:rocket-rs
+- canonical: sanic
+  slot: framework
+  topic: framework
+  source: github-topic:sanic
+- canonical: semantic ui
+  slot: framework
+  topic: framework
+  aliases:
+  - semanticui
+  - semantic
+  source: github-topic:semantic-ui
+- canonical: sinatra
+  slot: framework
+  topic: framework
+  source: wikidata:Q3305564
+- canonical: solid
+  slot: framework
+  topic: framework
+  aliases:
+  - solidjs
+  - solid.js
+  source: github-topic:solidjs
+- canonical: spring boot
+  slot: framework
+  topic: framework
+  aliases:
+  - spring
+  source: wikidata:Q22312671
+- canonical: starlette
+  slot: framework
+  topic: framework
+  source: github-topic:starlette
+- canonical: stencil
+  slot: framework
+  topic: framework
+  aliases:
+  - stenciljs
+  source: github-topic:stenciljs
+- canonical: stimulus
+  slot: framework
+  topic: framework
+  aliases:
+  - stimulusjs
+  source: github-topic:stimulus
+- canonical: svelte
+  slot: framework
+  topic: framework
+  source: wikidata:Q55065267
+- canonical: sveltekit
+  slot: framework
+  topic: framework
+  source: github-topic:sveltekit
+- canonical: swiftui
+  slot: framework
+  topic: framework
+  source: wikidata:Q65085467
+- canonical: symfony
+  slot: framework
+  topic: framework
+  source: wikidata:Q735997
+- canonical: tensorflow
+  slot: framework
+  topic: framework
+  source: wikidata:Q21010103
+- canonical: tornado
+  slot: framework
+  topic: framework
+  source: wikidata:Q3818593
+- canonical: tower
+  slot: framework
+  topic: framework
+  source: github-topic:tower-rs
+- canonical: uikit
+  slot: framework
+  topic: framework
+  source: wikidata:Q2462601
+- canonical: unity
+  slot: framework
+  topic: framework
+  source: wikidata:Q63241
+- canonical: unreal engine
+  slot: framework
+  topic: framework
+  aliases:
+  - unreal
+  source: wikidata:Q193866
+- canonical: vert.x
+  slot: framework
+  topic: framework
+  aliases:
+  - vertx
+  source: github-topic:vertx
+- canonical: vue
+  slot: framework
+  topic: framework
+  aliases:
+  - vue.js
+  - vuejs
+  source: wikidata:Q21028111
+- canonical: warp
+  slot: framework
+  topic: framework
+  source: github-topic:warp-rs
+- canonical: xamarin
+  slot: framework
+  topic: framework
+  source: wikidata:Q1969217
+- canonical: after every migration
+  slot: frequency
+  topic: tooling
+  source: rule:migration-cadence
+- canonical: at deploy time
+  slot: frequency
+  topic: tooling
+  source: rule:deploy-cadence
+- canonical: at feature-flag rollout
+  slot: frequency
+  topic: tooling
+  source: rule:release-cadence
+- canonical: before every commit
+  slot: frequency
+  topic: tooling
+  source: rule:dev-workflow-cadence
+- canonical: daily
+  slot: frequency
+  topic: tooling
+  source: rule:daily-cadence
+- canonical: during stand-up
+  slot: frequency
+  topic: tooling
+  source: rule:daily-cadence
+- canonical: every morning
+  slot: frequency
+  topic: tooling
+  source: rule:daily-cadence
+- canonical: every release
+  slot: frequency
+  topic: tooling
+  source: rule:release-cadence
+- canonical: every sprint
+  slot: frequency
+  topic: tooling
+  source: rule:sprint-cadence
+- canonical: hourly
+  slot: frequency
+  topic: tooling
+  source: rule:hourly-cadence
+- canonical: in every pr
+  slot: frequency
+  topic: tooling
+  source: rule:ci-cadence
+- canonical: monthly
+  slot: frequency
+  topic: tooling
+  source: rule:monthly-cadence
+- canonical: nightly
+  slot: frequency
+  topic: tooling
+  aliases:
+  - nightly in ci
+  source: rule:nightly-cadence
+- canonical: on each push
+  slot: frequency
+  topic: tooling
+  source: rule:ci-cadence
+- canonical: on save
+  slot: frequency
+  topic: tooling
+  source: rule:dev-workflow-cadence
+- canonical: once a week
+  slot: frequency
+  topic: tooling
+  source: rule:weekly-cadence
+- canonical: twice daily
+  slot: frequency
+  topic: tooling
+  source: rule:twice-daily
+- canonical: weekly
+  slot: frequency
+  topic: tooling
+  source: rule:weekly-cadence
+- canonical: ada
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q154755
+- canonical: assembly
+  slot: language
+  topic: language_runtime
+  aliases:
+  - asm
+  source: wikidata:Q165436
+- canonical: bash
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q189248
+- canonical: c
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q15777
+- canonical: c#
+  slot: language
+  topic: language_runtime
+  aliases:
+  - csharp
+  source: wikidata:Q2370
+- canonical: c++
+  slot: language
+  topic: language_runtime
+  aliases:
+  - cpp
+  - cplusplus
+  source: wikidata:Q2407
+- canonical: clojure
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q29132
+- canonical: cobol
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q131991
+- canonical: common lisp
+  slot: language
+  topic: language_runtime
+  aliases:
+  - cl
+  source: wikidata:Q193321
+- canonical: crystal
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q17045700
+- canonical: css
+  slot: language
+  topic: language_runtime
+  aliases:
+  - css3
+  source: wikidata:Q46441
+- canonical: dart
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q406009
+- canonical: elixir
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q13366104
+- canonical: elm
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q22670101
+- canonical: erlang
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q334749
+- canonical: f#
+  slot: language
+  topic: language_runtime
+  aliases:
+  - fsharp
+  source: wikidata:Q1341478
+- canonical: fortran
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q83303
+- canonical: gleam
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q126086866
+- canonical: go
+  slot: language
+  topic: language_runtime
+  aliases:
+  - golang
+  source: wikidata:Q37227
+- canonical: groovy
+  slot: language
+  topic: language_runtime
+  aliases:
+  - apache groovy
+  source: wikidata:Q674970
+- canonical: haskell
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q35571
+- canonical: html
+  slot: language
+  topic: language_runtime
+  aliases:
+  - html5
+  source: wikidata:Q8811
+- canonical: java
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q251
+- canonical: javascript
+  slot: language
+  topic: language_runtime
+  aliases:
+  - js
+  source: wikidata:Q2005
+- canonical: julia
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q15608983
+- canonical: kotlin
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q15273616
+- canonical: less
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q1807893
+- canonical: lisp
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q132874
+- canonical: lua
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q207316
+- canonical: matlab
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q169759
+- canonical: nim
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q15064735
+- canonical: ocaml
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q261395
+- canonical: pascal
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q81571
+- canonical: perl
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q42478
+- canonical: php
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q59
+- canonical: powershell
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q840410
+- canonical: prolog
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q163468
+- canonical: python
+  slot: language
+  topic: language_runtime
+  aliases:
+  - python3
+  - cpython
+  source: wikidata:Q28865
+- canonical: r
+  slot: language
+  topic: language_runtime
+  aliases:
+  - r language
+  source: wikidata:Q206904
+- canonical: racket
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q336432
+- canonical: reason
+  slot: language
+  topic: language_runtime
+  aliases:
+  - reasonml
+  source: wikipedia:ReasonML
+- canonical: rescript
+  slot: language
+  topic: language_runtime
+  source: github-topic:rescript
+- canonical: ruby
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q161053
+- canonical: rust
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q575650
+- canonical: sass
+  slot: language
+  topic: language_runtime
+  aliases:
+  - scss
+  source: wikidata:Q1572865
+- canonical: scala
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q460584
+- canonical: scheme
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q18376
+- canonical: shell
+  slot: language
+  topic: language_runtime
+  aliases:
+  - sh
+  source: SO-tag:shell
+- canonical: smalltalk
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q189855
+- canonical: solidity
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q47460408
+- canonical: sql
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q47607
+- canonical: swift
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q17118377
+- canonical: tcl
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q287474
+- canonical: typescript
+  slot: language
+  topic: language_runtime
+  aliases:
+  - ts
+  source: wikidata:Q978185
+- canonical: visual basic
+  slot: language
+  topic: language_runtime
+  aliases:
+  - vb
+  - vb.net
+  source: wikidata:Q73562
+- canonical: zig
+  slot: language
+  topic: language_runtime
+  source: wikidata:Q65063361
+- canonical: activerecord
+  slot: library
+  topic: framework
+  aliases:
+  - active record
+  source: wikidata:Q4680128
+- canonical: aiohttp
+  slot: library
+  topic: framework
+  source: github-topic:aiohttp
+- canonical: alembic
+  slot: library
+  topic: framework
+  source: github-topic:alembic
+- canonical: altair
+  slot: library
+  topic: framework
+  source: github-topic:altair
+- canonical: ant design
+  slot: library
+  topic: framework
+  aliases:
+  - antd
+  source: github-topic:ant-design
+- canonical: apache thrift
+  slot: library
+  topic: framework
+  aliases:
+  - thrift
+  source: wikidata:Q1091443
+- canonical: apollo
+  slot: library
+  topic: framework
+  aliases:
+  - apollo client
+  source: github-topic:apollo-client
+- canonical: authlib
+  slot: library
+  topic: framework
+  source: github-topic:authlib
+- canonical: axios
+  slot: library
+  topic: framework
+  source: wikidata:Q28131382
+- canonical: beautifulsoup
+  slot: library
+  topic: framework
+  aliases:
+  - bs4
+  source: wikidata:Q4880080
+- canonical: bee-queue
+  slot: library
+  topic: framework
+  source: github-topic:bee-queue
+- canonical: bokeh
+  slot: library
+  topic: framework
+  source: github-topic:bokeh
+- canonical: bullmq
+  slot: library
+  topic: framework
+  source: github-topic:bullmq
+- canonical: catboost
+  slot: library
+  topic: framework
+  source: github-topic:catboost
+- canonical: celery
+  slot: library
+  topic: framework
+  source: wikidata:Q15977484
+- canonical: chai
+  slot: library
+  topic: framework
+  source: github-topic:chai
+- canonical: chakra ui
+  slot: library
+  topic: framework
+  aliases:
+  - chakra
+  source: github-topic:chakra-ui
+- canonical: chart.js
+  slot: library
+  topic: framework
+  aliases:
+  - chartjs
+  source: wikidata:Q85692663
+- canonical: cheerio
+  slot: library
+  topic: framework
+  source: github-topic:cheerio
+- canonical: d3.js
+  slot: library
+  topic: framework
+  aliases:
+  - d3
+  - d3js
+  source: wikidata:Q1135511
+- canonical: date-fns
+  slot: library
+  topic: framework
+  source: github-topic:date-fns
+- canonical: dayjs
+  slot: library
+  topic: framework
+  source: github-topic:dayjs
+- canonical: devise
+  slot: library
+  topic: framework
+  source: github-topic:devise
+- canonical: diesel
+  slot: library
+  topic: framework
+  aliases:
+  - diesel-rs
+  source: github-topic:diesel
+- canonical: echarts
+  slot: library
+  topic: framework
+  aliases:
+  - apache echarts
+  source: wikidata:Q26842593
+- canonical: ecto
+  slot: library
+  topic: framework
+  source: github-topic:ecto
+- canonical: emotion
+  slot: library
+  topic: framework
+  aliases:
+  - emotion js
+  source: github-topic:emotion
+- canonical: factory_boy
+  slot: library
+  topic: framework
+  aliases:
+  - factory-boy
+  source: github-topic:factory-boy
+- canonical: faker
+  slot: library
+  topic: framework
+  aliases:
+  - faker.js
+  source: github-topic:faker
+- canonical: gensim
+  slot: library
+  topic: framework
+  source: github-topic:gensim
+- canonical: gorm
+  slot: library
+  topic: framework
+  source: github-topic:gorm
+- canonical: got
+  slot: library
+  topic: framework
+  source: github-topic:got
+- canonical: graphql-yoga
+  slot: library
+  topic: framework
+  source: github-topic:graphql-yoga
+- canonical: grpc
+  slot: library
+  topic: framework
+  aliases:
+  - grpc-web
+  - grpc-gateway
+  source: wikidata:Q27134141
+  notes: '[also appears in slot=''pattern'' in legacy catalog]'
+- canonical: headless ui
+  slot: library
+  topic: framework
+  source: github-topic:headlessui
+- canonical: highcharts
+  slot: library
+  topic: framework
+  source: wikidata:Q1619840
+- canonical: httpx
+  slot: library
+  topic: framework
+  source: github-topic:httpx
+- canonical: hypothesis
+  slot: library
+  topic: framework
+  source: github-topic:hypothesis
+- canonical: immer
+  slot: library
+  topic: framework
+  source: github-topic:immer
+- canonical: immutable.js
+  slot: library
+  topic: framework
+  aliases:
+  - immutablejs
+  source: github-topic:immutable-js
+- canonical: jotai
+  slot: library
+  topic: framework
+  source: github-topic:jotai
+- canonical: jquery
+  slot: library
+  topic: framework
+  aliases:
+  - jquery ui
+  source: wikidata:Q76736
+- canonical: ky
+  slot: library
+  topic: framework
+  source: github-topic:ky
+- canonical: lightgbm
+  slot: library
+  topic: framework
+  source: github-topic:lightgbm
+- canonical: lodash
+  slot: library
+  topic: framework
+  source: wikidata:Q20101840
+- canonical: luxon
+  slot: library
+  topic: framework
+  source: github-topic:luxon
+- canonical: lxml
+  slot: library
+  topic: framework
+  source: wikidata:Q1820468
+- canonical: marshmallow
+  slot: library
+  topic: framework
+  source: github-topic:marshmallow
+- canonical: material ui
+  slot: library
+  topic: framework
+  aliases:
+  - mui
+  source: github-topic:material-ui
+- canonical: matplotlib
+  slot: library
+  topic: framework
+  source: wikidata:Q881419
+- canonical: mobx
+  slot: library
+  topic: framework
+  source: github-topic:mobx
+- canonical: moment.js
+  slot: library
+  topic: framework
+  aliases:
+  - moment
+  - momentjs
+  source: wikidata:Q60714120
+- canonical: mongoose
+  slot: library
+  topic: framework
+  source: github-topic:mongoose
+- canonical: msw
+  slot: library
+  topic: framework
+  aliases:
+  - mock service worker
+  source: github-topic:msw
+- canonical: nltk
+  slot: library
+  topic: framework
+  source: wikidata:Q16039380
+- canonical: node-fetch
+  slot: library
+  topic: framework
+  source: github-topic:node-fetch
+- canonical: numpy
+  slot: library
+  topic: framework
+  source: wikidata:Q2011
+- canonical: opencv
+  slot: library
+  topic: framework
+  source: wikidata:Q192234
+- canonical: pandas
+  slot: library
+  topic: framework
+  source: wikidata:Q57817
+- canonical: passport.js
+  slot: library
+  topic: framework
+  aliases:
+  - passport
+  - passportjs
+  source: github-topic:passport
+- canonical: patroni
+  slot: library
+  topic: infra
+  source: github-topic:patroni
+- canonical: pgbouncer
+  slot: library
+  topic: infra
+  aliases:
+  - pg-bouncer
+  - pg_bouncer
+  source: github-topic:pgbouncer
+- canonical: pgpool
+  slot: library
+  topic: infra
+  aliases:
+  - pgpool-ii
+  source: github-topic:pgpool
+- canonical: pillow
+  slot: library
+  topic: framework
+  aliases:
+  - pil
+  source: github-topic:pillow
+- canonical: pinia
+  slot: library
+  topic: framework
+  source: github-topic:pinia
+- canonical: plotly
+  slot: library
+  topic: framework
+  aliases:
+  - plotly.js
+  - plotly.py
+  source: wikidata:Q25050258
+- canonical: prisma
+  slot: library
+  topic: framework
+  source: github-topic:prisma
+- canonical: protocol buffers
+  slot: library
+  topic: framework
+  aliases:
+  - protobuf
+  - protobufs
+  source: wikidata:Q3066430
+- canonical: pydantic
+  slot: library
+  topic: framework
+  source: github-topic:pydantic
+- canonical: radix ui
+  slot: library
+  topic: framework
+  aliases:
+  - radix
+  source: github-topic:radix-ui
+- canonical: ramda
+  slot: library
+  topic: framework
+  source: github-topic:ramdajs
+- canonical: recoil
+  slot: library
+  topic: framework
+  source: github-topic:recoiljs
+- canonical: redux
+  slot: library
+  topic: framework
+  source: wikidata:Q22116717
+- canonical: relay
+  slot: library
+  topic: framework
+  aliases:
+  - relay.js
+  source: github-topic:relay
+- canonical: requests
+  slot: library
+  topic: framework
+  aliases:
+  - python requests
+  source: wikidata:Q17024469
+- canonical: rq
+  slot: library
+  topic: framework
+  source: github-topic:python-rq
+- canonical: rxjs
+  slot: library
+  topic: framework
+  source: github-topic:rxjs
+- canonical: scikit-learn
+  slot: library
+  topic: framework
+  aliases:
+  - sklearn
+  source: wikidata:Q1026367
+- canonical: scipy
+  slot: library
+  topic: framework
+  source: wikidata:Q726145
+- canonical: seaborn
+  slot: library
+  topic: framework
+  source: github-topic:seaborn
+- canonical: sentence-transformers
+  slot: library
+  topic: framework
+  source: github-topic:sentence-transformers
+- canonical: sequelize
+  slot: library
+  topic: framework
+  source: github-topic:sequelize
+- canonical: shadcn/ui
+  slot: library
+  topic: framework
+  aliases:
+  - shadcn
+  source: github-topic:shadcn-ui
+- canonical: sidekiq
+  slot: library
+  topic: framework
+  source: github-topic:sidekiq
+- canonical: sinon
+  slot: library
+  topic: framework
+  source: github-topic:sinon
+- canonical: spacy
+  slot: library
+  topic: framework
+  source: wikidata:Q22939042
+- canonical: sqlalchemy
+  slot: library
+  topic: framework
+  source: wikidata:Q7569209
+- canonical: sqlx
+  slot: library
+  topic: framework
+  source: github-topic:sqlx
+- canonical: styled-components
+  slot: library
+  topic: framework
+  source: github-topic:styled-components
+- canonical: supertest
+  slot: library
+  topic: framework
+  source: github-topic:supertest
+- canonical: svar
+  slot: library
+  topic: framework
+  source: github-topic:svar
+- canonical: tailwind
+  slot: library
+  topic: framework
+  aliases:
+  - tailwindcss
+  - tailwind css
+  source: wikidata:Q77184034
+- canonical: transformers
+  slot: library
+  topic: framework
+  source: github-topic:transformers
+- canonical: typeorm
+  slot: library
+  topic: framework
+  source: github-topic:typeorm
+- canonical: urllib3
+  slot: library
+  topic: framework
+  source: github-topic:urllib3
+- canonical: vuex
+  slot: library
+  topic: framework
+  source: github-topic:vuex
+- canonical: xgboost
+  slot: library
+  topic: framework
+  source: github-topic:xgboost
+- canonical: zod
+  slot: library
+  topic: framework
+  source: github-topic:zod
+- canonical: zustand
+  slot: library
+  topic: framework
+  source: github-topic:zustand
+- canonical: actor model
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Actor_model
+- canonical: adapter pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - adapter
+  source: wikipedia:Adapter_pattern
+- canonical: agile
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - agile methodology
+  - agile software development
+  source: wikidata:Q471061
+- canonical: ai/ml
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ai
+  - ml
+  - machine learning
+  - artificial intelligence
+  source: wikipedia:Artificial_intelligence
+- canonical: ambassador
+  slot: pattern
+  topic: language_runtime
+  source: azure:ambassador
+- canonical: anti-corruption layer
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - acl
+  source: azure:anti-corruption-layer
+- canonical: api composition
+  slot: pattern
+  topic: language_runtime
+  source: microservices.io:api-composition
+- canonical: api gateway
+  slot: pattern
+  topic: language_runtime
+  source: microservices.io:api-gateway
+- canonical: async/await
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - async-await
+  source: wikipedia:Async/await
+- canonical: backend
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - back-end
+  - back end
+  source: wikipedia:Frontend_and_backend
+- canonical: backends for frontends
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - bff
+  - backend for frontend
+  source: samnewman:bff
+- canonical: bdd
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - behavior-driven development
+  - behavior driven development
+  source: wikidata:Q828581
+- canonical: behavior-driven development
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - bdd
+  source: wikipedia:Behavior-driven_development
+- canonical: bulkhead
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - bulkhead isolation
+  source: azure:bulkhead
+- canonical: cache-aside
+  slot: pattern
+  topic: language_runtime
+  source: azure:cache-aside
+- canonical: callback-style code
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - callbacks
+  source: wikipedia:Callback_(computer_programming)
+- canonical: chain of responsibility
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Chain-of-responsibility_pattern
+- canonical: change data capture
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - cdc
+  source: wikipedia:Change_data_capture
+- canonical: choreography
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - event choreography
+  source: microservices.io:sagas
+- canonical: ci/cd
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ci
+  - cd
+  - continuous integration
+  - continuous deployment
+  - continuous delivery
+  - ci-cd
+  - ci cd
+  source: wikipedia:CI/CD
+- canonical: circuit breaker
+  slot: pattern
+  topic: language_runtime
+  source: fowler:CircuitBreaker
+- canonical: claim check
+  slot: pattern
+  topic: language_runtime
+  source: azure:claim-check
+- canonical: clean architecture
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Clean_architecture
+- canonical: client-side rendering
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - csr
+  source: wikipedia:Single-page_application
+- canonical: command pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - command
+  source: wikipedia:Command_pattern
+- canonical: compensating transaction
+  slot: pattern
+  topic: language_runtime
+  source: azure:compensating-transaction
+- canonical: competing consumers
+  slot: pattern
+  topic: language_runtime
+  source: azure:competing-consumers
+- canonical: composite pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - composite
+  source: wikipedia:Composite_pattern
+- canonical: cqrs
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - command query responsibility segregation
+  source: wikipedia:Command_Query_Responsibility_Segregation
+- canonical: csp
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - communicating sequential processes
+  source: wikipedia:Communicating_sequential_processes
+- canonical: csv
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q935809
+- canonical: database per service
+  slot: pattern
+  topic: language_runtime
+  source: microservices.io:database-per-service
+- canonical: ddd
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - domain-driven design
+  - domain driven design
+  source: wikidata:Q271218
+- canonical: dead letter queue
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - dlq
+  source: aws:sqs-dead-letter-queues
+- canonical: decorator
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - decorator pattern
+  source: wikipedia:Decorator_pattern
+- canonical: defense in depth
+  slot: pattern
+  topic: language_runtime
+  source: nist:csrc:defense-in-depth
+- canonical: dependency injection
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - di
+  source: wikipedia:Dependency_injection
+- canonical: devops
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q1224892
+- canonical: domain-driven design
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ddd
+  source: wikipedia:Domain-driven_design
+- canonical: elk stack
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - elk
+  - elastic stack
+  source: wikipedia:Elastic_Stack
+- canonical: event sourcing
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Event_sourcing
+- canonical: event-driven architecture
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - eda
+  source: wikipedia:Event-driven_architecture
+- canonical: event-loop concurrency
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - event-loop
+  source: wikipedia:Event_loop
+- canonical: eventual consistency
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Eventual_consistency
+- canonical: facade pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - facade
+  source: wikipedia:Facade_pattern
+- canonical: factory
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - factory pattern
+  - factory method
+  source: wikipedia:Factory_method_pattern
+- canonical: fibers
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Fiber_(computer_science)
+- canonical: frontend
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - front-end
+  - front end
+  source: wikipedia:Frontend_and_backend
+- canonical: fullstack
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - full-stack
+  - full stack
+  source: wikipedia:Full-stack_development
+- canonical: gateway aggregation
+  slot: pattern
+  topic: language_runtime
+  source: azure:gateway-aggregation
+- canonical: gateway offloading
+  slot: pattern
+  topic: language_runtime
+  source: azure:gateway-offloading
+- canonical: gateway routing
+  slot: pattern
+  topic: language_runtime
+  source: azure:gateway-routing
+- canonical: gitflow
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - git flow
+  source: wikipedia:Git#Gitflow_workflow
+- canonical: gitops
+  slot: pattern
+  topic: language_runtime
+  source: github-topic:gitops
+- canonical: graphql
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q25104379
+- canonical: health check
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - health endpoint monitoring
+  source: azure:health-endpoint-monitoring
+- canonical: hexagonal architecture
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ports and adapters
+  source: wikipedia:Hexagonal_architecture_(software)
+- canonical: idempotency key
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - idempotent consumer
+  source: microservices.io:idempotent-consumer
+- canonical: inversion of control
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ioc
+  source: wikipedia:Inversion_of_control
+- canonical: island architecture
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - islands architecture
+  source: patterns.dev:islands
+- canonical: isomorphic rendering
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - isomorphic
+  source: github-topic:isomorphic-javascript
+- canonical: iterator pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - iterator
+  source: wikipedia:Iterator_pattern
+- canonical: jamstack
+  slot: pattern
+  topic: language_runtime
+  source: jamstack.org:about
+- canonical: json
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q2063
+- canonical: jwt
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - json web token
+  source: wikidata:Q18030489
+- canonical: kanban
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q1053531
+- canonical: leader election
+  slot: pattern
+  topic: language_runtime
+  source: azure:leader-election
+- canonical: materialized view
+  slot: pattern
+  topic: language_runtime
+  source: azure:materialized-view
+- canonical: micro-frontends
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - micro frontend
+  - microfrontend
+  source: fowler:micro-frontends
+- canonical: microservices
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - microservice architecture
+  source: wikipedia:Microservices
+- canonical: mlops
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:MLOps
+- canonical: model-view-controller
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - mvc
+  source: wikipedia:Model–view–controller
+- canonical: model-view-presenter
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - mvp
+  source: wikipedia:Model–view–presenter
+- canonical: model-view-viewmodel
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - mvvm
+  source: wikipedia:Model–view–viewmodel
+- canonical: modular monolith
+  slot: pattern
+  topic: language_runtime
+  source: github-topic:modular-monolith
+- canonical: monolith-first
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - monolithic architecture
+  - monolith
+  source: wikipedia:Monolithic_architecture
+- canonical: mtls
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - mutual tls
+  source: wikipedia:Mutual_authentication
+- canonical: oauth
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - oauth2
+  - oauth 2.0
+  - oauth 2
+  source: wikidata:Q475294
+- canonical: observer pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - observer
+  source: wikipedia:Observer_pattern
+- canonical: onion architecture
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Onion_architecture
+- canonical: openid connect
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - oidc
+  - openid
+  source: wikidata:Q1139141
+- canonical: orchestration
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - saga orchestrator
+  source: microservices.io:sagas
+- canonical: pipes and filters
+  slot: pattern
+  topic: language_runtime
+  source: azure:pipes-and-filters
+- canonical: platform engineering
+  slot: pattern
+  topic: language_runtime
+  source: github-topic:platform-engineering
+- canonical: priority queue
+  slot: pattern
+  topic: language_runtime
+  source: azure:priority-queue
+- canonical: progressive enhancement
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Progressive_enhancement
+- canonical: promise-based flow
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - promises
+  source: wikipedia:Futures_and_promises
+- canonical: proxy pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - proxy
+  source: wikipedia:Proxy_pattern
+- canonical: pub/sub
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - pubsub
+  - publish-subscribe
+  source: wikipedia:Publish–subscribe_pattern
+- canonical: pwa
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - progressive web app
+  source: wikidata:Q22965425
+- canonical: rag
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - retrieval augmented generation
+  - retrieval-augmented generation
+  source: wikipedia:Retrieval-augmented_generation
+- canonical: rate limiting
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - throttling
+  source: azure:throttling
+- canonical: reactive streams
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - reactive-streams
+  source: wikipedia:Reactive_programming
+- canonical: repository pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - repository
+  source: wikipedia:Repository_pattern
+- canonical: rest
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - restful
+  - rest api
+  - restful api
+  source: wikidata:Q652751
+- canonical: retry with backoff
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - exponential backoff
+  - retry pattern
+  - retry-with-backoff
+  source: azure:retry
+- canonical: saga pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - saga
+  source: github-topic:saga-pattern
+- canonical: saml
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q185353
+- canonical: scrum
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q863514
+- canonical: server-sent events
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - sse
+  source: wikidata:Q6131954
+- canonical: server-side rendering
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ssr
+  source: wikipedia:Server-side_scripting
+- canonical: service discovery
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - client-side discovery
+  - server-side discovery
+  source: microservices.io:service-discovery
+- canonical: service mesh
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Service_mesh
+- canonical: sharding
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - horizontal partitioning
+  source: azure:sharding
+- canonical: shared database
+  slot: pattern
+  topic: language_runtime
+  source: microservices.io:shared-database
+- canonical: sidecar
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - sidecar pattern
+  source: azure:sidecar
+- canonical: singleton
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - singleton pattern
+  source: wikipedia:Singleton_pattern
+- canonical: spa
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - single page application
+  - single-page application
+  source: wikidata:Q1571410
+- canonical: sre
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - site reliability engineering
+  source: wikipedia:Site_reliability_engineering
+- canonical: ssr
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - server-side rendering
+  - server side rendering
+  source: wikipedia:Server-side_scripting
+- canonical: state pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - state
+  source: wikipedia:State_pattern
+- canonical: static site generation
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - ssg
+  source: wikipedia:Static_web_page
+- canonical: strangler fig
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - strangler pattern
+  - strangler application
+  source: fowler:StranglerFigApplication
+- canonical: strategy pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - strategy
+  source: wikipedia:Strategy_pattern
+- canonical: tdd
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - test-driven development
+  - test driven development
+  source: wikidata:Q830132
+- canonical: template method
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Template_method_pattern
+- canonical: test-driven development
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - tdd
+  source: wikipedia:Test-driven_development
+- canonical: threads
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - multithreading
+  source: wikipedia:Thread_(computing)
+- canonical: toml
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q28449455
+- canonical: transactional outbox
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - outbox pattern
+  - outbox
+  source: microservices.io:transactional-outbox
+- canonical: trunk-based development
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - trunk based development
+  source: wikipedia:Trunk-based_development
+- canonical: two-phase commit
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - 2pc
+  source: wikipedia:Two-phase_commit_protocol
+- canonical: unit of work
+  slot: pattern
+  topic: language_runtime
+  source: wikipedia:Unit_of_Work
+- canonical: valet key
+  slot: pattern
+  topic: language_runtime
+  source: azure:valet-key
+- canonical: visitor pattern
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - visitor
+  source: wikipedia:Visitor_pattern
+- canonical: waterfall
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - waterfall model
+  source: wikidata:Q1064411
+- canonical: webhooks
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - webhook
+  source: wikidata:Q2101686
+- canonical: websocket
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - websockets
+  source: wikidata:Q379217
+- canonical: xml
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q2115
+- canonical: xp
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - extreme programming
+  source: wikidata:Q184251
+- canonical: yaml
+  slot: pattern
+  topic: language_runtime
+  source: wikidata:Q281876
+- canonical: zero trust
+  slot: pattern
+  topic: language_runtime
+  aliases:
+  - zero trust architecture
+  - zta
+  source: nist:sp-800-207
+- canonical: akamai
+  slot: platform
+  topic: infra
+  aliases:
+  - akamai technologies
+  source: wikidata:Q374715
+- canonical: aks
+  slot: platform
+  topic: infra
+  aliases:
+  - azure kubernetes service
+  source: wikipedia:Azure_Kubernetes_Service
+- canonical: alibaba cloud
+  slot: platform
+  topic: infra
+  aliases:
+  - aliyun
+  source: wikidata:Q18215835
+- canonical: app engine
+  slot: platform
+  topic: infra
+  aliases:
+  - google app engine
+  - gae
+  source: wikidata:Q1115120
+- canonical: app runner
+  slot: platform
+  topic: infra
+  aliases:
+  - aws app runner
+  source: wikipedia:AWS_App_Runner
+- canonical: aws
+  slot: platform
+  topic: infra
+  aliases:
+  - amazon web services
+  source: wikidata:Q2283
+- canonical: aws lambda
+  slot: platform
+  topic: infra
+  aliases:
+  - lambda
+  source: wikidata:Q19841877
+- canonical: azure
+  slot: platform
+  topic: infra
+  aliases:
+  - microsoft azure
+  source: wikidata:Q725967
+- canonical: azure functions
+  slot: platform
+  topic: infra
+  source: wikidata:Q29138330
+- canonical: beam
+  slot: platform
+  topic: infra
+  aliases:
+  - google cloud beam
+  - apache beam
+  source: wikidata:Q27517264
+- canonical: cloud functions
+  slot: platform
+  topic: infra
+  aliases:
+  - google cloud functions
+  source: wikipedia:Google_Cloud_Functions
+- canonical: cloud run
+  slot: platform
+  topic: infra
+  aliases:
+  - google cloud run
+  source: wikidata:Q66075540
+- canonical: cloudflare
+  slot: platform
+  topic: infra
+  source: wikidata:Q5176426
+- canonical: cloudflare pages
+  slot: platform
+  topic: infra
+  source: github-topic:cloudflare-pages
+- canonical: cloudflare workers
+  slot: platform
+  topic: infra
+  source: github-topic:cloudflare-workers
+- canonical: containerd
+  slot: platform
+  topic: infra
+  source: github-topic:containerd
+- canonical: cri-o
+  slot: platform
+  topic: infra
+  aliases:
+  - crio
+  source: github-topic:cri-o
+- canonical: deno deploy
+  slot: platform
+  topic: infra
+  source: github-topic:deno-deploy
+- canonical: digitalocean
+  slot: platform
+  topic: infra
+  aliases:
+  - digital ocean
+  source: wikidata:Q5273803
+- canonical: docker
+  slot: platform
+  topic: infra
+  source: wikidata:Q15206305
+- canonical: docker swarm
+  slot: platform
+  topic: infra
+  aliases:
+  - swarm
+  source: wikipedia:Docker_Swarm
+- canonical: ecs
+  slot: platform
+  topic: infra
+  aliases:
+  - aws ecs
+  - amazon ecs
+  source: wikidata:Q17044923
+- canonical: eks
+  slot: platform
+  topic: infra
+  aliases:
+  - amazon eks
+  - aws eks
+  source: wikipedia:Amazon_Elastic_Kubernetes_Service
+- canonical: elastic beanstalk
+  slot: platform
+  topic: infra
+  aliases:
+  - aws elastic beanstalk
+  - beanstalk
+  source: wikidata:Q2496321
+- canonical: fargate
+  slot: platform
+  topic: infra
+  aliases:
+  - aws fargate
+  source: wikipedia:AWS_Fargate
+- canonical: fastly
+  slot: platform
+  topic: infra
+  source: wikidata:Q4000559
+- canonical: fastly compute
+  slot: platform
+  topic: infra
+  aliases:
+  - compute@edge
+  source: github-topic:fastly
+- canonical: fastmail
+  slot: platform
+  topic: infra
+  source: github-topic:fastmail
+- canonical: firebase
+  slot: platform
+  topic: infra
+  source: wikidata:Q17053695
+- canonical: fly.io
+  slot: platform
+  topic: infra
+  aliases:
+  - flyio
+  source: github-topic:fly-io
+- canonical: gcp
+  slot: platform
+  topic: infra
+  aliases:
+  - google cloud platform
+  - google cloud
+  source: wikidata:Q19841877
+- canonical: github pages
+  slot: platform
+  topic: infra
+  source: wikidata:Q29005170
+- canonical: gke
+  slot: platform
+  topic: infra
+  aliases:
+  - google kubernetes engine
+  source: wikipedia:Google_Kubernetes_Engine
+- canonical: heroku
+  slot: platform
+  topic: infra
+  source: wikidata:Q1393724
+- canonical: hetzner
+  slot: platform
+  topic: infra
+  source: wikidata:Q897222
+- canonical: ibm cloud
+  slot: platform
+  topic: infra
+  source: wikidata:Q6885230
+- canonical: kubernetes
+  slot: platform
+  topic: infra
+  aliases:
+  - k8s
+  source: wikidata:Q22661306
+- canonical: linode
+  slot: platform
+  topic: infra
+  source: wikidata:Q1827817
+- canonical: mesos
+  slot: platform
+  topic: infra
+  aliases:
+  - apache mesos
+  source: wikidata:Q14911018
+- canonical: mesosphere dc/os
+  slot: platform
+  topic: infra
+  aliases:
+  - dc/os
+  - mesosphere
+  source: wikipedia:DC/OS
+- canonical: modal
+  slot: platform
+  topic: infra
+  aliases:
+  - modal.com
+  source: github-topic:modal-labs
+- canonical: netlify
+  slot: platform
+  topic: infra
+  source: wikidata:Q59480946
+- canonical: nomad
+  slot: platform
+  topic: infra
+  aliases:
+  - hashicorp nomad
+  source: wikidata:Q29106998
+- canonical: openshift
+  slot: platform
+  topic: infra
+  aliases:
+  - red hat openshift
+  source: wikidata:Q3046363
+- canonical: oracle cloud
+  slot: platform
+  topic: infra
+  aliases:
+  - oci
+  source: wikidata:Q20058117
+- canonical: podman
+  slot: platform
+  topic: infra
+  source: wikidata:Q64086710
+- canonical: railway
+  slot: platform
+  topic: infra
+  source: github-topic:railwayapp
+- canonical: rancher
+  slot: platform
+  topic: infra
+  source: wikidata:Q58708580
+- canonical: render
+  slot: platform
+  topic: infra
+  source: github-topic:render
+- canonical: replicate
+  slot: platform
+  topic: infra
+  source: github-topic:replicate
+- canonical: scaleway
+  slot: platform
+  topic: infra
+  source: wikidata:Q25113110
+- canonical: supabase
+  slot: platform
+  topic: infra
+  source: wikidata:Q110178064
+- canonical: vercel
+  slot: platform
+  topic: infra
+  source: wikidata:Q101475428
+- canonical: vultr
+  slot: platform
+  topic: infra
+  source: wikidata:Q56401713
+- canonical: 1password
+  slot: tool
+  topic: tooling
+  aliases:
+  - 1password cli
+  source: wikidata:Q1751954
+- canonical: alertmanager
+  slot: tool
+  topic: tooling
+  source: github-topic:alertmanager
+- canonical: android studio
+  slot: tool
+  topic: tooling
+  source: wikidata:Q13402701
+- canonical: ansible
+  slot: tool
+  topic: tooling
+  source: wikidata:Q2852503
+- canonical: appdynamics
+  slot: tool
+  topic: tooling
+  source: wikidata:Q14923046
+- canonical: appium
+  slot: tool
+  topic: tooling
+  source: wikidata:Q27058780
+- canonical: apt
+  slot: tool
+  topic: tooling
+  aliases:
+  - apt-get
+  source: wikidata:Q2379284
+- canonical: argocd
+  slot: tool
+  topic: tooling
+  aliases:
+  - argo cd
+  source: github-topic:argo-cd
+- canonical: atom
+  slot: tool
+  topic: tooling
+  aliases:
+  - atom editor
+  source: wikidata:Q15637192
+- canonical: babel
+  slot: tool
+  topic: tooling
+  source: wikidata:Q56060869
+- canonical: bamboo
+  slot: tool
+  topic: tooling
+  source: wikidata:Q4853925
+- canonical: bat
+  slot: tool
+  topic: tooling
+  source: github-topic:bat
+- canonical: bazel
+  slot: tool
+  topic: tooling
+  source: github-topic:bazel
+- canonical: biome
+  slot: tool
+  topic: tooling
+  aliases:
+  - biomejs
+  source: github-topic:biome
+- canonical: bitwarden
+  slot: tool
+  topic: tooling
+  source: wikidata:Q50954912
+- canonical: black
+  slot: tool
+  topic: tooling
+  source: github-topic:black-formatter
+- canonical: brew
+  slot: tool
+  topic: tooling
+  aliases:
+  - homebrew
+  source: wikidata:Q12032788
+- canonical: browserify
+  slot: tool
+  topic: tooling
+  source: github-topic:browserify
+- canonical: buck2
+  slot: tool
+  topic: tooling
+  aliases:
+  - buck
+  source: github-topic:buck2
+- canonical: buildkite
+  slot: tool
+  topic: tooling
+  source: github-topic:buildkite
+- canonical: bun
+  slot: tool
+  topic: tooling
+  aliases:
+  - bun.sh
+  source: github-topic:bun
+- canonical: bundler
+  slot: tool
+  topic: tooling
+  source: wikidata:Q20027267
+- canonical: cargo
+  slot: tool
+  topic: tooling
+  aliases:
+  - rust cargo
+  source: wikipedia:Cargo_(software)
+- canonical: chatgpt
+  slot: tool
+  topic: tooling
+  source: wikidata:Q115564437
+- canonical: checkov
+  slot: tool
+  topic: tooling
+  source: github-topic:checkov
+- canonical: chef
+  slot: tool
+  topic: tooling
+  source: wikidata:Q2972087
+- canonical: circleci
+  slot: tool
+  topic: tooling
+  source: wikidata:Q21015043
+- canonical: clang-tidy
+  slot: tool
+  topic: tooling
+  source: wikipedia:clang-tidy
+- canonical: claude
+  slot: tool
+  topic: tooling
+  aliases:
+  - claude code
+  source: wikidata:Q118093204
+- canonical: clion
+  slot: tool
+  topic: tooling
+  source: wikidata:Q19611835
+- canonical: cmake
+  slot: tool
+  topic: tooling
+  source: wikidata:Q205817
+- canonical: codefresh
+  slot: tool
+  topic: tooling
+  source: github-topic:codefresh
+- canonical: codeium
+  slot: tool
+  topic: tooling
+  source: github-topic:codeium
+- canonical: conda
+  slot: tool
+  topic: tooling
+  aliases:
+  - miniconda
+  - anaconda
+  source: wikidata:Q15270566
+- canonical: confidant
+  slot: tool
+  topic: tooling
+  source: github-topic:confidant
+- canonical: copilot
+  slot: tool
+  topic: tooling
+  aliases:
+  - github copilot
+  source: wikidata:Q108139345
+- canonical: cursor
+  slot: tool
+  topic: tooling
+  aliases:
+  - cursor editor
+  source: github-topic:cursor
+- canonical: cypress
+  slot: tool
+  topic: tooling
+  source: github-topic:cypress
+- canonical: dagger
+  slot: tool
+  topic: tooling
+  source: github-topic:dagger
+- canonical: datadog
+  slot: tool
+  topic: tooling
+  source: wikidata:Q16930330
+- canonical: delta
+  slot: tool
+  topic: tooling
+  aliases:
+  - git-delta
+  source: github-topic:git-delta
+- canonical: dependabot
+  slot: tool
+  topic: tooling
+  source: wikidata:Q50701945
+- canonical: direnv
+  slot: tool
+  topic: tooling
+  source: github-topic:direnv
+- canonical: discord
+  slot: tool
+  topic: tooling
+  source: wikidata:Q28490564
+- canonical: docker compose
+  slot: tool
+  topic: tooling
+  aliases:
+  - compose
+  source: wikidata:Q47397562
+- canonical: dprint
+  slot: tool
+  topic: tooling
+  source: github-topic:dprint
+- canonical: drone
+  slot: tool
+  topic: tooling
+  aliases:
+  - drone ci
+  source: github-topic:drone-ci
+- canonical: dynatrace
+  slot: tool
+  topic: tooling
+  source: wikidata:Q5317030
+- canonical: earthly
+  slot: tool
+  topic: tooling
+  source: github-topic:earthly
+- canonical: emacs
+  slot: tool
+  topic: tooling
+  aliases:
+  - gnu emacs
+  source: wikidata:Q189722
+- canonical: esbuild
+  slot: tool
+  topic: tooling
+  source: github-topic:esbuild
+- canonical: eslint
+  slot: tool
+  topic: tooling
+  source: wikidata:Q22065712
+- canonical: flake8
+  slot: tool
+  topic: tooling
+  source: github-topic:flake8
+- canonical: flux
+  slot: tool
+  topic: tooling
+  aliases:
+  - fluxcd
+  source: github-topic:fluxcd
+- canonical: fzf
+  slot: tool
+  topic: tooling
+  source: github-topic:fzf
+- canonical: gh
+  slot: tool
+  topic: tooling
+  aliases:
+  - github cli
+  source: github-topic:github-cli
+- canonical: git
+  slot: tool
+  topic: tooling
+  source: wikidata:Q186055
+- canonical: github actions
+  slot: tool
+  topic: tooling
+  aliases:
+  - gha
+  source: wikidata:Q60909594
+- canonical: gitlab ci
+  slot: tool
+  topic: tooling
+  aliases:
+  - gitlab-ci
+  source: wikidata:Q16653773
+- canonical: go modules
+  slot: tool
+  topic: tooling
+  aliases:
+  - gomod
+  source: github-topic:go-modules
+- canonical: goland
+  slot: tool
+  topic: tooling
+  source: wikidata:Q33135464
+- canonical: golangci-lint
+  slot: tool
+  topic: tooling
+  source: github-topic:golangci-lint
+- canonical: gradle
+  slot: tool
+  topic: tooling
+  source: wikidata:Q914807
+- canonical: grafana
+  slot: tool
+  topic: tooling
+  source: wikidata:Q21442905
+- canonical: grafana loki
+  slot: tool
+  topic: tooling
+  aliases:
+  - loki
+  source: github-topic:grafana-loki
+- canonical: hadolint
+  slot: tool
+  topic: tooling
+  source: github-topic:hadolint
+- canonical: harness
+  slot: tool
+  topic: tooling
+  source: github-topic:harness
+- canonical: hatch
+  slot: tool
+  topic: tooling
+  source: github-topic:hatch
+- canonical: helix
+  slot: tool
+  topic: tooling
+  aliases:
+  - helix editor
+  source: github-topic:helix-editor
+- canonical: hex
+  slot: tool
+  topic: tooling
+  source: github-topic:elixir-hex
+- canonical: honeycomb
+  slot: tool
+  topic: tooling
+  aliases:
+  - honeycomb.io
+  source: github-topic:honeycombio
+- canonical: htop
+  slot: tool
+  topic: tooling
+  source: wikidata:Q2032758
+- canonical: intellij idea
+  slot: tool
+  topic: tooling
+  aliases:
+  - intellij
+  source: wikidata:Q307774
+- canonical: jaeger
+  slot: tool
+  topic: tooling
+  source: github-topic:jaegertracing
+- canonical: jasmine
+  slot: tool
+  topic: tooling
+  source: wikidata:Q14923057
+- canonical: jenkins
+  slot: tool
+  topic: tooling
+  source: wikidata:Q1320660
+- canonical: jest
+  slot: tool
+  topic: tooling
+  source: wikidata:Q48755793
+- canonical: jetbrains ides
+  slot: tool
+  topic: tooling
+  aliases:
+  - jetbrains
+  source: wikidata:Q5143533
+- canonical: jmeter
+  slot: tool
+  topic: tooling
+  aliases:
+  - apache jmeter
+  source: wikidata:Q1399
+- canonical: junit
+  slot: tool
+  topic: tooling
+  source: wikidata:Q767155
+- canonical: k6
+  slot: tool
+  topic: tooling
+  aliases:
+  - grafana k6
+  source: github-topic:k6
+- canonical: karma
+  slot: tool
+  topic: tooling
+  aliases:
+  - karma test runner
+  source: github-topic:karma-runner
+- canonical: lazygit
+  slot: tool
+  topic: tooling
+  source: github-topic:lazygit
+- canonical: lerna
+  slot: tool
+  topic: tooling
+  source: github-topic:lerna
+- canonical: locust
+  slot: tool
+  topic: tooling
+  aliases:
+  - locust.io
+  source: github-topic:locustio
+- canonical: loki
+  slot: tool
+  topic: tooling
+  aliases:
+  - grafana loki
+  source: github-topic:grafana-loki
+- canonical: make
+  slot: tool
+  topic: tooling
+  aliases:
+  - gnu make
+  - makefile
+  source: wikidata:Q206212
+- canonical: maven
+  slot: tool
+  topic: tooling
+  aliases:
+  - apache maven
+  source: wikidata:Q47275
+- canonical: mercurial
+  slot: tool
+  topic: tooling
+  aliases:
+  - hg
+  source: wikidata:Q76059
+- canonical: microsoft teams
+  slot: tool
+  topic: tooling
+  aliases:
+  - ms teams
+  - teams
+  source: wikidata:Q28406404
+- canonical: mix
+  slot: tool
+  topic: tooling
+  aliases:
+  - elixir mix
+  source: github-topic:elixir-mix
+- canonical: mocha
+  slot: tool
+  topic: tooling
+  source: github-topic:mocha
+- canonical: mypy
+  slot: tool
+  topic: tooling
+  source: wikidata:Q17098997
+- canonical: neovim
+  slot: tool
+  topic: tooling
+  aliases:
+  - nvim
+  source: wikidata:Q20129851
+- canonical: new relic
+  slot: tool
+  topic: tooling
+  aliases:
+  - newrelic
+  source: wikidata:Q7013601
+- canonical: nightwatch
+  slot: tool
+  topic: tooling
+  source: github-topic:nightwatchjs
+- canonical: ninja
+  slot: tool
+  topic: tooling
+  aliases:
+  - ninja-build
+  source: github-topic:ninja-build
+- canonical: nix
+  slot: tool
+  topic: tooling
+  aliases:
+  - nixpkgs
+  source: wikidata:Q6961957
+- canonical: npm
+  slot: tool
+  topic: tooling
+  source: wikidata:Q7637948
+- canonical: nx
+  slot: tool
+  topic: tooling
+  aliases:
+  - nrwl/nx
+  - nx monorepo
+  source: github-topic:nx
+- canonical: opentelemetry
+  slot: tool
+  topic: tooling
+  aliases:
+  - otel
+  source: github-topic:opentelemetry
+- canonical: opsgenie
+  slot: tool
+  topic: tooling
+  source: wikidata:Q24916441
+- canonical: packer
+  slot: tool
+  topic: tooling
+  source: github-topic:packer
+- canonical: pacman
+  slot: tool
+  topic: tooling
+  source: wikidata:Q380338
+- canonical: pagerduty
+  slot: tool
+  topic: tooling
+  source: wikidata:Q16927655
+- canonical: parcel
+  slot: tool
+  topic: tooling
+  source: github-topic:parceljs
+- canonical: pdm
+  slot: tool
+  topic: tooling
+  source: github-topic:pdm
+- canonical: perforce
+  slot: tool
+  topic: tooling
+  aliases:
+  - p4
+  source: wikidata:Q2003196
+- canonical: phpstorm
+  slot: tool
+  topic: tooling
+  source: wikidata:Q1362892
+- canonical: pip
+  slot: tool
+  topic: tooling
+  source: wikidata:Q13507421
+- canonical: pip-tools
+  slot: tool
+  topic: tooling
+  source: github-topic:pip-tools
+- canonical: pipenv
+  slot: tool
+  topic: tooling
+  source: github-topic:pipenv
+- canonical: playwright
+  slot: tool
+  topic: tooling
+  source: github-topic:playwright
+- canonical: pnpm
+  slot: tool
+  topic: tooling
+  source: github-topic:pnpm
+- canonical: poetry
+  slot: tool
+  topic: tooling
+  aliases:
+  - python poetry
+  source: github-topic:python-poetry
+- canonical: pre-commit
+  slot: tool
+  topic: tooling
+  source: github-topic:pre-commit
+- canonical: prettier
+  slot: tool
+  topic: tooling
+  source: github-topic:prettier
+- canonical: pulumi
+  slot: tool
+  topic: tooling
+  source: wikidata:Q58753651
+- canonical: puppet
+  slot: tool
+  topic: tooling
+  source: wikidata:Q1570627
+- canonical: puppeteer
+  slot: tool
+  topic: tooling
+  source: github-topic:puppeteer
+- canonical: pycharm
+  slot: tool
+  topic: tooling
+  source: wikidata:Q3412961
+- canonical: pylint
+  slot: tool
+  topic: tooling
+  source: github-topic:pylint
+- canonical: pyre
+  slot: tool
+  topic: tooling
+  source: github-topic:pyre-check
+- canonical: pyright
+  slot: tool
+  topic: tooling
+  source: github-topic:pyright
+- canonical: pytest
+  slot: tool
+  topic: tooling
+  source: wikidata:Q17089078
+- canonical: ripgrep
+  slot: tool
+  topic: tooling
+  aliases:
+  - rg
+  source: github-topic:ripgrep
+- canonical: robot framework
+  slot: tool
+  topic: tooling
+  aliases:
+  - robotframework
+  source: wikidata:Q12772517
+- canonical: rollup
+  slot: tool
+  topic: tooling
+  source: github-topic:rollup
+- canonical: rome
+  slot: tool
+  topic: tooling
+  source: github-topic:rome
+- canonical: rspec
+  slot: tool
+  topic: tooling
+  source: wikidata:Q285988
+- canonical: rubocop
+  slot: tool
+  topic: tooling
+  source: wikidata:Q19842773
+- canonical: rubymine
+  slot: tool
+  topic: tooling
+  source: wikidata:Q7379380
+- canonical: ruff
+  slot: tool
+  topic: tooling
+  source: github-topic:ruff
+- canonical: rush
+  slot: tool
+  topic: tooling
+  aliases:
+  - microsoft rush
+  source: github-topic:rushstack
+- canonical: rye
+  slot: tool
+  topic: tooling
+  source: github-topic:rye
+- canonical: sbt
+  slot: tool
+  topic: tooling
+  aliases:
+  - scala sbt
+  source: github-topic:sbt
+- canonical: selenium
+  slot: tool
+  topic: tooling
+  aliases:
+  - selenium webdriver
+  source: wikidata:Q28128
+- canonical: semgrep
+  slot: tool
+  topic: tooling
+  source: github-topic:semgrep
+- canonical: sentry
+  slot: tool
+  topic: tooling
+  aliases:
+  - sentry.io
+  source: wikidata:Q28121
+- canonical: shellcheck
+  slot: tool
+  topic: tooling
+  source: wikidata:Q24890830
+- canonical: slack
+  slot: tool
+  topic: tooling
+  source: wikidata:Q16996553
+- canonical: snyk
+  slot: tool
+  topic: tooling
+  source: wikidata:Q29017038
+- canonical: sops
+  slot: tool
+  topic: tooling
+  source: github-topic:sops
+- canonical: spinnaker
+  slot: tool
+  topic: tooling
+  source: wikidata:Q27984049
+- canonical: splunk
+  slot: tool
+  topic: tooling
+  source: wikidata:Q737761
+- canonical: sublime text
+  slot: tool
+  topic: tooling
+  aliases:
+  - sublime
+  source: wikidata:Q1232886
+- canonical: subversion
+  slot: tool
+  topic: tooling
+  aliases:
+  - svn
+  source: wikidata:Q46794
+- canonical: swc
+  slot: tool
+  topic: tooling
+  source: github-topic:swc
+- canonical: swiftlint
+  slot: tool
+  topic: tooling
+  source: github-topic:swiftlint
+- canonical: tabnine
+  slot: tool
+  topic: tooling
+  source: wikidata:Q85784555
+- canonical: teamcity
+  slot: tool
+  topic: tooling
+  source: wikidata:Q7698667
+- canonical: tempo
+  slot: tool
+  topic: tooling
+  aliases:
+  - grafana tempo
+  source: github-topic:grafana-tempo
+- canonical: terraform
+  slot: tool
+  topic: tooling
+  source: wikidata:Q28030856
+- canonical: testcafe
+  slot: tool
+  topic: tooling
+  source: github-topic:testcafe
+- canonical: testng
+  slot: tool
+  topic: tooling
+  source: wikidata:Q2994140
+- canonical: travis
+  slot: tool
+  topic: tooling
+  aliases:
+  - travis ci
+  source: wikidata:Q16654172
+- canonical: trivy
+  slot: tool
+  topic: tooling
+  source: github-topic:trivy
+- canonical: tsc
+  slot: tool
+  topic: tooling
+  aliases:
+  - typescript compiler
+  source: github-topic:typescript-compiler
+- canonical: turbopack
+  slot: tool
+  topic: tooling
+  source: github-topic:turbopack
+- canonical: turborepo
+  slot: tool
+  topic: tooling
+  aliases:
+  - turbo
+  source: github-topic:turborepo
+- canonical: unittest
+  slot: tool
+  topic: tooling
+  aliases:
+  - python unittest
+  source: github-topic:unittest
+- canonical: uv
+  slot: tool
+  topic: tooling
+  aliases:
+  - astral uv
+  source: github-topic:uv
+- canonical: vault
+  slot: tool
+  topic: tooling
+  aliases:
+  - hashicorp vault
+  source: wikidata:Q56406408
+- canonical: vim
+  slot: tool
+  topic: tooling
+  source: wikidata:Q285116
+- canonical: vite
+  slot: tool
+  topic: tooling
+  source: github-topic:vitejs
+- canonical: vitest
+  slot: tool
+  topic: tooling
+  source: github-topic:vitest
+- canonical: vs code
+  slot: tool
+  topic: tooling
+  aliases:
+  - vscode
+  - visual studio code
+  source: wikidata:Q19841877
+- canonical: webdriverio
+  slot: tool
+  topic: tooling
+  aliases:
+  - webdriver.io
+  source: github-topic:webdriverio
+- canonical: webpack
+  slot: tool
+  topic: tooling
+  source: wikidata:Q25039180
+- canonical: webstorm
+  slot: tool
+  topic: tooling
+  source: wikidata:Q7979826
+- canonical: windsurf
+  slot: tool
+  topic: tooling
+  source: github-topic:windsurf
+- canonical: xcode
+  slot: tool
+  topic: tooling
+  source: wikidata:Q206803
+- canonical: yamllint
+  slot: tool
+  topic: tooling
+  source: github-topic:yamllint
+- canonical: yarn
+  slot: tool
+  topic: tooling
+  aliases:
+  - yarn pkg
+  source: wikidata:Q29910317
+- canonical: zed
+  slot: tool
+  topic: tooling
+  aliases:
+  - zed editor
+  source: github-topic:zed-editor
+- canonical: zipkin
+  slot: tool
+  topic: tooling
+  source: wikidata:Q30891090
+- canonical: zoom
+  slot: tool
+  topic: tooling
+  aliases:
+  - zoom meetings
+  source: wikidata:Q39095085

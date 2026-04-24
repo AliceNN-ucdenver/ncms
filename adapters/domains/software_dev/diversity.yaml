@@ -1,0 +1,72 @@
+# v9 software_dev diversity taxonomy.
+#
+# Groups the domain's gazetteer entries into generator-time
+# sampling pools.  Each leaf node has source=gazetteer and pulls
+# catalog entries by slot.
+#
+# The generator rotates through nodes within an archetype batch so
+# no single subcategory dominates a generation run (avoids the
+# "100 postgres rows, 0 snowflake rows" failure mode).
+#
+# Topic hints match the topic-head vocabulary in domain.yaml —
+# rows generated from a node get that topic label.
+
+languages_and_patterns:
+  languages:
+    description: "Programming languages + runtimes."
+    topic_hint: language_runtime
+    source: gazetteer
+    filter_slots: [language]
+    n_examples_per_batch: 6
+
+  patterns:
+    description: "Architectural and coding patterns (concepts, not tools)."
+    topic_hint: language_runtime
+    source: gazetteer
+    filter_slots: [pattern]
+    n_examples_per_batch: 8
+
+frameworks_and_libs:
+  app_frameworks:
+    description: "Web / app frameworks — Django, React, Rails, etc."
+    topic_hint: framework
+    source: gazetteer
+    filter_slots: [framework]
+    n_examples_per_batch: 8
+
+  libraries:
+    description: "Imported libraries (not full frameworks)."
+    topic_hint: framework
+    source: gazetteer
+    filter_slots: [library]
+    n_examples_per_batch: 8
+
+infra_and_data:
+  databases:
+    description: "Data stores, caches, queues, search indexes, vector DBs."
+    topic_hint: infra
+    source: gazetteer
+    filter_slots: [database]
+    n_examples_per_batch: 8
+
+  platforms:
+    description: "Runtimes, orchestrators, cloud platforms."
+    topic_hint: infra
+    source: gazetteer
+    filter_slots: [platform]
+    n_examples_per_batch: 6
+
+tooling:
+  tools:
+    description: "Dev-time tools — linters, editors, CI, test runners, observability."
+    topic_hint: tooling
+    source: gazetteer
+    filter_slots: [tool]
+    n_examples_per_batch: 8
+
+  frequencies:
+    description: "Time cadences — 'every commit', 'nightly', 'on save'."
+    topic_hint: tooling
+    source: gazetteer
+    filter_slots: [frequency]
+    n_examples_per_batch: 4

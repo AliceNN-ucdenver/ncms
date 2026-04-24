@@ -1,0 +1,48 @@
+# v9 software_dev domain spec.
+#
+# Prose software-development content — ADRs, RFCs, design docs,
+# post-mortems, threat models.  Distinct from raw-diff-voice
+# content (the pre-v9 ``swe_diff`` domain was removed in Phase
+# B'.0a because diff prose isn't a good fit for cognitive memory).
+#
+# Slots / topics mirror the legacy ``SLOT_TAXONOMY['software_dev']``
+# + ``adapters/taxonomies/software_dev.yaml`` vocabularies — no
+# taxonomy change in this migration, only transport.
+
+name: software_dev
+description: >-
+  Prose software-development content — ADRs, RFCs, design docs,
+  post-mortems, threat models.
+intended_content: |
+  Natural-language state changes about software:
+  "Decision: use Postgres.  Supersedes ADR-003."
+  "Root cause: config drift after v2.3 rollout."
+  Prose only — raw git diffs are out of scope for v9.
+
+slots:
+  - language
+  - framework
+  - library
+  - database
+  - platform
+  - tool
+  - pattern
+  - alternative      # "X over Y" role placeholder — standard across domains
+  - frequency        # "every commit" role placeholder — standard across domains
+
+topics:
+  - framework
+  - language_runtime
+  - infra
+  - testing
+  - tooling
+  - package_mgmt
+  - editor
+  - other
+
+# Default file paths; overridable via the `paths` / `adapter` blocks.
+gazetteer_path: gazetteer.yaml
+diversity_path: diversity.yaml
+archetypes_path: archetypes.yaml
+
+default_adapter_version: v9
