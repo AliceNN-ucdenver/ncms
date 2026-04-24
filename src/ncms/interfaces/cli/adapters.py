@@ -225,7 +225,6 @@ def adapters_generate_sdg(
     else:
         # Filtered / limited path — iterate archetypes manually so we
         # can apply the overrides without mutating the frozen spec.
-        from ncms.application.adapters.sdg.v9 import GenerationStats
         rows = []
         stats_by = {}
         selected = [
@@ -443,7 +442,7 @@ def adapters_judge_gold(
     )
 
     click.echo()
-    click.echo(f"=== Aggregate ===")
+    click.echo("=== Aggregate ===")
     click.echo(f"  sampled: {report['n_sampled']}")
     for k, v in report['verdicts'].items():
         pct = v / report['n_sampled'] * 100 if report['n_sampled'] else 0.0

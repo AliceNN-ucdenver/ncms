@@ -1,127 +1,236 @@
 """Prompt construction for v9 stratified archetype generation.
 
-One function, :func:`build_archetype_prompt`, renders a full prompt
-from an :class:`ArchetypeSpec` plus sampled entities.  Kept in its
-own module so the prompt template is reviewable in one place and
-can be unit-tested independently of the generator loop.
+The public entry is :func:`build_archetype_prompt`.  It renders a
+single LLM prompt that asks for ``len(entity_rows)`` training rows
+matching an archetype's joint-label specification.
 
-Prompt anatomy (top-to-bottom):
+Two design rules shape the prompt text:
 
-1. **Task** — one sentence naming the generation intent.
-2. **Joint labels** — the fixed (intent, admission, state_change,
-   topic) tuple every row must express.
-3. **Entities to use** — the pre-sampled entity set, one per
-   role_span, with the expected role annotation.
-4. **Style envelope** — target length range, surface-diversity
-   guidance, what to avoid.
-5. **Few-shot examples** — the archetype's ``example_utterances``.
-6. **Phrasing inspirations** — ``phrasings`` (as loose guidance,
-   not strict templates — we want surface diversity).
-7. **Output format** — JSON list of exactly ``n`` strings.
+1. **Never echo label vocabulary into the surface instructions.**
+   Early B'.4 probing caught the LLM echoing prompt label strings
+   ("persisting our decision to declare it...") directly into
+   generated rows, which would teach a downstream classifier to
+   recognise "persist / declare" as label indicators rather than
+   learning real semantics.  The joint labels are therefore
+   described behaviourally (see the ``_*_DESCRIPTIONS`` dicts
+   below) instead of spelled out as their enum strings.
 
-The prompt intentionally asks for natural prose, not
-placeholder-filled templates: the LLM should *express* the entities
-rather than *inject* them, so the emitted rows aren't detectable
-as templated.
+2. **One entity set per row, listed explicitly.**  A batch prompt
+   that says "every row must mention metformin" degenerates into
+   eight paraphrases of one sentence.  Instead the prompt
+   enumerates ``row 1 → <entities_1>`` ... ``row N → <entities_N>``,
+   which gives per-row diversity without blowing up the LLM call
+   count.  Entity sampling happens in the generator; this module
+   only renders what it's handed.
 """
 
 from __future__ import annotations
 
 from ncms.application.adapters.sdg.v9.archetypes import ArchetypeSpec
 
+# ---------------------------------------------------------------------------
+# Behavioural descriptions for the five classification heads.
+#
+# These strings go into the prompt VERBATIM.  Keeping them out of
+# the archetype YAML means every domain shares the same stable
+# description vocabulary — if we later want to tune the phrasing,
+# it's one edit here, not one edit per archetype.
+# ---------------------------------------------------------------------------
+
+_INTENT_DESCRIPTIONS: dict[str, str] = {
+    "positive": (
+        "Speaker expresses approval, adoption, enthusiasm, or commitment "
+        "toward the subject."
+    ),
+    "negative": (
+        "Speaker expresses disapproval, rejection, frustration, or rollback."
+    ),
+    "habitual": (
+        "Describes a recurring routine, ongoing habit, or established "
+        "pattern — no change of state is implied."
+    ),
+    "choice": (
+        "Contrasts two named alternatives with a clear chosen winner "
+        "(X over Y / X instead of Y / picked X over Y)."
+    ),
+    "difficulty": (
+        "Expresses struggle, friction, or trouble — something isn't "
+        "working as hoped."
+    ),
+    "none": (
+        "Neutral factual statement — no expressed preference, emotion, "
+        "or evaluation.  The subject is simply mentioned or described."
+    ),
+}
+
+_ADMISSION_DESCRIPTIONS: dict[str, str] = {
+    "persist": (
+        "Meaningful, long-term content — facts, decisions, observations "
+        "worth remembering weeks later."
+    ),
+    "ephemeral": (
+        "Transient or time-bounded content — relevant right now but "
+        "won't matter in a month (today's weather, one-off moods, "
+        "scheduled one-time events)."
+    ),
+    "discard": (
+        "Noise — chitchat, filler, meta-commentary, conversational "
+        "lubricant — a memory system should drop this without storing "
+        "anything."
+    ),
+}
+
+_STATE_CHANGE_DESCRIPTIONS: dict[str, str] = {
+    "declaration": (
+        "Introduces a NEW state — a start, adoption, initiation, or "
+        "first declaration of something."
+    ),
+    "retirement": (
+        "Removes / stops / discontinues / deprecates something — the "
+        "state is ending or has ended."
+    ),
+    "none": (
+        "No state transition — ongoing, stable, or purely observational."
+    ),
+}
+
+
+def _scenario_lines(archetype: ArchetypeSpec) -> list[str]:
+    """Render the three joint labels as behavioural cues — NO literal
+    label tokens appear in the returned text.
+
+    If a head's value is missing from its description dict we fall
+    through to the literal label; that keeps future label additions
+    graceful at the cost of a one-time leak until the dict is
+    updated.
+    """
+    intent_desc = _INTENT_DESCRIPTIONS.get(archetype.intent, archetype.intent)
+    admission_desc = _ADMISSION_DESCRIPTIONS.get(
+        archetype.admission, archetype.admission,
+    )
+    state_desc = _STATE_CHANGE_DESCRIPTIONS.get(
+        archetype.state_change, archetype.state_change,
+    )
+    return [
+        f"- Speaker stance: {intent_desc}",
+        f"- Persistence: {admission_desc}",
+        f"- State transition: {state_desc}",
+    ]
+
 
 # ---------------------------------------------------------------------------
-# Entity bundle — produced by the generator, consumed here.
+# Public API
 # ---------------------------------------------------------------------------
 
 
 def build_archetype_prompt(
     archetype: ArchetypeSpec,
     *,
-    entities: dict[tuple[str, str], str],
-    n: int,
+    entity_rows: list[dict[tuple[str, str], str]],
     domain_description: str = "",
 ) -> str:
-    """Render the full LLM prompt for ``archetype``.
+    """Render the full LLM prompt for a batch of ``len(entity_rows)`` rows.
 
-    ``entities`` maps ``(role, slot)`` tuples to the canonical entity
-    surface the LLM should express in each row, in whatever word
-    form fits the sentence.  Keys line up with
-    ``archetype.role_spans`` — the generator pre-samples them from
-    the gazetteer or diversity taxonomy.
+    Parameters
+    ----------
+    archetype : ArchetypeSpec
+        The archetype being generated.
+    entity_rows : list[dict[(role, slot), str]]
+        One entity assignment per row — the LLM is told that row ``i``
+        must naturally express ``entity_rows[i]``.  Per-row assignment
+        is what gives the batch output surface diversity (without it
+        all rows collapse to paraphrases of one sentence).
+    domain_description : str
+        Short blurb used once to frame the domain; optional.
+
+    Returns
+    -------
+    str
+        Complete user prompt.  The caller prepends a system message
+        asking for a JSON array of strings.
+
+    Notes
+    -----
+    This function is PURE: given the same archetype + entity_rows it
+    produces byte-identical output.  That's intentional — the prompt
+    is the single variable we control in LLM generation, so it should
+    be reproducible in logs and diffs.
     """
+    n = len(entity_rows)
+    if n <= 0:
+        raise ValueError("entity_rows must be non-empty")
+
     sections: list[str] = []
 
-    # ── Task ─────────────────────────────────────────────────────────
+    # ── Task header ──────────────────────────────────────────────────
     sections.append(
         f"# Task\nGenerate {n} short training rows for the "
-        f"archetype **{archetype.name}**.",
+        f"**{archetype.name}** scenario.  Each row is a single "
+        "self-contained sentence or short sentence pair.",
     )
     if domain_description:
-        sections.append(f"Domain context: {domain_description}")
+        sections.append(f"Domain framing: {domain_description}")
 
-    # ── Joint labels ─────────────────────────────────────────────────
-    labels_lines = [
-        f"- intent: {archetype.intent}",
-        f"- admission: {archetype.admission}",
-        f"- state_change: {archetype.state_change}",
-    ]
-    if archetype.topic:
-        labels_lines.append(f"- topic: {archetype.topic}")
+    # ── Scenario (behavioural descriptions — NO label strings) ──────
     sections.append(
-        "# Joint labels (every row must express all of these)\n"
-        + "\n".join(labels_lines),
+        "# Scenario (every row must express ALL three cues)\n"
+        + "\n".join(_scenario_lines(archetype)),
     )
 
     # ── Archetype description ────────────────────────────────────────
-    sections.append(f"# Archetype intent\n{archetype.description.strip()}")
+    sections.append(f"# Scenario detail\n{archetype.description.strip()}")
 
-    # ── Entities ─────────────────────────────────────────────────────
-    if entities:
-        ent_lines = ["Every row MUST naturally mention:"]
-        # Group by role for readability.
-        by_role: dict[str, list[tuple[str, str]]] = {}
-        for (role, slot), surface in entities.items():
-            by_role.setdefault(role, []).append((slot, surface))
-        for role, items in by_role.items():
-            for slot, surface in items:
-                ent_lines.append(
-                    f"- **{surface}** (role={role}, slot={slot}) — "
-                    "use the surface as-is or inflect it naturally "
-                    "(no paraphrasing to a different entity)."
-                )
-        sections.append("# Entities to express\n" + "\n".join(ent_lines))
+    # ── Per-row entity assignments ──────────────────────────────────
+    row_lines: list[str] = []
+    for i, row_entities in enumerate(entity_rows, start=1):
+        if not row_entities:
+            row_lines.append(f"Row {i}: (no specific entities required)")
+            continue
+        parts: list[str] = []
+        for (role, slot), surface in row_entities.items():
+            # Strip any "#N" disambiguator from slot keys (internal-only).
+            base_slot = slot.split("#", 1)[0]
+            parts.append(f"{role}={surface!r} (slot={base_slot})")
+        row_lines.append(f"Row {i}: must mention " + ", ".join(parts))
+    sections.append(
+        "# Per-row entity assignments\n"
+        "Each row MUST naturally mention its assigned entities.  Use "
+        "the surface as-is or inflect it naturally, but do NOT "
+        "substitute different entities.\n"
+        + "\n".join(row_lines),
+    )
 
     # ── Style envelope ───────────────────────────────────────────────
     style_lines = [
         f"- Each row between {archetype.target_min_chars} and "
         f"{archetype.target_max_chars} characters.",
-        "- Natural conversational or clinical prose — not template fills.",
-        "- Vary sentence structure, word choice, and register across rows.",
-        "- Do NOT include any labels, JSON fields, or commentary in the rows "
-        "themselves — the text IS the row.",
+        "- Natural human prose appropriate to the domain — clinical "
+        "notes, casual conversation, or engineering discussion as "
+        "the scenario dictates.",
+        "- Vary sentence structure, register, and word choice across "
+        "the batch — do NOT reuse phrasings from earlier rows or "
+        "from the reference examples.",
+        "- Do NOT include JSON keys, labels, commentary, or row "
+        "numbers INSIDE the row text — the string IS the row.",
+        "- Do NOT echo any of the scenario cues ('stance', "
+        "'persistence', 'transition') as literal words in the "
+        "text; express the meaning naturally instead.",
     ]
-    if archetype.admission == "discard":
-        style_lines.append(
-            "- This archetype models content that should be DISCARDED "
-            "(noise, chit-chat, meta-commentary).  Write rows that a "
-            "memory system should reasonably choose to drop.",
-        )
-    if archetype.admission == "ephemeral":
-        style_lines.append(
-            "- This archetype models EPHEMERAL content — transient, "
-            "time-bounded, not long-term knowledge.",
-        )
     sections.append("# Style rules\n" + "\n".join(style_lines))
 
-    # ── Few-shot examples ────────────────────────────────────────────
+    # ── Few-shot examples (optional) ────────────────────────────────
     if archetype.example_utterances:
-        shots = "\n".join(f"- {ex.strip()}" for ex in archetype.example_utterances)
-        sections.append(f"# Reference examples (match the STYLE, not the content)\n{shots}")
+        shots = "\n".join(
+            f"- {ex.strip()}" for ex in archetype.example_utterances[:6]
+        )
+        sections.append(
+            "# Reference examples (match the STYLE; don't copy the content)\n"
+            + shots,
+        )
 
-    # ── Phrasings as inspiration (not templates) ────────────────────
+    # ── Phrasings as loose inspiration (not templates) ──────────────
     if archetype.phrasings:
-        ph = "\n".join(f"- {p.strip()}" for p in archetype.phrasings[:8])
+        ph = "\n".join(f"- {p.strip()}" for p in archetype.phrasings[:6])
         sections.append(
             "# Phrasing inspirations (paraphrase freely, don't copy verbatim)\n"
             + ph,
@@ -130,8 +239,8 @@ def build_archetype_prompt(
     # ── Output format ────────────────────────────────────────────────
     sections.append(
         "# Output format\n"
-        f"Return a JSON array of exactly {n} strings — nothing else, "
-        "no keys, no markdown, no surrounding prose.",
+        f"Return a JSON array of exactly {n} strings — row 1 first, "
+        f"row {n} last.  No keys, no markdown, no surrounding prose.",
     )
 
     return "\n\n".join(sections)

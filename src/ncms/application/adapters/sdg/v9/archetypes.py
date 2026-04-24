@@ -15,7 +15,7 @@ Design rationale: ``docs/research/v9-corpus-generation-design.md``.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from ncms.application.adapters.schemas import (

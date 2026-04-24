@@ -101,7 +101,7 @@ class GenerationStats:
 
 
 def _sample_entities(
-    spec: "DomainSpec",
+    spec: DomainSpec,
     archetype: ArchetypeSpec,
     rng: random.Random,
 ) -> dict[tuple[str, str], str]:
@@ -164,7 +164,7 @@ def _draw_one(
     *,
     slot: str,
     gaz_by_slot: dict[str, tuple],
-    inline_nodes: "tuple[DiversityNode, ...]",
+    inline_nodes: tuple[DiversityNode, ...],
     archetype: ArchetypeSpec,
     already_used: set[str],
     rng: random.Random,
@@ -183,15 +183,31 @@ def _draw_one(
             return rng.choice(candidates)
         return None
 
-    # Open-vocab path: match topic_hint, fall back to any inline node.
-    matching = [
+    # Open-vocab path: filter inline nodes by slot compatibility
+    # FIRST, then by topic_hint.  The slot filter uses
+    # ``DiversityNode.filter_slots``: a node participates when it
+    # either declares no filter (universal) or explicitly lists
+    # this slot.  Without this gate, a node whose vocabulary is
+    # time-phrases ("in the afternoon") can be sampled as an
+    # ``object`` slot entity, which is exactly the failure mode
+    # caught in B'.4 probing.
+    slot_compatible = [
         n for n in inline_nodes
+        if not n.filter_slots or slot in n.filter_slots
+    ]
+    if not slot_compatible:
+        return None
+
+    # Prefer nodes whose topic_hint matches the archetype's topic
+    # (when declared); fall back to all slot-compatible nodes so
+    # archetypes with topic=None still get entities.
+    matching = [
+        n for n in slot_compatible
         if archetype.topic is not None and n.topic_hint == archetype.topic
     ]
     if not matching:
-        matching = list(inline_nodes)
-    if not matching:
-        return None
+        matching = slot_compatible
+
     # Sample uniformly across candidate nodes (not weighted by size —
     # avoids dominant-category bias).
     node = rng.choice(matching)
@@ -199,11 +215,13 @@ def _draw_one(
         ex for ex in node.examples if ex.lower() not in already_used
     ]
     if not candidates:
-        # Try a different node if this one was exhausted.
+        # Try a different slot-compatible node if this one was exhausted.
         for n in matching:
             if n is node:
                 continue
-            candidates = [ex for ex in n.examples if ex.lower() not in already_used]
+            candidates = [
+                ex for ex in n.examples if ex.lower() not in already_used
+            ]
             if candidates:
                 return rng.choice(candidates)
         return None
@@ -216,7 +234,7 @@ def _draw_one(
 
 
 def generate_for_archetype(
-    spec: "DomainSpec",
+    spec: DomainSpec,
     archetype: ArchetypeSpec,
     *,
     n: int,
@@ -246,47 +264,87 @@ def generate_for_archetype(
     max_raw = max(n * 3, archetype.batch_size * 2)
     raw_count = 0
 
-    # For TemplateBackend, we inject the archetype's phrasings with
-    # entity placeholders already filled so TemplateBackend's
-    # free-text filler does the rest.  For LLM backends we hand over
-    # the prompt directly.
+    # For TemplateBackend, we bypass the LLM-prompt path entirely and
+    # fill phrasings directly — template yield doesn't benefit from
+    # per-row entity variety (phrasings are already limited).  The
+    # LLM path builds a per-row-entity prompt so a single batch call
+    # produces len(entity_rows) distinct surface sentences without
+    # collapsing to paraphrases of one entity pick.
     is_template_backend = isinstance(backend, TemplateBackend)
 
     while len(accepted) < n and raw_count < max_raw:
-        entities = _sample_entities(spec, archetype, rng)
-        if not entities and archetype.role_spans:
-            # No entities available — abort this archetype for
-            # this run.  Surfaces as a logged warning, not an error.
-            logger.warning(
-                "archetype %r: no entities available (spec has no gazetteer "
-                "coverage and no inline diversity match); skipping",
-                archetype.name,
-            )
-            break
-
         batch_n = min(archetype.batch_size, n - len(accepted))
         if batch_n <= 0:
             break
 
-        if is_template_backend:
-            phrasings = _prefill_phrasings(archetype, entities)
-            backend_prepared = TemplateBackend(phrasings=phrasings)
-            raw_rows = backend_prepared.generate(
-                prompt="", n=batch_n, rng=rng,
+        # Sample ONE entity set per row in this batch.  Per-row
+        # sampling is the key diversity fix — previously we picked
+        # a single entity set per batch and asked the LLM to produce
+        # batch_n rows all using that one entity, which collapsed
+        # to eight paraphrases of the same sentence.
+        entity_rows: list[dict[tuple[str, str], str]] = []
+        for _ in range(batch_n):
+            entities = _sample_entities(spec, archetype, rng)
+            if not entities and archetype.role_spans:
+                # Domain has no entity source for this archetype; we
+                # still need SOMETHING to hand the validator.  An
+                # empty dict means "no entity constraint" — validation
+                # will skip the entity-presence check, and role-span
+                # composition will pass only if the archetype
+                # declared zero role_spans.
+                logger.warning(
+                    "archetype %r: no entities available at row sample; "
+                    "emitting empty-entity row (validator may reject)",
+                    archetype.name,
+                )
+            entity_rows.append(entities)
+
+        # Abort this archetype if every row sampled empty — typically
+        # means the domain has no gazetteer coverage AND no inline
+        # diversity nodes.  Logging once beats spamming the log per
+        # sample.
+        if all(not e for e in entity_rows) and archetype.role_spans:
+            logger.warning(
+                "archetype %r: batch produced zero entity sets "
+                "(domain=%s); stopping this archetype",
+                archetype.name, spec.name,
             )
+            break
+
+        if is_template_backend:
+            # Template backend renders per-row phrasings using each
+            # row's own entity set, so surface diversity matches the
+            # LLM path.
+            raw_rows = []
+            for row_entities in entity_rows:
+                phrasings = _prefill_phrasings(archetype, row_entities)
+                raw_rows.extend(
+                    TemplateBackend(phrasings=phrasings).generate(
+                        prompt="", n=1, rng=rng,
+                    ),
+                )
         else:
             prompt = build_archetype_prompt(
                 archetype,
-                entities=entities,
-                n=batch_n,
+                entity_rows=entity_rows,
                 domain_description=spec.description,
             )
-            raw_rows = backend.generate(prompt=prompt, n=batch_n, rng=rng)
+            raw_rows = backend.generate(
+                prompt=prompt, n=batch_n, rng=rng,
+            )
 
         stats.generated += len(raw_rows)
         raw_count += len(raw_rows)
 
-        for text in raw_rows:
+        # Walk each returned row against the matching entity set.
+        # The LLM returns rows in the order requested; short-count
+        # responses (len(raw_rows) < batch_n) naturally map to the
+        # first entity_rows entries.
+        for i, text in enumerate(raw_rows):
+            if i >= len(entity_rows):
+                # LLM overshoot past the requested count — drop.
+                break
+            row_entities = entity_rows[i]
             norm = text.strip()
             if norm in seen_texts:
                 stats.duplicates += 1
@@ -294,7 +352,7 @@ def generate_for_archetype(
             outcome = validate_and_label(
                 norm,
                 archetype=archetype,
-                entities=entities,
+                entities=row_entities,
                 domain=spec.name,  # type: ignore[arg-type]
             )
             if not outcome.ok:
@@ -306,7 +364,7 @@ def generate_for_archetype(
                 text=norm,
                 domain=spec.name,  # type: ignore[arg-type]
                 intent=archetype.intent,
-                slots=_build_slots_from_entities(entities),
+                slots=_build_slots_from_entities(row_entities),
                 topic=archetype.topic,
                 admission=archetype.admission,
                 state_change=archetype.state_change,
@@ -386,7 +444,7 @@ def _prefill_phrasings(
 
 
 def generate_domain(
-    spec: "DomainSpec",
+    spec: DomainSpec,
     *,
     backend: LLMBackend,
     split: Literal["gold", "sdg"] = "sdg",

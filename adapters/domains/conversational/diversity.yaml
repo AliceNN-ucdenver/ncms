@@ -711,10 +711,15 @@ lifestyle:
       - coffee walks
 
 times:
+  # Every node under `times:` is a FREQUENCY-slot vocabulary — cadence,
+  # time-of-day, or named period.  `filter_slots: [frequency]` prevents
+  # the generator from sampling these phrases as an `object` (caught
+  # B'.4: "in the afternoon" landing as an adopted-object entity).
   times_of_day:
-    description: "Time-of-day markers for frequency slot."
+    description: "Time-of-day markers — frequency slot only."
     topic_hint: habit_pref
     source: inline
+    filter_slots: [frequency]
     n_examples_per_batch: 3
     examples:
       - in the morning
@@ -733,9 +738,10 @@ times:
       - last thing at night
 
   frequencies:
-    description: "Recurrence patterns for frequency slot."
+    description: "Recurrence patterns — frequency slot only."
     topic_hint: habit_pref
     source: inline
+    filter_slots: [frequency]
     n_examples_per_batch: 3
     examples:
       - every day
@@ -759,9 +765,10 @@ times:
       - every Sunday
 
   periods:
-    description: "Named seasons, periods, windows of time."
+    description: "Named seasons, periods, windows of time — frequency slot only."
     topic_hint: habit_pref
     source: inline
+    filter_slots: [frequency]
     n_examples_per_batch: 3
     examples:
       - during the holidays

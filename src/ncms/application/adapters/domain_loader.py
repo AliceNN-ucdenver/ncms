@@ -18,8 +18,7 @@ Design: ``docs/research/v9-domain-plugin-architecture.md``.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,10 +30,7 @@ except ImportError as exc:  # pragma: no cover — yaml is a direct dep
     ) from exc
 
 from ncms.application.adapters.schemas import (
-    ADMISSION_DECISIONS,
-    INTENT_CATEGORIES,
     ROLE_LABELS,
-    STATE_CHANGES,
 )
 from ncms.application.adapters.sdg.catalog.primitives import CatalogEntry
 from ncms.application.adapters.sdg.v9.archetypes import (
@@ -69,6 +65,18 @@ class DiversityNode:
     The node's ``topic_hint`` is the topic-head label the generator
     attaches to rows produced from this node.  Must be one of the
     domain's declared topics.
+
+    :attr:`filter_slots` has uniform semantics across both sourcing
+    modes: **this node's examples are a valid entity source for
+    these slots**.
+
+    * For ``source="gazetteer"`` the field is required and drives
+      the gazetteer filter.
+    * For ``source="inline"`` the field is optional — empty means
+      "valid for any open-vocab slot" (the common case).  Populate
+      when a node's vocabulary only makes sense for specific slots
+      (e.g. a ``times_of_day`` node scoped to ``frequency`` so it
+      can't land in the ``object`` slot).
     """
 
     path: tuple[str, ...]               # ("foods", "cuisines")
@@ -76,7 +84,7 @@ class DiversityNode:
     topic_hint: str
     source: str                         # "inline" | "gazetteer"
     examples: tuple[str, ...] = ()      # populated when source=inline
-    filter_slots: tuple[str, ...] = ()  # populated when source=gazetteer
+    filter_slots: tuple[str, ...] = ()  # required for gazetteer; optional for inline
     n_examples_per_batch: int = 8
 
     @property
@@ -352,12 +360,30 @@ def _walk_diversity(
                 str(x).strip() for x in examples_raw
                 if isinstance(x, (str, int, float)) and str(x).strip()
             )
+            # Optional ``filter_slots`` on inline nodes = "this node's
+            # examples are only valid for these slots".  Empty = universal
+            # (valid for any open-vocab slot).  Caught the "in the
+            # afternoon" sampled as an `object` slot bug in B'.4.
+            inline_fs_raw = node.get("filter_slots") or []
+            if not isinstance(inline_fs_raw, list):
+                raise DomainValidationError(
+                    f"{yaml_path}: {'.'.join(path)} 'filter_slots' "
+                    "must be a list when present",
+                )
+            for s in inline_fs_raw:
+                if not isinstance(s, str) or s not in allowed_slots:
+                    raise DomainValidationError(
+                        f"{yaml_path}: {'.'.join(path)} filter_slots "
+                        f"{s!r} not in domain.slots "
+                        f"{sorted(allowed_slots)}",
+                    )
             out.append(DiversityNode(
                 path=path,
                 description=description,
                 topic_hint=topic_hint,
                 source="inline",
                 examples=examples,
+                filter_slots=tuple(inline_fs_raw),
                 n_examples_per_batch=n_batch,
             ))
             return

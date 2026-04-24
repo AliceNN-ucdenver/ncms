@@ -23,15 +23,14 @@ import pytest
 
 from ncms.application.adapters.domain_loader import load_domain
 from ncms.application.adapters.sdg.v9 import (
-    GenerationStats,
     SparkBackend,
     TemplateBackend,
+    build_archetype_prompt,
     generate_domain,
     generate_for_archetype,
     validate_and_label,
 )
 from ncms.application.adapters.sdg.v9.archetypes import ArchetypeSpec, RoleSpec
-
 
 _REPO = Path(__file__).resolve().parents[3]
 _DOMAINS_ROOT = _REPO / "adapters/domains"
@@ -355,7 +354,7 @@ class TestGenerateForArchetype:
             target_min_chars=100,  # too short envelope → forces rejects
         )
         # Use a minimal spec that has the slot.
-        from ncms.application.adapters.domain_loader import DomainSpec, DiversityTaxonomy
+        from ncms.application.adapters.domain_loader import DiversityTaxonomy, DomainSpec
         from ncms.application.adapters.sdg.catalog.primitives import CatalogEntry
 
         spec = DomainSpec(
@@ -481,9 +480,8 @@ class TestSparkBackend:
         with caplog.at_level(
             logging.WARNING,
             logger="ncms.application.adapters.sdg.v9.backends",
-        ):
-            with self._patch_call_once(return_value=["only one"]):
-                rows = be.generate(prompt="ignored", n=5, rng=self._rng())
+        ), self._patch_call_once(return_value=["only one"]):
+            rows = be.generate(prompt="ignored", n=5, rng=self._rng())
         assert rows == ["only one"]
         assert any("short-count" in rec.message for rec in caplog.records)
 
@@ -504,9 +502,8 @@ class TestSparkBackend:
         )
         with self._patch_call_once(
             side_effect=[{"wrong": "shape"}, {"still": "wrong"}],
-        ):
-            with pytest.raises(RuntimeError, match="malformed"):
-                be.generate(prompt="ignored", n=3, rng=self._rng())
+        ), pytest.raises(RuntimeError, match="malformed"):
+            be.generate(prompt="ignored", n=3, rng=self._rng())
 
     def test_transient_error_retried_then_succeeds(self):
         """First call raises a network-style error; second succeeds."""
@@ -533,6 +530,281 @@ class TestSparkBackend:
                 TimeoutError("attempt 1"),
                 TimeoutError("attempt 2"),
             ],
-        ):
-            with pytest.raises(RuntimeError, match="all 2 attempts failed"):
-                be.generate(prompt="ignored", n=2, rng=self._rng())
+        ), pytest.raises(RuntimeError, match="all 2 attempts failed"):
+            be.generate(prompt="ignored", n=2, rng=self._rng())
+
+
+# ---------------------------------------------------------------------------
+# build_archetype_prompt — label-leakage + per-row assignment
+# ---------------------------------------------------------------------------
+
+
+class TestBuildArchetypePrompt:
+    """Guard-rail tests for the LLM prompt.
+
+    The two critical invariants:
+
+    1. Literal joint-label tokens (``persist``, ``declaration``,
+       ``positive``) must NOT appear in the prompt — otherwise the
+       LLM echoes them into surface text (caught in B'.4 probing).
+    2. Each row in ``entity_rows`` must be presented as its own
+       row-numbered line so the LLM knows to produce DIFFERENT
+       rows (not N paraphrases of one sentence).
+    """
+
+    def _archetype(self) -> ArchetypeSpec:
+        return ArchetypeSpec(
+            name="test_positive_declaration",
+            domain="clinical",
+            intent="positive",
+            admission="persist",
+            state_change="declaration",
+            role_spans=(
+                RoleSpec(role="primary", slot="medication", count=1),
+            ),
+            description="Clinician starts a patient on a new medication.",
+            example_utterances=(
+                "Started metformin 500mg BID.",
+            ),
+            phrasings=("Started patient on {primary}.",),
+        )
+
+    def test_no_literal_label_tokens_in_prompt(self):
+        """The three joint-label values must not appear verbatim."""
+        arch = self._archetype()
+        prompt = build_archetype_prompt(
+            arch,
+            entity_rows=[
+                {("primary", "medication"): "metformin"},
+            ],
+        )
+        # Case-sensitive check — the label vocabulary is all
+        # lowercase so a case-insensitive check would catch
+        # legitimate English uses of "positive" in descriptions.
+        for forbidden in ("intent: positive", "admission: persist",
+                          "state_change: declaration"):
+            assert forbidden not in prompt, (
+                f"literal label token {forbidden!r} leaked into prompt"
+            )
+
+    def test_behavioral_cues_present(self):
+        """The three heads must be described, not labelled."""
+        arch = self._archetype()
+        prompt = build_archetype_prompt(
+            arch,
+            entity_rows=[
+                {("primary", "medication"): "metformin"},
+            ],
+        )
+        # Behavioural-description anchors from prompts.py.
+        assert "Speaker stance" in prompt
+        assert "Persistence" in prompt
+        assert "State transition" in prompt
+        # And the actual description text for this archetype's labels.
+        assert "approval" in prompt or "enthusiasm" in prompt
+        assert "long-term" in prompt or "facts" in prompt
+        assert "NEW state" in prompt or "adoption" in prompt
+
+    def test_row_specific_entity_assignments(self):
+        """Each entity_rows entry gets its own 'Row N: ...' line."""
+        arch = self._archetype()
+        prompt = build_archetype_prompt(
+            arch,
+            entity_rows=[
+                {("primary", "medication"): "metformin"},
+                {("primary", "medication"): "atorvastatin"},
+                {("primary", "medication"): "lisinopril"},
+            ],
+        )
+        assert "Row 1:" in prompt
+        assert "Row 2:" in prompt
+        assert "Row 3:" in prompt
+        assert "metformin" in prompt
+        assert "atorvastatin" in prompt
+        assert "lisinopril" in prompt
+
+    def test_output_format_asks_for_exact_count(self):
+        """The output instruction must name the correct row count."""
+        arch = self._archetype()
+        prompt = build_archetype_prompt(
+            arch,
+            entity_rows=[{("primary", "medication"): "x"}] * 5,
+        )
+        assert "exactly 5 strings" in prompt
+
+    def test_empty_entity_rows_raises(self):
+        """Zero rows is a caller bug — fail fast."""
+        arch = self._archetype()
+        with pytest.raises(ValueError):
+            build_archetype_prompt(arch, entity_rows=[])
+
+
+# ---------------------------------------------------------------------------
+# Per-row entity diversity in generate_for_archetype
+# ---------------------------------------------------------------------------
+
+
+class TestPerRowEntitySampling:
+    """After the B'.4 fix, a batch of N rows must produce N DISTINCT
+    entity assignments when the source pool is large enough.
+
+    The regression we're guarding against: in B'.2 the generator
+    sampled ONE entity set per batch and asked the LLM for N rows
+    using that set — the result was N paraphrases of one sentence.
+    """
+
+    @pytest.fixture(scope="class")
+    def clinical_spec(self):
+        d = _DOMAINS_ROOT / "clinical"
+        if not d.is_dir():
+            pytest.skip(f"clinical domain not present at {d}")
+        return load_domain(d)
+
+    def test_batch_uses_multiple_medications(self, clinical_spec):
+        """Across a 10-row batch from habitual_medication_regimen,
+        more than one medication must appear in slots."""
+        arch = next(
+            a for a in clinical_spec.archetypes
+            if a.name == "habitual_medication_regimen"
+        )
+        rows, _ = generate_for_archetype(
+            clinical_spec, arch,
+            n=10, backend=TemplateBackend(), seed=42,
+        )
+        meds = {r.slots.get("medication") for r in rows}
+        # The medication gazetteer has > 150 entries; sampling 10
+        # with replacement should yield > 1 distinct med almost
+        # always.  We use >= 3 as a robust floor that still
+        # guarantees we're not reusing a single pick.
+        assert len(meds) >= 3, (
+            f"expected diverse medications; got {meds} across "
+            f"{len(rows)} rows"
+        )
+
+
+# ---------------------------------------------------------------------------
+# DiversityNode.filter_slots scoping inline nodes to specific slots
+# ---------------------------------------------------------------------------
+
+
+class TestInlineNodeSlotScoping:
+    """Regression test for the B'.4 "in the afternoon" sampled as an
+    object-slot entity bug.
+
+    Time-of-day / frequency / period inline nodes in conversational
+    diversity are now tagged ``filter_slots: [frequency]`` so the
+    generator can't pick them when sampling for ``slot: object``.
+    """
+
+    @pytest.fixture(scope="class")
+    def conversational_spec(self):
+        d = _DOMAINS_ROOT / "conversational"
+        if not d.is_dir():
+            pytest.skip(f"conversational domain not present at {d}")
+        return load_domain(d)
+
+    def test_times_nodes_declare_frequency_only(self, conversational_spec):
+        """The YAML change is honoured by the loader."""
+        times_nodes = [
+            n for n in conversational_spec.diversity.nodes
+            if n.path and n.path[0] == "times"
+        ]
+        assert times_nodes, "expected times.* nodes in conversational diversity"
+        for n in times_nodes:
+            assert n.filter_slots == ("frequency",), (
+                f"times.{'.'.join(n.path[1:])}: filter_slots="
+                f"{n.filter_slots} (expected ('frequency',))"
+            )
+
+    def test_object_slot_sampling_skips_frequency_nodes(
+        self, conversational_spec,
+    ):
+        """Direct test on the generator: asking for ``slot=object``
+        must never return a frequency-phrase example.
+        """
+        from ncms.application.adapters.sdg.v9.generator import _draw_one
+
+        arch = next(
+            a for a in conversational_spec.archetypes
+            if a.name == "positive_object_adoption"
+        )
+        inline_nodes = tuple(
+            n for n in conversational_spec.diversity.nodes
+            if n.source == "inline"
+        )
+        # Collect every frequency-only example so we can assert
+        # absence across many draws.
+        frequency_only_examples = {
+            ex.lower()
+            for n in inline_nodes
+            if n.filter_slots == ("frequency",)
+            for ex in n.examples
+        }
+        assert frequency_only_examples, "test setup: no frequency nodes found"
+
+        # Draw 50 times — with uniform node sampling previously,
+        # ~3/31 ≈ 10% of draws would have hit frequency nodes.
+        # Post-fix, the probability is zero.
+        drawn = []
+        rng_state = random.Random(123)
+        for _ in range(50):
+            surface = _draw_one(
+                slot="object",
+                gaz_by_slot={},  # no gazetteer for conversational
+                inline_nodes=inline_nodes,
+                archetype=arch,
+                already_used=set(),
+                rng=rng_state,
+            )
+            if surface is not None:
+                drawn.append(surface.lower())
+
+        assert drawn, "expected _draw_one to return SOMETHING"
+        leaks = [s for s in drawn if s in frequency_only_examples]
+        assert leaks == [], (
+            f"object-slot draw returned frequency-scoped phrases: {leaks}"
+        )
+
+    def test_frequency_slot_still_reaches_frequency_nodes(
+        self, conversational_spec,
+    ):
+        """Sanity: the filter_slots change must not cut off the
+        frequency slot from its legitimate sources.
+        """
+        from ncms.application.adapters.sdg.v9.generator import _draw_one
+
+        arch = next(
+            a for a in conversational_spec.archetypes
+            if a.name == "habitual_routine"
+        )
+        inline_nodes = tuple(
+            n for n in conversational_spec.diversity.nodes
+            if n.source == "inline"
+        )
+        rng_state = random.Random(99)
+        drawn: list[str] = []
+        for _ in range(30):
+            surface = _draw_one(
+                slot="frequency",
+                gaz_by_slot={},
+                inline_nodes=inline_nodes,
+                archetype=arch,
+                already_used=set(),
+                rng=rng_state,
+            )
+            if surface is not None:
+                drawn.append(surface.lower())
+        assert drawn, "frequency-slot sampling returned nothing"
+        # At least one draw must come from the frequency-scoped pool
+        # — if we never hit it, the filter went the wrong way.
+        frequency_examples = {
+            ex.lower()
+            for n in inline_nodes
+            if "frequency" in n.filter_slots
+            for ex in n.examples
+        }
+        hits = sum(1 for s in drawn if s in frequency_examples)
+        assert hits > 0, (
+            f"frequency-slot draws never hit scoped frequency pool; "
+            f"drew: {drawn[:5]}..."
+        )

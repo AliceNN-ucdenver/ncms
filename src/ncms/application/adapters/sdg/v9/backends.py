@@ -153,7 +153,7 @@ def _fill_free_text(
     """
     import re
 
-    def repl(match: "re.Match[str]") -> str:
+    def repl(match: re.Match[str]) -> str:
         name = match.group(1)
         if name in seen_filled:
             return seen_filled[name]

@@ -32,7 +32,6 @@ from ncms.application.adapters.schemas import Domain, RoleSpan
 from ncms.application.adapters.sdg.catalog import detect_spans
 from ncms.application.adapters.sdg.v9.archetypes import ArchetypeSpec
 
-
 RejectionReason = Literal[
     "too_short",
     "too_long",
