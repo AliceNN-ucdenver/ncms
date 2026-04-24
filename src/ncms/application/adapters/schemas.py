@@ -234,6 +234,100 @@ def get_domain_manifest(name: Domain) -> DomainManifest:
 
 
 # ---------------------------------------------------------------------------
+# v9: hydrate SLOT_TAXONOMY + DOMAIN_MANIFESTS from the DomainSpec
+# registry at module import.
+#
+# The inline dicts defined above serve as DEFAULTS / FALLBACKS for
+# deployments where ``adapters/domains/`` isn't on disk (pip-install
+# without the repo layout).  When the YAML registry loads
+# successfully, its values override the inline defaults — the
+# inline dicts become dead code in the common case, but stay as
+# load-time safety for deployments that can't reach the YAML.
+#
+# Disable YAML hydration entirely via ``NCMS_V9_DOMAIN_LOADER=0``
+# (escape hatch for debugging a YAML regression).  The inline
+# defaults take over.
+# ---------------------------------------------------------------------------
+
+
+def _hydrate_from_domain_registry() -> None:
+    """Populate SLOT_TAXONOMY + DOMAIN_MANIFESTS from YAML domains.
+
+    Run at module import.  Failures (missing directory, YAML
+    errors) fall back to the inline defaults silently — except
+    validation errors from malformed YAML, which surface loudly
+    so bad domain specs fail fast rather than silently reverting
+    to stale defaults.
+    """
+    import os
+    if os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") == "0":
+        return
+
+    # Deferred import — domain_loader depends on constants defined
+    # above in this module (INTENT_CATEGORIES, ADMISSION_DECISIONS,
+    # STATE_CHANGES, ROLE_LABELS), so we can only import it after
+    # those are in place.  Python's sys.modules cache handles the
+    # circular import correctly: by the time domain_loader imports
+    # schemas, the constants it needs are already defined.
+    try:
+        from ncms.application.adapters.domain_loader import (
+            DomainValidationError,
+            load_all_domains,
+        )
+    except ImportError:  # pragma: no cover
+        return
+
+    # Repo-root discovery: walk up from this module looking for
+    # pyproject.toml, then check for adapters/domains/ underneath.
+    from pathlib import Path
+    here = Path(__file__).resolve()
+    domains_root: Path | None = None
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            candidate = parent / "adapters" / "domains"
+            if candidate.is_dir():
+                domains_root = candidate
+            break
+    if domains_root is None:
+        return
+
+    try:
+        specs = load_all_domains(domains_root)
+    except DomainValidationError:
+        # Don't mask validation errors — a broken YAML should halt
+        # service startup rather than silently serve stale inline
+        # dicts.  Developers get a clear error pointing at the bad
+        # YAML file.
+        raise
+
+    for name, spec in specs.items():
+        # Slot taxonomy: YAML wins over any inline default for this name.
+        SLOT_TAXONOMY[name] = spec.slots  # type: ignore[index]
+
+        # Manifest: synthesize from DomainSpec.  Fields map 1:1 with
+        # the inline DomainManifest constructor shown above.
+        DOMAIN_MANIFESTS[name] = DomainManifest(  # type: ignore[index]
+            name=name,
+            description=spec.description or f"{name} domain",
+            intended_content=spec.intended_content,
+            gold_jsonl=spec.gold_jsonl_path,
+            sdg_jsonl=spec.sdg_jsonl_path,
+            adversarial_train_jsonl=spec.adversarial_jsonl_path,
+            taxonomy_yaml=_TAXONOMY_ROOT / f"{name}.yaml",
+            adapter_output_root=spec.adapter_output_root,
+            deployed_adapter_root=spec.deployed_adapter_root,
+            default_version=spec.default_adapter_version,
+        )
+
+
+# NOTE: the call to _hydrate_from_domain_registry() lives at the
+# very END of this module — it needs ADMISSION_DECISIONS,
+# INTENT_CATEGORIES, ROLE_LABELS, STATE_CHANGES (defined below in
+# the "Method outputs" section) because domain_loader imports
+# them.  Calling here would hit a circular-import ImportError.
+
+
+# ---------------------------------------------------------------------------
 # Method outputs + labelled examples
 # ---------------------------------------------------------------------------
 
@@ -442,3 +536,12 @@ class MethodResult:
     n_topic_labeled: int = 0
     n_admission_labeled: int = 0
     n_state_change_labeled: int = 0
+
+
+# ---------------------------------------------------------------------------
+# v9 domain-registry hydration — called at end of module import, AFTER
+# all module-level constants the domain_loader needs (INTENT_CATEGORIES,
+# ADMISSION_DECISIONS, ROLE_LABELS, STATE_CHANGES) are in place.
+# ---------------------------------------------------------------------------
+
+_hydrate_from_domain_registry()

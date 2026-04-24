@@ -37,62 +37,27 @@ _SURFACE_INDEX: dict[str, tuple[tuple[str, CatalogEntry, str], ...]] = {}
 
 
 def _ensure_loaded() -> None:
-    """Lazily populate the per-domain catalog registry.
+    """Lazily populate the per-domain catalog registry from YAML.
 
-    v9+ path: read from ``adapters/domains/<name>/`` YAML plugin
-    directories and convert each DomainSpec into the
-    ``(canonical-indexed dict, slot-indexed tuples)`` shape the
-    existing public API expects.  Runs first; each YAML domain
-    that loads marks its name as handled so the legacy Python
-    module fallback skips it.
+    Reads ``adapters/domains/<name>/`` YAML plugin directories and
+    converts each DomainSpec into the ``(canonical-indexed dict,
+    slot-indexed tuples)`` shape the existing public API expects.
 
-    Legacy path: any domain that *didn't* load from YAML (e.g.
-    because its directory is missing, or ``adapters/domains/``
-    doesn't exist at all — common in pip-installed deployments
-    without the repo layout) falls through to importing the
-    per-domain Python module (``sdg/catalog/<domain>.py``).  This
-    preserves backward compatibility through the transition
-    while giving YAML directories priority.
+    Pre-v9 versions of this function had a per-domain Python-module
+    fallback (``sdg/catalog/software_dev.py`` etc).  Those modules
+    were retired in Phase B'.0c — YAML is the single source of
+    truth for gazetteer data.
 
-    Disable the YAML path entirely via
-    ``NCMS_V9_DOMAIN_LOADER=0`` env var (escape hatch for
-    debugging a YAML regression).
+    Disable YAML loading via ``NCMS_V9_DOMAIN_LOADER=0`` (escape
+    hatch — leaves the registry empty, so ``detect_spans`` /
+    ``lookup`` return empty on every domain).
     """
     if _REGISTRY:
         return
-
     import os
-    yaml_enabled = os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") != "0"
-    handled_by_yaml: set[str] = set()
-
-    if yaml_enabled:
-        handled_by_yaml = _load_from_yaml_registry()
-
-    # Legacy Python-module fallback for any domain not covered by
-    # a YAML directory.  Each branch silently no-ops when the
-    # module doesn't exist (ImportError) — that's expected for
-    # user-defined domains without a legacy Python catalog.
-    if "software_dev" not in handled_by_yaml:
-        try:
-            from ncms.application.adapters.sdg.catalog import software_dev
-            _REGISTRY["software_dev"] = software_dev.CATALOG
-            _ENTRIES_BY_SLOT["software_dev"] = software_dev.ENTRIES_BY_SLOT
-        except ImportError:  # pragma: no cover
-            pass
-    if "clinical" not in handled_by_yaml:
-        try:
-            from ncms.application.adapters.sdg.catalog import clinical
-            _REGISTRY["clinical"] = clinical.CATALOG
-            _ENTRIES_BY_SLOT["clinical"] = clinical.ENTRIES_BY_SLOT
-        except ImportError:  # pragma: no cover
-            pass
-    if "conversational" not in handled_by_yaml:
-        try:
-            from ncms.application.adapters.sdg.catalog import conversational
-            _REGISTRY["conversational"] = conversational.CATALOG
-            _ENTRIES_BY_SLOT["conversational"] = conversational.ENTRIES_BY_SLOT
-        except ImportError:  # pragma: no cover
-            pass
+    if os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") == "0":
+        return
+    _load_from_yaml_registry()
 
 
 def _load_from_yaml_registry() -> set[str]:
