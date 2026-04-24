@@ -228,8 +228,53 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Lazy hydration trigger
+#
+# YAML hydration is FIRST-ACCESS lazy, not module-import eager.  The
+# eager pattern caused a circular-import collision:
+#
+#   v9/__init__.py
+#     → archetypes.py
+#       → schemas.py (executes module-level _hydrate at end of file)
+#         → domain_loader.load_all_domains()
+#           → _load_archetypes()
+#             → from .v9.archetypes import ArchetypeSpec  ← partial!
+#
+# The deferred-import bandaid in _load_archetypes still hit the
+# partial-load wall.  Lazy hydration sidesteps this entirely:
+# every import completes first, then the FIRST call to
+# get_domain_manifest / get_slot_taxonomy triggers hydration with
+# a fully-formed module graph.
+#
+# Symptom of the bug we're fixing: corpora generated under the v9
+# CLI landed at the LEGACY paths (``adapters/corpora/sdg_<dom>.jsonl``)
+# instead of the v9 paths (``adapters/corpora/v9/<dom>/sdg.jsonl``)
+# because the eager hydration silently bailed via the broad
+# ``except ImportError`` branch when the import order put the v9
+# package before schemas.
+# ---------------------------------------------------------------------------
+
+_HYDRATION_DONE: bool = False
+
+
+def _ensure_hydrated() -> None:
+    """Idempotently run YAML hydration on first manifest access."""
+    global _HYDRATION_DONE
+    if _HYDRATION_DONE:
+        return
+    _HYDRATION_DONE = True  # set BEFORE the call so re-entry no-ops
+    _hydrate_from_domain_registry()
+
+
 def get_domain_manifest(name: Domain) -> DomainManifest:
-    """Look up a domain's manifest; raises KeyError for unknowns."""
+    """Look up a domain's manifest; raises KeyError for unknowns.
+
+    Triggers lazy YAML hydration on first call so any caller that
+    routes through this getter sees the v9 paths regardless of
+    import order.
+    """
+    _ensure_hydrated()
     return DOMAIN_MANIFESTS[name]
 
 
@@ -539,9 +584,8 @@ class MethodResult:
 
 
 # ---------------------------------------------------------------------------
-# v9 domain-registry hydration — called at end of module import, AFTER
-# all module-level constants the domain_loader needs (INTENT_CATEGORIES,
-# ADMISSION_DECISIONS, ROLE_LABELS, STATE_CHANGES) are in place.
+# v9 domain-registry hydration is LAZY.  See ``_ensure_hydrated`` and
+# ``get_domain_manifest`` near the top of this module — first-access
+# hydration sidesteps a circular-import collision the eager-hydration
+# pattern fell into when the v9 package was imported before schemas.
 # ---------------------------------------------------------------------------
-
-_hydrate_from_domain_registry()
