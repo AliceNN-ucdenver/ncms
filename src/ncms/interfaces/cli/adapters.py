@@ -98,32 +98,133 @@ def adapters_list() -> None:
 
 
 @adapters.command("generate-sdg")
-@click.option("--domain", required=True, help="Domain name (see `ncms adapters list`)")
-@click.option("--target", type=int, default=3000,
-              help="Pre-dedup target row count (default 3000)")
+@click.option("--domain", required=True,
+              help="Domain name (see `ncms adapters list`)")
+@click.option("--split", type=click.Choice(["gold", "sdg"]), default="sdg",
+              help="Which archetype row target to use: n_gold or n_sdg "
+                   "(default: sdg)")
+@click.option("--backend", type=click.Choice(["template", "spark"]),
+              default="template",
+              help="Generation backend: 'template' (deterministic, no LLM) "
+                   "or 'spark' (live vLLM endpoint).  Default: template.")
+@click.option("--model", default=None,
+              help="litellm model id for --backend spark "
+                   "(e.g. openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16)")
+@click.option("--api-base", default=None,
+              help="API base URL for --backend spark "
+                   "(e.g. http://spark-ee7d.local:8000/v1)")
+@click.option("--temperature", type=float, default=0.8,
+              help="LLM sampling temperature (spark backend only)")
 @click.option("--seed", type=int, default=17)
 @click.option("--output", type=click.Path(path_type=Path), default=None,
-              help="Output JSONL (defaults to adapters/corpora/sdg_<domain>.jsonl)")
+              help="Output JSONL (defaults to the domain's sdg_jsonl path "
+                   "when --split=sdg, or gold_jsonl when --split=gold)")
 def adapters_generate_sdg(
-    domain: str, target: int, seed: int, output: Path | None,
+    domain: str, split: str, backend: str,
+    model: str | None, api_base: str | None, temperature: float,
+    seed: int, output: Path | None,
 ) -> None:
-    """Run the typed-slot SDG template expander for one domain."""
-    from ncms.application.adapters.schemas import get_domain_manifest
-    from ncms.application.adapters.sdg.expander import (
-        _dedupe,
-        expand_domain,
-    )
-    from ncms.application.adapters.corpus.loader import dump_jsonl
+    """Run the v9 stratified-archetype SDG generator for one domain.
 
-    manifest = get_domain_manifest(domain)  # type: ignore[arg-type]
-    out = output or manifest.sdg_jsonl
-    raw = expand_domain(domain, target=target, seed=seed)  # type: ignore[arg-type]
-    deduped = _dedupe(raw)
-    dump_jsonl(deduped, out)
-    click.echo(
-        f"[adapters generate-sdg] domain={domain} "
-        f"raw={len(raw)} deduped={len(deduped)} → {out}",
+    The generator consumes the domain's YAML plugin
+    (``adapters/domains/<domain>/``) — archetypes, diversity taxonomy,
+    and (optional) gazetteer — and emits :class:`GoldExample` rows
+    honoring each archetype's ``n_gold`` / ``n_sdg`` target.
+
+    Backends:
+
+    * ``--backend template`` (default) — deterministic, no LLM spend.
+      Good for dry-runs + CI smoke tests.  Surface quality is limited
+      to the archetype's ``phrasings`` + canned fillers.
+    * ``--backend spark`` — live generation via an OpenAI-compatible
+      endpoint (vLLM on DGX Spark, Ollama, etc.).  Requires
+      ``--model`` and ``--api-base``.
+    """
+    from ncms.application.adapters.corpus.loader import dump_jsonl
+    from ncms.application.adapters.domain_loader import load_domain
+    from ncms.application.adapters.schemas import get_domain_manifest
+    from ncms.application.adapters.sdg.v9 import (
+        SparkBackend,
+        TemplateBackend,
+        generate_domain,
     )
+
+    # Resolve the domain directory.  We could keep a parallel registry
+    # of (name → source_dir), but walking the adapters/domains/ root
+    # at CLI time is cheap and avoids another source of truth.
+    manifest = get_domain_manifest(domain)  # type: ignore[arg-type]
+    domain_dir = _find_domain_source_dir(domain)
+    if domain_dir is None:
+        raise click.ClickException(
+            f"domain {domain!r}: YAML plugin not found under "
+            "adapters/domains/ — did you run `ncms adapters list`?",
+        )
+
+    spec = load_domain(domain_dir)
+
+    # Pick the backend.
+    be: object
+    if backend == "template":
+        be = TemplateBackend()
+    elif backend == "spark":
+        if not model or not api_base:
+            raise click.ClickException(
+                "--backend spark requires --model and --api-base",
+            )
+        be = SparkBackend(
+            model=model, api_base=api_base, temperature=temperature,
+        )
+    else:  # unreachable — click validates
+        raise click.ClickException(f"unknown backend {backend!r}")
+
+    # Output path — respect the manifest defaults for each split.
+    out = output or (
+        manifest.sdg_jsonl if split == "sdg" else manifest.gold_jsonl
+    )
+
+    rows, stats_by = generate_domain(
+        spec, backend=be, split=split, seed=seed,  # type: ignore[arg-type]
+    )
+    dump_jsonl(rows, out)
+
+    # Summary.
+    total_req = sum(s.requested for s in stats_by.values())
+    total_gen = sum(s.generated for s in stats_by.values())
+    total_acc = sum(s.accepted for s in stats_by.values())
+    total_dup = sum(s.duplicates for s in stats_by.values())
+    yield_pct = (100.0 * total_acc / total_gen) if total_gen else 0.0
+    click.echo(
+        f"[v9 sdg] domain={domain} split={split} backend={backend} "
+        f"archetypes={len(spec.archetypes)}",
+    )
+    click.echo(
+        f"         requested={total_req} generated={total_gen} "
+        f"accepted={total_acc} duplicates={total_dup} "
+        f"yield={yield_pct:.1f}%",
+    )
+    # Per-archetype lines help the operator see under-performers at a
+    # glance without trawling logs.
+    for name, s in stats_by.items():
+        click.echo(
+            f"         · {name}: req={s.requested} acc={s.accepted} "
+            f"yield={s.yield_rate * 100.0:.0f}% rejects={dict(s.rejections)}",
+        )
+    click.echo(f"         → {out}")
+
+
+def _find_domain_source_dir(domain: str) -> Path | None:
+    """Walk up from this file looking for ``adapters/domains/<domain>/``.
+
+    Mirrors the heuristic used by :mod:`schemas` to hydrate
+    ``DOMAIN_MANIFESTS`` from YAML — first ancestor containing
+    ``pyproject.toml`` is the repo root.
+    """
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            candidate = parent / "adapters" / "domains" / domain
+            return candidate if candidate.is_dir() else None
+    return None
 
 
 @adapters.command("train")
