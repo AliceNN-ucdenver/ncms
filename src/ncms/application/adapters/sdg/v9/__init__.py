@@ -46,6 +46,12 @@ from ncms.application.adapters.sdg.v9.generator import (
     generate_domain,
     generate_for_archetype,
 )
+from ncms.application.adapters.sdg.v9.judge import (
+    DomainJudgeResult,
+    format_report,
+    judge_corpus,
+    sync_judge_corpus,
+)
 from ncms.application.adapters.sdg.v9.prompts import build_archetype_prompt
 from ncms.application.adapters.sdg.v9.validation import (
     ValidationOutcome,
@@ -55,6 +61,7 @@ from ncms.application.adapters.sdg.v9.validation import (
 __all__ = [
     "ArchetypeSpec",
     "CoverageGap",
+    "DomainJudgeResult",
     "GenerationStats",
     "LLMBackend",
     "RoleSpec",
@@ -62,8 +69,11 @@ __all__ = [
     "TemplateBackend",
     "ValidationOutcome",
     "build_archetype_prompt",
+    "format_report",
     "generate_domain",
     "generate_for_archetype",
+    "judge_corpus",
+    "sync_judge_corpus",
     "validate_and_label",
     "validate_archetype_coverage",
 ]

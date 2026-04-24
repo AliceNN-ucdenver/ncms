@@ -291,6 +291,116 @@ def _find_domain_source_dir(domain: str) -> Path | None:
     return None
 
 
+@adapters.command("judge-v9")
+@click.option("--domain", required=True,
+              help="Domain name (see `ncms adapters list`)")
+@click.option("--corpus-path", type=click.Path(path_type=Path),
+              default=None,
+              help="Corpus JSONL to judge (defaults to the domain's "
+                   "sdg_jsonl path — the output of `generate-sdg`).")
+@click.option("--n-samples", type=int, default=50,
+              help="How many rows to judge (default 50).  Stratified "
+                   "across archetypes unless --no-stratify.")
+@click.option("--no-stratify", "no_stratify", is_flag=True,
+              help="Uniform random sample across the whole corpus "
+                   "instead of balanced per-archetype.")
+@click.option("--model", required=True,
+              help="litellm judge model id — recommend a DIFFERENT "
+                   "model family from the corpus generator so any "
+                   "systemic blind spot is visible.")
+@click.option("--api-base", default=None,
+              help="API base URL for the judge LLM.")
+@click.option("--seed", type=int, default=42)
+@click.option("--report-path", type=click.Path(path_type=Path),
+              default=None,
+              help="Optional path to write the full JSON judgment; "
+                   "terminal summary is printed either way.")
+@click.option("--threshold", type=float, default=80.0,
+              help="Fail exit code if pct_correct < threshold "
+                   "(default 80.0).  Set to 0 to never fail.")
+def adapters_judge_v9(
+    domain: str, corpus_path: Path | None,
+    n_samples: int, no_stratify: bool,
+    model: str, api_base: str | None,
+    seed: int, report_path: Path | None, threshold: float,
+) -> None:
+    """v9 corpus quality gate — LLM-as-judge on all five heads + role_spans.
+
+    Samples rows from the v9 SDG corpus and asks a judge LLM to
+    verify intent / admission / state_change / topic /role_span
+    labels against the row's text.  Use BEFORE committing the
+    corpus or starting a training run.
+
+    Prints a terminal summary plus per-archetype verdict counts.
+    Exits non-zero when ``pct_correct < --threshold`` so CI can
+    gate on the verdict.
+
+    Example (judge clinical with Spark Nemotron — same endpoint
+    that generated the corpus, which is acceptable for a
+    first-pass gate but NOT for publication):
+
+    \b
+        ncms adapters judge-v9 --domain clinical \\
+            --model openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \\
+            --api-base http://spark-ee7d.local:8000/v1 \\
+            --n-samples 50 \\
+            --report-path /tmp/clinical_judge.json
+
+    For a "different-model" judge (stricter), swap ``--model`` /
+    ``--api-base`` to another provider (Ollama / OpenAI).
+    """
+    import json as _json
+
+    from ncms.application.adapters.domain_loader import load_domain
+    from ncms.application.adapters.schemas import get_domain_manifest
+    from ncms.application.adapters.sdg.v9.judge import (
+        format_report,
+        sync_judge_corpus,
+    )
+
+    manifest = get_domain_manifest(domain)  # type: ignore[arg-type]
+    path = corpus_path or manifest.sdg_jsonl
+    if not path.is_file():
+        raise click.ClickException(f"corpus not found: {path}")
+
+    domain_dir = _find_domain_source_dir(domain)
+    if domain_dir is None:
+        raise click.ClickException(
+            f"domain {domain!r}: YAML plugin not found under adapters/domains/",
+        )
+    spec = load_domain(domain_dir)
+
+    click.echo(
+        f"[v9 judge] domain={domain} corpus={path} "
+        f"n_samples={n_samples} model={model}",
+    )
+    result = sync_judge_corpus(
+        domain=domain,  # type: ignore[arg-type]
+        corpus_path=path,
+        topics=spec.topics,
+        n_samples=n_samples,
+        model=model,
+        api_base=api_base,
+        seed=seed,
+        stratified=not no_stratify,
+    )
+    click.echo(format_report(result))
+
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            _json.dumps(result.as_dict(), indent=2),
+            encoding="utf-8",
+        )
+        click.echo(f"         → full report: {report_path}")
+
+    if threshold > 0 and result.pct_correct < threshold:
+        raise click.ClickException(
+            f"quality gate FAILED: pct_correct "
+            f"{result.pct_correct:.1f}% < threshold {threshold:.1f}%",
+        )
+
+
 @adapters.command("train")
 @click.option("--domain", required=True)
 @click.option("--version", required=True, help="Target adapter version (e.g. v7)")
