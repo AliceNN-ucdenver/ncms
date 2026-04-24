@@ -1,0 +1,47 @@
+# v9 clinical domain spec.
+#
+# Medical observations, medication changes, visit notes,
+# symptom tracking, procedure follow-ups.
+#
+# ⚠️  v9 clinical adapter is a **text classification artifact**,
+# not a clinical decision-support tool.  Content accuracy is
+# sufficient for training a classifier over {medication /
+# procedure / symptom / severity} slots — NOT for clinical
+# recommendations.  The gazetteer is a curated common-vocabulary
+# subset; a full medical gazetteer would require RxNorm + SNOMED
+# integration (future work).
+
+name: clinical
+description: >-
+  Clinical observations, medication changes, procedure follow-ups,
+  symptom tracking — short natural-language utterances a care-team
+  member or patient might log.
+intended_content: |
+  Short first-person / third-person clinical notes:
+  "Started patient on metformin 500mg BID."
+  "EKG showed normal sinus rhythm."
+  "Patient reports moderate back pain, persistent for 2 weeks."
+  "Switched from atorvastatin to rosuvastatin."
+
+slots:
+  - medication
+  - procedure
+  - symptom
+  - severity
+  - alternative
+  - frequency
+
+topics:
+  - medication_mgmt
+  - procedure_care
+  - symptom_observation
+  - chronic_care
+  - acute_care
+  - preventive_care
+  - other
+
+gazetteer_path: gazetteer.yaml
+diversity_path: diversity.yaml
+archetypes_path: archetypes.yaml
+
+default_adapter_version: v9

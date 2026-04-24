@@ -1,0 +1,154 @@
+# v9 clinical archetypes — starter set.
+#
+# Six archetypes covering the major joint label combinations for
+# clinical notes.  Full 16-archetype set lands in Phase B'.2.
+
+archetypes:
+  - name: positive_medication_start
+    intent: positive
+    admission: persist
+    state_change: declaration
+    role_spans:
+      - {role: primary, slot: medication, count: 1}
+      - {role: primary, slot: frequency, count: 1}
+    n_gold: 50
+    n_sdg: 180
+    target_min_chars: 30
+    target_max_chars: 160
+    batch_size: 10
+    description: >-
+      Clinician starts a patient on a new medication with a
+      dosing frequency.  Declaration + persist + primary role on
+      both the medication and the frequency marker.
+    example_utterances:
+      - "Started patient on metformin 500mg BID for newly diagnosed T2DM."
+      - "Began atorvastatin 40mg once daily for hyperlipidemia."
+      - "Initiated lisinopril 10mg daily, titrating as tolerated."
+      - "Prescribed sertraline 50mg every morning for moderate depression."
+    phrasings:
+      - "Started patient on {primary} {frequency}."
+      - "Initiated {primary} {frequency} for {condition}."
+      - "Began {primary} at {frequency} — titrating if tolerated."
+
+  - name: choice_medication_switch
+    intent: choice
+    admission: persist
+    state_change: declaration
+    role_spans:
+      - {role: primary, slot: medication, count: 1}
+      - {role: alternative, slot: medication, count: 1}
+    n_gold: 50
+    n_sdg: 180
+    target_min_chars: 35
+    target_max_chars: 180
+    batch_size: 10
+    description: >-
+      Clinician switches a patient from one medication to another
+      — the classic two-named-medications choice with rationale.
+    example_utterances:
+      - "Switched from atorvastatin to rosuvastatin due to myalgia."
+      - "Transitioned patient from metformin to semaglutide for A1C control."
+      - "Changed lisinopril to losartan — persistent dry cough."
+      - "Stopped citalopram and started sertraline — better tolerated."
+    phrasings:
+      - "Switched from {alternative} to {primary} — {rationale}."
+      - "Transitioned patient from {alternative} to {primary}."
+      - "Changed {alternative} to {primary} due to {rationale}."
+
+  - name: habitual_medication_regimen
+    intent: habitual
+    admission: persist
+    state_change: none
+    role_spans:
+      - {role: primary, slot: medication, count: 1}
+      - {role: primary, slot: frequency, count: 1}
+    n_gold: 40
+    n_sdg: 160
+    target_min_chars: 25
+    target_max_chars: 140
+    batch_size: 10
+    description: >-
+      Description of an ongoing medication regimen — existing
+      (not newly started) therapy with established dosing.
+    example_utterances:
+      - "Patient takes levothyroxine 50mcg daily."
+      - "On atorvastatin 20mg at bedtime for years."
+      - "Uses albuterol inhaler as needed for asthma flares."
+      - "Continues metformin 1000mg BID per prior PCP."
+    phrasings:
+      - "Patient takes {primary} {frequency}."
+      - "On {primary} {frequency} — established regimen."
+      - "Continues {primary} {frequency}."
+
+  - name: negative_medication_discontinuation
+    intent: negative
+    admission: persist
+    state_change: retirement
+    role_spans:
+      - {role: primary, slot: medication, count: 1}
+    n_gold: 30
+    n_sdg: 140
+    target_min_chars: 30
+    target_max_chars: 160
+    batch_size: 10
+    description: >-
+      Clinician discontinues a medication — side effects,
+      ineffective, or no longer needed.
+    example_utterances:
+      - "Discontinued amlodipine — significant ankle swelling."
+      - "Stopped fluoxetine due to lack of response after 8 weeks."
+      - "Tapered off prednisone — flare resolved."
+      - "Withdrew ibuprofen after GI bleed."
+    phrasings:
+      - "Discontinued {primary} — {rationale}."
+      - "Stopped {primary} due to {rationale}."
+      - "Tapered off {primary} — {outcome}."
+
+  - name: neutral_procedure_outcome
+    intent: none
+    admission: persist
+    state_change: none
+    role_spans:
+      - {role: casual, slot: procedure, count: 1}
+    n_gold: 40
+    n_sdg: 140
+    target_min_chars: 30
+    target_max_chars: 180
+    batch_size: 10
+    description: >-
+      Factual procedure finding / outcome without expressed
+      preference — pure clinical observation.
+    example_utterances:
+      - "EKG showed normal sinus rhythm at 72 bpm."
+      - "Chest x-ray revealed mild interstitial markings."
+      - "Colonoscopy completed without complications — tubular adenomas removed."
+      - "MRI brain showed no acute findings."
+    phrasings:
+      - "{casual} showed {finding}."
+      - "{casual} revealed {finding}."
+      - "{casual} completed — {outcome}."
+
+  - name: difficulty_symptom_persistence
+    intent: difficulty
+    admission: persist
+    state_change: none
+    role_spans:
+      - {role: primary, slot: symptom, count: 1}
+      - {role: primary, slot: severity, count: 1}
+    n_gold: 30
+    n_sdg: 140
+    target_min_chars: 30
+    target_max_chars: 160
+    batch_size: 10
+    description: >-
+      Patient reports persistent or worsening symptom with
+      severity qualifier — clinically meaningful observation.
+    example_utterances:
+      - "Patient reports moderate back pain, persistent for 3 weeks."
+      - "Ongoing severe fatigue despite rest."
+      - "Chronic knee pain, worsening with activity."
+      - "Intermittent palpitations, moderate intensity, new-onset."
+    phrasings:
+      - "Patient reports {severity} {primary}."
+      - "Ongoing {severity} {primary}."
+      - "{severity} {primary} — {duration}."

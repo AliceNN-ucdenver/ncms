@@ -43,6 +43,25 @@ adapters/domains/<domain_name>/
 Core domains (`conversational`, `clinical`, `software_dev`) ship
 alongside the package in the same layout.  No special casing.
 
+## Design principle: one job per YAML file
+
+Each YAML file has one responsibility.  When a new requirement
+arrives, resist the urge to add a feature to a file already
+doing something else.
+
+| File | Single responsibility |
+|---|---|
+| `gazetteer.yaml` | Enumerable entities + intrinsic attributes (slot, topic, aliases, source).  Ground truth for `detect_spans` at inference. |
+| `diversity.yaml` | **Breadth** for the generator — named pools grouped by whatever natural structure the domain offers.  For gazetteer-backed domains: one pool per slot.  For open-vocab domains: hierarchical by type (foods/cuisines, foods/dishes) since the flat `slot=object` can't partition further. |
+| `archetypes.yaml` | Joint labels + **semantic context**.  Specialty differentiation ("cardiovascular note" vs "diabetes management") belongs here, in the archetype's `description` + `example_utterances` + `phrasings` — NOT in diversity filter metadata. |
+
+Anti-pattern: partitioning entities by specialty inside
+diversity.yaml via filter metadata (tags, specialty tags,
+sub-slot filters).  That conflates breadth-of-pool with
+semantic-context.  Instead: one pool node per structural
+partition (slot), and multiple archetypes per specialty
+each using the same broad pool with specialty-aware prompts.
+
 ## Separation of concerns: gazetteer vs diversity taxonomy
 
 Two different jobs, currently conflated:

@@ -1,0 +1,2606 @@
+# Hand-curated clinical gazetteer for v9.
+# Sources: ClinCalc Top 200 (medications), CMS common imaging /
+# endoscopy list, ICD-10 R-chapter symptom catalog, clinical
+# dosing standards.  Scope: common-knowledge outpatient subset
+# sufficient for text-classifier training.  NOT a clinical
+# recommender.  Full RxNorm / SNOMED integration is future work.
+
+entries:
+- canonical: the earlier plan
+  slot: alternative
+  topic: other
+  source: generator-helper
+- canonical: the previous approach
+  slot: alternative
+  topic: other
+  source: generator-helper
+- canonical: the previous dose
+  slot: alternative
+  topic: other
+  source: generator-helper
+- canonical: the previous medication
+  slot: alternative
+  topic: other
+  source: generator-helper
+- canonical: the prior regimen
+  slot: alternative
+  topic: other
+  source: generator-helper
+- canonical: after meals
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - pc
+  source: clinical-dosing-standard
+- canonical: as needed
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - prn
+  - p.r.n.
+  source: clinical-dosing-standard
+- canonical: at bedtime
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - qhs
+  - hs
+  source: clinical-dosing-standard
+- canonical: before meals
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - ac
+  source: clinical-dosing-standard
+- canonical: every 12 hours
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - q12h
+  source: clinical-dosing-standard
+- canonical: every 4 hours
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - q4h
+  source: clinical-dosing-standard
+- canonical: every 6 hours
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - q6h
+  source: clinical-dosing-standard
+- canonical: every 8 hours
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - q8h
+  source: clinical-dosing-standard
+- canonical: every other day
+  slot: frequency
+  topic: medication_mgmt
+  source: clinical-dosing-standard
+- canonical: four times daily
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - qid
+  - q.i.d.
+  source: clinical-dosing-standard
+- canonical: monthly
+  slot: frequency
+  topic: medication_mgmt
+  source: clinical-dosing-standard
+- canonical: once a week
+  slot: frequency
+  topic: medication_mgmt
+  source: clinical-dosing-standard
+- canonical: once daily
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - daily
+  - qd
+  source: clinical-dosing-standard
+- canonical: three times a week
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - tiw
+  source: clinical-dosing-standard
+- canonical: three times daily
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - tid
+  - t.i.d.
+  source: clinical-dosing-standard
+- canonical: twice a week
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - biw
+  source: clinical-dosing-standard
+- canonical: twice daily
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - bid
+  - b.i.d.
+  source: clinical-dosing-standard
+- canonical: weekly
+  slot: frequency
+  topic: medication_mgmt
+  source: clinical-dosing-standard
+- canonical: with meals
+  slot: frequency
+  topic: medication_mgmt
+  source: clinical-dosing-standard
+- canonical: yearly
+  slot: frequency
+  topic: medication_mgmt
+  aliases:
+  - annually
+  source: clinical-dosing-standard
+- canonical: acetaminophen
+  slot: medication
+  topic: acute_care
+  aliases:
+  - tylenol
+  - apap
+  source: clincalc:top-200-2023
+- canonical: acyclovir
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: albuterol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - proventil
+  - ventolin
+  - proair
+  source: gina:2023
+- canonical: alendronate
+  slot: medication
+  topic: other
+  aliases:
+  - fosamax
+  source: clincalc:top-200-2023
+- canonical: alprazolam
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - xanax
+  source: clincalc:top-200-2023
+- canonical: amitriptyline
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: amlodipine
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - norvasc
+  source: clincalc:top-200-2023
+- canonical: amoxicillin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: amoxicillin/clavulanate
+  slot: medication
+  topic: acute_care
+  aliases:
+  - augmentin
+  source: cdc:common-outpatient-abx
+- canonical: amphetamine/dextroamphetamine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - adderall
+  source: clincalc:top-200-2023
+- canonical: apixaban
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - eliquis
+  source: clincalc:top-200-2023
+- canonical: aripiprazole
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - abilify
+  source: clincalc:top-200-2023
+- canonical: aspirin
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: aspirin 81mg
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - baby aspirin
+  source: clincalc:top-200-2023
+- canonical: atenolol
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - tenormin
+  source: clincalc:top-200-2023
+- canonical: atomoxetine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - strattera
+  source: clincalc:top-200-2023
+- canonical: atorvastatin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - lipitor
+  source: clincalc:top-200-2023
+- canonical: azelastine nasal
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: azithromycin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - zithromax
+  - z-pack
+  source: cdc:common-outpatient-abx
+- canonical: baclofen
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: beclomethasone
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: benralizumab
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: bisacodyl
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - dulcolax
+  source: clincalc:top-200-2023
+- canonical: bismuth subsalicylate
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - pepto-bismol
+  source: clincalc:top-200-2023
+- canonical: bisoprolol
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: budesonide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - pulmicort
+  source: gina:2023
+- canonical: budesonide ec
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: budesonide/formoterol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - symbicort
+  source: gina:2023
+- canonical: buprenorphine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - suboxone
+  source: clincalc:top-200-2023
+- canonical: bupropion
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - wellbutrin
+  source: clincalc:top-200-2023
+- canonical: buspirone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: canagliflozin
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: capsaicin cream
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: carbamazepine
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: carisoprodol
+  slot: medication
+  topic: acute_care
+  aliases:
+  - soma
+  source: clincalc:top-200-2023
+- canonical: carvedilol
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - coreg
+  source: clincalc:top-200-2023
+- canonical: cefazolin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: cefdinir
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: ceftriaxone
+  slot: medication
+  topic: acute_care
+  aliases:
+  - rocephin
+  source: cdc:common-outpatient-abx
+- canonical: cefuroxime
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: celecoxib
+  slot: medication
+  topic: acute_care
+  aliases:
+  - celebrex
+  source: clincalc:top-200-2023
+- canonical: cephalexin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - keflex
+  source: cdc:common-outpatient-abx
+- canonical: cetirizine
+  slot: medication
+  topic: other
+  aliases:
+  - zyrtec
+  source: clincalc:top-200-2023
+- canonical: chlorthalidone
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: ciclesonide
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: ciprofloxacin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - cipro
+  source: cdc:common-outpatient-abx
+- canonical: citalopram
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - celexa
+  source: clincalc:top-200-2023
+- canonical: clarithromycin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - biaxin
+  source: cdc:common-outpatient-abx
+- canonical: clindamycin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - cleocin
+  source: cdc:common-outpatient-abx
+- canonical: clobetasol
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: clonazepam
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - klonopin
+  source: clincalc:top-200-2023
+- canonical: clopidogrel
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - plavix
+  source: clincalc:top-200-2023
+- canonical: codeine
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: cyclobenzaprine
+  slot: medication
+  topic: acute_care
+  aliases:
+  - flexeril
+  source: clincalc:top-200-2023
+- canonical: dabigatran
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - pradaxa
+  source: clincalc:top-200-2023
+- canonical: dapagliflozin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - farxiga
+  source: clincalc:top-200-2023
+- canonical: dapsone
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: daptomycin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: denosumab
+  slot: medication
+  topic: other
+  aliases:
+  - prolia
+  source: clincalc:top-200-2023
+- canonical: dexamethasone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: diazepam
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - valium
+  source: clincalc:top-200-2023
+- canonical: diclofenac
+  slot: medication
+  topic: acute_care
+  aliases:
+  - voltaren
+  source: clincalc:top-200-2023
+- canonical: digoxin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - lanoxin
+  source: clincalc:top-200-2023
+- canonical: diltiazem
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - cardizem
+  source: clincalc:top-200-2023
+- canonical: diphenhydramine
+  slot: medication
+  topic: other
+  aliases:
+  - benadryl
+  source: clincalc:top-200-2023
+- canonical: docusate
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - colace
+  source: clincalc:top-200-2023
+- canonical: doxycycline
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: dulaglutide
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: duloxetine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - cymbalta
+  source: clincalc:top-200-2023
+- canonical: dupilumab
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - dupixent
+  source: gina:2023
+- canonical: dutasteride
+  slot: medication
+  topic: other
+  aliases:
+  - avodart
+  source: clincalc:top-200-2023
+- canonical: edoxaban
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: empagliflozin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - jardiance
+  source: clincalc:top-200-2023
+- canonical: enoxaparin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - lovenox
+  source: clincalc:top-200-2023
+- canonical: epinephrine
+  slot: medication
+  topic: other
+  aliases:
+  - epipen
+  source: clincalc:top-200-2023
+- canonical: escitalopram
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lexapro
+  source: clincalc:top-200-2023
+- canonical: esomeprazole
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - nexium
+  source: clincalc:top-200-2023
+- canonical: estradiol
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: eszopiclone
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lunesta
+  source: clincalc:top-200-2023
+- canonical: exenatide
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: ezetimibe
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - zetia
+  source: clincalc:top-200-2023
+- canonical: famotidine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - pepcid
+  source: clincalc:top-200-2023
+- canonical: fentanyl
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: fexofenadine
+  slot: medication
+  topic: other
+  aliases:
+  - allegra
+  source: clincalc:top-200-2023
+- canonical: finasteride
+  slot: medication
+  topic: other
+  aliases:
+  - proscar
+  - propecia
+  source: clincalc:top-200-2023
+- canonical: fluconazole
+  slot: medication
+  topic: acute_care
+  aliases:
+  - diflucan
+  source: cdc:common-outpatient-abx
+- canonical: fluoxetine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - prozac
+  source: clincalc:top-200-2023
+- canonical: fluticasone
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - flovent
+  source: gina:2023
+- canonical: fluticasone nasal
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: fluticasone/salmeterol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - advair
+  source: gina:2023
+- canonical: furosemide
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - lasix
+  source: clincalc:top-200-2023
+- canonical: gabapentin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - neurontin
+  source: clincalc:top-200-2023
+- canonical: glimepiride
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - amaryl
+  source: clincalc:top-200-2023
+- canonical: glipizide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - glucotrol
+  source: clincalc:top-200-2023
+- canonical: glyburide
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: haloperidol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - haldol
+  source: clincalc:top-200-2023
+- canonical: heparin
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: hydrochlorothiazide
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - hctz
+  source: clincalc:top-200-2023
+- canonical: hydrocodone/acetaminophen
+  slot: medication
+  topic: acute_care
+  aliases:
+  - norco
+  - vicodin
+  source: clincalc:top-200-2023
+- canonical: hydrocortisone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: hydrocortisone cream
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: hydromorphone
+  slot: medication
+  topic: acute_care
+  aliases:
+  - dilaudid
+  source: clincalc:top-200-2023
+- canonical: hydroxyzine
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: ibuprofen
+  slot: medication
+  topic: acute_care
+  aliases:
+  - advil
+  - motrin
+  source: clincalc:top-200-2023
+- canonical: indomethacin
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: insulin aspart
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - novolog
+  source: clincalc:top-200-2023
+- canonical: insulin degludec
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - tresiba
+  source: clincalc:top-200-2023
+- canonical: insulin detemir
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - levemir
+  source: clincalc:top-200-2023
+- canonical: insulin glargine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lantus
+  - basaglar
+  source: clincalc:top-200-2023
+- canonical: insulin lispro
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - humalog
+  source: clincalc:top-200-2023
+- canonical: ipratropium
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - atrovent
+  source: gina:2023
+- canonical: ketorolac
+  slot: medication
+  topic: acute_care
+  aliases:
+  - toradol
+  source: clincalc:top-200-2023
+- canonical: lactulose
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: lamotrigine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lamictal
+  source: clincalc:top-200-2023
+- canonical: lansoprazole
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: levalbuterol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - xopenex
+  source: gina:2023
+- canonical: levocetirizine
+  slot: medication
+  topic: other
+  aliases:
+  - xyzal
+  source: clincalc:top-200-2023
+- canonical: levofloxacin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - levaquin
+  source: cdc:common-outpatient-abx
+- canonical: levothyroxine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - synthroid
+  source: clincalc:top-200-2023
+- canonical: lidocaine patch
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: linagliptin
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: linezolid
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: liothyronine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - cytomel
+  source: clincalc:top-200-2023
+- canonical: liraglutide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - victoza
+  source: clincalc:top-200-2023
+- canonical: lisdexamfetamine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - vyvanse
+  source: clincalc:top-200-2023
+- canonical: lisinopril
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - prinivil
+  - zestril
+  source: clincalc:top-200-2023
+- canonical: lithium
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lithobid
+  source: clincalc:top-200-2023
+- canonical: loperamide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - imodium
+  source: clincalc:top-200-2023
+- canonical: loratadine
+  slot: medication
+  topic: other
+  aliases:
+  - claritin
+  source: clincalc:top-200-2023
+- canonical: lorazepam
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - ativan
+  source: clincalc:top-200-2023
+- canonical: losartan
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - cozaar
+  source: clincalc:top-200-2023
+- canonical: lovastatin
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: lurasidone
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - latuda
+  source: clincalc:top-200-2023
+- canonical: medroxyprogesterone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: meloxicam
+  slot: medication
+  topic: acute_care
+  aliases:
+  - mobic
+  source: clincalc:top-200-2023
+- canonical: mesalamine
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: metformin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - glucophage
+  source: clincalc:top-200-2023
+- canonical: methadone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: methimazole
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: methocarbamol
+  slot: medication
+  topic: acute_care
+  aliases:
+  - robaxin
+  source: clincalc:top-200-2023
+- canonical: methylphenidate
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - ritalin
+  - concerta
+  source: clincalc:top-200-2023
+- canonical: metoclopramide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - reglan
+  source: clincalc:top-200-2023
+- canonical: metoprolol
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - lopressor
+  - toprol xl
+  source: clincalc:top-200-2023
+- canonical: metronidazole
+  slot: medication
+  topic: acute_care
+  aliases:
+  - flagyl
+  source: cdc:common-outpatient-abx
+- canonical: minocycline
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: mirtazapine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - remeron
+  source: clincalc:top-200-2023
+- canonical: mometasone
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: mometasone nasal
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: montelukast
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - singulair
+  source: gina:2023
+- canonical: morphine
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: moxifloxacin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: naltrexone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: naproxen
+  slot: medication
+  topic: acute_care
+  aliases:
+  - aleve
+  - naprosyn
+  source: clincalc:top-200-2023
+- canonical: nifedipine
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: nirmatrelvir/ritonavir
+  slot: medication
+  topic: acute_care
+  aliases:
+  - paxlovid
+  source: cdc:common-outpatient-abx
+- canonical: nitrofurantoin
+  slot: medication
+  topic: acute_care
+  aliases:
+  - macrobid
+  source: cdc:common-outpatient-abx
+- canonical: nitroglycerin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - nitrostat
+  source: clincalc:top-200-2023
+- canonical: nortriptyline
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: nph insulin
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: nystatin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: olanzapine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - zyprexa
+  source: clincalc:top-200-2023
+- canonical: olmesartan
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - benicar
+  source: clincalc:top-200-2023
+- canonical: omalizumab
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - xolair
+  source: gina:2023
+- canonical: omeprazole
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - prilosec
+  source: clincalc:top-200-2023
+- canonical: ondansetron
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - zofran
+  source: clincalc:top-200-2023
+- canonical: oseltamivir
+  slot: medication
+  topic: acute_care
+  aliases:
+  - tamiflu
+  source: cdc:common-outpatient-abx
+- canonical: oxybutynin
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: oxycodone
+  slot: medication
+  topic: acute_care
+  aliases:
+  - oxycontin
+  source: clincalc:top-200-2023
+- canonical: oxycodone/acetaminophen
+  slot: medication
+  topic: acute_care
+  aliases:
+  - percocet
+  source: clincalc:top-200-2023
+- canonical: pantoprazole
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - protonix
+  source: clincalc:top-200-2023
+- canonical: paroxetine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - paxil
+  source: clincalc:top-200-2023
+- canonical: pioglitazone
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - actos
+  source: clincalc:top-200-2023
+- canonical: polyethylene glycol
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - miralax
+  source: clincalc:top-200-2023
+- canonical: pravastatin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - pravachol
+  source: clincalc:top-200-2023
+- canonical: prednisolone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: prednisone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: pregabalin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - lyrica
+  source: clincalc:top-200-2023
+- canonical: prochlorperazine
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: promethazine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - phenergan
+  source: clincalc:top-200-2023
+- canonical: propranolol
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - inderal
+  source: clincalc:top-200-2023
+- canonical: propylthiouracil
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - ptu
+  source: clincalc:top-200-2023
+- canonical: quetiapine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - seroquel
+  source: clincalc:top-200-2023
+- canonical: rabeprazole
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: ranitidine
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: ranolazine
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - ranexa
+  source: clincalc:top-200-2023
+- canonical: regular insulin
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: risedronate
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: risperidone
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - risperdal
+  source: clincalc:top-200-2023
+- canonical: rivaroxaban
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - xarelto
+  source: clincalc:top-200-2023
+- canonical: roflumilast
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: rosuvastatin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - crestor
+  source: clincalc:top-200-2023
+- canonical: sacubitril/valsartan
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - entresto
+  source: clincalc:top-200-2023
+- canonical: semaglutide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - ozempic
+  - wegovy
+  source: clincalc:top-200-2023
+- canonical: senna
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: sertraline
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - zoloft
+  source: clincalc:top-200-2023
+- canonical: sildenafil
+  slot: medication
+  topic: other
+  aliases:
+  - viagra
+  source: clincalc:top-200-2023
+- canonical: simvastatin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - zocor
+  source: clincalc:top-200-2023
+- canonical: sitagliptin
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - januvia
+  source: clincalc:top-200-2023
+- canonical: solifenacin
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: spironolactone
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - aldactone
+  source: clincalc:top-200-2023
+- canonical: tacrolimus
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: tadalafil
+  slot: medication
+  topic: other
+  aliases:
+  - cialis
+  source: clincalc:top-200-2023
+- canonical: tamsulosin
+  slot: medication
+  topic: other
+  aliases:
+  - flomax
+  source: clincalc:top-200-2023
+- canonical: tapentadol
+  slot: medication
+  topic: acute_care
+  source: clincalc:top-200-2023
+- canonical: temazepam
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: terbinafine
+  slot: medication
+  topic: acute_care
+  aliases:
+  - lamisil
+  source: cdc:common-outpatient-abx
+- canonical: testosterone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: tetracycline
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: theophylline
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: ticagrelor
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - brilinta
+  source: clincalc:top-200-2023
+- canonical: tiotropium
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - spiriva
+  source: gina:2023
+- canonical: tirzepatide
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - mounjaro
+  source: clincalc:top-200-2023
+- canonical: tizanidine
+  slot: medication
+  topic: acute_care
+  aliases:
+  - zanaflex
+  source: clincalc:top-200-2023
+- canonical: tolterodine
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: topiramate
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - topamax
+  source: clincalc:top-200-2023
+- canonical: torsemide
+  slot: medication
+  topic: medication_mgmt
+  source: clincalc:top-200-2023
+- canonical: tramadol
+  slot: medication
+  topic: acute_care
+  aliases:
+  - ultram
+  source: clincalc:top-200-2023
+- canonical: trazodone
+  slot: medication
+  topic: chronic_care
+  source: clincalc:top-200-2023
+- canonical: tretinoin
+  slot: medication
+  topic: other
+  aliases:
+  - retin-a
+  source: clincalc:top-200-2023
+- canonical: triamcinolone cream
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: trimethoprim/sulfamethoxazole
+  slot: medication
+  topic: acute_care
+  aliases:
+  - bactrim
+  - septra
+  source: cdc:common-outpatient-abx
+- canonical: umeclidinium
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: valacyclovir
+  slot: medication
+  topic: acute_care
+  aliases:
+  - valtrex
+  source: cdc:common-outpatient-abx
+- canonical: valproate
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - depakote
+  - valproic acid
+  source: clincalc:top-200-2023
+- canonical: valsartan
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - diovan
+  source: clincalc:top-200-2023
+- canonical: vancomycin
+  slot: medication
+  topic: acute_care
+  source: cdc:common-outpatient-abx
+- canonical: venlafaxine
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - effexor
+  source: clincalc:top-200-2023
+- canonical: warfarin
+  slot: medication
+  topic: medication_mgmt
+  aliases:
+  - coumadin
+  source: clincalc:top-200-2023
+- canonical: zafirlukast
+  slot: medication
+  topic: chronic_care
+  source: gina:2023
+- canonical: zoledronic acid
+  slot: medication
+  topic: other
+  source: clincalc:top-200-2023
+- canonical: zolpidem
+  slot: medication
+  topic: chronic_care
+  aliases:
+  - ambien
+  source: clincalc:top-200-2023
+- canonical: 24-hour urine
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: abdominal ct
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - ct abd/pelvis
+  source: cms:common-imaging
+- canonical: abdominal ultrasound
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - abd us
+  source: cms:common-imaging
+- canonical: abdominal x-ray
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - kub
+  source: cms:common-imaging
+- canonical: ablation
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: adenoidectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: allergy shots
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - immunotherapy
+  source: cdc:preventive-services
+- canonical: appendectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: blood draw
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - venipuncture
+  source: cdc:preventive-services
+- canonical: bone marrow biopsy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: bone x-ray
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: breast mri
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: bronchoscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: c-section
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - cesarean section
+  source: asge:common-endoscopy
+- canonical: capsule endoscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: cardiac catheterization
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - cardiac cath
+  - angiogram
+  source: acc:common-cardiac-procedures
+- canonical: cardiac mri
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: cardiac rehabilitation
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: cardioversion
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: carotid ultrasound
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - carotid doppler
+  source: cms:common-imaging
+- canonical: carpal tunnel release
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: cataract surgery
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: chemotherapy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: chest ct
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: chest x-ray
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - cxr
+  - chest xray
+  source: cms:common-imaging
+- canonical: cholecystectomy
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - gallbladder removal
+  source: asge:common-endoscopy
+- canonical: circumcision
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: colonoscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: colposcopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: coronary angiogram
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: coronary artery bypass graft
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - cabg
+  source: acc:common-cardiac-procedures
+- canonical: coronary ct angiography
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - ct coronary angio
+  source: cms:common-imaging
+- canonical: coronary stent placement
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - pci
+  source: acc:common-cardiac-procedures
+- canonical: covid test
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - pcr test
+  source: cdc:preventive-services
+- canonical: covid vaccine
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - sars-cov-2 vaccine
+  source: cdc:preventive-services
+- canonical: cystoscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: dental x-ray
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: dexa scan
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - bone density scan
+  source: cms:common-imaging
+- canonical: dialysis
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - hemodialysis
+  source: cdc:preventive-services
+- canonical: discectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: dobutamine stress test
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: ear tube placement
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: echocardiogram
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - echo
+  - tte
+  source: cms:common-imaging
+- canonical: eeg
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: ekg
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - electrocardiogram
+  - ecg
+  - 12-lead ekg
+  source: acc:common-cardiac-procedures
+- canonical: electrophysiology study
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - ep study
+  source: acc:common-cardiac-procedures
+- canonical: emg
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - nerve conduction study
+  source: cdc:preventive-services
+- canonical: endoscopic ultrasound
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - eus
+  source: asge:common-endoscopy
+- canonical: epidural injection
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: ercp
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: event monitor
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: excisional biopsy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: exercise stress test
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - treadmill stress
+  source: acc:common-cardiac-procedures
+- canonical: fit test
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - cologuard
+  source: cdc:preventive-services
+- canonical: flu shot
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - influenza vaccine
+  source: cdc:preventive-services
+- canonical: flu test
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: fluoroscopy
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: hba1c
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: head ct
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - ct head
+  - brain ct
+  source: cms:common-imaging
+- canonical: hernia repair
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: hip replacement
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: holter monitor
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - 24-hour ekg
+  source: acc:common-cardiac-procedures
+- canonical: hpv vaccine
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - gardasil
+  source: cdc:preventive-services
+- canonical: hysterectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: hysteroscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: icd placement
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - defibrillator implant
+  source: acc:common-cardiac-procedures
+- canonical: incision and drainage
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - i&d
+  source: cdc:preventive-services
+- canonical: infusion therapy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: knee arthroscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: knee replacement
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: laminectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: lasik
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: lipid panel
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: liver biopsy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: lumbar puncture
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - spinal tap
+  source: cdc:preventive-services
+- canonical: mammogram
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - screening mammogram
+  source: cms:common-imaging
+- canonical: mitra clip
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: mmr vaccine
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: mri abdomen
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: mri brain
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - brain mri
+  source: cms:common-imaging
+- canonical: mri knee
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: mri shoulder
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: mri spine
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - lumbar mri
+  - cervical mri
+  source: cms:common-imaging
+- canonical: nuclear stress test
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: occupational therapy
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - ot
+  source: cdc:preventive-services
+- canonical: pacemaker placement
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: pap smear
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: paracentesis
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: pelvic ultrasound
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: peritoneal dialysis
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: pet scan
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - pet/ct
+  source: cms:common-imaging
+- canonical: physical therapy
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - pt
+  source: cdc:preventive-services
+- canonical: pneumonia vaccine
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - pneumovax
+  - prevnar
+  source: cdc:preventive-services
+- canonical: psa test
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: pulmonary ct angiography
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - pe protocol ct
+  - cta chest
+  source: cms:common-imaging
+- canonical: pulmonary function test
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - pft
+  source: cdc:preventive-services
+- canonical: pulmonary rehabilitation
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: radiation therapy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: renal ultrasound
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: right heart catheterization
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - swan-ganz
+  source: acc:common-cardiac-procedures
+- canonical: shingles vaccine
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - shingrix
+  source: cdc:preventive-services
+- canonical: shoulder arthroscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: sigmoidoscopy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: skin biopsy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: sleep study
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - polysomnogram
+  source: cdc:preventive-services
+- canonical: speech therapy
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: spinal fusion
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: spirometry
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: strep test
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - rapid strep
+  source: cdc:preventive-services
+- canonical: stress echocardiogram
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: tavr
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - transcatheter aortic valve replacement
+  source: acc:common-cardiac-procedures
+- canonical: tdap booster
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - tetanus shot
+  source: cdc:preventive-services
+- canonical: thoracentesis
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: thyroid panel
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: thyroid ultrasound
+  slot: procedure
+  topic: procedure_care
+  source: cms:common-imaging
+- canonical: tilt table test
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: tonsillectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: transesophageal echocardiogram
+  slot: procedure
+  topic: procedure_care
+  aliases:
+  - tee
+  source: cms:common-imaging
+- canonical: trigger point injection
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: tubal ligation
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: upper endoscopy
+  slot: procedure
+  topic: preventive_care
+  aliases:
+  - egd
+  source: asge:common-endoscopy
+- canonical: urinalysis
+  slot: procedure
+  topic: preventive_care
+  source: cdc:preventive-services
+- canonical: valve replacement
+  slot: procedure
+  topic: procedure_care
+  source: acc:common-cardiac-procedures
+- canonical: vasectomy
+  slot: procedure
+  topic: preventive_care
+  source: asge:common-endoscopy
+- canonical: acute
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: chronic
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: critical
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: improving
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: intermittent
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: mild
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: moderate
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: new-onset
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: persistent
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: recurrent
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: resolved
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: severe
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: stable
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: subacute
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: worsening
+  slot: severity
+  topic: symptom_observation
+  source: clinical-standard
+- canonical: abdominal distension
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: abdominal pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: abnormal vaginal bleeding
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: acid reflux
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: amenorrhea
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: ankle swelling
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: anxiety
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: back pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: belching
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: bloating
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: blurred vision
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: bradycardia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: brain fog
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: bruising
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: chest pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: chest pressure
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: chest tightness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: chills
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: cluster headache
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: confusion
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: constipation
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: cough
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: dehydration
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: depression
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: diarrhea
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: difficulty concentrating
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: dizziness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: double vision
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: dry cough
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: dry skin
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: dysphagia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: dyspnea
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: dyspnea on exertion
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: dysuria
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: ear pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: earache
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: early satiety
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: epigastric pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: erectile dysfunction
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: fatigue
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: fever
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: flaking
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: flank pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: flatulence
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: gait disturbance
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: hair loss
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: hallucinations
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: headache
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: hearing loss
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: heartburn
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: heavy menstrual bleeding
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: hematemesis
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: hematochezia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: hematuria
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: hemoptysis
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: hip pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: hives
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: hypersomnia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: imbalance
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: increased appetite
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: insomnia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: irregular heartbeat
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: irritability
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: itching
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: jaundice
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: joint pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: joint stiffness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: joint swelling
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: knee pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: left lower quadrant pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: left upper quadrant pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: leg swelling
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: lightheadedness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: loss of appetite
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: low back pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: low mood
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: low-grade fever
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: malaise
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: melena
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: memory loss
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: menstrual irregularity
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: migraine
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: mood swings
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: morning stiffness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: muscle aches
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: muscle pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: nasal congestion
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: nausea
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: near-syncope
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: neck pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: night sweats
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: nocturia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: numbness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: odynophagia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: palpitations
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: panic attack
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: paresthesia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: pelvic pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: phonophobia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: photophobia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: productive cough
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: pruritus
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: rash
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: rectal bleeding
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: redness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: rhinorrhea
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: right lower quadrant pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: right upper quadrant pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: runny nose
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: seizure
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: shortness of breath
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: shoulder pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: sinus congestion
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: sinus pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: sneezing
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: sore throat
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: stiffness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: stridor
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: suicidal ideation
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: swelling
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: syncope
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: tachycardia
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09
+- canonical: tension headache
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: testicular pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: tingling
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: tinnitus
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: tooth pain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R52
+- canonical: tremor
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: urinary frequency
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: urinary incontinence
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: urinary urgency
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: urticaria
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: vaginal discharge
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: vertigo
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: visual disturbance
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R40-R41-R42
+- canonical: vomiting
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R10-R19
+- canonical: warmth
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R20-R29-R30
+- canonical: weakness
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: weight gain
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: weight loss
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R-chapter
+- canonical: wheezing
+  slot: symptom
+  topic: symptom_observation
+  source: icd-10:R06-R09

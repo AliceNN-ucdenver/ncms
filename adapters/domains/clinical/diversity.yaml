@@ -1,0 +1,59 @@
+# v9 clinical diversity taxonomy.
+#
+# Clean design principle: diversity.yaml partitions by SLOT only.
+# Sub-specialty coverage (cardiovascular vs. endocrine meds,
+# imaging vs. surgical procedures) is an *archetype* concern —
+# the archetype's description + example_utterances + phrasings
+# steer specialty context at prompt time.  Post-generation,
+# detect_spans extracts whatever entity the LLM actually used
+# from the gazetteer, so specialty alignment is grounded in the
+# output text rather than in upstream filter metadata.
+#
+# Six nodes — one per slot — ensure the generator rotates across
+# the full entity pool for each slot.  The archetype drives
+# which medication / procedure / symptom is contextually
+# appropriate.
+
+entities:
+  medications:
+    description: "All medications in the gazetteer."
+    topic_hint: medication_mgmt
+    source: gazetteer
+    filter_slots: [medication]
+    n_examples_per_batch: 10
+
+  procedures:
+    description: "All procedures in the gazetteer — imaging, surgical, diagnostic, preventive."
+    topic_hint: procedure_care
+    source: gazetteer
+    filter_slots: [procedure]
+    n_examples_per_batch: 8
+
+  symptoms:
+    description: "All symptoms in the gazetteer — constitutional, pain, cardiopulm, GI, neuro, MSK."
+    topic_hint: symptom_observation
+    source: gazetteer
+    filter_slots: [symptom]
+    n_examples_per_batch: 10
+
+utility:
+  severity_descriptors:
+    description: "Clinical severity / course descriptors."
+    topic_hint: symptom_observation
+    source: gazetteer
+    filter_slots: [severity]
+    n_examples_per_batch: 4
+
+  dosing_frequencies:
+    description: "Medication dosing + follow-up cadences."
+    topic_hint: medication_mgmt
+    source: gazetteer
+    filter_slots: [frequency]
+    n_examples_per_batch: 4
+
+  alternatives:
+    description: "Generic alternative placeholders for contrast-partner role."
+    topic_hint: other
+    source: gazetteer
+    filter_slots: [alternative]
+    n_examples_per_batch: 2
