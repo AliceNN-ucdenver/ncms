@@ -37,27 +37,144 @@ _SURFACE_INDEX: dict[str, tuple[tuple[str, CatalogEntry, str], ...]] = {}
 
 
 def _ensure_loaded() -> None:
-    """Lazily import the per-domain catalog modules."""
+    """Lazily populate the per-domain catalog registry.
+
+    v9+ path: read from ``adapters/domains/<name>/`` YAML plugin
+    directories and convert each DomainSpec into the
+    ``(canonical-indexed dict, slot-indexed tuples)`` shape the
+    existing public API expects.  Runs first; each YAML domain
+    that loads marks its name as handled so the legacy Python
+    module fallback skips it.
+
+    Legacy path: any domain that *didn't* load from YAML (e.g.
+    because its directory is missing, or ``adapters/domains/``
+    doesn't exist at all — common in pip-installed deployments
+    without the repo layout) falls through to importing the
+    per-domain Python module (``sdg/catalog/<domain>.py``).  This
+    preserves backward compatibility through the transition
+    while giving YAML directories priority.
+
+    Disable the YAML path entirely via
+    ``NCMS_V9_DOMAIN_LOADER=0`` env var (escape hatch for
+    debugging a YAML regression).
+    """
     if _REGISTRY:
         return
+
+    import os
+    yaml_enabled = os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") != "0"
+    handled_by_yaml: set[str] = set()
+
+    if yaml_enabled:
+        handled_by_yaml = _load_from_yaml_registry()
+
+    # Legacy Python-module fallback for any domain not covered by
+    # a YAML directory.  Each branch silently no-ops when the
+    # module doesn't exist (ImportError) — that's expected for
+    # user-defined domains without a legacy Python catalog.
+    if "software_dev" not in handled_by_yaml:
+        try:
+            from ncms.application.adapters.sdg.catalog import software_dev
+            _REGISTRY["software_dev"] = software_dev.CATALOG
+            _ENTRIES_BY_SLOT["software_dev"] = software_dev.ENTRIES_BY_SLOT
+        except ImportError:  # pragma: no cover
+            pass
+    if "clinical" not in handled_by_yaml:
+        try:
+            from ncms.application.adapters.sdg.catalog import clinical
+            _REGISTRY["clinical"] = clinical.CATALOG
+            _ENTRIES_BY_SLOT["clinical"] = clinical.ENTRIES_BY_SLOT
+        except ImportError:  # pragma: no cover
+            pass
+    if "conversational" not in handled_by_yaml:
+        try:
+            from ncms.application.adapters.sdg.catalog import conversational
+            _REGISTRY["conversational"] = conversational.CATALOG
+            _ENTRIES_BY_SLOT["conversational"] = conversational.ENTRIES_BY_SLOT
+        except ImportError:  # pragma: no cover
+            pass
+
+
+def _load_from_yaml_registry() -> set[str]:
+    """Walk ``adapters/domains/`` and register each YAML-native domain.
+
+    Returns the set of domain names that were loaded from YAML,
+    so ``_ensure_loaded`` can skip their legacy Python-module
+    fallbacks.
+
+    The ``adapters/domains/`` directory is located by walking up
+    from this module's filesystem location looking for
+    ``pyproject.toml`` (same heuristic as
+    ``domain_loader._locate_repo_root``).  Returns an empty set
+    if the directory doesn't exist (pip-installed deployment
+    without the repo layout) — callers gracefully fall back to
+    the Python modules.
+    """
+    from pathlib import Path
+
+    domains_root = _find_domains_root()
+    if domains_root is None or not domains_root.is_dir():
+        return set()
+
+    # Defer the heavy import until we know we're loading.
     try:
-        from ncms.application.adapters.sdg.catalog import software_dev
-        _REGISTRY["software_dev"] = software_dev.CATALOG
-        _ENTRIES_BY_SLOT["software_dev"] = software_dev.ENTRIES_BY_SLOT
-    except ImportError:  # pragma: no cover
-        pass
+        from ncms.application.adapters.domain_loader import (
+            DomainValidationError,
+            load_all_domains,
+        )
+    except ImportError:
+        return set()
+
     try:
-        from ncms.application.adapters.sdg.catalog import clinical
-        _REGISTRY["clinical"] = clinical.CATALOG
-        _ENTRIES_BY_SLOT["clinical"] = clinical.ENTRIES_BY_SLOT
-    except ImportError:  # pragma: no cover
-        pass
-    try:
-        from ncms.application.adapters.sdg.catalog import conversational
-        _REGISTRY["conversational"] = conversational.CATALOG
-        _ENTRIES_BY_SLOT["conversational"] = conversational.ENTRIES_BY_SLOT
-    except ImportError:  # pragma: no cover
-        pass
+        specs = load_all_domains(domains_root)
+    except DomainValidationError:
+        # Don't mask validation errors — surface them loudly so bad
+        # YAML fails fast rather than silently falling back to the
+        # Python module (which would look like the YAML "worked").
+        raise
+
+    loaded: set[str] = set()
+    for name, spec in specs.items():
+        # Convert DomainSpec.gazetteer (tuple of CatalogEntry) into
+        # the (canonical→entry, slot→tuple[entry, ...]) shape the
+        # existing detect_spans / lookup / pool_values code expects.
+        canonical_map: dict[str, CatalogEntry] = {}
+        by_slot: dict[str, list[CatalogEntry]] = {}
+        for entry in spec.gazetteer:
+            # Canonical form registers the entry.
+            canonical_map[entry.canonical.lower().strip()] = entry
+            # Every alias also maps to the same entry (this is how
+            # the legacy CATALOG dict worked — lookup by any alias
+            # returns the canonical entry).
+            for alias in entry.aliases:
+                canonical_map[alias.lower().strip()] = entry
+            by_slot.setdefault(entry.slot, []).append(entry)
+        _REGISTRY[name] = canonical_map
+        _ENTRIES_BY_SLOT[name] = {
+            slot: tuple(entries) for slot, entries in by_slot.items()
+        }
+        loaded.add(name)
+    return loaded
+
+
+def _find_domains_root() -> "Path | None":
+    """Walk up from this module looking for ``adapters/domains/``.
+
+    The canonical location is ``<repo>/adapters/domains/``.  This
+    helper finds it from an arbitrary import context by looking
+    for the repo root (first ancestor with ``pyproject.toml``) and
+    then checking for ``adapters/domains`` under it.
+    """
+    from pathlib import Path
+
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            candidate = parent / "adapters" / "domains"
+            if candidate.is_dir():
+                return candidate
+            return None
+    return None
 
 
 def lookup(surface: str, *, domain: Domain) -> CatalogEntry | None:
