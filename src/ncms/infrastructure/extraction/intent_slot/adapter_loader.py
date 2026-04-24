@@ -8,8 +8,8 @@ and has a stable on-disk layout::
     ├── lora_adapter/       ← peft save_pretrained dir
     ├── heads.safetensors   ← LoRA heads (intent/role/topic/
     │                          admission/state_change/shape_cue;
-    │                          legacy slot_head / shape_intent_head
-    │                          present on pre-v8 adapters)
+    │                          legacy shape_intent_head present on
+    │                          v6/v7.x adapters for load compat)
     ├── manifest.json       ← encoder, labels, lora config, metrics
     ├── taxonomy.yaml       ← human-readable label snapshot
     └── eval_report.md      ← gate report (optional)

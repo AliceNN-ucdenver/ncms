@@ -154,32 +154,32 @@ class NcmsBackend:
             if primary is not None:
                 logger.info(
                     "SLM adapter: domain=%s version=%s encoder=%s "
-                    "heads: intent=%d slot=%d topic=%d admission=%d "
-                    "state_change=%d shape_intent=%d",
+                    "heads: intent=%d role=%d topic=%d admission=%d "
+                    "state_change=%d shape_intent=%d cue=%d",
                     getattr(primary, "domain", "?"),
                     getattr(primary, "version", "?"),
                     getattr(primary, "encoder", "?"),
                     len(getattr(primary, "intent_labels", []) or []),
-                    len(getattr(primary, "slot_labels", []) or []),
+                    len(getattr(primary, "role_labels", []) or []),
                     len(getattr(primary, "topic_labels", []) or []),
                     len(getattr(primary, "admission_labels", []) or []),
                     len(getattr(primary, "state_change_labels", []) or []),
                     len(getattr(primary, "shape_intent_labels", []) or []),
+                    len(getattr(primary, "cue_labels", []) or []),
                 )
-                # The 6th head's trained vocabulary — critical for
-                # knowing whether TLG dispatch has anything to route.
-                shape_labels = (
-                    getattr(primary, "shape_intent_labels", []) or []
-                )
-                if shape_labels:
+                # CTLG cue vocabulary — critical for knowing whether
+                # the v8+ TLG dispatch path has anything to route.
+                cue_labels = getattr(primary, "cue_labels", []) or []
+                if cue_labels:
                     logger.info(
-                        "SLM shape_intent_labels: %s",
-                        ", ".join(shape_labels),
+                        "SLM cue_labels: %d tags (%s...)",
+                        len(cue_labels),
+                        ", ".join(cue_labels[:8]),
                     )
                 else:
                     logger.info(
-                        "SLM shape_intent_labels: (empty — pre-v6 adapter, "
-                        "TLG dispatch will abstain on every query)",
+                        "SLM cue_labels: (empty — pre-v8 adapter, "
+                        "CTLG synthesizer will abstain on every query)",
                     )
         else:
             logger.info(

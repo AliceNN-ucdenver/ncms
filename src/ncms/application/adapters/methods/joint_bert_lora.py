@@ -101,11 +101,16 @@ def _pick_device() -> str:
 class AdapterManifest:
     """Persisted alongside every adapter artifact.
 
-    v7 schema shift: ``slot_labels`` (the BIO tag vocabulary) is
-    replaced by ``role_labels`` (primary/alternative/casual/
-    not_relevant).  Inference continues to populate
-    :attr:`ExtractedLabel.slots` for downstream compatibility — the
-    dict is rebuilt from role-classified spans at extract time.
+    v7+ head layout (v6 BIO ``slot_labels`` removed):
+      * ``intent_labels``         — 6-class preference intent
+      * ``role_labels``           — primary/alternative/casual/
+                                     not_relevant (span-pooled)
+      * ``topic_labels``          — domain taxonomy
+      * ``admission_labels``      — persist/ephemeral/discard
+      * ``state_change_labels``   — declaration/retirement/none
+      * ``shape_intent_labels``   — v6/v7.x query-shape classes
+                                     (deprecated; v9 removes)
+      * ``cue_labels``            — v8+ CTLG BIO cue vocab
     """
 
     encoder: str = "bert-base-uncased"
@@ -114,7 +119,7 @@ class AdapterManifest:
     max_length: int = 128
 
     intent_labels: list[str] = field(default_factory=list)
-    # v7: role labels (4 categories) replace the BIO slot tag list.
+    # v7: role labels (4 categories) — span-pooled role head.
     role_labels: list[str] = field(default_factory=list)
     topic_labels: list[str] = field(default_factory=list)
     admission_labels: list[str] = field(default_factory=list)
@@ -130,13 +135,6 @@ class AdapterManifest:
     # Should always be the full 33-entry list from
     # ncms.domain.tlg.cue_taxonomy.CUE_LABELS on new trains.
     cue_labels: list[str] = field(default_factory=list)
-
-    # Legacy field — kept on the dataclass for serialisation round-trip
-    # with v6 checkpoints.  New v7+ artifacts carry an empty list here;
-    # loaders that see a populated ``slot_labels`` + empty
-    # ``role_labels`` know they're reading a pre-v7 adapter and can
-    # handle it (or refuse to load).
-    slot_labels: list[str] = field(default_factory=list)
 
     lora_r: int = 8
     lora_alpha: int = 16
@@ -208,10 +206,10 @@ class LoraJointModel(nn.Module):
         # in v6/v7.1/v7.2; retained for checkpoint load compat; NOT
         # consumed on v8+ inference when ``cue_labels`` is populated.
         self.shape_intent_head = nn.Linear(hidden, max(n_shape_intents, 1))
-        # v8+ CTLG shape_cue_head — per-token BIO cue classifier.
-        # Same shape as the v6 slot_head machinery (Linear over full
-        # sequence output).  n_cue_labels=0 on legacy adapters; on
-        # v8+ it's len(cue_taxonomy.CUE_LABELS) = 33.
+        # v8+ CTLG shape_cue_head — per-token BIO cue classifier
+        # (Linear over the full sequence output, one logit vector
+        # per encoder position).  n_cue_labels=0 on legacy adapters;
+        # on v8+ it's len(cue_taxonomy.CUE_LABELS) = 33.
         self.shape_cue_head = nn.Linear(hidden, max(n_cue_labels, 1))
 
     def wrap_encoder_with_lora(
@@ -275,8 +273,7 @@ class LoraJointModel(nn.Module):
         """v8+ CTLG: per-token BIO cue-label classification.
 
         Input: ``sequence`` of shape (B, L, H) — the full encoder
-        output.  Output: (B, L, n_cue_labels) logits.  Same shape
-        as the v6 slot_head.
+        output.  Output: (B, L, n_cue_labels) logits.
         """
         return self.shape_cue_head(sequence)
 
@@ -317,10 +314,13 @@ class LoraJointModel(nn.Module):
         save_safetensors(state, str(path))
 
     def load_heads(self, path: Path) -> None:
-        """Restore the heads from safetensors.  Tolerates shape
-        mismatches (e.g. loading v6 adapter which had slot_head
-        instead of role_head) — skips the mismatch so callers can
-        wire the right head later.
+        """Restore the heads from safetensors.
+
+        Tolerates unknown keys and shape mismatches so pre-v8
+        checkpoints (which carry a retired ``slot_head`` tensor)
+        still load cleanly — the mismatched tensor is logged and
+        skipped.  Useful for hot-swapping v7.x adapters onto a
+        v8+ runtime without re-training.
         """
         state = load_safetensors(str(path))
         for key, tensor in state.items():
@@ -341,61 +341,6 @@ class LoraJointModel(nn.Module):
                 )
                 continue
             current.copy_(tensor)
-
-
-# ---------------------------------------------------------------------------
-# Role span derivation (legacy gold bootstrap)
-# ---------------------------------------------------------------------------
-
-
-def derive_role_spans_from_slots(
-    text: str, slots: dict[str, str], domain: Domain,
-) -> list[RoleSpan]:
-    """Bootstrap ``role_spans`` from a legacy v6 GoldExample.
-
-    Legacy corpora have a ``slots`` dict but no per-span roles.  To
-    train the role head on them, we run the gazetteer to get
-    candidate spans, then label each span:
-
-      - ``primary`` — span.canonical matches a non-alternative entry
-        in ``slots``, i.e. ``slots[span.slot] == span.canonical``.
-      - ``alternative`` — span.canonical matches ``slots["alternative"]``
-        regardless of its catalog slot (so "MongoDB" detected as
-        database but labeled alternative in gold stays alternative).
-      - ``not_relevant`` — detected but not referenced in slots at all
-        (distractor or casual mention the labeller skipped).
-
-    No ``casual`` label is emitted from this derivation — legacy gold
-    didn't distinguish casual mentions from genuinely unrelated
-    detections.  The SDG + LLM labeler paths will emit ``casual``
-    directly when they know.
-    """
-    gazetteer_spans = detect_spans(text, domain=domain)
-    # Normalize slot values for comparison.
-    slot_values_lower: dict[str, str] = {
-        k: v.lower().strip() for k, v in slots.items() if v
-    }
-    alt_value = slot_values_lower.get("alternative")
-    out: list[RoleSpan] = []
-    for s in gazetteer_spans:
-        canon_lower = s.canonical.lower()
-        role: str
-        if alt_value is not None and canon_lower == alt_value:
-            role = "alternative"
-        elif slot_values_lower.get(s.slot) == canon_lower:
-            role = "primary"
-        else:
-            role = "not_relevant"
-        out.append(RoleSpan(
-            char_start=s.char_start,
-            char_end=s.char_end,
-            surface=s.surface,
-            canonical=s.canonical,
-            slot=s.slot,
-            role=role,  # type: ignore[arg-type]
-            source="derived-from-slots",
-        ))
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -452,12 +397,11 @@ def train(
         cross-entropy, skipped per-example when the label is ``None``
         (per-head mask).
       * role — cross-entropy over span-pooled representations.  Rows
-        with zero role_spans (after derivation fallback) contribute
-        nothing to the role loss.
-      * Total loss = sum of non-skipped heads, unweighted.
-
-    v6 rows that only carry ``slots`` (no explicit ``role_spans``)
-    are auto-labeled via :func:`derive_role_spans_from_slots`.
+        with zero explicit ``role_spans`` contribute nothing to the
+        role loss (per-row mask).
+      * cue — per-token cross-entropy with ignore_index=-100 so
+        pad positions are excluded; weighted by ``cue_loss_weight``.
+      * Total loss = sum of non-skipped heads.
     """
     adapter_dir.mkdir(parents=True, exist_ok=True)
     device = device or _pick_device()
@@ -571,11 +515,12 @@ def train(
             shape_intents.append(0)
             shape_intent_mask.append(0)
 
-        # Role-span targets.  Bootstrap from legacy ``slots`` when
-        # absent so v6 corpora train without a separate pre-pass.
-        role_spans = ex.role_spans or derive_role_spans_from_slots(
-            ex.text, ex.slots, ex.domain,
-        )
+        # Role-span targets.  Rows without explicit role_spans
+        # (legacy v6 corpora) contribute nothing to the role loss
+        # via the per-row mask — the bootstrap-from-slots helper was
+        # removed in v8.1.  Use ``scripts/v7_rollout/relabel_roles.py``
+        # to add explicit role_spans to pre-v7 gold before training.
+        role_spans = ex.role_spans
         per_row: list[tuple[list[float], int]] = []
         for rs in role_spans:
             if rs.role not in role_idx:
@@ -589,9 +534,10 @@ def train(
         row_spans.append(per_row)
 
         # v8+ CTLG: per-token BIO cue labels.  Per-token because the
-        # cue head is a sequence labeler (same shape as v6 slot_head).
-        # Labels produce: O for non-cue tokens, B-<TYPE>/I-<TYPE> for
-        # tokens inside a tagged span.  -100 on pad / special-token
+        # cue head is a sequence labeler (Linear over full encoder
+        # output, one logit vector per position).  Labels produce: O
+        # for non-cue tokens, B-<TYPE>/I-<TYPE> for tokens inside a
+        # tagged span.  -100 on pad / special-token
         # positions so CrossEntropyLoss ignores them.
         row_cues = [-100] * manifest.max_length
         ex_cue_tags = getattr(ex, "cue_tags", None) or []
@@ -1199,7 +1145,6 @@ def build_manifest(
         ),
         shape_intent_labels=shape_intent_labels or [],
         cue_labels=cue_labels,
-        slot_labels=[],   # v7: BIO vocab retired
         lora_r=lora_r,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
@@ -1212,6 +1157,5 @@ __all__ = [
     "LoraJointBert",
     "LoraJointModel",
     "build_manifest",
-    "derive_role_spans_from_slots",
     "train",
 ]
