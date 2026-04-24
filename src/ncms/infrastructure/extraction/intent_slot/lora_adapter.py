@@ -39,11 +39,17 @@ logger = logging.getLogger(__name__)
 def _to_domain_label(src: _AdapterExtractedLabel) -> ExtractedLabel:
     """Convert adapter-side dataclass label → domain Pydantic label.
 
-    The adapter-side dataclass carries typed ``RoleSpan`` /
-    ``TaggedToken`` entries; the domain model is Pydantic and uses
-    list-of-dict so it crosses the JSON boundary (memory
-    structured column, MCP tool responses) without leaking
-    adapter-layer types into the domain.
+    The adapter-side dataclass carries typed ``RoleSpan`` entries;
+    the domain model is Pydantic and uses list-of-dict so it
+    crosses the JSON boundary (memory structured column, MCP tool
+    responses) without leaking adapter-layer types into the domain.
+
+    ``cue_tags`` on the domain ExtractedLabel defaults to ``[]``
+    and is left empty here — the v9 joint adapter produces five
+    heads, none of which emit cue tags.  When the future dedicated
+    CTLG adapter ships it will populate this field via a separate
+    chain link; the ChainedExtractor merges both extractors'
+    output into a single ExtractedLabel.
     """
     role_spans = [
         {
@@ -57,16 +63,6 @@ def _to_domain_label(src: _AdapterExtractedLabel) -> ExtractedLabel:
         }
         for rs in (src.role_spans or ())
     ]
-    cue_tags = [
-        {
-            "char_start": t.char_start,
-            "char_end": t.char_end,
-            "surface": t.surface,
-            "cue_label": t.cue_label,
-            "confidence": float(t.confidence),
-        }
-        for t in (src.cue_tags or ())
-    ]
     return ExtractedLabel(
         intent=src.intent,  # type: ignore[arg-type]
         intent_confidence=float(src.intent_confidence or 0.0),
@@ -79,7 +75,6 @@ def _to_domain_label(src: _AdapterExtractedLabel) -> ExtractedLabel:
         state_change=src.state_change,  # type: ignore[arg-type]
         state_change_confidence=src.state_change_confidence,
         role_spans=role_spans,
-        cue_tags=cue_tags,
         method=src.method or "joint_bert_lora",
     )
 
@@ -110,12 +105,10 @@ class LoraJointExtractor:
             self._adapter_dir, device=device,
         )
         logger.info(
-            "[intent_slot] loaded LoRA adapter: %s domain=%s version=%s "
-            "cue_labels=%d",
+            "[intent_slot] loaded LoRA adapter: %s domain=%s version=%s",
             self._adapter_dir,
             self._manifest.domain,
             self._manifest.version,
-            len(self._manifest.cue_labels),
         )
 
     @property
@@ -141,7 +134,6 @@ class LoraJointExtractor:
             "topic_labels": list(self._manifest.topic_labels),
             "admission_labels": list(self._manifest.admission_labels),
             "state_change_labels": list(self._manifest.state_change_labels),
-            "cue_labels": list(self._manifest.cue_labels),
         }
 
 

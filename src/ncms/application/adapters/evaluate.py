@@ -123,11 +123,21 @@ def _slot_f1(
 ) -> float:
     """Entity-level slot F1 — treats ``(slot_name, surface.lower())`` as
     the matching unit.  Both slot name and surface must agree.
+
+    Rows with empty gold slots are **skipped** — their predictions
+    carry no signal for slot F1 (there's nothing to match against),
+    and counting their predicted slots as FP would double-punish
+    query-voice rows that legitimately mention catalog entities
+    without asserting role.  For those rows the role head's
+    behaviour is audited separately (the role head's macro F1 on
+    the held-out split catches role-level regressions).
     """
     tp = fp = fn = 0
     for pred, g in zip(predictions, gold, strict=False):
-        pred_set = {(k, v.lower()) for k, v in pred.items() if v}
         gold_set = {(k, v.lower()) for k, v in g.items() if v}
+        if not gold_set:
+            continue  # no signal — see docstring
+        pred_set = {(k, v.lower()) for k, v in pred.items() if v}
         tp += len(pred_set & gold_set)
         fp += len(pred_set - gold_set)
         fn += len(gold_set - pred_set)

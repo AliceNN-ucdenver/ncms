@@ -122,17 +122,17 @@ def _evaluate_heldout(
 ) -> None:
     """Run the freshly-trained adapter over the held-out split.
 
-    Computes per-head micro-accuracy and a simple cue-level exact-
-    span-F1 on the 20% held-out gold.  Writes results to
-    ``adapter_dir/heldout_eval.json`` and appends a ``heldout_*``
-    entry block to ``adapter_dir/manifest.json`` via
-    ``gate_metrics`` so the audit trail keeps everything in one place.
+    Computes per-head micro-accuracy + macro F1 on the held-out
+    gold for the four classification heads (intent / topic /
+    admission / state_change).  Role F1 is covered by the main
+    gate's :func:`_slot_f1` over reconstructed slots.  Writes
+    results to ``adapter_dir/heldout_eval.json`` and appends
+    ``heldout_*`` entries to ``manifest.gate_metrics``.
 
-    This is separate from the main gate (``run_gate``) which
-    evaluates across gold + adversarial corpora for promotion
-    decisions.  The held-out eval catches train/eval leakage — a
-    head that scores well on the training gold but drops on
-    held-out has overfit.
+    Separate from the promotion gate (``run_gate``) which evaluates
+    on the full gold + adversarial corpora.  The held-out eval
+    catches train/eval leakage — a head that scores well on the
+    training gold but drops on held-out has overfit.
     """
     from collections import Counter, defaultdict
     from ncms.application.adapters.methods.joint_bert_lora import (
@@ -146,14 +146,12 @@ def _evaluate_heldout(
     # Per-head hit counts (numerator) + labeled-row counts (denominator).
     hits: Counter[str] = Counter()
     labeled: Counter[str] = Counter()
-    # Per-head per-class confusion accounting (for macro F1).  Keys
-    # look like ("intent", "positive") → Counter({"tp": X, "fp": Y,
-    # "fn": Z}).  Catches class-collapse that accuracy hides.
+    # Per-head per-class confusion accounting (for macro F1).  Catches
+    # class-collapse that accuracy hides when the held-out split is
+    # skewed toward one dominant class.
     class_tpfpfn: dict[str, dict[str, Counter[str]]] = defaultdict(
         lambda: defaultdict(Counter),
     )
-    # Cue-span accounting (exact char_start,char_end,cue_label match).
-    cue_tp = cue_fp = cue_fn = 0
 
     def _record_head(head: str, gold: str | None, pred: str | None) -> None:
         if gold is None:
@@ -173,31 +171,12 @@ def _evaluate_heldout(
         _record_head("topic", ex.topic, pred.topic)
         _record_head("admission", ex.admission, pred.admission)
         _record_head("state_change", ex.state_change, pred.state_change)
-        # Cue spans: exact match on (char_start, char_end, cue_label).
-        gold_spans = {
-            (int(t["char_start"]), int(t["char_end"]), str(t["cue_label"]))
-            for t in (ex.cue_tags or [])
-        }
-        pred_spans = {
-            (
-                int(t.char_start),
-                int(t.char_end),
-                str(t.cue_label),
-            )
-            for t in (pred.cue_tags or ())
-        }
-        cue_tp += len(gold_spans & pred_spans)
-        cue_fp += len(pred_spans - gold_spans)
-        cue_fn += len(gold_spans - pred_spans)
 
     metrics: dict[str, float] = {
         f"heldout_{head}_acc": hits[head] / labeled[head]
         for head in labeled
         if labeled[head] > 0
     }
-    # Macro F1 per head — exposes class-collapse (e.g. "model always
-    # predicts intent=none") that accuracy hides when one class
-    # dominates the held-out split.
     for head, per_class in class_tpfpfn.items():
         f1s: list[float] = []
         for _cls, counts in per_class.items():
@@ -214,16 +193,6 @@ def _evaluate_heldout(
             metrics[f"heldout_{head}_f1_macro"] = round(
                 sum(f1s) / len(f1s), 4,
             )
-    if cue_tp + cue_fp + cue_fn > 0:
-        precision = cue_tp / (cue_tp + cue_fp) if cue_tp + cue_fp else 0.0
-        recall = cue_tp / (cue_tp + cue_fn) if cue_tp + cue_fn else 0.0
-        f1 = (
-            2 * precision * recall / (precision + recall)
-            if precision + recall else 0.0
-        )
-        metrics["heldout_cue_precision"] = round(precision, 4)
-        metrics["heldout_cue_recall"] = round(recall, 4)
-        metrics["heldout_cue_f1"] = round(f1, 4)
     metrics["heldout_n"] = float(n)
 
     # Persist: JSON next to the adapter + update manifest.gate_metrics.
@@ -241,8 +210,7 @@ def _evaluate_heldout(
         "intent acc=%.3f f1_macro=%.3f | "
         "topic acc=%.3f f1_macro=%.3f | "
         "admission acc=%.3f f1_macro=%.3f | "
-        "state_change acc=%.3f f1_macro=%.3f | "
-        "cue_f1=%.3f",
+        "state_change acc=%.3f f1_macro=%.3f",
         n,
         metrics.get("heldout_intent_acc", float("nan")),
         metrics.get("heldout_intent_f1_macro", float("nan")),
@@ -252,7 +220,6 @@ def _evaluate_heldout(
         metrics.get("heldout_admission_f1_macro", float("nan")),
         metrics.get("heldout_state_change_acc", float("nan")),
         metrics.get("heldout_state_change_f1_macro", float("nan")),
-        metrics.get("heldout_cue_f1", float("nan")),
     )
 
 
@@ -268,17 +235,14 @@ def phase1_bootstrap(
 
     Returns both tagged (multi-head labels present) and untagged
     rows — the training loop's per-head masking handles mixed
-    labelling gracefully.  v8+ cue-gold rows
-    (``gold_cues_<domain>.jsonl``) are included when present; the
-    loader tolerates the v6/v7.x ``shape_intent`` field and drops
-    it silently.
+    labelling gracefully.  The loader silently drops the v6/v7.x
+    ``shape_intent`` and v8 ``cue_tags`` fields if present on
+    legacy rows.
     """
     gold = [ex for ex in load_all(corpus_dir, split="gold")
             if ex.domain == domain]
-    cue_gold = [ex for ex in gold if ex.cue_tags]
     logger.info(
-        "[phase1] domain=%s gold_rows=%d (of which %d carry cue_tags)",
-        domain, len(gold), len(cue_gold),
+        "[phase1] domain=%s gold_rows=%d", domain, len(gold),
     )
     return gold
 
@@ -394,21 +358,15 @@ def phase4_finetune_and_gate(
     eval_splits: list[str],
     gold_upsample: int = 1,
     adversarial_upsample: int = 1,
-    cue_loss_weight: float = 3.0,
     heldout_fraction: float = 0.2,
     holdout_seed: int = 42,
 ) -> bool:
     """Train the LoRA adapter, run the gate, persist report.
 
-    v8.1 additions:
-
     * ``heldout_fraction`` > 0 splits gold 80/20 (seeded, stable);
       training sees only the 80%, the 20% gets written to
       ``adapter_dir/heldout_gold.jsonl`` and evaluated after training
       for honest per-head metrics.  Set 0.0 to train on all gold.
-    * ``cue_loss_weight`` multiplies the CTLG cue head's loss
-      contribution (default 3×) — the sequence task underfits at
-      equal weight on the 33-label taxonomy.
     """
     import random as _random
     import yaml
@@ -487,11 +445,11 @@ def phase4_finetune_and_gate(
         "[phase4] training — domain=%s n_raw=%d n_training=%d "
         "(train_gold×%d + sdg + adversarial×%d) n_heldout=%d "
         "topic_labels=%d role_labels=%d epochs=%d lora_r=%d "
-        "lora_alpha=%d cue_loss_weight=%.1f",
+        "lora_alpha=%d",
         domain, len(hash_input), len(combined),
         gold_upsample, adversarial_upsample, len(heldout_gold),
         len(manifest.topic_labels), len(manifest.role_labels),
-        epochs, lora_r, lora_alpha, cue_loss_weight,
+        epochs, lora_r, lora_alpha,
     )
     train(
         combined,
@@ -502,7 +460,6 @@ def phase4_finetune_and_gate(
         batch_size=batch_size,
         learning_rate=learning_rate,
         device=device,
-        cue_loss_weight=cue_loss_weight,
     )
 
     # Dump held-out rows for audit + future re-evaluation without
@@ -590,24 +547,14 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=6)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--lora-r", type=int, default=32,
-                        help="LoRA rank (v8.1 default: 32).")
-    parser.add_argument("--lora-alpha", type=int, default=64,
-                        help="LoRA alpha (v8.1 default: 64 = 2×rank).")
+    parser.add_argument("--lora-r", type=int, default=16,
+                        help="LoRA rank (v9 default: 16).")
+    parser.add_argument("--lora-alpha", type=int, default=32,
+                        help="LoRA alpha (v9 default: 32 = 2×rank).")
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-targets", default="query,value")
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--device", default=None)
-    parser.add_argument(
-        "--cue-loss-weight", type=float, default=1.5,
-        help=(
-            "Multiplier on the CTLG cue head's loss contribution.  "
-            "v8.1 default 1.5 — paired with inverse-frequency class "
-            "weighting on the cue CE loss (which handles the O-class "
-            "imbalance properly).  v8.1-v1 used 3.0 and collapsed the "
-            "head; don't go above 2.0 without knowing why."
-        ),
-    )
     parser.add_argument(
         "--heldout-fraction", type=float, default=0.2,
         help=(
@@ -768,7 +715,6 @@ def main() -> None:
         baseline_adapter_dir=args.baseline_adapter_dir,
         device=args.device,
         eval_splits=eval_splits,
-        cue_loss_weight=args.cue_loss_weight,
         heldout_fraction=args.heldout_fraction,
         holdout_seed=args.holdout_seed,
     )

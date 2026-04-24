@@ -137,34 +137,10 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
                 f"{path}:{line_no} role_spans[{idx}] missing field {exc}",
             ) from exc
 
-    # v8+ CTLG cue_tags.  Accept two serialisation shapes for
-    # back-compat: the canonical ``cue_tags`` field, OR the raw
-    # ``tokens`` field used by cue-labeling scripts
-    # (scripts/ctlg/label_cues_llm.py, gen_gap_queries.py).  Either
-    # shape is a list of {char_start, char_end, surface, cue_label,
-    # confidence} dicts.  Stored on GoldExample as list[dict] —
-    # training loop re-parses into TaggedToken shape.
-    cue_tags_raw = row.get("cue_tags") or row.get("tokens") or []
-    if not isinstance(cue_tags_raw, list):
-        raise CorpusValidationError(
-            f"{path}:{line_no} cue_tags/tokens must be a list",
-        )
-    cue_tags: list[dict] = []
-    for t in cue_tags_raw:
-        if not isinstance(t, dict):
-            continue
-        # Require the core fields; skip silently on malformed
-        # entries rather than failing the whole corpus load.
-        try:
-            cue_tags.append({
-                "char_start": int(t["char_start"]),
-                "char_end": int(t["char_end"]),
-                "surface": str(t["surface"]),
-                "cue_label": str(t["cue_label"]),
-                "confidence": float(t.get("confidence", 1.0)),
-            })
-        except (KeyError, TypeError, ValueError):
-            continue
+    # v9: the joint 5-head adapter doesn't consume cue_tags.  The
+    # loader silently drops the ``cue_tags`` / ``tokens`` fields if
+    # present on a row so pre-v9 corpora load cleanly — the future
+    # dedicated CTLG adapter will read them from its own loader.
 
     return GoldExample(
         text=row["text"],
@@ -175,7 +151,6 @@ def _validate_row(row: dict, line_no: int, path: Path) -> GoldExample:
         admission=admission,
         state_change=state_change,
         role_spans=role_spans,
-        cue_tags=cue_tags,
         split=split,
         source=row.get("source", ""),
         note=row.get("note", ""),
@@ -256,6 +231,4 @@ def dump_jsonl(
                     }
                     for s in ex.role_spans
                 ]
-            if ex.cue_tags:
-                row["cue_tags"] = list(ex.cue_tags)
             fh.write(json.dumps(row) + "\n")
