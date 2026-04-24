@@ -36,10 +36,6 @@ from ncms.infrastructure.extraction.intent_slot.heuristic_fallback import (
 from ncms.infrastructure.extraction.intent_slot.lora_adapter import (
     LoraJointExtractor,
 )
-from ncms.infrastructure.extraction.intent_slot.lora_model import (
-    LoraJointBert,
-    LoraJointModel,
-)
 
 __all__ = [
     "AdapterIntegrityError",
@@ -47,9 +43,7 @@ __all__ = [
     "ChainedExtractor",
     "E5ZeroShotExtractor",
     "HeuristicFallbackExtractor",
-    "LoraJointBert",
     "LoraJointExtractor",
-    "LoraJointModel",
     "build_extractor_chain",
     "load_adapter_manifest",
     "verify_adapter_dir",

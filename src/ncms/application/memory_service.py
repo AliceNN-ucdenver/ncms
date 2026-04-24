@@ -439,6 +439,16 @@ class MemoryService:
                 # a fallback when role_spans is empty (e.g. pre-v7
                 # adapters that only populated ``slots``).
                 "slots": dict(getattr(intent_slot_label, "slots", {}) or {}),
+                # v8+ CTLG cue tags — per-token BIO labels from the
+                # ``shape_cue_head``.  Consumed by the ingest pipeline's
+                # ``_extract_and_persist_causal_edges`` to emit
+                # CAUSED_BY / ENABLES graph edges.  Empty list on
+                # pre-v8 adapters.  Already JSON-ready (list[dict])
+                # from both the production and experiment extract()
+                # paths — no conversion needed.
+                "cue_tags": list(
+                    getattr(intent_slot_label, "cue_tags", ()) or ()
+                ),
             }
 
         memory = Memory(

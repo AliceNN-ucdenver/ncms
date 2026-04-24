@@ -965,14 +965,37 @@ class ExtractedLabel(BaseModel):
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
 
-    # Query-shape intent (6th head).  Only meaningful when the
-    # classifier is called on a query string; for memory-voice
-    # inputs (ingest path) the head's prediction is ignored by
-    # callers.  None = adapter doesn't ship this head (pre-v6
-    # adapters) — callers must treat None as "abstain" and skip
-    # TLG grammar routing.
+    # Query-shape intent (6th head, v6/v7.x legacy).  Kept for
+    # checkpoint load-compat with legacy adapters.  In v8+ this is
+    # superseded by ``cue_tags`` below + the compositional
+    # synthesizer; ingest-voice callers should prefer cue_tags.
     shape_intent: ShapeIntent | None = None
     shape_intent_confidence: float | None = None
+
+    # v7+ role-classified gazetteer spans.  Each entry is a dict
+    # with ``char_start``, ``char_end``, ``surface``, ``canonical``,
+    # ``slot``, ``role`` — the serialised form of
+    # :class:`ncms.application.adapters.schemas.RoleSpan`.  The
+    # ``slots`` dict above is derived from these at inference time
+    # (primary → typed slot, alternative → alternative slot).  Empty
+    # list on pre-v7 adapters.  Dict-serialised (not the dataclass)
+    # so this crosses the application↔infrastructure boundary
+    # without pulling adapter schemas into the domain layer.
+    role_spans: list[dict] = Field(default_factory=list)
+
+    # v8+ CTLG cue tags (6th head — per-token BIO sequence labeler
+    # over 33 causal / temporal / ordinal / modal / referent /
+    # subject / scope labels).  Each entry is a dict with
+    # ``char_start``, ``char_end``, ``surface``, ``cue_label``,
+    # ``confidence`` — the serialised form of
+    # :class:`ncms.domain.tlg.cue_taxonomy.TaggedToken`.  Serialises
+    # directly as JSON into ``memory.structured["intent_slot"]
+    # ["cue_tags"]`` so the ingest pipeline's
+    # ``_extract_and_persist_causal_edges`` can consume it without
+    # per-row conversion.  Empty list on pre-v8 adapters
+    # (manifest.cue_labels empty) — callers treat an empty
+    # cue_tags as "no CTLG signal".
+    cue_tags: list[dict] = Field(default_factory=list)
 
     method: str = ""           # backend name that produced this label
     latency_ms: float = 0.0    # inference wall-time (populated by caller)

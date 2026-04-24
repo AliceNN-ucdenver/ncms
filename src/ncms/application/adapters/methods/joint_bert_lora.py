@@ -155,7 +155,15 @@ class AdapterManifest:
 
     @classmethod
     def load(cls, path: Path) -> AdapterManifest:
-        return cls(**json.loads(path.read_text()))
+        """Load a manifest, silently dropping unknown keys.
+
+        Forward-compat: a checkpoint trained with a newer manifest
+        schema (e.g. a future 7th-head field) still loads cleanly
+        into an older runtime; the new field is just ignored.
+        """
+        raw = json.loads(path.read_text())
+        allowed = set(cls.__dataclass_fields__.keys())
+        return cls(**{k: v for k, v in raw.items() if k in allowed})
 
 
 # ---------------------------------------------------------------------------

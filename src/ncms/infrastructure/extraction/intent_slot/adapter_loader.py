@@ -1,20 +1,25 @@
 """Adapter artifact loader + manifest validation.
 
 The adapter artifact is produced by
-``experiments/intent_slot_distillation/train_adapter.py`` and has
-a stable on-disk layout::
+:func:`ncms.application.adapters.methods.joint_bert_lora.train`
+and has a stable on-disk layout::
 
     adapter_dir/
     ├── lora_adapter/       ← peft save_pretrained dir
-    ├── heads.safetensors   ← 5 classification heads
+    ├── heads.safetensors   ← LoRA heads (intent/role/topic/
+    │                          admission/state_change/shape_cue;
+    │                          legacy slot_head / shape_intent_head
+    │                          present on pre-v8 adapters)
     ├── manifest.json       ← encoder, labels, lora config, metrics
     ├── taxonomy.yaml       ← human-readable label snapshot
     └── eval_report.md      ← gate report (optional)
 
-This module does NOT import torch / transformers at module load —
-only the `lora_adapter.py` inference class does.  That keeps
-`IntentSlotExtractor` factory imports cheap when the LoRA backend
-isn't in the chain (e.g. zero-shot-only deployments).
+This module re-exports the single authoritative
+:class:`AdapterManifest` dataclass from the adapter training
+module — there is no infrastructure-side duplicate.  The loader
+adds forward-compat key filtering so ``verify_adapter_dir``
+tolerates older / newer manifest schemas without failing the
+service boot.
 """
 
 from __future__ import annotations
@@ -22,53 +27,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 
+from ncms.application.adapters.methods.joint_bert_lora import (
+    AdapterManifest,
+)
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class AdapterManifest:
-    """Parsed ``manifest.json`` for a trained adapter.
-
-    Mirrors the experiment-side dataclass but lives in NCMS's
-    infrastructure layer so production code doesn't depend on the
-    experiment package being importable.
-    """
-
-    encoder: str = "bert-base-uncased"
-    domain: str = ""
-    version: str = "v1"
-    max_length: int = 128
-
-    intent_labels: list[str] = field(default_factory=list)
-    # Legacy v6 BIO tag vocabulary.  Populated on old adapters;
-    # v7+ adapters carry an empty list here and use ``role_labels``.
-    slot_labels: list[str] = field(default_factory=list)
-    # v7 role-head vocabulary (primary / alternative / casual /
-    # not_relevant).  Empty on pre-v7 adapters — the inference
-    # path falls back to BIO slot decoding when this is empty.
-    role_labels: list[str] = field(default_factory=list)
-    topic_labels: list[str] = field(default_factory=list)
-    admission_labels: list[str] = field(default_factory=list)
-    state_change_labels: list[str] = field(default_factory=list)
-    # 6th head — query-shape intent.  Empty list means the adapter
-    # predates the v6 schema and does not ship this head; callers
-    # must gracefully treat it as "abstain".
-    shape_intent_labels: list[str] = field(default_factory=list)
-
-    lora_r: int = 8
-    lora_alpha: int = 16
-    lora_dropout: float = 0.05
-    lora_target_modules: list[str] = field(
-        default_factory=lambda: ["query", "value"],
-    )
-
-    trained_on: dict[str, int] = field(default_factory=dict)
-    gate_metrics: dict[str, float] = field(default_factory=dict)
-    trained_at: str = ""
-    corpus_hash: str = ""
 
 
 class AdapterIntegrityError(ValueError):
@@ -79,9 +44,9 @@ def load_adapter_manifest(adapter_dir: Path) -> AdapterManifest:
     """Parse ``adapter_dir/manifest.json``.
 
     Raises :class:`AdapterIntegrityError` when the file is missing
-    or malformed.  Unknown keys in the JSON are silently dropped
-    so the loader stays forward-compatible with newer manifests
-    from the experiment side.
+    or malformed.  Unknown keys in the JSON are silently dropped so
+    the loader stays forward-compatible with newer manifests from
+    training runs that add fields.
     """
     manifest_path = adapter_dir / "manifest.json"
     if not manifest_path.is_file():
@@ -95,7 +60,7 @@ def load_adapter_manifest(adapter_dir: Path) -> AdapterManifest:
             f"malformed manifest.json at {manifest_path}: {exc}",
         ) from exc
 
-    allowed = {f.name for f in AdapterManifest.__dataclass_fields__.values()}
+    allowed = set(AdapterManifest.__dataclass_fields__.keys())
     filtered = {k: v for k, v in raw.items() if k in allowed}
     unknown = set(raw) - allowed
     if unknown:
