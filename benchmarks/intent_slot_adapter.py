@@ -1,13 +1,15 @@
 """Benchmark harness helper: per-domain adapter selection.
 
-Given a benchmark domain string (``"conversational"``,
-``"software_dev"``, ``"clinical"``, or an arbitrary custom name),
-returns an :class:`IntentSlotExtractor` loaded from the matching
-adapter at ``~/.ncms/adapters/<domain>/<version>/`` (falling back
-to whatever's available).  Benchmarks call this once per run and
-hand the returned chain to ``MemoryService(intent_slot=...)``.
+Phase I.1 — this module is now a thin delegator around the
+production factory at
+:mod:`ncms.application.intent_slot_chain`.  Existing benchmark
+imports keep working unchanged; the actual path-resolution +
+chain-building logic lives at the right architectural layer
+(application, not benchmarks) so production code paths
+(CLI / MCP server / dashboard / NemoClaw hub) can reach for the
+same factory.
 
-This keeps benchmark code simple::
+Benchmark calling convention is unchanged::
 
     from benchmarks.intent_slot_adapter import get_intent_slot_chain
 
@@ -17,91 +19,30 @@ This keeps benchmark code simple::
         intent_slot=chain,
     )
 
-The helper is deliberately separate from
-``ncms.infrastructure.extraction.intent_slot.build_extractor_chain``
-so benchmarks can express "pick the adapter for this domain"
-without re-implementing path-resolution logic.
+The only intentional behavioral difference between this benchmark
+helper and :func:`ncms.application.intent_slot_chain.
+build_default_intent_slot_chain` is the default for
+``include_e5_fallback`` — benchmarks default ``False`` for
+deterministic per-cell behaviour, production defaults ``True``
+so cold-start unknown-domain requests still get an intent label.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
+from ncms.application.intent_slot_chain import (
+    _default_adapter_root,
+    find_adapter_dir,
+    list_available_adapters,
+)
 from ncms.domain.protocols import IntentSlotExtractor
 from ncms.infrastructure.extraction.intent_slot import (
     build_extractor_chain,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _default_adapter_root() -> Path:
-    """User-level adapter directory — matches the NCMS convention."""
-    override = os.environ.get("NCMS_ADAPTER_ROOT")
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".ncms" / "adapters"
-
-
-def find_adapter_dir(
-    domain: str,
-    *,
-    version: str | None = None,
-    root: Path | None = None,
-) -> Path | None:
-    """Resolve an adapter path for ``domain``.
-
-    Search order:
-
-    1. ``<root>/<domain>/<version>/`` if ``version`` is given.
-    2. Newest versioned subdirectory under ``<root>/<domain>/``.
-    3. ``<root>/<domain>/`` itself (for flat layouts).
-    4. ``None`` when nothing matches.
-
-    Callers can then pass the path to
-    :func:`ncms.infrastructure.extraction.intent_slot.
-    build_extractor_chain`.
-    """
-    root = root or _default_adapter_root()
-    domain_dir = root / domain
-    if not domain_dir.is_dir():
-        return None
-
-    if version is not None:
-        candidate = domain_dir / version
-        return candidate if candidate.is_dir() else None
-
-    versions = [p for p in domain_dir.iterdir() if p.is_dir()]
-    if not versions:
-        # Flat layout — check for the artifact files directly under domain_dir.
-        if (domain_dir / "manifest.json").is_file():
-            return domain_dir
-        return None
-
-    # Pick the newest-modified version directory (usually ``v4`` > ``v3``…).
-    versions.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return versions[0]
-
-
-def list_available_adapters(
-    *, root: Path | None = None,
-) -> dict[str, list[str]]:
-    """Enumerate adapters on disk — for benchmark logging."""
-    root = root or _default_adapter_root()
-    if not root.is_dir():
-        return {}
-    out: dict[str, list[str]] = {}
-    for domain_dir in sorted(root.iterdir()):
-        if not domain_dir.is_dir():
-            continue
-        versions = sorted(
-            p.name for p in domain_dir.iterdir() if p.is_dir()
-        )
-        if versions:
-            out[domain_dir.name] = versions
-    return out
 
 
 def get_intent_slot_chain(
@@ -118,11 +59,11 @@ def get_intent_slot_chain(
     ``include_e5_fallback`` defaults to ``False`` because benchmarks
     typically want deterministic behaviour — adding the zero-shot
     fallback makes results depend on E5 model initialization.
-    Flip to True when benchmarking cold-start behaviour.
+    Flip to ``True`` when benchmarking cold-start behaviour.
 
-    When no adapter is found for ``domain``, returns a
-    heuristic-only chain with a loud warning — benchmarks should
-    treat that as "no classifier active" rather than crash.
+    When no adapter is found for ``domain``, returns a heuristic-
+    only chain with a loud warning — benchmarks should treat that
+    as "no classifier active" rather than crash.
     """
     adapter_dir = find_adapter_dir(domain, version=version, root=root)
     if adapter_dir is None:
