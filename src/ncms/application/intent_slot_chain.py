@@ -41,11 +41,15 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ncms.domain.protocols import IntentSlotExtractor
 from ncms.infrastructure.extraction.intent_slot import (
     build_extractor_chain,
 )
+
+if TYPE_CHECKING:
+    from ncms.config import NCMSConfig
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +194,70 @@ def build_default_intent_slot_chain(
     )
 
 
+def maybe_build_chain_for_config(
+    config: NCMSConfig,
+) -> IntentSlotExtractor | None:
+    """Build the SLM chain from an :class:`NCMSConfig`, or return ``None``.
+
+    The single entry-point production constructors (CLI / MCP /
+    dashboard / NemoClaw hub) use to plumb the SLM through to
+    :class:`MemoryService`.  Returns ``None`` when the SLM is
+    deliberately off (``slm_enabled=False`` or
+    ``default_adapter_domain=None``) — in which case
+    :class:`IngestionPipeline` short-circuits the SLM extraction
+    and falls through to the heuristic chain.
+
+    Reads from the config:
+      * ``slm_enabled`` — master flag.  False → return None.
+      * ``default_adapter_domain`` — single-tenant adapter
+        selector (Phase I.1b).  None → return None with a
+        one-time info log explaining why.
+      * ``slm_confidence_threshold`` — passed through.
+      * ``slm_e5_fallback_enabled`` — passed through.
+      * ``slm_checkpoint_dir`` — when set, pinned via
+        ``find_adapter_dir`` lookup; otherwise the newest
+        version under ``~/.ncms/adapters/<domain>/`` wins.
+
+    Production callers::
+
+        chain = maybe_build_chain_for_config(config)
+        svc = MemoryService(
+            store=store, index=index, graph=graph, config=config,
+            intent_slot=chain,  # None or IntentSlotExtractor
+        )
+    """
+    if not config.slm_enabled:
+        return None
+    if not config.default_adapter_domain:
+        logger.info(
+            "SLM enabled but default_adapter_domain unset — staying "
+            "on heuristic chain.  Set NCMS_DEFAULT_ADAPTER_DOMAIN to "
+            "a deployed adapter (e.g. 'conversational') to activate.",
+        )
+        return None
+
+    # Pinned checkpoint dir overrides domain-based discovery when
+    # set — useful for staging/canary deployments that want a
+    # specific adapter version.
+    root: Path | None = None
+    version: str | None = None
+    checkpoint_override = getattr(config, "slm_checkpoint_dir", None)
+    if checkpoint_override:
+        root = Path(checkpoint_override).expanduser().parent.parent
+        version = Path(checkpoint_override).name
+
+    return build_default_intent_slot_chain(
+        domain=config.default_adapter_domain,
+        version=version,
+        root=root,
+        confidence_threshold=config.slm_confidence_threshold,
+        include_e5_fallback=config.slm_e5_fallback_enabled,
+    )
+
+
 __all__ = [
     "build_default_intent_slot_chain",
     "find_adapter_dir",
     "list_available_adapters",
+    "maybe_build_chain_for_config",
 ]

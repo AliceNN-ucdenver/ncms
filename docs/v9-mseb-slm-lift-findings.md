@@ -312,6 +312,72 @@ either:
   * the SLM's per-span semantics don't align with retrieval
     relevance (H.3 — role_head needs retraining).
 
+## The deeper insight: did the legacy regex EVER lift retrieval?
+
+The H.1/H.2 zero-lift result reframes a question worth asking
+explicitly: did the **legacy** regex path the SLM is replacing ever
+contribute retrieval lift either?  Audit of default weights:
+
+| Retrieval signal driven by labels | Default weight | Effect |
+|---|---:|---|
+| Hierarchy bonus (regex or SLM L2 nodes) | 0.0 | Disabled since Phase 4 |
+| Reconciliation supersession penalty | 0.3 | **Active, both paths** |
+| Reconciliation conflict penalty | 0.15 | Active, both paths |
+| Temporal scoring (observed_at) | 0.2 | Active, both paths |
+| Intent alignment (Phase H.1) | 0.5 | New, 0 MSEB movement |
+| State_change alignment (Phase H.2) | 0.5 | New, 0 MSEB movement |
+| Role-grounding (Phase H.3) | 0.0 | Off by default |
+
+**Conclusion: the regex path's retrieval contribution was always
+the same as the SLM's — zero direct bonus paths moved metrics.**
+The reconciliation penalty was the only path on by default that
+labels affect, and Phase G showed it was over-firing in the wrong
+direction.
+
+So what's the SLM actually buying us?  Not retrieval-time scoring
+lift — that was always near-zero from labels alone.  The SLM's
+value is at INGEST time:
+
+  1. **Better L1 → L2 promotion.**  The state_change_head and
+     role_head together emit cleaner signals than the
+     "Entity: key = value" regex about which atomic fragments
+     should produce L2 entity_state nodes.  Better L2 nodes are
+     more findable by BM25/SPLADE because they're shorter,
+     vocabulary-dense, and grounded on the canonical slot value.
+  2. **Higher-quality reconciliation.**  state_change=retirement
+     reliably triggers the supersession edge; the regex baseline
+     missed many implicit retirements ("I quit smoking" doesn't
+     match "X = NULL" patterns).  Better supersession chains
+     mean Phase G's intent-gated penalty has more correct
+     candidates to penalise on CURRENT_STATE_LOOKUP.
+  3. **Topic-driven domain expansion.**  topic_head auto-appends
+     a topic label to ``Memory.domains``, widening the surface
+     area of the domain filter without manual configuration.
+     This is the biggest single-knob retrieval impact — but it
+     showed in Phase F as a NEGATIVE (more collisions on shared
+     topics).  The Phase G ablation A confirmed this is benign
+     when other signals are calibrated.
+  4. **Confident admission decisions.**  admission_head replaces
+     four regex heuristics that approximated importance.  Better
+     admission means fewer junk memories pollute the candidate
+     set at retrieval time — but admission is currently OFF in
+     MSEB by design (so it can't drop gold rows into ephemeral
+     cache).
+
+The H.1/H.2/H.3 series built **scoring infrastructure** that
+will help when:
+  * gold queries explicitly ask for habitual / preference patterns
+    (real conversational deployments, not MSEB v1's temporal-shape
+    gold)
+  * role_head retraining shifts "syntactically primary" toward
+    "answer-relevance primary"
+  * a new query-side classifier emits per-query labels that align
+    with the existing SLM head outputs (a likely Phase H follow-on)
+
+None of which is wasted work — it's the framework deployments
+will reach for first when their gold sets cover preference/pattern
+queries.  But MSEB v1 was the wrong evaluator for the H series.
+
 **v9 ship readiness:**
   * Phase G recovers the Phase F regression.  Production cutover
     is now safe at the Phase G floor (sw 0.7455 / clin 0.6724 /

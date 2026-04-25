@@ -823,12 +823,33 @@ async def run_dashboard(
             cache_dir=config.model_cache_dir,
         )
 
+    # 5-head SLM chain (Phase I.1b — single-tenant adapter selection).
+    from ncms.application.intent_slot_chain import (
+        maybe_build_chain_for_config,
+    )
+
+    intent_slot = maybe_build_chain_for_config(config)
+    if intent_slot is not None:
+        logger.info(
+            "SLM chain loaded: domain=%s threshold=%.2f e5_fallback=%s",
+            config.default_adapter_domain,
+            config.slm_confidence_threshold,
+            config.slm_e5_fallback_enabled,
+        )
+    else:
+        logger.info(
+            "SLM chain inactive (slm_enabled=%s, default_adapter_domain=%r) "
+            "— ingestion uses heuristic fallback",
+            config.slm_enabled, config.default_adapter_domain,
+        )
+
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
         event_log=event_log, splade=splade, admission=admission,
         reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
         reranker=reranker,
+        intent_slot=intent_slot,
     )
     snapshot_svc = SnapshotService(
         store=store,

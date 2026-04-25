@@ -267,6 +267,18 @@ class NCMSConfig(BaseSettings):
     # Soft latency limit on the SLM forward pass.  Exceeding it
     # emits a warning but does not block ingest.
     slm_latency_budget_ms: float = 200.0
+    # Phase I.1b — single-tenant adapter selection.  Production
+    # constructors (CLI / MCP / dashboard / NemoClaw hub) read this
+    # to load ONE adapter at startup via
+    # :func:`ncms.application.intent_slot_chain.
+    # build_default_intent_slot_chain`.  ``None`` means "don't load
+    # any adapter" — the SLM stays dark even when ``slm_enabled=True``,
+    # and ingestion falls through to the heuristic chain.  Set this
+    # to a domain name (``conversational`` / ``software_dev`` /
+    # ``clinical`` today, arbitrary custom names supported) at
+    # deployment time via ``NCMS_DEFAULT_ADAPTER_DOMAIN`` to make
+    # the SLM the primary classifier in production.
+    default_adapter_domain: str | None = None
 
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False

@@ -330,11 +330,25 @@ def load(
                 cache_dir=config.model_cache_dir,
             )
 
+        # 5-head SLM chain (Phase I.1b).  None when slm_enabled=False
+        # or default_adapter_domain unset; ingestion falls back to
+        # heuristic chain in that case.
+        from ncms.application.intent_slot_chain import (
+            maybe_build_chain_for_config,
+        )
+        intent_slot = maybe_build_chain_for_config(config)
+        if intent_slot is not None:
+            console.print(
+                f"[green]SLM chain loaded:[/] "
+                f"domain={config.default_adapter_domain} "
+                f"threshold={config.slm_confidence_threshold:.2f}",
+            )
+
         memory_svc = MemoryService(
             store=store, index=index, graph=graph, config=config,
             splade=splade, admission=admission,
             reconciliation=reconciliation, episode=episode,
-            reranker=reranker,
+            reranker=reranker, intent_slot=intent_slot,
         )
         await GraphService(store=store, graph=graph).rebuild_from_store()
         loader = KnowledgeLoader(memory_svc)
@@ -660,11 +674,23 @@ def watch(
                 cache_dir=config.model_cache_dir,
             )
 
+        # 5-head SLM chain (Phase I.1b)
+        from ncms.application.intent_slot_chain import (
+            maybe_build_chain_for_config,
+        )
+        intent_slot = maybe_build_chain_for_config(config)
+        if intent_slot is not None:
+            console.print(
+                f"[green]SLM chain loaded:[/] "
+                f"domain={config.default_adapter_domain} "
+                f"threshold={config.slm_confidence_threshold:.2f}",
+            )
+
         memory_svc = MemoryService(
             store=store, index=index, graph=graph, config=config,
             splade=splade, admission=admission,
             reconciliation=reconciliation, episode=episode,
-            reranker=reranker,
+            reranker=reranker, intent_slot=intent_slot,
         )
         await GraphService(store=store, graph=graph).rebuild_from_store()
 

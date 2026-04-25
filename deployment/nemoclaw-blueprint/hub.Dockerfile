@@ -96,14 +96,27 @@ RUN chmod +x /app/entrypoint-hub.sh
 RUN mkdir -p /app/data
 
 # Environment defaults — Production bundle (Phases 1-8 + P2 SLM)
+#
+# Master feature flags (Phase E flag refactor consolidated 7 per-phase
+# booleans into two masters):
+#   NCMS_TEMPORAL_ENABLED — turns on TLG, reconciliation, episodes,
+#       intent classification, intent routing, temporal scoring,
+#       hierarchy bonus.  Replaces NCMS_TLG_ENABLED /
+#       NCMS_RECONCILIATION_ENABLED / NCMS_EPISODES_ENABLED /
+#       NCMS_INTENT_CLASSIFICATION_ENABLED / NCMS_INTENT_ROUTING_ENABLED.
+#   NCMS_SLM_ENABLED — turns on the 5-head LoRA classifier at ingest
+#       (admission / state_change / topic / intent / role).  Replaces
+#       NCMS_INTENT_SLOT_ENABLED.
+#
+# NCMS_DEFAULT_ADAPTER_DOMAIN selects which v9 adapter to load.  The
+# hub is single-tenant (Phase I.1b decision); set to ``software_dev``
+# because the hub serves NemoClaw agents which produce architecture
+# decisions / code patterns / engineering observations.
 ENV NCMS_DB_PATH=/app/data/ncms.db \
     NCMS_INDEX_PATH=/app/data/index \
     NCMS_SPLADE_ENABLED=true \
-    NCMS_EPISODES_ENABLED=true \
-    NCMS_INTENT_CLASSIFICATION_ENABLED=true \
     NCMS_RERANKER_ENABLED=true \
     NCMS_ADMISSION_ENABLED=true \
-    NCMS_RECONCILIATION_ENABLED=true \
     NCMS_CONTENT_CLASSIFICATION_ENABLED=true \
     NCMS_CONTRADICTION_DETECTION_ENABLED=true \
     NCMS_TEMPORAL_ENABLED=true \
@@ -116,8 +129,9 @@ ENV NCMS_DB_PATH=/app/data/ncms.db \
     NCMS_DREAM_CYCLE_ENABLED=true \
     NCMS_BULK_IMPORT_QUEUE_SIZE=10000 \
     NCMS_MODEL_CACHE_DIR=/root/.cache/huggingface \
-    NCMS_INTENT_SLOT_ENABLED=true \
-    NCMS_INTENT_SLOT_POPULATE_DOMAINS=true
+    NCMS_SLM_ENABLED=true \
+    NCMS_SLM_POPULATE_DOMAINS=true \
+    NCMS_DEFAULT_ADAPTER_DOMAIN=software_dev
 
 EXPOSE 9080 8420
 

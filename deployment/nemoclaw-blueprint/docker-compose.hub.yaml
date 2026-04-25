@@ -32,16 +32,25 @@ services:
       NCMS_LLM_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
       NCMS_CONSOLIDATION_KNOWLEDGE_MODEL: "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
       NCMS_CONSOLIDATION_KNOWLEDGE_API_BASE: "${INFERENCE_ENDPOINT:-http://host.docker.internal:8000/v1}"
-      # Features — Production bundle (Phases 1-4)
+      # Features — Production bundle.  Phase E flag refactor
+      # consolidated 7 per-phase booleans into two masters
+      # (NCMS_TEMPORAL_ENABLED + NCMS_SLM_ENABLED).  See hub.Dockerfile
+      # for the full doc — and note that NCMS_INTENT_SLOT_ENABLED /
+      # NCMS_RECONCILIATION_ENABLED / NCMS_EPISODES_ENABLED /
+      # NCMS_INTENT_CLASSIFICATION_ENABLED are DEAD env vars
+      # (silently ignored) since that refactor.
       NCMS_SPLADE_ENABLED: "true"
-      NCMS_EPISODES_ENABLED: "true"
-      NCMS_INTENT_CLASSIFICATION_ENABLED: "true"
       NCMS_RERANKER_ENABLED: "true"
       NCMS_ADMISSION_ENABLED: "true"
-      NCMS_RECONCILIATION_ENABLED: "true"
       NCMS_CONTRADICTION_DETECTION_ENABLED: "true"
       NCMS_CONTENT_CLASSIFICATION_ENABLED: "true"
       NCMS_TEMPORAL_ENABLED: "true"
+      # 5-head SLM master flag + adapter selection (Phase I.1b).
+      # Hub is single-tenant; software_dev adapter handles the
+      # NemoClaw agents' architecture / code-pattern content.
+      NCMS_SLM_ENABLED: "true"
+      NCMS_SLM_POPULATE_DOMAINS: "true"
+      NCMS_DEFAULT_ADAPTER_DOMAIN: "software_dev"
       # Maintenance & Learning
       NCMS_MAINTENANCE_ENABLED: "true"
       NCMS_SEARCH_FEEDBACK_ENABLED: "true"

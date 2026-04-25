@@ -116,6 +116,30 @@ async def create_ncms_services(
         )
         logger.info("Cross-encoder reranker enabled: %s", config.reranker_model)
 
+    # 5-head SLM chain (Phase I.1b — single-tenant adapter selection).
+    # Returns None when slm_enabled=False or default_adapter_domain
+    # unset, in which case ingestion falls through to the heuristic
+    # chain.  Loud startup log either way so operators can verify
+    # which classifier path is hot.
+    from ncms.application.intent_slot_chain import (
+        maybe_build_chain_for_config,
+    )
+
+    intent_slot = maybe_build_chain_for_config(config)
+    if intent_slot is not None:
+        logger.info(
+            "SLM chain loaded: domain=%s threshold=%.2f e5_fallback=%s",
+            config.default_adapter_domain,
+            config.slm_confidence_threshold,
+            config.slm_e5_fallback_enabled,
+        )
+    else:
+        logger.info(
+            "SLM chain inactive (slm_enabled=%s, default_adapter_domain=%r) "
+            "— ingestion uses heuristic fallback",
+            config.slm_enabled, config.default_adapter_domain,
+        )
+
     # Application services
     memory_svc = MemoryService(
         store=store, index=index, graph=graph, config=config,
@@ -123,6 +147,7 @@ async def create_ncms_services(
         reconciliation=reconciliation, episode=episode,
         intent_classifier=intent_classifier,
         reranker=reranker,
+        intent_slot=intent_slot,
     )
 
     # Section service (Phase 4 content-aware ingestion)
