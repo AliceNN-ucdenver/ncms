@@ -1,9 +1,9 @@
 # Causal-Temporal Linguistic Geometry (CTLG)
 
-**Status:** design — post-v7.2 pivot
-**Supersedes:** v6 BIO slot-tagging experiment, v7 span-role slot extractor, v7.1/v7.2 shape_intent classification experiment
+**Status:** design — post-v8 pivot
+**Supersedes:** v6 BIO slot-tagging experiment, v7 span-role slot extractor, v7.1/v7.2 shape_intent classification experiment, v8 joint 6-head training experiment
 **Owner:** NCMS core
-**Last revised:** 2026-04-23
+**Last revised:** 2026-04-25
 
 ---
 
@@ -11,12 +11,14 @@
 
 CTLG replaces the query-side `shape_intent` classifier with a **compositional semantic parser** built on two primitives:
 
-1. A **sequence-labeled cue tagger** (the repurposed 6th SLM head) that marks tokens with typed linguistic cues — causal, temporal, ordinal, modal, referent — based on the PDTB/AltLex/TempEval discourse literature rather than ad-hoc template labels.
+1. A **sequence-labeled cue tagger** that marks tokens with typed linguistic cues — causal, temporal, ordinal, modal, referent — based on the PDTB/AltLex/TempEval discourse literature rather than ad-hoc template labels.
 2. A **rules-first synthesizer** that composes tagged cues into a structured `TLGQuery` logical form (axis + relation + referent + subject + scope + scenario), with LLM fallback for queries whose cue pattern doesn't match a known rule.
 
-The ingest side stays on the already-working 5-head SLM (intent / topic / admission / state_change / role) + authoritative catalog-driven gazetteer. The **catalog becomes self-evolving**: novel surfaces that force an LLM fallback are captured, classified by the LLM, reviewed, and merged back into the catalog so next time the gazetteer handles them natively.
+**Architectural correction (post-v8):** the cue tagger ships as a **dedicated CTLG adapter** — its own BERT+LoRA model, trained independently of the 5-head content SLM.  v8 attempted to add the cue tagger as a 6th head on the v9 encoder and saturated under joint training (mixed-shape targets — per-token BIO sequence labeling vs per-CLS classification — competed for encoder capacity).  That experiment closed the "joint 6-head" door.  The new plan: **one dedicated CTLG adapter, one shared role**.  The 5-head SLM keeps ingest-time content classification (intent / topic / admission / state_change / role); the CTLG adapter owns cue tagging end-to-end (both query-time semantic parsing AND ingest-time causal-edge extraction).  No "two CTLG adapters" — there's exactly one cue tagger, dedicated.
 
-The zone graph (L1 atomic → L2 entity_state → L3 episode → L4 abstract) gains one new edge type, `CAUSED_BY`, populated by an ingest-time causal cue tagger. This enables the dispatcher to walk causal chains directly instead of inferring them from co-occurrence.
+The ingest side stays on the already-working 5-head SLM + authoritative catalog-driven gazetteer.  The **catalog becomes self-evolving**: novel surfaces that force an LLM fallback are captured, classified by the LLM, reviewed, and merged back into the catalog so next time the gazetteer handles them natively.
+
+The zone graph (L1 atomic → L2 entity_state → L3 episode → L4 abstract) gains one new edge type, `CAUSED_BY`, populated by the CTLG adapter at ingest.  This enables the dispatcher to walk causal chains directly instead of inferring them from co-occurrence.
 
 Counterfactual reasoning is a first-class axis of the query form, dispatched as a skip-edge graph traversal over the existing supersedes chain — no new infrastructure, just a `scenario` parameter.
 
@@ -51,9 +53,10 @@ This pattern doesn't replicate for the 5 content heads because memory content **
 
 ### 1.3 Architectural conclusion
 
-- The SLM encoder + LoRA is the **right substrate** for classifying memory content surface features.
-- The 6th head's task was misaligned. Shape_intent needed **semantic parsing**, not classification.
+- The SLM encoder + LoRA is the **right substrate** for classifying memory content surface features (the v9 5-head SLM).
+- The original 6th-head plan was misaligned in TWO ways: shape_intent (v7.x) tried classification when the task is semantic parsing; v8 tried jointly training a sequence-label head alongside the 5 classification heads, and the mixed-shape targets saturated the encoder.
 - Cue-tagging (sequence labeling) + compositional synthesis is the **canonical architecture** for this class of task in the NLP literature (PDTB, CATENA, MAVEN-ERE, TORQUE).
+- Sequence labeling needs its **own adapter** to avoid the v8 mixed-shape saturation — same backbone family for tooling reuse, separate weights so the per-token BIO loss can train cleanly without competing for shared encoder capacity.
 
 ---
 
@@ -63,7 +66,7 @@ This pattern doesn't replicate for the 5 content heads because memory content **
 
 ```
 [query]
-  ↓  SLM encoder + 6th head (shape_cue_head)
+  ↓  CTLG adapter  (dedicated BERT+LoRA, single BIO sequence-labeling head)
   ↓
 [sequence of (token, cue_label) pairs]
   ↓  Compositional synthesizer (rules, explainable)
@@ -76,6 +79,15 @@ This pattern doesn't replicate for the 5 content heads because memory content **
   ↓
 [retrieval result]
 ```
+
+The CTLG adapter is loaded alongside the 5-head SLM at startup;
+both share the same factory pattern (``find_adapter_dir`` lookup
+under ``~/.ncms/adapters/<domain>/ctlg-vN/``) but are separate
+models with separate weights.  The 5-head SLM operates on memory
+content at ingest; the CTLG adapter operates on queries at search
+time AND on memory content at ingest (for ``CAUSED_BY`` edge
+extraction).  Two adapters in the runtime — one per cognitive
+role, NOT two-for-CTLG.
 
 ### 2.2 The `TLGQuery` form
 
@@ -115,9 +127,39 @@ class TLGQuery:
 
 A single enum can't capture queries like "what would have been our current database if we'd stayed with CockroachDB?" — but a compositional form can: `axis=modal, relation=would_be_current_if, referent=CockroachDB, scenario=preserve_crdb_supersession`.
 
-### 2.3 The cue tagger (6th head, v8 shape)
+### 2.3 The cue tagger (dedicated CTLG adapter)
 
-**Model shape:** the same BERT+LoRA encoder. The 6th head changes from `Linear(hidden, 13)` pooled-classification to `Linear(hidden, n_cue_labels)` applied per-token over the full sequence output `(B, L, H)`. **This is exactly the v6 BIO slot_head machinery** — just pointed at cue labels instead of slot labels. No new infrastructure.
+**Architectural decision (post-v8 saturation):** the cue tagger is a
+**dedicated adapter**, NOT a 6th head on the v9 encoder.  v8 (and its
+v8.1 retry with rebalanced loss / curriculum) attempted to add this
+exact head to the joint 5-head model and saturated — per-token BIO
+sequence labeling and per-CLS classification competed for encoder
+capacity, training loss oscillated, and several previously-healthy
+heads regressed.  See ``docs/completed/failed-experiments/v8-joint-
+training-saturation.md`` for the full retro.  The lesson:
+**mixed-shape targets cannot share a LoRA-adapted encoder cleanly
+under joint training**.  CTLG forks training while keeping the
+runtime architecture coherent — one adapter per cognitive role,
+chained via the existing ``ChainedExtractor`` in
+``ncms.infrastructure.extraction.intent_slot.factory``.
+
+**Model shape:** a fresh BERT+LoRA model — same backbone family as
+the 5-head SLM (BERT-base, rank-16 LoRA) for tokenizer / cache /
+deployment-tooling reuse, but with **only the cue head**:
+``Linear(hidden, n_cue_labels)`` applied per-token over the full
+sequence output ``(B, L, H)``.  **This is exactly the v6 BIO
+slot_head machinery** — just pointed at cue labels instead of slot
+labels and trained alone.  Training in isolation sidesteps the v8
+saturation: no other heads compete for the encoder's gradient
+budget.
+
+**Inference cost:** two forward passes per query (5-head SLM +
+CTLG adapter) — accepted because v8 proved one pass with both
+roles costs more in regression risk than two passes cost in
+latency.  Each pass is ~20-65 ms on MPS / CUDA; cue tagging only
+needs to run on memories at ingest (causal-edge extraction) and
+on queries at search time (TLGQuery synthesis), so the per-search
+overhead is bounded.
 
 **Label vocabulary** (~30 BIO labels, anchored in PDTB 3.0 + AltLex + TLG needs):
 
@@ -351,7 +393,7 @@ Adding a typed `CAUSED_BY` edge type with directional semantics `(effect_node) C
 
 ### 4.3 Ingest-time causal cue tagger
 
-The **same 6th head** tags cues on both query-voice queries AND memory-voice content. At ingest, the cue tagger runs on each memory; any span tagged CAUSAL_EXPLICIT / CAUSAL_ALTLEX along with flanking REFERENT spans triggers `CAUSED_BY` edge creation between the corresponding L2 nodes.
+The **same CTLG adapter** tags cues on both query-voice queries AND memory-voice content. At ingest, the cue tagger runs on each memory; any span tagged CAUSAL_EXPLICIT / CAUSAL_ALTLEX along with flanking REFERENT spans triggers `CAUSED_BY` edge creation between the corresponding L2 nodes.
 
 ```python
 # In ingestion pipeline (Fix 2 extension)
@@ -394,7 +436,7 @@ No new infrastructure — pure graph traversal with a skip-filter. The existing 
 
 ## 5. Training-data plan
 
-### 5.1 Query-voice cue gold (for the 6th head, query side)
+### 5.1 Query-voice cue gold (CTLG adapter — query side)
 
 **Target**: ~3000 rows across 12 TLG shape families, each tagged with per-token BIO cue labels.
 
@@ -407,7 +449,7 @@ No new infrastructure — pure graph traversal with a skip-filter. The existing 
 **Stored at**: `adapters/corpora/gold_cue_tagging_software_dev.jsonl`
 **Schema**: one object per row with `text`, `tokens`, `cue_tags`, `domain`, `split`, `source`, `note`
 
-### 5.2 Memory-voice cue gold (for the 6th head, ingest side)
+### 5.2 Memory-voice cue gold (CTLG adapter — ingest side)
 
 **Target**: ~2000 memories tagged with per-token BIO cue labels, specifically flagging causal and temporal cues that would populate CAUSED_BY edges.
 
@@ -603,16 +645,33 @@ benchmarks/
 
 **Exit criterion:** 5.3K labeled rows, balanced across cue families.
 
-### Phase 3 — Model changes (week 2)
+### Phase 3 — Model architecture (week 2) — REVISED post-v8
 
-**Deliverables:**
-- [ ] Add `shape_cue_head` to `LoraJointModel` (alongside — not replacing — v7.x `role_head`)
-- [ ] Update `AdapterManifest` with `cue_labels` field
-- [ ] Update training loop: per-token CE loss for cue tagging
-- [ ] Update inference: produce `cue_tags: tuple[TaggedToken, ...]`
-- [ ] Wire deprecation shim: `shape_intent` computed from `cue_tags + synthesize()`
+**Deliverables (dedicated CTLG adapter, NOT shared encoder):**
+- [ ] New module ``ncms.application.adapters.methods.cue_tagger`` —
+      a single-head BERT+LoRA model with ONLY the per-token BIO
+      classifier (no other heads).  Backbone parity with the v9
+      5-head SLM (BERT-base, rank-16 LoRA) for tooling reuse.
+- [ ] New ``CTLGAdapterManifest`` type with ``cue_labels`` field
+      (~30 BIO labels).  Lives at ``~/.ncms/adapters/<domain>/
+      ctlg-vN/manifest.json``.
+- [ ] Independent training loop — per-token CE loss only; no
+      multi-task balancing.  Trains in isolation so the v8
+      saturation mode cannot recur.
+- [ ] Inference wrapper produces ``cue_tags: tuple[TaggedToken, ...]``
+      via the existing ``ChainedExtractor`` protocol (the cue tags
+      land on ``ExtractedLabel.cue_tags``, which is already wired).
+- [ ] Production factory hook in ``ncms.application.intent_slot_chain``
+      to load both adapters in sequence and merge outputs.
 
-**Exit criterion:** v8 training kicks off; model saves + loads correctly.
+**Exit criterion:** CTLG adapter trains alone, saves + loads
+correctly, and chains cleanly with the 5-head SLM at inference.
+
+**Out-of-scope (closed by v8 saturation):**
+- ❌ Adding a 6th head to the v9 LoraJointModel (v8/v8.1 both
+      saturated; mixed-shape targets cannot share encoder weights
+      under joint training)
+- ❌ Re-training v9 with cue head added (same failure mode)
 
 ### Phase 4 — Synthesizer implementation (week 2-3)
 
@@ -699,9 +758,9 @@ CTLG reframes the query side as **sequence labeling + compositional synthesis**,
 - **Explainability** — every TLGQuery has a trace back to cue tags + matched rule
 - **Counterfactual reasoning** — first-class axis, falls out of the query form
 - **Self-improving** — LLM fallback + review loop feeds v8.1/v8.2 naturally
-- **Correct task shape** — the 6th head finally does what the other 5 do: SLM work that matches the SLM's capabilities
+- **Correct task shape** — the cue tagger finally does what the v9 5 heads do: SLM work that matches the model's capabilities, but in its own dedicated adapter so the per-token BIO loss doesn't fight the per-CLS classification losses
 
-And critically, the pivot is **incremental**. The 5 content heads are unchanged. The ingest pipeline is extended, not rewritten. The zone graph gains an edge type, not a layer. The dispatcher gets new walkers, not a new dispatcher. Every phase produces a shippable artifact.
+And critically, the pivot is **incremental**. The 5 content heads are unchanged. The 5-head SLM ships unmodified. The CTLG adapter is a **new sibling adapter** loaded alongside, NOT a re-train of v9. The ingest pipeline is extended, not rewritten. The zone graph gains an edge type, not a layer. The dispatcher gets new walkers, not a new dispatcher. Every phase produces a shippable artifact.
 
 ## Appendix A — Bibliography
 
