@@ -54,7 +54,15 @@ def adapters_list() -> None:
     from rich.console import Console
     from rich.table import Table
 
-    from ncms.application.adapters.schemas import DOMAIN_MANIFESTS
+    from ncms.application.adapters.schemas import (
+        DOMAIN_MANIFESTS,
+        _ensure_hydrated,
+    )
+
+    # Iterating DOMAIN_MANIFESTS directly bypasses the lazy-hydration
+    # path in get_domain_manifest, so trigger hydration explicitly
+    # here to surface the v9 default_version + v9 paths.
+    _ensure_hydrated()
 
     console = Console()
     table = Table(title="NCMS adapters")

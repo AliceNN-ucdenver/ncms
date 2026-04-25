@@ -33,6 +33,17 @@ openapi_letta.json
 # AI assistant session data (local only — contains conversation transcripts)
 .claude/
 
+# Auto-generated CLAUDE.md alias (some IDEs / Claude variants drop a
+# duplicate AGENTS.md; CLAUDE.md is the tracked source of truth).
+AGENTS.md
+
+# v9 trained adapter checkpoints (~70-75 KB heads + LoRA weights per
+# domain; ~7 MB total).  Regeneratable from the v9 SDG corpora via
+# ``ncms adapters train --domain X --version v9``.  We commit the
+# inputs (corpora) and the trainer code; the binary outputs are
+# reproducible artifacts and stay out of git.
+adapters/checkpoints/
+
 # P2 intent-slot experiment artefacts.
 #
 # Full fine-tune checkpoints (~400 MB each) and autolabeler backups
