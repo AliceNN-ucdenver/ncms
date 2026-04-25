@@ -472,3 +472,88 @@ three heads stay stable.  CLI default raised to 10 epochs.
   forcing one topic per archetype, but loses the gazetteer-
   grounded variety.
 
+
+### Judge-bias addendum (B'.7, 2026-04-24)
+
+The B'.5 judge ran against Spark Nemotron — the same model that
+generated the corpus.  B'.7 re-ran the judge against OpenAI
+gpt-4o (different model family) on the same 60-sample stratified
+draws.  Results disagree significantly:
+
+| Domain | Nemotron pct_faithful | gpt-4o pct_faithful (adjusted) | Δ |
+|---|---|---|---|
+| clinical       | 83.3% | 51.2% | −32 pts |
+| conversational | 50.0% | 58.5% |  +9 pts |
+| software_dev   | 60.0% | 70.0% | +10 pts |
+
+(gpt-4o numbers exclude rows where the LLM call returned
+malformed output — about 17–20 per domain — which counts as
+``failed`` separately from genuine ``unfaithful`` verdicts.)
+
+**Same-model-family judge significantly overrates clinical.**
+Cross-domain the pattern is mixed; conversational + software_dev
+slightly UNDER-rated by Nemotron, clinical heavily over-rated.
+The clinical gap is consistent with Nemotron sharing training
+data with the kind of medical prose it generates — it accepts
+its own register as correct where gpt-4o flags it as registrically
+ambiguous.
+
+**The unfaithful complaints from gpt-4o are mostly real
+archetype-design issues, not pedantry:**
+
+* Clinical: medication ✕ frequency mismatches ("Began
+  clobetasol *yearly*" — clobetasol is a daily topical steroid;
+  the gazetteer permits any (medication, frequency) pair without
+  medical-compatibility constraints).
+* Conversational: ``choice_object_vs_alternative`` pairs cross-
+  category alternatives ("hot chocolate over Kyoto") because
+  the archetype doesn't constrain ``alternative`` to share the
+  primary's ``topic_hint``.
+* Software_dev: nonsensical subjects ("zoroastrianism adopted
+  keras over huggingface") because the prompt allows the LLM
+  to invent a subject and Nemotron sometimes picks pathological
+  ones.
+
+These are archetype-design fixes (B'.8+):
+
+1. Same-topic constraint on ``alternative`` slot in choice
+   archetypes.
+2. Per-medication frequency-compatibility table for the clinical
+   gazetteer.
+3. Subject vocabulary constraint in the SDG prompt
+   ("speaker is a clinician / engineer / individual user;
+   not a religion / company name / abstract concept").
+
+**Why all rows still train fine:** labels remain correct by
+archetype construction.  An "unfaithful" row just has weaker
+prose-to-archetype alignment; the trainer still sees the right
+label and the right entity placement.  Gate metrics continue
+to land at ≥0.94 F1 on three of four heads (clinical topic
+the lone exception, B'.6 fix already applied).
+
+**Lesson logged:** any future SDG corpus quality claim must
+include a different-judge cross-check.  Same-model-family
+judges produce systematically biased verdicts.
+
+### Conversational temp=0.5 regen (B'.7, 2026-04-24)
+
+After observing that conversational's main failure mode at
+temp=0.8 was ungrammatical compositions ("every in the morning"),
+re-generated the conversational corpus at temp=0.5 and re-trained.
+Per-head F1 lifted across the board:
+
+| Head | temp=0.8 v9 | temp=0.5 v9 | Δ |
+|---|---|---|---|
+| intent       | 0.965 | 0.995 | +0.030 |
+| topic        | 0.815 | 0.856 | +0.041 |
+| admission    | 0.946 | 1.000 | +0.054 |
+| state_change | 0.985 | 0.996 | +0.011 |
+
+Loss curve also cleaner (4.94 → 0.40 at temp=0.8 vs 4.98 → 0.11
+at temp=0.5).  The lower temperature produces less surface
+diversity but cleaner grammar, which is the better trade for
+training data on small archetype taxonomies.  Generation yield
+slightly down (93.3% → 92.3%) — fewer rows passed entity-
+presence validation, suggesting Nemotron at lower temp adheres
+more strictly to entity placement.
+
