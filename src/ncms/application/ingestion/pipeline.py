@@ -1189,24 +1189,27 @@ class IngestionPipeline:
             # store_memory) is sufficient for vocabulary seeding.
             return None
 
-        # SLM-first: when the intent-slot classifier is confident on
-        # the state_change head, its prediction wins.  Falls through
-        # to the regex path only when the SLM abstained or the flag
-        # is off.  This replaces brittle YAML-frontmatter detection
-        # (which false-positives on ADR templates) with the learned
-        # classifier.
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
-        slm_state = slm_label.get("state_change")
-        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
-        slm_confident = (
-            slm_state in {"declaration", "retirement"}
-            and slm_state_conf
-            >= self._config.slm_confidence_threshold
+        # Phase I.2 — SLM-first state-change detection via the shared
+        # ``slm_state_change_decision`` helper.  When the LoRA adapter
+        # ran confidently, its verdict is authoritative (including
+        # ``"none"`` — that's a real "no change here" answer, not an
+        # invitation to second-guess with regex).  The regex path is
+        # only reached when SLM didn't run (cold-start without
+        # adapter, or below threshold).
+        from ncms.domain.intent_slot_taxonomy import (
+            slm_state_change_decision,
         )
-        if slm_confident:
-            _has_state_change = True
-            _has_state_declaration = False  # SLM already decided
+
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        slm_decision = slm_state_change_decision(
+            slm_label,
+            threshold=self._config.slm_confidence_threshold,
+        )
+        if slm_decision is not None:
+            _has_state_change, _has_state_declaration = slm_decision
         else:
+            # Cold-start regex/heuristic fallback — only reached when
+            # the LoRA adapter isn't loaded for this domain.
             _has_state_change = (
                 admission_features is not None
                 and hasattr(admission_features, "state_change_signal")

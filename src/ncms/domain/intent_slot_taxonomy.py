@@ -94,6 +94,64 @@ def build_slot_bio_labels(domain: str) -> list[str]:
     return deduped
 
 
+def slm_state_change_decision(
+    slm_label: dict | None,
+    *,
+    threshold: float,
+    primary_method: str = "joint_bert_lora",
+) -> tuple[bool, bool] | None:
+    """Decide whether the SLM has confidently classified state-change.
+
+    Phase I.2 — disciplined retirement of the regex state_change
+    fallback.  When the LoRA adapter ran (``method == "joint_bert_lora"``)
+    AND its state_change prediction cleared the confidence floor, the
+    SLM's answer is authoritative — including ``"none"``.  The regex
+    path is then dead code on this memory.
+
+    The previous implementation bug was treating ``state_change="none"``
+    as "SLM had no opinion, try regex" — which let regex hits override
+    the SLM's confident "no change here" answer and create spurious
+    L2 supersession edges.  This helper fixes that asymmetry.
+
+    Args:
+        slm_label: ``memory.structured["intent_slot"]`` dict.  ``None``
+            or empty dict means SLM didn't write any output.
+        threshold: ``slm_confidence_threshold`` from NCMSConfig.
+        primary_method: Method name that signals "the LoRA adapter
+            actually ran" (vs ``e5_zero_shot`` / ``heuristic_fallback``
+            which don't emit state_change at all).
+
+    Returns:
+        * ``(has_state_change, has_state_declaration)`` when the SLM
+          ran confidently — ``has_state_change`` is ``True`` iff the
+          predicted label is ``"declaration"`` or ``"retirement"``;
+          ``has_state_declaration`` is always ``False`` because the
+          SLM already decided.
+        * ``None`` when the SLM didn't produce a usable verdict;
+          caller should fall back to regex/heuristic detection.
+
+    No I/O, no imports beyond the function signature — pure domain
+    logic so both the sync ingestion path
+    (:meth:`IngestionPipeline.create_memory_nodes`) and the async
+    background path (:meth:`IndexWorker._create_nodes_and_episodes`)
+    can share the same decision without duplication.
+    """
+    if not slm_label:
+        return None
+    method = slm_label.get("method") or ""
+    if method != primary_method:
+        return None
+    state = slm_label.get("state_change")
+    if not isinstance(state, str) or not state:
+        return None
+    conf_raw = slm_label.get("state_change_confidence")
+    conf = float(conf_raw) if conf_raw is not None else 0.0
+    if conf < threshold:
+        return None
+    has_change = state in {"declaration", "retirement"}
+    return has_change, False
+
+
 __all__ = [
     "ADMISSION_DECISIONS",
     "INTENT_CATEGORIES",
@@ -101,4 +159,5 @@ __all__ = [
     "SLOT_TAXONOMY",
     "STATE_CHANGES",
     "build_slot_bio_labels",
+    "slm_state_change_decision",
 ]

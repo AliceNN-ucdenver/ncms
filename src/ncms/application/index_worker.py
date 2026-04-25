@@ -692,31 +692,35 @@ class IndexWorkerPool:
             "section_index", "document",
         )
 
-        # SLM-first: the memory carries the intent-slot classifier's
-        # state_change_head output on ``structured["intent_slot"]``
-        # (populated by ``MemoryService.store_memory`` before this
-        # worker runs).  When the classifier is confident its
-        # prediction replaces the regex-based detection.  Falls
-        # through to regex only on abstain / flag-off.
-        _slm_label = (memory.structured or {}).get("intent_slot") or {}
-        _slm_state = _slm_label.get("state_change")
-        _slm_state_conf = _slm_label.get("state_change_confidence") or 0.0
-        _slm_confident = (
-            _slm_state in {"declaration", "retirement"}
-            and _slm_state_conf
-            >= self._svc._config.slm_confidence_threshold
+        # Phase I.2 — SLM-first via the shared
+        # ``slm_state_change_decision`` helper.  Same retirement
+        # discipline as IngestionPipeline.create_memory_nodes: when
+        # the LoRA adapter ran confidently, its verdict (incl. "none")
+        # is authoritative.  Section content always skips L2 to avoid
+        # false-positives on structural document content.
+        from ncms.domain.intent_slot_taxonomy import (
+            slm_state_change_decision,
         )
-        if _slm_confident and not _is_section_content:
-            _has_state_change = True
+
+        _slm_label = (memory.structured or {}).get("intent_slot") or {}
+        _slm_decision = slm_state_change_decision(
+            _slm_label,
+            threshold=self._svc._config.slm_confidence_threshold,
+        )
+        if _is_section_content:
+            _has_state_change = False
             _has_state_declaration = False
+        elif _slm_decision is not None:
+            _has_state_change, _has_state_declaration = _slm_decision
         else:
+            # Cold-start regex/heuristic fallback — LoRA adapter
+            # missing for this domain.
             _has_state_change = (
-                not _is_section_content
-                and admission_features is not None
+                admission_features is not None
                 and hasattr(admission_features, "state_change_signal")
                 and admission_features.state_change_signal >= 0.35
             )
-            _has_state_declaration = not _is_section_content and bool(
+            _has_state_declaration = bool(
                 re.search(
                     r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
                     memory.content,
