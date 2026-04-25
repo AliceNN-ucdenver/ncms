@@ -121,7 +121,6 @@ async def run_forensic(
         contradiction_detection_enabled=False,
         temporal_enabled=True,
         scoring_weight_hierarchy=0.5,
-        slm_enabled=True,
         slm_populate_domains=True,
         pipeline_debug=True,
     )

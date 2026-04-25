@@ -330,9 +330,8 @@ def load(
                 cache_dir=config.model_cache_dir,
             )
 
-        # 5-head SLM chain (Phase I.1b).  None when slm_enabled=False
-        # or default_adapter_domain unset; ingestion falls back to
-        # heuristic chain in that case.
+        # 5-head SLM chain.  None when default_adapter_domain unset;
+        # ingestion falls back to heuristic chain in that case.
         from ncms.application.intent_slot_chain import (
             maybe_build_chain_for_config,
         )

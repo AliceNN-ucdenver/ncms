@@ -838,9 +838,9 @@ async def run_dashboard(
         )
     else:
         logger.info(
-            "SLM chain inactive (slm_enabled=%s, default_adapter_domain=%r) "
+            "SLM chain inactive (default_adapter_domain=%r) "
             "— ingestion uses heuristic fallback",
-            config.slm_enabled, config.default_adapter_domain,
+            config.default_adapter_domain,
         )
 
     memory_svc = MemoryService(

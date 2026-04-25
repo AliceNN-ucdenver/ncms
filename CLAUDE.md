@@ -323,14 +323,15 @@ Single-pass creation in `migrations.py`. All tables created together.
 
 All settings via environment variables with `NCMS_` prefix (Pydantic Settings).
 
-**Two master feature flags** gate all temporal/state reasoning and the ingest-side classifier.  Everything else in the table is a tunable knob that applies *when* the relevant master flag is on.
+**One master feature flag** gates all temporal/state reasoning; the 5-head SLM is activated by adapter selection (no boolean flag).  Everything else in the table is a tunable knob.
 
 | Master flag | Default | What it turns on |
 |---|---|---|
 | `NCMS_TEMPORAL_ENABLED` | `false` | TLG grammar composition, state reconciliation (supersedes/refines/conflicts), episode formation, intent classification, intent routing, temporal scoring signal, hierarchy bonus |
-| `NCMS_SLM_ENABLED`      | `false` | 5-head LoRA classifier at ingest (admission / state_change / topic / intent / slot) — replaces the regex/LLM fallbacks for those five labels |
 
-Flag history: the previous scheme had 7 separate per-phase booleans (`NCMS_TLG_ENABLED`, `NCMS_RECONCILIATION_ENABLED`, `NCMS_EPISODES_ENABLED`, `NCMS_INTENT_CLASSIFICATION_ENABLED`, `NCMS_INTENT_ROUTING_ENABLED`, plus a narrow `NCMS_TEMPORAL_ENABLED` and `NCMS_INTENT_SLOT_ENABLED`).  Those are all removed as of the 2026-04 flag refactor — they collapsed into the two master flags above because they were never independently ablatable in practice.
+**5-head SLM activation** is driven by `NCMS_DEFAULT_ADAPTER_DOMAIN` — set it to a deployed adapter name (e.g. `software_dev`, `conversational`, `clinical`) to load the chain at startup; leave it unset to keep the SLM dark and fall back to the heuristic chain.  No boolean flag involved.
+
+Flag history: the previous scheme had 7 separate per-phase booleans (`NCMS_TLG_ENABLED`, `NCMS_RECONCILIATION_ENABLED`, `NCMS_EPISODES_ENABLED`, `NCMS_INTENT_CLASSIFICATION_ENABLED`, `NCMS_INTENT_ROUTING_ENABLED`, plus a narrow `NCMS_TEMPORAL_ENABLED` and `NCMS_INTENT_SLOT_ENABLED`).  Those collapsed into one master flag in the 2026-04 refactor.  `NCMS_SLM_ENABLED` was retired in Phase I.6 (2026-04-25) — the chain's presence at MemoryService construction (driven by `NCMS_DEFAULT_ADAPTER_DOMAIN`) is the kill-switch now.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -432,9 +433,9 @@ Flag history: the previous scheme had 7 separate per-phase booleans (`NCMS_TLG_E
 | `NCMS_AUTO_SNAPSHOT_ON_DISCONNECT` | `false` | Auto-publish snapshot when agent disconnects |
 | `NCMS_SCALE_AWARE_FLAGS_ENABLED` | `false` | Enable memory-count-based feature activation |
 | `NCMS_MAINTENANCE_ENABLED` | `false` | Enable background maintenance scheduler |
-| `NCMS_SLM_ENABLED` | `false` | **Master 5-head SLM flag.** When True, the 5-head LoRA classifier runs at ingest and produces typed labels for admission / state_change / topic / intent / slot that replace the regex/LLM fallbacks. |
-| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Adapter artifact path (e.g. `~/.ncms/adapters/conversational/v4/`) |
-| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor — below this the chain falls to the next backend |
+| `NCMS_DEFAULT_ADAPTER_DOMAIN` | *(none)* | **5-head SLM activation.** Set to a deployed adapter name (e.g. `software_dev`, `conversational`, `clinical`) to load the LoRA chain at startup. Unset → SLM stays dark, ingest uses heuristic chain. |
+| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Adapter artifact path override (e.g. `~/.ncms/adapters/conversational/v9/`); pinned for canary/staging deployments. Defaults to newest version under `~/.ncms/adapters/<domain>/`. |
+| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.3` | Per-head confidence floor — below this the chain falls to the next backend |
 | `NCMS_SLM_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` |
 | `NCMS_SLM_E5_FALLBACK_ENABLED` | `true` | Include E5 zero-shot intent classifier in the fallback chain |
 | `NCMS_SLM_LATENCY_BUDGET_MS` | `200.0` | Soft limit on forward-pass latency — exceeding logs a warning |

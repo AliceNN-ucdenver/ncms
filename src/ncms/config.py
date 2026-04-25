@@ -226,29 +226,19 @@ class NCMSConfig(BaseSettings):
     # precision-safe (drop).  Default recall-safe.
     temporal_missing_range_policy: Literal["include", "exclude"] = "include"
 
-    # ── 5-head SLM master flag ────────────────────────────────────────
-    # When True, ``IngestionPipeline`` runs the LoRA multi-head
-    # classifier on every ``store_memory`` call and persists
-    # {intent, slot, topic, admission, state_change} to the
-    # ``memories`` columns + ``memory_slots`` table.  Replaces the
-    # regex-based admission scorer, the state-change regex in
-    # index_worker, and the LLM topic labeller.
-    #
-    # Default flipped to True in Phase I.6 (2026-04-25).  The flag
-    # remains as a kill-switch for cold-start deployments that don't
-    # have an adapter deployed AND don't want the SLM startup cost.
-    # When True but no ``intent_slot`` chain is injected (i.e.
-    # ``MemoryService(intent_slot=None)``), the IngestionPipeline
-    # short-circuits the SLM extraction and falls back to the
-    # heuristic chain.  So flipping this default is safe even on
-    # production paths that haven't yet been wired to load adapters.
-    # The next retirement step (delete the flag entirely) is gated
-    # on retiring the regex/heuristic code paths -- tracked in
-    # ``docs/v9-mseb-slm-lift-findings.md``.
-    slm_enabled: bool = True
+    # ── 5-head SLM tunables ───────────────────────────────────────────
+    # The legacy ``slm_enabled`` boolean flag was retired — the chain's
+    # presence (or absence) is the kill-switch now.  Production
+    # deployments that want the SLM set ``default_adapter_domain``;
+    # deployments that want to stay on the heuristic chain leave it
+    # ``None``.  The :class:`MemoryService` constructor accepts
+    # ``intent_slot=None`` either way; :class:`IngestionPipeline`
+    # short-circuits when the chain is absent.
+
     # Adapter artifact path (lora_adapter/ + heads.safetensors +
-    # manifest.json).  None → skip the custom primary and fall
-    # through to the generic/zero-shot chain.
+    # manifest.json).  None → fall back to domain-based discovery
+    # under ``~/.ncms/adapters/<default_adapter_domain>/<version>/``
+    # via :func:`maybe_build_chain_for_config`.
     slm_checkpoint_dir: str | None = None
     # Confidence floor for head-by-head fallback — below this value
     # the chain moves to the next backend's output for that head.
@@ -277,17 +267,18 @@ class NCMSConfig(BaseSettings):
     # Soft latency limit on the SLM forward pass.  Exceeding it
     # emits a warning but does not block ingest.
     slm_latency_budget_ms: float = 200.0
-    # Phase I.1b — single-tenant adapter selection.  Production
-    # constructors (CLI / MCP / dashboard / NemoClaw hub) read this
-    # to load ONE adapter at startup via
-    # :func:`ncms.application.intent_slot_chain.
-    # build_default_intent_slot_chain`.  ``None`` means "don't load
-    # any adapter" — the SLM stays dark even when ``slm_enabled=True``,
-    # and ingestion falls through to the heuristic chain.  Set this
-    # to a domain name (``conversational`` / ``software_dev`` /
-    # ``clinical`` today, arbitrary custom names supported) at
-    # deployment time via ``NCMS_DEFAULT_ADAPTER_DOMAIN`` to make
-    # the SLM the primary classifier in production.
+    # Single-tenant adapter selection.  Production constructors
+    # (CLI / MCP / dashboard / NemoClaw hub) read this to load ONE
+    # adapter at startup via :func:`ncms.application.
+    # intent_slot_chain.build_default_intent_slot_chain`.  ``None``
+    # means "don't load any adapter" — the SLM stays dark and
+    # ingestion falls through to the heuristic chain.  This is the
+    # 5-head SLM kill-switch (the legacy ``slm_enabled`` boolean
+    # was retired in Phase I.6).  Set to a domain name
+    # (``conversational`` / ``software_dev`` / ``clinical`` today,
+    # arbitrary custom names supported) at deployment time via
+    # ``NCMS_DEFAULT_ADAPTER_DOMAIN`` to make the SLM the primary
+    # classifier in production.
     default_adapter_domain: str | None = None
 
     # Level-first retrieval & synthesis (Phase 5)

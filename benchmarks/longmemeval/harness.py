@@ -110,9 +110,10 @@ async def _create_ncms_instance(
 
     # Resolve the intent-slot extractor.  Reuse ``shared_intent_slot``
     # when the caller has already loaded one — avoids reloading BERT
-    # per question.  ``slm_enabled`` in the config governs
-    # whether the pipeline actually runs it; we flip it on here when
-    # either an extractor or a domain was provided.
+    # per question.  The chain's presence at MemoryService is the
+    # kill-switch (the legacy ``slm_enabled`` config field was
+    # retired); when no extractor or domain was provided we leave
+    # ``intent_slot=None`` and ingestion uses the heuristic chain.
     intent_slot = shared_intent_slot
     if intent_slot is None and intent_slot_domain is not None:
         from benchmarks.intent_slot_adapter import get_intent_slot_chain
@@ -132,7 +133,6 @@ async def _create_ncms_instance(
             scoring_weight_splade=0.3,
             scoring_weight_graph=0.3,
             contradiction_detection_enabled=False,
-            slm_enabled=intent_slot is not None,
             slm_populate_domains=True,
         )
 

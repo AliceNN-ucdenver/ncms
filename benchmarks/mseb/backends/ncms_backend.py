@@ -81,6 +81,15 @@ class NcmsBackend:
                 include_e5_fallback=False,  # deterministic benchmarks
             )
 
+        # The ``--slm-off`` ablation now expresses itself as
+        # ``intent_slot=None`` rather than a config boolean — the
+        # legacy ``slm_enabled`` config field was deleted in the
+        # Phase I.6 cleanup.  When ``feature_set.slm=False`` we
+        # simply don't pass a chain to MemoryService; ingestion
+        # short-circuits and falls back to the heuristic chain.
+        if not self.feature_set.slm:
+            intent_slot = None
+
         # Base config = FULL NCMS (temporal stack on + SLM on baseline).
         # ``temporal_enabled=True`` is the master flag that gates: the
         # TLG grammar, reconciliation, episodes, intent classification,
@@ -99,9 +108,8 @@ class NcmsBackend:
             "scoring_weight_hierarchy": 0.5,   # tuned temporal-layer weight
             "contradiction_detection_enabled": False,
 
-            # -------- Master feature flags --------
+            # -------- Master feature flag --------
             "temporal_enabled": True,
-            "slm_enabled": self.feature_set.slm and intent_slot is not None,
             "slm_populate_domains": True,
         }
         base_kwargs.update(self.feature_set.to_ncms_config_overrides())
@@ -122,11 +130,12 @@ class NcmsBackend:
         # third.  Grep this line in any run-log to verify what was ON.
         logger.info(
             "NCMS runtime config: "
-            "temporal_enabled=%s slm_enabled=%s | "
+            "temporal_enabled=%s slm_chain=%s | "
             "bm25=%.2f splade=%.2f graph=%.2f actr=%.2f "
             "temporal=%.2f hierarchy=%.2f recency=%.2f | "
             "admission=%s populate_domains=%s",
-            config.temporal_enabled, config.slm_enabled,
+            config.temporal_enabled,
+            "loaded" if intent_slot is not None else "off",
             config.scoring_weight_bm25, config.scoring_weight_splade,
             config.scoring_weight_graph, config.scoring_weight_actr,
             config.scoring_weight_temporal, config.scoring_weight_hierarchy,

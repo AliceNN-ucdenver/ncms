@@ -33,9 +33,11 @@ CREATE TABLE IF NOT EXISTS memories (
     tags TEXT NOT NULL DEFAULT '[]',
     -- Schema v13 (P2 intent-slot integration): per-memory
     -- classifier outputs.  All nullable — pre-P2 memories have
-    -- NULLs and new memories get populated when
-    -- NCMS_SLM_ENABLED=true.  Topics are stored as free-
-    -- form strings so the dashboard can surface them without
+    -- NULLs; new memories get populated when an SLM chain is
+    -- wired into MemoryService (driven by
+    -- NCMS_DEFAULT_ADAPTER_DOMAIN; the legacy NCMS_SLM_ENABLED
+    -- boolean was retired in Phase I.6).  Topics are stored as
+    -- free-form strings so the dashboard can surface them without
     -- knowing the adapter's taxonomy ahead of time.
     intent TEXT,
     intent_confidence REAL,

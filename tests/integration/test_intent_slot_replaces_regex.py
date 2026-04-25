@@ -67,7 +67,6 @@ async def _build_slm_service(domain: str):
     event_log = EventLog()
     config = NCMSConfig(
         db_path=":memory:",
-        slm_enabled=True,
         slm_populate_domains=True,
         slm_confidence_threshold=0.7,
         admission_enabled=True,

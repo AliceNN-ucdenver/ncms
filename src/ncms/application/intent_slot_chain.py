@@ -202,16 +202,18 @@ def maybe_build_chain_for_config(
     The single entry-point production constructors (CLI / MCP /
     dashboard / NemoClaw hub) use to plumb the SLM through to
     :class:`MemoryService`.  Returns ``None`` when the SLM is
-    deliberately off (``slm_enabled=False`` or
-    ``default_adapter_domain=None``) — in which case
-    :class:`IngestionPipeline` short-circuits the SLM extraction
-    and falls through to the heuristic chain.
+    deliberately off (``default_adapter_domain=None``) — in which
+    case :class:`IngestionPipeline` short-circuits the SLM
+    extraction and falls through to the heuristic chain.
+
+    The legacy ``slm_enabled`` boolean flag was retired -- the
+    chain's presence (or absence) is now the kill-switch: setting
+    ``default_adapter_domain=None`` disables the SLM end-to-end.
 
     Reads from the config:
-      * ``slm_enabled`` — master flag.  False → return None.
       * ``default_adapter_domain`` — single-tenant adapter
-        selector (Phase I.1b).  None → return None with a
-        one-time info log explaining why.
+        selector.  ``None`` → return ``None`` with a one-time
+        info log explaining the operator opt-out.
       * ``slm_confidence_threshold`` — passed through.
       * ``slm_e5_fallback_enabled`` — passed through.
       * ``slm_checkpoint_dir`` — when set, pinned via
@@ -226,13 +228,12 @@ def maybe_build_chain_for_config(
             intent_slot=chain,  # None or IntentSlotExtractor
         )
     """
-    if not config.slm_enabled:
-        return None
     if not config.default_adapter_domain:
         logger.info(
-            "SLM enabled but default_adapter_domain unset — staying "
-            "on heuristic chain.  Set NCMS_DEFAULT_ADAPTER_DOMAIN to "
-            "a deployed adapter (e.g. 'conversational') to activate.",
+            "default_adapter_domain unset — SLM stays dark, ingest "
+            "uses heuristic chain.  Set NCMS_DEFAULT_ADAPTER_DOMAIN "
+            "to a deployed adapter (e.g. 'conversational') to "
+            "activate.",
         )
         return None
 

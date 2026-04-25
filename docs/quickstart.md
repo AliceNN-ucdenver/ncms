@@ -379,9 +379,9 @@ Replaces the regex admission scorer, the state-change regex, the LLM topic label
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NCMS_SLM_ENABLED` | `false` | Master switch.  When `true` and a checkpoint is provided, the SLM's admission / state_change / topic heads replace the regex paths at ingest time. |
-| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Path to the LoRA adapter artifact (e.g. `~/.ncms/adapters/software_dev/v4/`).  Three reference adapters (conversational / software_dev / clinical) ship pre-trained; train your own with `experiments/intent_slot_distillation/train_adapter.py`. |
-| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.7` | Per-head confidence floor.  Below this value the chain falls through to the next backend for that head. |
+| `NCMS_DEFAULT_ADAPTER_DOMAIN` | *(none)* | 5-head SLM activation.  Set to a deployed adapter name (`software_dev` / `conversational` / `clinical`) to load the LoRA chain at startup so its admission / state_change / topic heads replace the regex paths at ingest time.  Unset → SLM stays dark. |
+| `NCMS_SLM_CHECKPOINT_DIR` | *(none)* | Adapter artifact path override (e.g. `~/.ncms/adapters/software_dev/v9/`).  Three reference adapters ship pre-trained; train your own with `ncms adapters train --domain X --version v9`. |
+| `NCMS_SLM_CONFIDENCE_THRESHOLD` | `0.3` | Per-head confidence floor.  Below this value the chain falls through to the next backend for that head. |
 | `NCMS_SLM_POPULATE_DOMAINS` | `true` | Auto-append the topic head's output to `Memory.domains` — replaces manual domain tagging. |
 | `NCMS_SLM_E5_FALLBACK_ENABLED` | `true` | Include the E5-small-v2 zero-shot classifier as a cold-start fallback when no adapter is available. |
 | `NCMS_INTENT_SLOT_DEVICE` | *(auto)* | Device override for the SLM forward pass — `cuda` / `mps` / `cpu`.  Defaults to `NCMS_DEVICE` then auto-detect. |

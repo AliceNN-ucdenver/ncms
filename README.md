@@ -166,7 +166,7 @@ Entities, preferences, topics, admission routing, and state-change detection all
 
 **Content Classification** &mdash; Incoming content passes through a dedup gate (SHA-256) then a two-class classifier. **NAVIGABLE** documents (ADRs, PRDs, YAML configs with headings/structure) get section-aware ingestion: one vocabulary-dense profile memory in the memory store, full document + sections in the document store. **ATOMIC** fragments (facts, observations, announcements) proceed through the standard pipeline.
 
-**6-Head SLM** (optional, `NCMS_SLM_ENABLED=true`) &mdash; Runs **before** admission. Produces all six classification outputs in one forward pass. Its `admission_head` replaces the regex admission scorer when confident; its `state_change_head` replaces the state-declaration regex; its `topic_head` auto-populates `Memory.domains`; the 6th `shape_intent_head` runs at query time to route TLG grammar dispatch (ingest-time it's ignored — memory voice has no query shape).
+**5-Head SLM** (optional, set `NCMS_DEFAULT_ADAPTER_DOMAIN=<name>`) &mdash; Runs **before** admission. Produces all five classification outputs (intent / role / topic / admission / state_change) in one forward pass. Its `admission_head` replaces the regex admission scorer when confident; its `state_change_head` replaces the state-declaration regex; its `topic_head` auto-populates `Memory.domains`; its `role_head` classifies gazetteer-detected spans into primary / alternative / casual / not_relevant for downstream L2 entity-state grounding.
 
 **GLiNER NER** &mdash; Zero-shot Named Entity Recognition using a 209M-parameter [DeBERTa](https://github.com/urchade/GLiNER) model. Extracts entities across any domain, **running in parallel with the SLM** — GLiNER's output feeds the knowledge graph (spreading activation, co-occurrence edges, entity-state reconciliation) while the SLM's output feeds ingest decisions. The two are complementary: GLiNER handles open-vocabulary NER, SLM handles typed domain-specific slot extraction.
 
@@ -259,8 +259,8 @@ uv run python -m experiments.intent_slot_distillation.train_adapter \
 
 ```python
 # Via config
-NCMS_SLM_ENABLED=true \
-NCMS_SLM_CHECKPOINT_DIR=./adapters/my_domain/v1 \
+NCMS_DEFAULT_ADAPTER_DOMAIN=my_domain \
+NCMS_SLM_CHECKPOINT_DIR=./adapters/my_domain/v9 \
 uv run ncms serve
 
 # Or via benchmark runner

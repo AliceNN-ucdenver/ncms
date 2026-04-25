@@ -5,10 +5,11 @@ twice each: once with the v9 SLM enabled, once with it disabled.  Diffs
 the resulting Memory's structured labels (intent, topic, admission,
 state_change, slots, role_spans) and Memory.domains.
 
-The SLM-off baseline is what NCMS currently ships at runtime since
-``NCMS_SLM_ENABLED=false`` is the default.  Output of this script is
-the concrete evidence that turning SLM on actually changes ingestion
-behavior — used in the v9 ship-readiness writeup.
+The SLM-off baseline ingests memories with ``intent_slot=None``
+passed to MemoryService -- the kill-switch for the 5-head chain.
+Output of this script is the concrete evidence that turning the
+SLM on actually changes ingestion behavior — used in the v9 ship-
+readiness writeup.
 
 Usage::
 
@@ -27,7 +28,6 @@ from ncms.infrastructure.graph.networkx_store import NetworkXGraph
 from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
 from ncms.infrastructure.observability.event_log import EventLog
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
-
 
 # Representative inputs — three per domain, one per archetype family.
 INPUTS: list[tuple[str, str]] = [
@@ -64,7 +64,6 @@ async def _ingest_one(text: str, domain: str, *, slm_enabled: bool) -> dict:
 
     config = NCMSConfig(
         db_path=":memory:",
-        slm_enabled=slm_enabled,
         slm_populate_domains=True,
         slm_confidence_threshold=0.3,  # v9 default — see config.py
     )

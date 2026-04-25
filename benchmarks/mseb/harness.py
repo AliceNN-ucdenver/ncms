@@ -103,7 +103,11 @@ class FeatureSet:
           + ``scoring_weight_recency=0.0`` (zero the temporal-layer
           scoring weights so the mechanism is fully off, not merely
           a 0 × nonzero multiplication)
-        - ``slm=False``      → ``slm_enabled=False``
+
+        ``slm=False`` is NOT a config override -- the SLM kill-switch
+        is now ``intent_slot=None`` at MemoryService construction
+        time.  The backend handles that translation; this method
+        only emits genuine config-field overrides.
         """
         ov: dict[str, object] = {}
         if not self.temporal:
@@ -113,8 +117,6 @@ class FeatureSet:
                 "scoring_weight_hierarchy": 0.0,
                 "scoring_weight_recency": 0.0,
             })
-        if not self.slm:
-            ov["slm_enabled"] = False
         return ov
 
 
@@ -375,8 +377,9 @@ def main() -> None:
     )
     ap.add_argument(
         "--slm-off", action="store_true",
-        help="Disable the 5-head LoRA classifier (slm_enabled=False). "
-             "Ingest falls back to the regex/heuristic chain.",
+        help="Disable the 5-head LoRA classifier (intent_slot=None at "
+             "MemoryService construction).  Ingest falls back to the "
+             "regex/heuristic chain.",
     )
     ap.add_argument(
         "--head", default=None,

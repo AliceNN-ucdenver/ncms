@@ -698,16 +698,18 @@ class IngestionPipeline:
           ``save_memory`` to persist slot surface forms.
         * Emitting the ``intent_slot.extracted`` dashboard event.
 
-        Returns ``None`` when the feature flag is off, no
-        extractor is wired, or the extractor raises.  Callers
-        treat ``None`` as "no SLM signal — use legacy regex paths".
+        Returns ``None`` when no extractor is wired, or the
+        extractor raises.  Callers treat ``None`` as "no SLM
+        signal — use legacy regex paths".  The previous
+        ``slm_enabled`` config flag was deleted (Phase I.6
+        completion); the chain's presence is the kill-switch
+        now — pass ``intent_slot=None`` to MemoryService to
+        keep the SLM dark.
 
         Runs the classifier on a thread pool so async callers
         don't block the event loop on a ~20-65ms forward pass.
         """
-        if self._intent_slot is None or not getattr(
-            self._config, "slm_enabled", False,
-        ):
+        if self._intent_slot is None:
             return None
 
         t0 = time.perf_counter()

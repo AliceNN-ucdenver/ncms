@@ -52,8 +52,9 @@ async def build_service() -> MemoryService:
     cfg = NCMSConfig(
         db_path=":memory:",
         temporal_enabled=True,
-        slm_enabled=False,  # we're hand-authoring cue_tags, SLM off
     )
+    # We're hand-authoring cue_tags; the SLM stays off via
+    # ``intent_slot=None`` at MemoryService construction.
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
     index = TantivyEngine()

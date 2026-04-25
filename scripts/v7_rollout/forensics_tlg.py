@@ -62,8 +62,9 @@ async def build_service() -> MemoryService:
     cfg = NCMSConfig(
         db_path=":memory:",
         temporal_enabled=True,
-        slm_enabled=True,
-        # inline indexing only when no pool is started (default)
+        # inline indexing only when no pool is started (default).
+        # SLM activates by passing ``intent_slot=`` at MemoryService
+        # construction below; no config flag.
     )
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()

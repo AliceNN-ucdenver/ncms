@@ -221,7 +221,7 @@ class MemoryService:
         if self._config.temporal_enabled:
             # reconciliation + episodes + intent + tlg + temporal scoring
             features.append("temporal_stack")
-        if self._config.slm_enabled:
+        if self._intent_slot is not None:
             features.append("slm")
         if self._config.content_classification_enabled:
             features.append("content_classification")

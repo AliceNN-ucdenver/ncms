@@ -98,7 +98,6 @@ async def _build_service_with_adapter(
     event_log = EventLog()
     config = NCMSConfig(
         db_path=":memory:",
-        slm_enabled=True,
         slm_populate_domains=True,
         # 0.3 floor matches the new v9 default (NCMSConfig).  v6/v7
         # over-confident adapters cleared the old 0.7 floor on most
@@ -252,7 +251,6 @@ async def test_heuristic_fallback_when_no_adapter():
     graph = NetworkXGraph()
     config = NCMSConfig(
         db_path=":memory:",
-        slm_enabled=True,
         slm_populate_domains=True,
     )
     # Build a heuristic-only chain (no checkpoint, no E5).

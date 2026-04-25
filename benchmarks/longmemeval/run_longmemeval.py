@@ -111,10 +111,10 @@ async def _run(args: argparse.Namespace) -> None:
             trajectory_consolidation_enabled=False,
             pattern_consolidation_enabled=False,
             synthesis_enabled=False,
-            # P2: intent-slot SLM — flipped on when --intent-slot-domain
-            # is supplied so the SLM's admission / state-change / topic
-            # heads replace the regex gates at ingest time.
-            slm_enabled=bool(args.intent_slot_domain),
+            # P2: intent-slot SLM activates when ``--intent-slot-domain``
+            # is supplied; the harness builds a chain and passes it to
+            # MemoryService.  No config flag involved — the chain's
+            # presence is the kill-switch.
             slm_populate_domains=True,
         )
         logger.info("Features ON: production retrieval bundle enabled")

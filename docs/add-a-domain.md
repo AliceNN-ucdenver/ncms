@@ -911,9 +911,10 @@ ncms adapters deploy --domain legal --version v9
 ```
 
 This copies the checkpoint to
-`~/.ncms/adapters/legal/v9/` (~2.4 MB), which is what the
-runtime `NCMS_SLM_CHECKPOINT_DIR` picks up when
-`NCMS_SLM_ENABLED=true`.
+`~/.ncms/adapters/legal/v9/` (~2.4 MB).  The runtime picks it up
+automatically when `NCMS_DEFAULT_ADAPTER_DOMAIN=legal` is set;
+override the discovery path with `NCMS_SLM_CHECKPOINT_DIR` for
+canary/staging deployments.
 
 ---
 
