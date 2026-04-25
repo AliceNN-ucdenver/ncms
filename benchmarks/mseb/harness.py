@@ -420,6 +420,16 @@ def main() -> None:
              "intent label adds retrieval lift on PATTERN_LOOKUP / "
              "STRATEGIC_REFLECTION queries.",
     )
+    ap.add_argument(
+        "--role-grounding-weight", type=float, default=None,
+        help="[Phase H.3 ablation] Override "
+             "scoring_weight_role_grounding (default 0.5).  Use "
+             "0.0 to disable the role-grounding bonus.  Tests "
+             "whether boosting memories where the query entity has "
+             "role=primary in the SLM's per-span output (vs "
+             "casual/not_relevant) lifts retrieval across all "
+             "query intent classes.",
+    )
 
     args = ap.parse_args()
     feature_set = _parse_feature_set(args)
@@ -458,6 +468,10 @@ def main() -> None:
         if args.intent_alignment_weight is not None:
             weight_overrides["scoring_weight_intent_alignment"] = (
                 args.intent_alignment_weight
+            )
+        if args.role_grounding_weight is not None:
+            weight_overrides["scoring_weight_role_grounding"] = (
+                args.role_grounding_weight
             )
         if weight_overrides:
             backend_kwargs["ncms_config_overrides"] = weight_overrides

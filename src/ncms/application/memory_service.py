@@ -1118,6 +1118,19 @@ class MemoryService:
             temporal_ref, context_entity_ids, _emit_stage,
         )
 
+        # Phase H.3 — surface query canonicals so the scoring
+        # pipeline can match them against per-memory role_spans
+        # (only ``role=primary`` matches earn the role-grounding
+        # bonus).  Lowercased here so the comparison in
+        # :func:`role_grounding_bonus` is a direct membership test.
+        query_canonicals: set[str] = {
+            qe["name"].lower()
+            for qe in query_entity_names
+            if isinstance(qe, dict)
+            and isinstance(qe.get("name"), str)
+            and qe["name"]
+        }
+
         # ── Score, rank, and finalize results ─────────────────────────
         scored = await self._scoring.score_and_rank(
             all_candidates=all_candidates,
@@ -1130,6 +1143,7 @@ class MemoryService:
             temporal_ref=temporal_ref,
             domain=domain,
             emit_stage=_emit_stage,
+            query_canonicals=query_canonicals,
         )
 
         scored.sort(key=lambda s: s.total_activation, reverse=True)

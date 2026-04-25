@@ -11,6 +11,7 @@ from __future__ import annotations
 from ncms.domain.scoring import (
     hierarchy_match_bonus,
     intent_alignment_bonus,
+    role_grounding_bonus,
 )
 
 
@@ -156,3 +157,163 @@ class TestIntentAlignmentBonus:
             bonus=1.25,
         )
         assert bonus == 1.25
+
+
+class TestRoleGroundingBonus:
+    """Tests for role_grounding_bonus() — Phase H.3.
+
+    Reward memories where the query's entity appears as ``role=primary``
+    in the SLM's per-span output.  Conservative-by-design: only the
+    PRIMARY role earns a bonus; casual / alternative / not_relevant
+    return 0.0 in this version.  (Penalising those is a separate
+    decision, deferred to a future phase if needed.)
+    """
+
+    def test_primary_match_returns_bonus(self) -> None:
+        spans = [
+            {
+                "canonical": "postgresql", "role": "primary",
+                "surface": "Postgres", "slot": "database",
+            },
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"postgresql"},
+        )
+        assert bonus == 0.5
+
+    def test_case_insensitive_match(self) -> None:
+        """Canonicals compared lowercased on both sides."""
+        spans = [
+            {"canonical": "PostgreSQL", "role": "primary"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"postgresql"},
+        )
+        assert bonus == 0.5
+
+    def test_casual_role_returns_zero(self) -> None:
+        """Memory mentions the entity casually — no boost."""
+        spans = [
+            {"canonical": "redis", "role": "casual"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"redis"},
+        )
+        assert bonus == 0.0
+
+    def test_alternative_role_returns_zero(self) -> None:
+        """``role=alternative`` doesn't earn the primary bonus."""
+        spans = [
+            {"canonical": "mysql", "role": "alternative"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"mysql"},
+        )
+        assert bonus == 0.0
+
+    def test_not_relevant_role_returns_zero(self) -> None:
+        spans = [
+            {"canonical": "kafka", "role": "not_relevant"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"kafka"},
+        )
+        assert bonus == 0.0
+
+    def test_no_canonical_overlap_returns_zero(self) -> None:
+        """Primary span exists but for a different entity."""
+        spans = [
+            {"canonical": "postgresql", "role": "primary"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"redis"},
+        )
+        assert bonus == 0.0
+
+    def test_empty_role_spans_returns_zero(self) -> None:
+        """Heuristic-fallback memories have empty role_spans."""
+        assert role_grounding_bonus(
+            role_spans=[],
+            query_canonicals={"postgresql"},
+        ) == 0.0
+        assert role_grounding_bonus(
+            role_spans=None,
+            query_canonicals={"postgresql"},
+        ) == 0.0
+
+    def test_empty_query_canonicals_returns_zero(self) -> None:
+        """Queries with no extracted entities get no grounding signal."""
+        spans = [
+            {"canonical": "postgresql", "role": "primary"},
+        ]
+        assert role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals=set(),
+        ) == 0.0
+        assert role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals=None,
+        ) == 0.0
+
+    def test_one_primary_among_many_wins(self) -> None:
+        """A single primary match is enough; other spans don't matter."""
+        spans = [
+            {"canonical": "redis", "role": "casual"},
+            {"canonical": "kafka", "role": "not_relevant"},
+            {"canonical": "postgresql", "role": "primary"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"postgresql"},
+        )
+        assert bonus == 0.5
+
+    def test_all_matching_spans_non_primary_returns_zero(self) -> None:
+        """Multiple matches but none primary → no bonus."""
+        spans = [
+            {"canonical": "postgresql", "role": "casual"},
+            {"canonical": "postgresql", "role": "alternative"},
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"postgresql"},
+        )
+        assert bonus == 0.0
+
+    def test_malformed_span_skipped_not_raised(self) -> None:
+        """Defensive: bad span shapes don't crash the scoring loop."""
+        spans = [
+            "not a dict",  # garbage
+            {"role": "primary"},  # missing canonical
+            {"canonical": None, "role": "primary"},  # null canonical
+            {"canonical": "postgresql", "role": "primary"},  # good
+        ]
+        bonus = role_grounding_bonus(
+            role_spans=spans,  # type: ignore[arg-type]
+            query_canonicals={"postgresql"},
+        )
+        assert bonus == 0.5
+
+    def test_custom_bonus_value(self) -> None:
+        spans = [{"canonical": "postgresql", "role": "primary"}]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={"postgresql"},
+            primary_bonus=1.0,
+        )
+        assert bonus == 1.0
+
+    def test_empty_string_canonicals_filtered(self) -> None:
+        """Empty/whitespace canonicals shouldn't accidentally match."""
+        spans = [{"canonical": "", "role": "primary"}]
+        bonus = role_grounding_bonus(
+            role_spans=spans,
+            query_canonicals={""},
+        )
+        assert bonus == 0.0

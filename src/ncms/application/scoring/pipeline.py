@@ -35,6 +35,7 @@ from ncms.domain.scoring import (
     ppr_graph_score,
     recency_score,
     retrieval_probability,
+    role_grounding_bonus,
     spreading_activation,
     supersession_penalty,
     total_activation,
@@ -87,8 +88,17 @@ class ScoringPipeline:
         temporal_ref: object | None,
         domain: str | None,
         emit_stage: Callable,
+        query_canonicals: set[str] | frozenset[str] | None = None,
     ) -> list[ScoredMemory]:
-        """Score all candidates using multi-signal weighted combination."""
+        """Score all candidates using multi-signal weighted combination.
+
+        Phase H.3: ``query_canonicals`` carries the lowercased canonical
+        forms of the query's extracted entities (surfaced from
+        ``query_entity_names`` upstream in :class:`MemoryService.search`).
+        Used by :func:`role_grounding_bonus` to reward memories where
+        the query entity has ``role=primary`` in the SLM's per-span
+        output.  ``None`` → role grounding is skipped (no signal).
+        """
         # Load graph-derived context (association strengths, IDF, PPR)
         assoc_strengths, entity_idf, ppr_scores = (
             await self._load_graph_context(context_entity_ids)
@@ -127,6 +137,7 @@ class ScoringPipeline:
             ppr_scores=ppr_scores,
             w_actr=w_actr,
             w_recency=w_recency,
+            query_canonicals=query_canonicals,
         )
 
         # Pass 2: normalize and combine
@@ -284,6 +295,7 @@ class ScoringPipeline:
         ppr_scores: dict[str, float],
         w_actr: float,
         w_recency: float,
+        query_canonicals: set[str] | frozenset[str] | None = None,
     ) -> list[dict]:
         """Pass 1: compute raw scoring signals for each candidate."""
         def _neighbor_fn(eid: str) -> list[tuple[str, float]]:
@@ -389,6 +401,27 @@ class ScoringPipeline:
                         bonus=self._config.intent_alignment_bonus,
                     )
 
+            # Phase H.3 — role-grounding bonus.  When the query
+            # mentions an entity, memories where that entity has
+            # role=primary in the SLM's per-span output are genuinely
+            # *about* the entity, not just string-matching it.  This
+            # signal is independent of QueryIntent (applies to
+            # FACT_LOOKUP, CURRENT_STATE_LOOKUP, all of them) so the
+            # surface area is much larger than H.1.  No-op on
+            # heuristic-fallback memories (empty role_spans) or
+            # queries with no extracted entities — both correctly
+            # return 0.0 from the primitive.
+            rg_bonus = 0.0
+            if (
+                self._config.scoring_weight_role_grounding > 0
+                and query_canonicals
+            ):
+                rg_bonus = role_grounding_bonus(
+                    role_spans=self._memory_role_spans(memory),
+                    query_canonicals=query_canonicals,
+                    primary_bonus=self._config.role_grounding_bonus,
+                )
+
             act = total_activation(
                 bl, spread, noise, mismatch_penalty=0.0,
             )
@@ -423,6 +456,7 @@ class ScoringPipeline:
                 "act": act, "bl": bl, "spread": spread, "noise": noise,
                 "penalty": penalty, "h_bonus": h_bonus,
                 "ia_bonus": ia_bonus,
+                "rg_bonus": rg_bonus,
                 "rec_score": rec_score,
                 "is_superseded": is_superseded,
                 "has_conflicts": has_conflicts,
@@ -518,6 +552,30 @@ class ScoringPipeline:
         intent = slot.get("intent")
         return intent if isinstance(intent, str) and intent else None
 
+    @staticmethod
+    def _memory_role_spans(memory: object) -> list[dict]:
+        """Pull the ``intent_slot.role_spans`` list baked into a Memory.
+
+        Phase H.3 — the 5-head SLM emits a role label per gazetteer-
+        detected span (primary / alternative / casual / not_relevant).
+        Memories that didn't go through the SLM (heuristic fallback
+        chain, no adapter for the domain) return an empty list and
+        the role-grounding bonus auto-noops on them.
+
+        Returns ``[]`` (never ``None``) on any malformed payload —
+        callers can iterate without nil-guards.
+        """
+        structured = getattr(memory, "structured", None)
+        if not isinstance(structured, dict):
+            return []
+        slot = structured.get("intent_slot")
+        if not isinstance(slot, dict):
+            return []
+        spans = slot.get("role_spans")
+        if not isinstance(spans, list):
+            return []
+        return spans
+
     async def _compute_reconciliation_penalty(
         self,
         nodes: list,
@@ -599,6 +657,7 @@ class ScoringPipeline:
 
         w_hierarchy = self._config.scoring_weight_hierarchy
         w_intent_align = self._config.scoring_weight_intent_alignment
+        w_role_ground = self._config.scoring_weight_role_grounding
         w_temporal = (
             self._config.scoring_weight_temporal
             if temporal_ref is not None else 0.0
@@ -617,6 +676,7 @@ class ScoringPipeline:
                 w_graph=w_graph, w_recency=w_recency,
                 w_hierarchy=w_hierarchy,
                 w_intent_align=w_intent_align,
+                w_role_ground=w_role_ground,
                 w_temporal=w_temporal,
                 w_ce=w_ce, actr_enabled=actr_enabled,
                 intent_result=intent_result,
@@ -656,6 +716,7 @@ class ScoringPipeline:
         w_graph: float, w_recency: float,
         w_hierarchy: float,
         w_intent_align: float,
+        w_role_ground: float,
         w_temporal: float,
         w_ce: float, actr_enabled: bool,
         intent_result: IntentResult | None,
@@ -671,9 +732,14 @@ class ScoringPipeline:
         temporal_n = c["temporal_raw"] / maxes["temporal"]
         temporal_contrib = temporal_n * w_temporal
 
-        # Phase H.1 — intent alignment is additive on both score paths
-        # (CE-rerank and weighted-sum), gated by ``w_intent_align``.
+        # Phase H.1 / H.3 — intent alignment + role grounding are
+        # additive on both score paths (CE-rerank and weighted-sum),
+        # each gated by its own weight.  Both stay at 0.0 when their
+        # signal is absent (no QueryIntent match for H.1; empty
+        # role_spans or no query entities for H.3) so the lines
+        # below are a no-op cost when the SLM didn't tag the memory.
         ia_contrib = c.get("ia_bonus", 0.0) * w_intent_align
+        rg_contrib = c.get("rg_bonus", 0.0) * w_role_ground
 
         if ce_scores:
             ce_norm = (
@@ -685,7 +751,7 @@ class ScoringPipeline:
                 + bm25_n * (1.0 - w_ce) * 0.67
                 + splade_n * (1.0 - w_ce) * 0.33
                 + temporal_contrib - c["penalty"]
-                + ia_contrib
+                + ia_contrib + rg_contrib
             )
         else:
             combined = (
@@ -694,7 +760,7 @@ class ScoringPipeline:
                 + c["h_bonus"] * w_hierarchy
                 + c["rec_score"] * w_recency
                 + temporal_contrib - c["penalty"]
-                + ia_contrib
+                + ia_contrib + rg_contrib
             )
 
         # ACT-R threshold filter

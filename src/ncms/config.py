@@ -137,6 +137,29 @@ class NCMSConfig(BaseSettings):
     intent_supplement_max: int = 20            # Max supplementary candidates per intent
     intent_llm_fallback_enabled: bool = False  # LLM fallback when BM25 confidence low
 
+    # Phase H.3 — role-grounding bonus.  The 5-head SLM emits a
+    # per-span ``role`` label (primary / alternative / casual /
+    # not_relevant) for every gazetteer-detected span in a memory's
+    # content.  When the query mentions an entity, memories where
+    # that entity has ``role=primary`` are genuinely *about* the
+    # entity (vs incidentally string-matching it).  This boost
+    # rewards primary-role matches additively on ``combined``.
+    #
+    # Default ``weight=0.0`` (off).  The MSEB v1 ablation showed
+    # the v9 role_head emits "syntactically primary" not "answer-
+    # relevance primary" — for "what alternatives were considered
+    # in <decision>?" queries, the role_head tags the OLD chosen
+    # entity as primary, which inverts retrieval ordering on
+    # ``predecessor`` / ``retirement`` shapes.  Net softwaredev r@1:
+    # 0.7455 → 0.7212 (−2.4 pts) at weight=0.5.  Same opt-in pattern
+    # as ``scoring_weight_hierarchy=0.0`` — the primitive ships as a
+    # building block; deployments enable it after verifying role_head
+    # accuracy on their domain.  Future v9 role_head retraining may
+    # change the default once "answer-relevance primary" is the
+    # supervised target.  See ``docs/v9-mseb-slm-lift-findings.md``.
+    role_grounding_bonus: float = 0.5
+    scoring_weight_role_grounding: float = 0.0
+
     # Phase H.1 — per-memory intent-label × QueryIntent alignment bonus.
     # The 5-head SLM emits a per-memory intent label (positive /
     # negative / habitual / difficulty / choice / none).  When the

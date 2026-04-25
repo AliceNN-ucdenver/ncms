@@ -372,6 +372,73 @@ def hierarchy_match_bonus(
     return 0.0
 
 
+def role_grounding_bonus(
+    role_spans: list[dict] | None,
+    query_canonicals: set[str] | frozenset[str] | None,
+    primary_bonus: float = 0.5,
+) -> float:
+    """Reward memories where a query entity appears as a primary-role span.
+
+    The 5-head SLM emits a per-span role label drawn from
+    {``primary``, ``alternative``, ``casual``, ``not_relevant``} for
+    every gazetteer-detected span in a memory's content.  The
+    semantics:
+
+      - ``primary`` — this memory is genuinely *about* this entity
+        ("I use Postgres for the database" → Postgres is primary).
+      - ``alternative`` — explicit alternative ("I switched from
+        MySQL" → MySQL is alternative).
+      - ``casual`` — incidental mention ("while configuring Redis I
+        noticed Postgres was slow" → Redis is casual).
+      - ``not_relevant`` — string-matched but not about it.
+
+    At retrieval time, when a query mentions entity X, a memory
+    where X is the *primary* role is a higher-confidence match than
+    a memory that merely string-matches X.  This grounds retrieval
+    in the SLM's per-span semantic typing rather than relying on
+    BM25 / SPLADE alone, which can't tell apart "about X" from
+    "happened to mention X".
+
+    Args:
+        role_spans: The memory's ``intent_slot.role_spans`` list.
+            Each entry is a dict with ``canonical`` (the canonical
+            entity form) and ``role`` (one of the four role labels).
+            Empty list / ``None`` → no SLM signal, return 0.0.
+        query_canonicals: Lowercased canonical strings for the
+            query's extracted entities.  Empty / ``None`` → no
+            grounding signal, return 0.0.
+        primary_bonus: Bonus value applied on a primary-role match.
+
+    Returns:
+        ``primary_bonus`` if any role_span has ``role="primary"`` and
+        a canonical that appears in ``query_canonicals``; ``0.0``
+        otherwise.
+
+    Notes:
+        Conservative-by-design: only PRIMARY matches earn a bonus.
+        Penalising casual / not_relevant matches is a separate
+        decision (see Phase H.3 ablation) — start with the positive
+        signal and verify it lifts before introducing penalties.
+    """
+    if not role_spans or not query_canonicals:
+        return 0.0
+    qcanon_lower = {c.lower() for c in query_canonicals if c}
+    if not qcanon_lower:
+        return 0.0
+    for span in role_spans:
+        if not isinstance(span, dict):
+            continue
+        if span.get("role") != "primary":
+            continue
+        canonical = span.get("canonical")
+        if (
+            isinstance(canonical, str)
+            and canonical.lower() in qcanon_lower
+        ):
+            return primary_bonus
+    return 0.0
+
+
 def intent_alignment_bonus(
     memory_intent: str | None,
     aligned_intents: frozenset[str] | set[str] | tuple[str, ...] | None,
