@@ -592,7 +592,17 @@ def main() -> None:
     # Training hyperparameters
     parser.add_argument("--encoder", default="bert-base-uncased")
     parser.add_argument("--version", default="v1")
-    parser.add_argument("--epochs", type=int, default=6)
+    parser.add_argument(
+        "--epochs", type=int, default=10,
+        help=(
+            "Training epochs (default 10).  v9 default raised from "
+            "6 → 10 after the B-prime.6 ablation showed clinical "
+            "topic head F1 lifts 0.556 → 0.810 between epoch 6 and 10 "
+            "while the other three heads stay stable.  Conversational "
+            "+ software_dev finish converged earlier; the additional "
+            "epochs are wasted compute but don't hurt accuracy."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--lora-r", type=int, default=16,
