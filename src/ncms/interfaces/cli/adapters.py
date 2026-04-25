@@ -316,7 +316,7 @@ def _find_domain_source_dir(domain: str) -> Path | None:
               help="Optional path to write the full JSON judgment; "
                    "terminal summary is printed either way.")
 @click.option("--threshold", type=float, default=80.0,
-              help="Fail exit code if pct_correct < threshold "
+              help="Fail exit code if pct_faithful < threshold "
                    "(default 80.0).  Set to 0 to never fail.")
 def adapters_judge_v9(
     domain: str, corpus_path: Path | None,
@@ -374,10 +374,11 @@ def adapters_judge_v9(
         f"[v9 judge] domain={domain} corpus={path} "
         f"n_samples={n_samples} model={model}",
     )
+    archetype_lookup = {a.name: a for a in spec.archetypes}
     result = sync_judge_corpus(
         domain=domain,  # type: ignore[arg-type]
         corpus_path=path,
-        topics=spec.topics,
+        archetype_lookup=archetype_lookup,
         n_samples=n_samples,
         model=model,
         api_base=api_base,
@@ -394,10 +395,10 @@ def adapters_judge_v9(
         )
         click.echo(f"         → full report: {report_path}")
 
-    if threshold > 0 and result.pct_correct < threshold:
+    if threshold > 0 and result.pct_faithful < threshold:
         raise click.ClickException(
-            f"quality gate FAILED: pct_correct "
-            f"{result.pct_correct:.1f}% < threshold {threshold:.1f}%",
+            f"quality gate FAILED: pct_faithful "
+            f"{result.pct_faithful:.1f}% < threshold {threshold:.1f}%",
         )
 
 

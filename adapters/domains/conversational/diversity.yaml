@@ -15,6 +15,7 @@ foods:
   cuisines:
     description: "World / regional cuisines users express preferences about."
     topic_hint: food_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 6
     examples:
@@ -52,6 +53,7 @@ foods:
   dishes:
     description: "Specific dishes — named foods, not cuisines."
     topic_hint: food_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 8
     examples:
@@ -93,6 +95,7 @@ foods:
   beverages:
     description: "Drinks — coffee, tea, cocktails, soft drinks, etc."
     topic_hint: food_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 6
     examples:
@@ -128,6 +131,7 @@ foods:
   dietary_approaches:
     description: "Eating styles and dietary patterns."
     topic_hint: food_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -154,6 +158,7 @@ activities:
   sports:
     description: "Sports and athletic activities people practice."
     topic_hint: activity_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 6
     examples:
@@ -189,6 +194,7 @@ activities:
   creative:
     description: "Creative pursuits and artistic practices."
     topic_hint: activity_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 6
     examples:
@@ -221,6 +227,7 @@ activities:
   fitness:
     description: "Structured fitness activities and workout styles."
     topic_hint: activity_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -246,6 +253,7 @@ activities:
   outdoor:
     description: "Outdoor pursuits and nature-oriented activities."
     topic_hint: activity_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -271,6 +279,7 @@ activities:
   leisure:
     description: "Relaxed leisure activities — reading, gaming, etc."
     topic_hint: activity_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -296,6 +305,7 @@ entertainment:
   movie_genres:
     description: "Film genres and film movements."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -323,6 +333,7 @@ entertainment:
   tv_shows:
     description: "Named television series users express preferences about."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 5
     examples:
@@ -356,6 +367,7 @@ entertainment:
   music_genres:
     description: "Music genres and styles."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 5
     examples:
@@ -394,6 +406,7 @@ entertainment:
   books:
     description: "Specific books or book genres."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -422,6 +435,7 @@ entertainment:
   games:
     description: "Specific games or gaming genres."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -449,6 +463,7 @@ entertainment:
   podcasts:
     description: "Named podcasts or podcast genres."
     topic_hint: entertainment_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
@@ -472,6 +487,7 @@ travel:
   countries:
     description: "Countries users travel to or dream about."
     topic_hint: travel_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 5
     examples:
@@ -504,6 +520,7 @@ travel:
   cities:
     description: "Specific cities users visit or like."
     topic_hint: travel_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 5
     examples:
@@ -536,6 +553,7 @@ travel:
   natural_settings:
     description: "Types of places defined by their natural geography."
     topic_hint: travel_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
@@ -560,6 +578,7 @@ lifestyle:
   brands_tech:
     description: "Tech brands and specific tech products users prefer."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 4
     examples:
@@ -585,6 +604,7 @@ lifestyle:
   brands_fashion:
     description: "Fashion brands and clothing styles."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
@@ -609,6 +629,7 @@ lifestyle:
   brands_vehicles:
     description: "Cars, bikes, and other vehicles."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
@@ -632,6 +653,7 @@ lifestyle:
   work_styles:
     description: "Work-life preferences — remote, hybrid, schedule patterns."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
@@ -653,6 +675,7 @@ lifestyle:
   social_styles:
     description: "Social preferences — small vs large, indoor vs outdoor."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 2
     examples:
@@ -672,6 +695,7 @@ lifestyle:
   values:
     description: "Life values and orientations."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 2
     examples:
@@ -692,6 +716,7 @@ lifestyle:
   routines:
     description: "Personal routines and rituals."
     topic_hint: lifestyle_pref
+    filter_slots: [object, alternative]
     source: inline
     n_examples_per_batch: 3
     examples:
