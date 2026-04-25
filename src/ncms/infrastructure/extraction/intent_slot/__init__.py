@@ -12,7 +12,7 @@ ExtractedLabel`; domain vocabularies at
 Build the runtime extractor via :func:`build_extractor_chain`.
 The chain is intentionally GLiNER-free — GLiNER's slot extraction
 was strictly worse than the LoRA BIO head on every trained domain
-(see ``docs/intent-slot-sprints-1-3.md`` §9.5).  GLiNER remains
+(see ``docs/completed/intent-slot-history/intent-slot-sprints-1-3.md`` §9.5).  GLiNER remains
 in NCMS under ``infrastructure/extraction/gliner_extractor.py``
 for entity extraction (a separate pipeline).
 """

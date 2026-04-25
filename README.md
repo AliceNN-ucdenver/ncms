@@ -79,47 +79,60 @@ NCMS organizes agent memory into a **Hierarchical Temporal Memory Graph (HTMG)**
 
 Every memory enters through an **ingest pipeline** that classifies it &mdash; like a bouncer deciding who gets into the club, but one who went to grad school. Raw facts become `ATOMIC` nodes. State changes ("`Redis upgraded to v7.4`") become `ENTITY_STATE` nodes with bitemporal validity tracking. Related events cluster into `EPISODE` nodes via a 7-signal hybrid linker. And overnight, **dream cycles** consolidate episodes into `ABSTRACT` insights &mdash; the system literally learns while it sleeps.
 
-### The Fine-Tunable 6-Head SLM — Ingest + Query in One Forward Pass
+### The Fine-Tunable 5-Head SLM — Ingest-Voice Content Classifier
 
-NCMS replaces **six separate pieces of brittle pattern-matching code** with a **single fine-tuned LoRA adapter** running a 6-head BERT classifier.  One forward pass produces: admission routing, state-change detection, topic tagging, preference intent, typed slots, **and** query-shape classification for TLG grammar dispatch.  The same adapter runs at ingest time (memory voice) and query time (query voice); caller discipline decides which heads to read.  ([Architecture](docs/slm-tlg-architecture.md) · [P2 plan](docs/completed/p2-plan.md) · [Sprint 4 findings](docs/intent-slot-sprint-4-findings.md))
+NCMS replaces **five separate pieces of brittle pattern-matching code** with a **single fine-tuned LoRA adapter** running a 5-head BERT classifier at ingest.  One forward pass produces: admission routing, state-change detection, topic tagging, preference intent, **and** typed-span role classification.  The output drives every downstream ingest decision — domain expansion, L2 entity-state creation, supersession edges, episode formation.  ([Current state: v9](docs/v9-mseb-slm-lift-findings.md) · [Domain plugin architecture](docs/research/v9-domain-plugin-architecture.md))
 
 <p align="center">
-  <img src="docs/assets/intent-slot-slm.svg" alt="Intent-Slot SLM - 6-head LoRA classifier + fine-tune pipeline" width="100%">
+  <img src="docs/assets/intent-slot-slm.svg" alt="Intent-Slot SLM - 5-head LoRA classifier" width="100%">
 </p>
 
-**Six heads, one forward pass (20-65 ms on MPS):**
+**Five heads, one forward pass (20-65 ms on MPS):**
 
-| Head | Output | Voice | What it replaces |
-|---|---|---|---|
-| `admission` | persist / ephemeral / discard | ingest | 4-feature regex heuristic (65.9% accuracy) |
-| `state_change` | declaration / retirement / none → **feeds TLG zone induction** | ingest | 3-pattern state-declaration regex (8/8 FP on YAML templates) |
-| `topic` | per-adapter taxonomy label (not a hardcoded enum) | ingest | LLM-based `label_detector.py` + manual `Memory.domains` tagging |
-| `intent` | positive / negative / habitual / difficulty / choice / none | ingest | regex preference extractor (never shipped) |
-| `slot` (BIO) | typed surface forms: `{library: FastAPI, medication: metformin, object: sushi}` | ingest | regex slot-pattern matchers |
-| `shape_intent` | **12 TLG grammar shapes + none** (v6) | **query** | **hand-coded regex classifier in `query_parser.py`** — deleted in v6 |
+| Head | Output | What it replaces |
+|---|---|---|
+| `admission` | persist / ephemeral / discard | 4-feature regex heuristic (65.9% accuracy) |
+| `state_change` | declaration / retirement / none → **feeds L2 entity-state induction** | 3-pattern state-declaration regex (8/8 FP on YAML templates) |
+| `topic` | per-adapter taxonomy label (not a hardcoded enum) | LLM-based `label_detector.py` + manual `Memory.domains` tagging |
+| `intent` | positive / negative / habitual / difficulty / choice / none | regex preference extractor (never shipped) |
+| `role` (per-span) | primary / alternative / casual / not_relevant on each gazetteer-detected span | GLiNER-only entity extraction on closed-vocab domains (no role disambiguation) |
 
-**SLM is the sole source of truth for query-shape classification in v6.**  The old regex intent parser (`SEED_INTENT_MARKERS` + 12 `_match_*` production rules, ~600 LOC) was deleted in `cf4d667`.  When the 6th head is confident (≥ `slm_confidence_threshold`, default 0.7), its classification routes the query to the matching TLG walker.  When it's below threshold or returns `none`, grammar does not apply and hybrid retrieval is returned unchanged — the **zero-confidently-wrong invariant** from the original TLG grammar carries over directly.  Measured accuracy: **100% on MSEB-softwaredev + MSEB-clinical gold (181/181 + 172/172); 96.7% on MSEB-convo post-audit gold** — vs 33% for the deleted regex classifier.
+**Signals at retrieval.**  Each head's output lands on `memory.structured["intent_slot"]` at ingest and becomes a typed signal the scoring pipeline can read:
 
-**3-tier fallback chain** (no GLiNER on this path — GLiNER stays in NCMS for entity NER, a separate concern):
+- `intent` → boosts memories whose preference label matches the query's pattern intent (Phase H.1)
+- `state_change` → boosts memories tagged as actual state changes on `CHANGE_DETECTION` queries (Phase H.2); gates the supersession/conflict reconciliation penalty so it only fires on `CURRENT_STATE_LOOKUP` (Phase G — the canonical bug fix)
+- `topic` → auto-appended to `Memory.domains` so the domain filter narrows retrieval without manual tagging
+- `role` → reserved for grounding boost (memories where the query entity has `role=primary`); off-by-default pending v10 calibration
+
+A per-query diagnostic event emits the signal vector for every search: which heads fired, which contributed to the rank-1 result's score, and whether grammar composition replaced the BM25 head.
+
+**3-tier fallback chain** — the chain's **presence** at MemoryService construction is the kill-switch.  Set `NCMS_DEFAULT_ADAPTER_DOMAIN=<name>` to load the LoRA at startup; leave it unset to ingest on the heuristic-only chain.  No boolean flag.
 
 ```
-primary:    LoRA adapter  (per-deployment, F1 = 1.000 on gold, ~2.4 MB on disk)
+primary:    LoRA adapter  (per-deployment, ~2.4 MB on disk)
    ↓ if adapter missing / head abstained
 fallback:   E5 zero-shot   (cold-start: intent-only head, no training required)
    ↓ if torch unavailable
 heuristic:  null output    (admission=persist, everything else None — ingest keeps working)
 ```
 
-**Dynamic topics + shapes.** The topic vocabulary lives in the adapter's `manifest.json` + `taxonomy.yaml`, **not** in the codebase. The per-adapter manifest also ships `shape_intent_labels` — the list of TLG grammar shapes that adapter was trained on.  Swap adapter → swap topics + shapes.  The dashboard enumerates both directly from the database (`SQLiteStore.list_topics_seen()`) with zero config coupling.
+**Dynamic topics.** The topic vocabulary lives in the adapter's `manifest.json` + `taxonomy.yaml`, **not** in the codebase.  Swap adapter → swap topics.  The dashboard enumerates them directly from the database (`SQLiteStore.list_topics_seen()`) with zero config coupling.
 
-Four reference adapters ship today — each ~2.4 MB at `~/.ncms/adapters/<domain>/<version>/`:
+Three reference adapters ship today — each ~2.4 MB at `~/.ncms/adapters/<domain>/v9/`:
 
-- **`conversational/v6`** — 269 MSEB-convo queries (audit-remapped to TLG semantics; 96.7% shape accuracy) + 750 SDG prose rows
-- **`clinical/v6`** — 172 MSEB-clinical queries (100% shape accuracy) + 700 SDG rows
-- **`software_dev/v6`** — 181 MSEB-softwaredev queries (100% shape accuracy) + 850 SDG rows
-- **`swe_diff/v1`** — SWE-Gym diffs (zero repo overlap with SWE-bench Verified — see [datasheet](experiments/intent_slot_distillation/adapters/swe_diff/DATASHEET.md)); pre-v6, no `shape_intent` head; dispatch falls through to hybrid retrieval for SWE queries
+- **`conversational/v9`** — open-vocab domain (no gazetteer; `role` head idle, GLiNER provides entities)
+- **`clinical/v9`** — 536 gazetteer entries × 6 slots (medication / procedure / symptom / severity / alternative / frequency)
+- **`software_dev/v9`** — 712 gazetteer entries × 9 slots (library / language / framework / pattern / tool / database / service / alternative / frequency)
 
-Adapter ↔ corpus ↔ taxonomy wiring is registered in `experiments/intent_slot_distillation/schemas.py::DOMAIN_MANIFESTS`, and all four are baked into the NemoClaw hub Docker image.
+All three are baked into the NemoClaw hub Docker image; the hub defaults to `software_dev`.
+
+### CTLG — query-side cue tagging (planned, sibling adapter)
+
+The 5-head SLM owns **ingest voice**.  Query-voice semantic parsing is a different task — composing typed cues (causal / temporal / ordinal / modal) into a structured TLG query form — and it ships as a separate **CTLG adapter** loaded alongside the 5-head SLM at runtime.  Two adapters in production, one per cognitive role (content classification vs cue tagging), NOT two-for-CTLG.
+
+**Why a sibling, not a 6th head:** v8 attempted to add the cue tagger as a 6th head on the same encoder.  Joint training of per-token BIO sequence labeling alongside the per-CLS classification heads saturated under shared encoder capacity — training loss oscillated, several previously-healthy heads regressed.  v9 dropped the 6th head; the CTLG adapter forks training while keeping the runtime architecture coherent.  ([CTLG design](docs/research/ctlg-design.md) · [v8 saturation retrospective](docs/completed/failed-experiments/v8-joint-training-saturation.md))
+
+**Plumbing already in place** — `EdgeType.CAUSED_BY` + `EdgeType.ENABLES` on graph edges; `cue_tags: list[dict]` field on `ExtractedLabel`; `_extract_and_persist_causal_edges` ingestion path gated on cue_tags presence; rules-first synthesizer at `domain/tlg/composition.py`; `NCMS_TLG_LLM_FALLBACK_ENABLED` knob reserved.  The cue head is the only missing piece — corpus annotation + dedicated training.
 
 ### Retrieval Pipeline
 
@@ -145,7 +158,7 @@ Traditional memory systems compress documents into dense vectors, losing precisi
 
 **Tier 5 &mdash; Temporal Linguistic Geometry (TLG).** For state-evolution queries ("What's the *current* authentication scheme?", "What caused the payments delay?", "What came before MFA?"), TLG runs a **grammar-based structural proof** over typed state-transition edges. It produces an exact answer (or abstains) with a readable syntactic proof — and composes with BM25 via a **zero-confidently-wrong invariant**: when TLG's confidence is high, its rank-1 answer replaces BM25's head; when it abstains, BM25 ordering is returned unchanged.
 
-**Intent classification is now learned, not regex.**  The v6 SLM's `shape_intent_head` classifies the query's TLG shape (12 grammar productions + none) and hands it to the dispatcher; the ~600 LOC of hand-coded regex production rules that used to live in `query_parser.py` were deleted.  Query-shape accuracy on the 747-query MSEB benchmark: **95%+ overall** (up from 33% for the deleted regex classifier). On the 32-query ADR corpus spanning 11 intent shapes (current_state, ordinal_first/last, causal_chain, sequence, predecessor, interval, transitive_cause, before_named, concurrent, noise), **TLG hits 32/32 top-5 and rank-1** vs BM25's 41 % / 16 %.  ([Architecture](docs/slm-tlg-architecture.md) · [Pre-paper](docs/temporal-linguistic-geometry.md) · [Validation findings](docs/tlg-validation-findings.md) · [Integration plan](docs/completed/p1-plan.md))
+**Query intent today is BM25-exemplar classification.**  A small in-memory Tantivy index of ~70 exemplar queries classifies each search into one of 7 intent classes (fact_lookup, current_state_lookup, historical_lookup, event_reconstruction, change_detection, pattern_lookup, strategic_reflection).  The SLM signals from ingest (intent / state_change / topic / role) feed retrieval bonuses gated on this classified intent.  Query-side compositional parsing (cue tagging → structured TLG queries) is the next step — see the [CTLG design](docs/research/ctlg-design.md).  ([Pre-paper](docs/temporal-linguistic-geometry.md) · [v9 findings](docs/v9-mseb-slm-lift-findings.md))
 
 ```
 activation(m) = base_level(m) + spreading_activation(m, query) + noise
@@ -222,7 +235,7 @@ await agent.announce_knowledge(
 
 ## Fine-Tune Your Own Adapter
 
-Four reference adapters ship today — three v6 prose adapters at `~/.ncms/adapters/{conversational,software_dev,clinical}/v6/` and one v1 diff adapter at `~/.ncms/adapters/swe_diff/v1/` — but the point of the architecture is that **operators train their own for their own domain**. The 6-head classifier does its best work when fine-tuned on the kind of content your users actually ingest (for memory-voice heads) and query (for the `shape_intent` query-voice head).
+Three reference adapters ship today at `~/.ncms/adapters/{conversational,software_dev,clinical}/v9/` — but the point of the architecture is that **operators train their own for their own domain**. The 5-head classifier does its best work when fine-tuned on the kind of content your users actually ingest.
 
 ### One-command training
 
@@ -268,7 +281,7 @@ uv run python -m benchmarks longmemeval --features-on \
     --intent-slot-domain my_domain
 ```
 
-See [P2 plan §2.3 Adapter lifecycle](docs/completed/p2-plan.md#23-adapter-lifecycle), [Sprint 4 findings §7 Known sharp edges](docs/intent-slot-sprint-4-findings.md), and [Sprint 1–3 findings §9 Post-sprint fixes](docs/intent-slot-sprints-1-3.md) for the detailed playbook.
+See [Add a domain](docs/add-a-domain.md) for the full walk-through of authoring a v9 domain plugin (gazetteer + diversity + archetypes), and [v9 domain plugin architecture](docs/research/v9-domain-plugin-architecture.md) for the design rationale.  Historical reading: [P2 plan](docs/completed/p2-plan.md) (the P2 sprint that produced the original 5-head adapter).
 
 ---
 
@@ -291,24 +304,21 @@ Across 11 intent shapes on the hand-curated ADR / project / clinical corpus:
 
 Every TLG answer comes with a readable syntactic proof ("successor = ADR-010 (refines)", "walked 6 predecessors; root = ADR-001"). On LongMemEval's conversational subset the grammar correctly **abstains** (framing mismatch — LME isn't state-evolution content) and falls through to BM25+SPLADE unchanged. Full validation in [`docs/tlg-validation-findings.md`](docs/tlg-validation-findings.md); the reusable four-domain state-evolution benchmark (MSEB v1) ships at [`docs/mseb-results.md`](docs/mseb-results.md) ([original design](docs/completed/p3-state-evolution-benchmark.md)).
 
-### 6-Head SLM — ingest classifier + query shape_intent (NEW, v6 2026-04)
+### 5-Head SLM — ingest classifier (v9, 2026-04)
 
-v6 adds a 6th head (`shape_intent`) that replaces the hand-coded regex intent classifier in `query_parser.py` (deleted, ~600 LOC) for TLG grammar dispatch.  One forward pass of the LoRA adapter produces ingest-side labels (admission / state_change / topic / intent / slot) **and** query-side shape classification — the caller reads whichever heads match the voice of the input.
+The shipped 5-head LoRA adapter classifies every memory at ingest into typed labels (intent / role / topic / admission / state_change).  v8 attempted a 6th head for query-side cue tagging but joint training saturated; v9 ships the 5 production heads only, and the cue tagger is being designed as a **separate sibling adapter** (see [CTLG design](docs/research/ctlg-design.md)).
 
-| Domain | Ingest heads (F1, v5/v6 baseline) | Query shape_intent (MSEB gold) | Head labels trained |
+| Domain | Ingest heads (F1, v9 baseline) | Gazetteer | Head labels trained |
 |---|---|---:|---|
-| conversational/v6 | intent 1.000, slot 0.987, topic 1.000, admission 1.000 | **96.7% (260/269 audited)** | current_state, ordinal_first, ordinal_last, interval, retirement, sequence, none |
-| software_dev/v6 | intent 1.000, slot 0.983, topic 1.000, admission 1.000 | **100% (181/181)** | all 12 TLG shapes + none |
-| clinical/v6 | intent 1.000, slot 0.966, topic 1.000, admission 1.000 | **100% (172/172)** | all 12 TLG shapes + none (minus interval) |
-| swe_diff/v1¹ | state_change 100% on SWE-Gym source classes | — (no v6 head yet) | n/a |
+| conversational/v9 | intent 1.000, topic 1.000, admission 1.000, state_change 1.000 | open-vocab (none) | preference + topic taxonomy |
+| software_dev/v9 | intent 1.000, role 0.79, topic 1.000, admission 1.000, state_change 1.000 | 712 entries × 9 slots | framework / library / language / pattern / tool / database / service taxonomy |
+| clinical/v9 | intent 1.000, role 0.79, topic 1.000, admission 1.000, state_change 1.000 | 536 entries × 6 slots | medication / procedure / symptom / severity taxonomy |
 
-¹ `swe_diff/v1` trained on SWE-Gym diffs (pandas / MONAI / mypy / dvc / dask / ...) — zero repo overlap with SWE-bench Verified. Fixes 100 % of "resolving patch = `declaration`" misclassifications the prose adapter produced on raw diff content. Shape_intent head is a v2 follow-up. See the [datasheet](experiments/intent_slot_distillation/adapters/swe_diff/DATASHEET.md) and [MSEB results §5](docs/mseb-results.md#5-the-5-head-slm--per-head-contribution) for per-head evidence.
-
-**Regex replacement baseline.**  The deleted `query_parser.py` regex classifier hit **250/747 = 33% shape accuracy** on MSEB gold.  The v6 SLM replacement is **~95%+ overall** while preserving the zero-confidently-wrong invariant (abstain on unfamiliar phrasings, hybrid retrieval returned unchanged).
-
-**Convo gold audit.** MSEB-convo gold used shape labels as buckets for LongMemEval question types that didn't match TLG grammar semantics.  269 queries were re-audited: 30 keep, 239 remap (202 → `none` / abstain, 23 → `current_state`, 6 → `interval`, 6 → `ordinal_last`, 2 → `retirement`).  See [`benchmarks/mseb_convo/audit/`](benchmarks/mseb_convo/audit/) for per-query verdicts and reproducibility.
+The role head's "primary / alternative / casual / not_relevant" classification on gazetteer-detected spans is the v9 replacement for the v6 BIO slot tagger; it sources canonical state values for L2 entity-state nodes and feeds the role-grounding retrieval bonus (off-by-default pending v10 calibration evidence).
 
 Compare to zero-shot baselines: E5 label-similarity hits intent F1 0.347–0.612 on the same gold — the LoRA adapters gain **+0.22 to +0.49 absolute intent F1** while eliminating the 26.7–56.7% confidently-wrong rate.
+
+For full per-head evidence + retrieval-side ablation results (Phase G + Phase H series), see [`docs/v9-mseb-slm-lift-findings.md`](docs/v9-mseb-slm-lift-findings.md) and [`docs/mseb-results.md`](docs/mseb-results.md).
 
 ### MSEB v1 — state-evolution retrieval across four domains (NEW, 2026-04-21)
 
@@ -338,7 +348,7 @@ The SLM on vs. off on LongMemEval is an **axis-mismatch test** — conversationa
 | Memories stored | 10,960 | 10,960 | — |
 | Errors / tracebacks / HTTP 4xx | 0 | 0 | — |
 
-The classifier ran ~11k forward passes cleanly; it just didn't move the number because LongMemEval's retrieval path doesn't consume the SLM's outputs on the axes it classifies. **Expected and desired** — the real benchmark for the SLM's admission + state_change + topic heads is state-evolution retrieval, not conversational recall.  See [`docs/intent-slot-sprint-4-findings.md`](docs/intent-slot-sprint-4-findings.md) §10 for the full A/B breakdown.
+The classifier ran ~11k forward passes cleanly; it just didn't move the number because LongMemEval's retrieval path doesn't consume the SLM's outputs on the axes it classifies. **Expected and desired** — the real benchmark for the SLM's admission + state_change + topic heads is state-evolution retrieval, not conversational recall.  See [`docs/completed/intent-slot-history/intent-slot-sprint-4-findings.md`](docs/completed/intent-slot-history/intent-slot-sprint-4-findings.md) §10 for the full A/B breakdown.
 
 ### Baseline Comparison (SWE-bench Django)
 
@@ -521,12 +531,22 @@ Note: the ingest-side intent-slot SLM (`bert-base-uncased` + LoRA) runs happily 
 
 ## Research Artefacts
 
-- **[Temporal Linguistic Geometry pre-paper](docs/temporal-linguistic-geometry.md)** — grammar-theoretic framework for state-evolution retrieval
-- **[Intent-Slot Distillation pre-paper](docs/intent-slot-distillation.md)** — replacing regex with a learned multi-head classifier
-- **[TLG validation findings](docs/tlg-validation-findings.md)** — ADR corpus + LongMemEval framing analysis
-- **[Intent-Slot Sprints 1–3 findings](docs/intent-slot-sprints-1-3.md)** — LoRA + multi-head + 4-phase orchestrator
-- **[Intent-Slot Sprint 4 findings](docs/intent-slot-sprint-4-findings.md)** — NCMS integration + fitness tests
+**Current state (v9):**
 - **[Main paper](docs/paper.md)** — architecture, SciFact/SWE-bench results, ablation studies
+- **[v9 MSEB findings](docs/v9-mseb-slm-lift-findings.md)** — Phase G/H/I SLM-signal ablation results, regex-vs-SLM retrieval audit
+- **[MSEB v1 results](docs/mseb-results.md)** — four-domain state-evolution benchmark (NCMS hybrid vs mem0 dense)
+- **[v9 domain plugin architecture](docs/research/v9-domain-plugin-architecture.md)** — YAML-native domain plugins (gazetteer + diversity + archetypes)
+
+**Forward-looking (planned):**
+- **[CTLG design](docs/research/ctlg-design.md)** — query-side cue tagger as a sibling adapter (post-v8 saturation pivot)
+- **[CTLG cue guidelines](docs/research/ctlg-cue-guidelines.md)** — annotation rubric for the cue corpus
+- **[CTLG grammar](docs/research/ctlg-grammar.md)** — composition rules from cue tags to TLGQuery
+
+**Background:**
+- **[Temporal Linguistic Geometry pre-paper](docs/temporal-linguistic-geometry.md)** — grammar-theoretic framework for state-evolution retrieval
+- **[Intent-Slot Distillation pre-paper](docs/intent-slot-distillation.md)** — original P2 motivation for the learned multi-head classifier
+
+Sprint-level historical findings (v6/v7 era) live under [`docs/completed/`](docs/completed/).
 
 ## Acknowledgments
 

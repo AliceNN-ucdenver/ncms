@@ -6,7 +6,7 @@ from a typed :class:`SlotPool`.  The expander walks
 :class:`GoldExample` rows that populate **every** declared slot in
 the domain's ``SLOT_TAXONOMY``.
 
-Design rationale (see ``docs/slm-entity-extraction-deep-audit.md``):
+Design rationale (see ``docs/completed/slm-extraction-audits/slm-entity-extraction-deep-audit.md``):
 the pre-v7 SDG funneled every primary value into the ``object`` slot
 (renamed to ``library`` for software_dev / ``medication`` for
 clinical).  Only one slot ever saw training signal; the adapter's
@@ -423,7 +423,7 @@ _SWE_TEMPLATES: tuple[SlotTemplate, ...] = (
     # ("transition from Java to Go" → primary=go, alt=java).  Prior
     # templates had {primary} on the left-hand term which trained
     # the role head to flip direction on migration prose; v7.1
-    # forensics caught it (see docs/forensics/v7.1-tlg-forensics.md).
+    # forensics caught it (see docs/completed/tlg-history/v7.1-tlg-forensics.md).
     #
     # Single-slot retirements (no alt) — no migration direction to
     # get wrong; these describe a retirement without naming what

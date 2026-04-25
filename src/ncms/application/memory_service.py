@@ -321,7 +321,7 @@ class MemoryService:
         is also linked as an entity so the TLG L1 vocabulary picks
         it up.  Leave as ``None`` for the legacy behaviour where the
         pipeline infers subject from content heuristics.  See
-        ``docs/slm-entity-extraction-design.md`` Part 4.
+        ``docs/completed/slm-extraction-audits/slm-entity-extraction-design.md`` Part 4.
         """
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()

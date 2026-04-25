@@ -375,7 +375,7 @@ All settings via environment variables with `NCMS_` prefix:
 
 ### Intent-Slot SLM (P2, ingest-side classifier)
 
-Replaces the regex admission scorer, the state-change regex, the LLM topic labeller, and manual `Memory.domains` tagging with a single LoRA multi-head BERT classifier.  See [docs/p2-plan.md](p2-plan.md) and [docs/intent-slot-sprint-4-findings.md](intent-slot-sprint-4-findings.md) for the full design.
+Replaces the regex admission scorer, the state-change regex, the LLM topic labeller, and manual `Memory.domains` tagging with a single LoRA multi-head BERT classifier.  See [docs/v9-mseb-slm-lift-findings.md](v9-mseb-slm-lift-findings.md) for the current state and [docs/completed/p2-plan.md](completed/p2-plan.md) for the original P2 design.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

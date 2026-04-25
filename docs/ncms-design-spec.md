@@ -182,7 +182,7 @@ authentication scheme?", "what came before MFA?", "what
 eventually led to passkeys?".  On a 32-query validation
 corpus spanning 11 intent shapes, TLG delivers 32/32 top-5
 and rank-1 vs. BM25's 41%/16%; see
-`docs/tlg-validation-findings.md`.
+`docs/completed/tlg-history/tlg-validation-findings.md`.
 
 Gated behind `NCMS_TEMPORAL_ENABLED` (default `False`).
 
