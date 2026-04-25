@@ -545,16 +545,29 @@ class IngestionPipeline:
             )
             score = score_admission(features)
 
-            # SLM-first routing.  When the classifier is confident
-            # on the admission head we trust its output; otherwise
-            # fall through to the regex-based ``route_memory``.
-            # This replaces the 4-feature heuristic on the hot path
-            # while keeping it available for cold-start fallback.
+            # Phase I.3 — SLM-first routing.  When the LoRA adapter
+            # ran (``method == "joint_bert_lora"``) AND its
+            # admission_head cleared the confidence floor, its
+            # decision is authoritative -- including ``"discard"``
+            # and ``"ephemeral"``.  Otherwise fall back to the
+            # 4-feature regex heuristic.  The method-name check is
+            # defense-in-depth: the chain factory already marks
+            # heuristic_fallback's admission output with
+            # ``confidence=0.0`` (so it can't clear any positive
+            # threshold), but pinning to the LoRA backend makes the
+            # discipline explicit and CTLG-extensible (a future
+            # cue-tagger that produces admission decisions would
+            # register its own method name).
             slm_route: str | None = None
-            if intent_slot_label is not None and getattr(
-                intent_slot_label, "admission", None,
-            ) is not None and intent_slot_label.is_admission_confident(
-                self._config.slm_confidence_threshold,
+            _slm_method = getattr(intent_slot_label, "method", "") or ""
+            if (
+                intent_slot_label is not None
+                and _slm_method == "joint_bert_lora"
+                and getattr(intent_slot_label, "admission", None)
+                is not None
+                and intent_slot_label.is_admission_confident(
+                    self._config.slm_confidence_threshold,
+                )
             ):
                 # Normalise label values ("ephemeral" ↔ "ephemeral_cache")
                 raw = intent_slot_label.admission
@@ -722,11 +735,11 @@ class IngestionPipeline:
         domains: list[str] | None,
         entities_manual: list[dict] | None,
         emit_stage: Callable,
-        skip_gliner: bool = False,
+        slot_entities_present: bool = False,
     ) -> tuple[list[dict], list[str]]:
         """Run BM25, SPLADE, GLiNER in parallel; link entities.
 
-        When ``skip_gliner`` is True, the SLM slot head already
+        When ``slot_entities_present`` is True, the SLM slot head already
         produced confident typed entities for this memory and
         ``entities_manual`` contains them; GLiNER is skipped to
         keep the entity graph clean on trained-domain deployments.
@@ -764,7 +777,7 @@ class IngestionPipeline:
             # caller upstream told us the slot head already produced
             # confident typed entities, skip the open-vocabulary NER
             # pass entirely for this memory.
-            if skip_gliner:
+            if slot_entities_present:
                 return [], 0.0
             t = time.perf_counter()
             cached = await load_cached_labels(self._store, domains or [])

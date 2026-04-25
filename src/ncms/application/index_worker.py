@@ -59,7 +59,7 @@ class IndexTask:
     # slot head already produced confident typed entities for this
     # memory; skip GLiNER to keep the entity graph clean on
     # trained-domain deployments.
-    skip_gliner: bool = False
+    slot_entities_present: bool = False
 
     # Internal tracking
     task_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -292,11 +292,11 @@ class IndexWorkerPool:
             # All three are independent — run concurrently.  GLiNER
             # is SKIPPED when the SLM slot head already produced
             # confident typed entities for this memory (see
-            # ``task.skip_gliner``, set upstream in
+            # ``task.slot_entities_present``, set upstream in
             # ``MemoryService.store_memory``).  Keeps the entity
             # graph clean on trained-domain deployments.
             t1 = time.perf_counter()
-            if task.skip_gliner:
+            if task.slot_entities_present:
                 async def _noop_gliner() -> tuple[list[dict[str, str]], float]:
                     return [], 0.0
                 bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(

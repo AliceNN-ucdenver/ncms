@@ -232,10 +232,20 @@ class NCMSConfig(BaseSettings):
     # {intent, slot, topic, admission, state_change} to the
     # ``memories`` columns + ``memory_slots`` table.  Replaces the
     # regex-based admission scorer, the state-change regex in
-    # index_worker, and the LLM topic labeller.  Default off until
-    # the adapter registry is populated.  See docs/completed/p2-plan.md
-    # for the integration design.
-    slm_enabled: bool = False
+    # index_worker, and the LLM topic labeller.
+    #
+    # Default flipped to True in Phase I.6 (2026-04-25).  The flag
+    # remains as a kill-switch for cold-start deployments that don't
+    # have an adapter deployed AND don't want the SLM startup cost.
+    # When True but no ``intent_slot`` chain is injected (i.e.
+    # ``MemoryService(intent_slot=None)``), the IngestionPipeline
+    # short-circuits the SLM extraction and falls back to the
+    # heuristic chain.  So flipping this default is safe even on
+    # production paths that haven't yet been wired to load adapters.
+    # The next retirement step (delete the flag entirely) is gated
+    # on retiring the regex/heuristic code paths -- tracked in
+    # ``docs/v9-mseb-slm-lift-findings.md``.
+    slm_enabled: bool = True
     # Adapter artifact path (lora_adapter/ + heads.safetensors +
     # manifest.json).  None → skip the custom primary and fall
     # through to the generic/zero-shot chain.

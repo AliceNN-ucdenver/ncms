@@ -519,14 +519,14 @@ class MemoryService:
             confidence_threshold=self._config.slm_confidence_threshold,
         )
         merged_entities = list(entities or [])
-        skip_gliner = False
+        slot_entities_present = False
         if slm_entity_dicts:
             existing_names = {e["name"].lower() for e in merged_entities}
             merged_entities.extend(
                 e for e in slm_entity_dicts
                 if e["name"].lower() not in existing_names
             )
-            skip_gliner = True
+            slot_entities_present = True
 
         # ── Caller-asserted subject (Option D' Part 4) ───────────────────
         # When the caller knows the entity-subject of this memory
@@ -556,7 +556,7 @@ class MemoryService:
             admission_route=admission_route,
             pipeline_start=pipeline_start, emit_stage=_emit_stage,
             subject=subject,
-            skip_gliner=skip_gliner,
+            slot_entities_present=slot_entities_present,
         )
         if enqueued:
             return memory
@@ -566,7 +566,7 @@ class MemoryService:
             await self._ingestion.run_inline_indexing(
                 memory=memory, content=content, domains=domains,
                 entities_manual=merged_entities, emit_stage=_emit_stage,
-                skip_gliner=skip_gliner,
+                slot_entities_present=slot_entities_present,
             )
         )
 
@@ -669,7 +669,7 @@ class MemoryService:
         pipeline_start: float,
         emit_stage: Callable,
         subject: str | None = None,
-        skip_gliner: bool = False,
+        slot_entities_present: bool = False,
     ) -> bool:
         """Try to hand indexing off to the background worker pool.
 
@@ -695,7 +695,7 @@ class MemoryService:
             admission_features=admission_features,
             admission_route=admission_route,
             subject=subject,
-            skip_gliner=skip_gliner,
+            slot_entities_present=slot_entities_present,
         )
         enqueued = self._index_pool.enqueue(task)  # type: ignore[union-attr]
         if not enqueued:
