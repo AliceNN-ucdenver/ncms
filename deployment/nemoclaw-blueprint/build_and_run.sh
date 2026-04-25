@@ -135,9 +135,42 @@ echo "  LLM Base:   $LLM_API_BASE"
 echo "  SPLADE:     $([ -n "$HF_TOKEN" ] && echo 'yes (HF_TOKEN set)' || echo 'no (skipped)')"
 echo ""
 
+# ── Adapter prerequisite check ───────────────────────────────────────────
+# The hub.Dockerfile COPYs v9 LoRA adapters from
+# adapters/checkpoints/<domain>/v9/.  These are gitignored binaries
+# (regeneratable training outputs); a fresh clone must run
+# `ncms adapters train` for each domain before the docker build can
+# succeed.  We check up-front so the operator gets a clear error
+# instead of a cryptic Docker COPY failure 5 minutes into the build.
+ADAPTER_DOMAINS=(clinical conversational software_dev)
+MISSING_ADAPTERS=()
+for d in "${ADAPTER_DOMAINS[@]}"; do
+  if [ ! -f "$PROJECT_ROOT/adapters/checkpoints/$d/v9/manifest.json" ]; then
+    MISSING_ADAPTERS+=("$d")
+  fi
+done
+if [ "$BUILD" = true ] && [ "${#MISSING_ADAPTERS[@]}" -gt 0 ]; then
+  echo ""
+  echo "ERROR: missing v9 adapter checkpoint(s) for domain(s):"
+  for d in "${MISSING_ADAPTERS[@]}"; do
+    echo "  - $d  (expected $PROJECT_ROOT/adapters/checkpoints/$d/v9/)"
+  done
+  echo ""
+  echo "Build fresh adapters with:"
+  for d in "${MISSING_ADAPTERS[@]}"; do
+    echo "  uv run ncms adapters train --domain $d --version v9"
+  done
+  echo ""
+  echo "(adapters/checkpoints/ is gitignored by design — the binaries"
+  echo " regenerate cleanly from the v9 SDG corpora at"
+  echo " adapters/corpora/v9/<domain>/sdg.jsonl)"
+  exit 1
+fi
+
 # ── Build ───────────────────────────────────────────────────────────────
 if [ "$BUILD" = true ]; then
   echo "Building Docker images..."
+  echo "  v9 adapters: ${ADAPTER_DOMAINS[*]} (all present)"
   echo ""
 
   BUILD_ARGS=()

@@ -56,25 +56,35 @@ COPY --from=base /app /app
 # Copy cached models
 COPY --from=models /root/.cache/huggingface /root/.cache/huggingface
 
-# ── Intent-slot adapters (the P2 six-head SLM, per-domain) ────────────────
-# Adapters ship as compact artifacts (~2.4 MB each × 4 = ~10 MB).  We copy
-# the authoritative ``v6`` (conversational / clinical / software_dev) and
-# ``v1`` (swe_diff — trained on SWE-Gym for diff-aware state_change) into
-# the runtime path NCMS looks up via
-# ``~/.ncms/adapters/<domain>/<version>/``.
-# At container start, ``NCMS_SLM_ENABLED=true`` + the domain hint
-# resolves to the matching adapter directory inside the image.
+# ── Intent-slot adapters (v9 5-head SLM, per-domain) ────────────────────
 #
-# Source of truth: ``adapters/checkpoints/<domain>/<version>/`` at the
-# repo root (see ``adapters/README.md`` + ``ncms adapters list``).
-COPY adapters/checkpoints/conversational/v6 \
-     /root/.ncms/adapters/conversational/v6
-COPY adapters/checkpoints/clinical/v6 \
-     /root/.ncms/adapters/clinical/v6
-COPY adapters/checkpoints/software_dev/v6 \
-     /root/.ncms/adapters/software_dev/v6
-COPY adapters/checkpoints/swe_diff/v1 \
-     /root/.ncms/adapters/swe_diff/v1
+# Adapters ship as compact artifacts (~440 KB each × 3 = ~1.3 MB).  We
+# copy the authoritative v9 LoRA checkpoints for the three shipped
+# domains into the runtime path NCMS looks up via
+# ``~/.ncms/adapters/<domain>/<version>/``.  At container start,
+# ``NCMS_SLM_ENABLED=true`` resolves the domain hint to its v9 adapter.
+#
+# **Prerequisite for image build:** ``adapters/checkpoints/<domain>/v9/``
+# must exist locally before ``docker build``.  These directories are
+# gitignored (regeneratable, ~7 MB binary) so a fresh clone needs:
+#
+#   ncms adapters train --domain clinical       --version v9
+#   ncms adapters train --domain conversational --version v9
+#   ncms adapters train --domain software_dev   --version v9
+#
+# (or run ``deployment/nemoclaw-blueprint/build_and_run.sh`` which
+#  invokes the trainer for missing checkpoints first).
+#
+# Source-of-truth: ``adapters/checkpoints/<domain>/v9/`` (see
+# ``adapters/README.md`` + ``ncms adapters list``).  Earlier v6 / v7 /
+# v8 checkpoints + the swe_diff domain were retired in the v9 cut-over;
+# see ``docs/completed/failed-experiments/v8-joint-training-saturation.md``.
+COPY adapters/checkpoints/conversational/v9 \
+     /root/.ncms/adapters/conversational/v9
+COPY adapters/checkpoints/clinical/v9 \
+     /root/.ncms/adapters/clinical/v9
+COPY adapters/checkpoints/software_dev/v9 \
+     /root/.ncms/adapters/software_dev/v9
 
 # Knowledge is loaded by agent sandboxes on startup (not the hub)
 
