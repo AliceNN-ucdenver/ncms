@@ -135,6 +135,7 @@ def _evaluate_heldout(
     training gold but drops on held-out has overfit.
     """
     from collections import Counter, defaultdict
+
     from ncms.application.adapters.methods.joint_bert_lora import (
         AdapterManifest,
         LoraJointBert,
@@ -231,7 +232,15 @@ def _evaluate_heldout(
 def phase1_bootstrap(
     domain: Domain, corpus_dir: Path,
 ) -> list[GoldExample]:
-    """Load all pre-existing gold rows for ``domain``.
+    """Load training-corpus rows for ``domain``.
+
+    Tries ``split="gold"`` first.  When no gold rows exist (the
+    common case for a fresh v9 domain that ships only an SDG
+    corpus until hand-curated gold lands), falls back to
+    ``split="sdg"`` and treats those rows as the training source.
+    The held-out 80/20 split in phase 4 still applies, so the
+    "gold" return value is really "training source — gold-tier
+    when available, SDG-tier otherwise".
 
     Returns both tagged (multi-head labels present) and untagged
     rows — the training loop's per-head masking handles mixed
@@ -241,10 +250,29 @@ def phase1_bootstrap(
     """
     gold = [ex for ex in load_all(corpus_dir, split="gold")
             if ex.domain == domain]
-    logger.info(
-        "[phase1] domain=%s gold_rows=%d", domain, len(gold),
-    )
-    return gold
+    if gold:
+        logger.info(
+            "[phase1] domain=%s gold_rows=%d", domain, len(gold),
+        )
+        return gold
+
+    # v9 first-training fallback: no curated gold yet — use the
+    # SDG corpus as the training source.  The held-out 80/20 split
+    # gives honest per-head metrics even without a separate gold
+    # set; downstream Phase B-prime.6 work will hand-curate gold
+    # to replace this fallback.
+    sdg_as_gold = [ex for ex in load_all(corpus_dir, split="sdg")
+                   if ex.domain == domain]
+    if sdg_as_gold:
+        logger.info(
+            "[phase1] domain=%s no gold rows; using %d SDG rows as "
+            "training source (v9 first-training mode — held-out 80/20 "
+            "split provides honest per-head eval)",
+            domain, len(sdg_as_gold),
+        )
+        return sdg_as_gold
+
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +369,7 @@ def phase4_finetune_and_gate(
     adversarial_train: list[GoldExample],
     adapter_dir: Path,
     taxonomy_path: Path | None,
+    domain_topics: tuple[str, ...] | None,
     encoder: str,
     version: str,
     epochs: int,
@@ -369,16 +398,35 @@ def phase4_finetune_and_gate(
       for honest per-head metrics.  Set 0.0 to train on all gold.
     """
     import random as _random
+
     import yaml
 
     taxonomy: dict[str, list[str]] = {}
-    if taxonomy_path is not None:
+    if taxonomy_path is not None and taxonomy_path.is_file():
         data = yaml.safe_load(taxonomy_path.read_text()) or {}
         taxonomy = {
             "topic_labels": list(data.get("topic_labels") or []),
             "admission_labels": list(data.get("admission_labels") or []),
             "state_change_labels": list(data.get("state_change_labels") or []),
         }
+
+    # v9: DomainSpec.topics is the authoritative topic vocabulary
+    # post-YAML migration.  When it's available we override the
+    # legacy taxonomy YAML (which carries v6/v7 topic vocabularies
+    # that don't match the v9 corpora — using them would cause every
+    # row's topic label to fall outside the head's vocabulary).
+    if domain_topics:
+        if (
+            taxonomy.get("topic_labels")
+            and set(taxonomy["topic_labels"]) != set(domain_topics)
+        ):
+            logger.warning(
+                "[phase4] taxonomy YAML topic_labels=%s differs from "
+                "DomainSpec topics=%s; using DomainSpec (the v9 "
+                "authoritative source) and ignoring the YAML",
+                taxonomy["topic_labels"], list(domain_topics),
+            )
+        taxonomy["topic_labels"] = list(domain_topics)
 
     # v8.1: the v6/v7.x shape_intent classifier head was removed.
     # Query-shape classification is now produced compositionally at
@@ -687,6 +735,29 @@ def main() -> None:
         s.strip() for s in args.eval_splits.split(",") if s.strip()
     ]
 
+    # Resolve v9 DomainSpec topics (preferred over legacy taxonomy
+    # YAML).  Falls back to None when the v9 plugin directory isn't
+    # present (e.g. an old domain without a YAML migration); phase4
+    # then uses the YAML's topic_labels.
+    domain_topics: tuple[str, ...] | None = None
+    try:
+        from ncms.application.adapters.domain_loader import load_domain
+        v9_root = Path(__file__).resolve().parents[3] / "adapters/domains"
+        v9_dir = v9_root / args.domain
+        if v9_dir.is_dir():
+            spec = load_domain(v9_dir)
+            domain_topics = spec.topics
+            logger.info(
+                "[phase4] v9 DomainSpec loaded for %s — topics=%s",
+                args.domain, list(domain_topics),
+            )
+    except Exception as exc:  # noqa: BLE001 — non-fatal; falls back to YAML
+        logger.warning(
+            "[phase4] could not load v9 DomainSpec for %s (%s); "
+            "falling back to legacy taxonomy YAML",
+            args.domain, exc,
+        )
+
     # Phase 4
     passed = phase4_finetune_and_gate(
         domain=args.domain,  # type: ignore[arg-type]
@@ -695,6 +766,7 @@ def main() -> None:
         adversarial_train=adversarial,
         adapter_dir=args.adapter_dir,
         taxonomy_path=args.taxonomy,
+        domain_topics=domain_topics,
         encoder=args.encoder,
         version=args.version,
         epochs=args.epochs,

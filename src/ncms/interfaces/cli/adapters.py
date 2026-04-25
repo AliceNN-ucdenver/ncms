@@ -472,29 +472,49 @@ def adapters_sanity_v9(
 
 @adapters.command("train")
 @click.option("--domain", required=True)
-@click.option("--version", required=True, help="Target adapter version (e.g. v7)")
+@click.option("--version", required=True, help="Target adapter version (e.g. v9)")
 @click.option("--target-size", type=int, default=3000,
-              help="SDG pre-dedup target (default 3000 — matches the v7 rewrite)")
+              help="SDG pre-dedup target when --regenerate-sdg (default 3000)")
 @click.option("--adversarial-size", type=int, default=300,
-              help="Adversarial examples to generate (default 300)")
+              help="Adversarial examples to generate when --adversarial")
 @click.option("--epochs", type=int, default=None)
 @click.option("--batch-size", type=int, default=None)
 @click.option("--learning-rate", type=float, default=None)
 @click.option("--device", default=None,
               help="Force device: cpu / cuda / mps (auto by default)")
-@click.option("--skip-sdg", is_flag=True,
-              help="Reuse existing adapters/corpora/sdg_<domain>.jsonl as-is")
-@click.option("--skip-adversarial", is_flag=True,
-              help="Skip adversarial augmentation phase")
+@click.option("--regenerate-sdg/--use-existing-sdg", default=False,
+              help="Regenerate SDG via the legacy template expander "
+                   "vs. reuse the existing corpus at "
+                   "manifest.sdg_jsonl.  Default: use existing — "
+                   "v9 corpora are pre-generated + sanity/judge gated; "
+                   "regenerate triggers the legacy expander which "
+                   "doesn't speak the v9 archetype schema.")
+@click.option("--adversarial/--no-adversarial", default=False,
+              help="Run pattern-based adversarial augmentation.  "
+                   "Default off for v9 first-training — adversarial "
+                   "generator predates the v9 slot vocabulary "
+                   "(missing 'framework' for software_dev) and is "
+                   "scheduled for B-prime.6 polish.")
 def adapters_train(
     domain: str, version: str,
     target_size: int, adversarial_size: int,
     epochs: int | None, batch_size: int | None,
     learning_rate: float | None,
     device: str | None,
-    skip_sdg: bool, skip_adversarial: bool,
+    regenerate_sdg: bool, adversarial: bool,
 ) -> None:
     """Full training loop: SDG → gold/adversarial merge → LoRA → gate.
+
+    Default v9 mode (no flags):
+
+      Phase 1 — load training rows from the manifest's sdg_jsonl
+                (gold-tier when curated; SDG-tier as fallback for
+                v9 first-training).
+      Phase 2 — SKIPPED.  Reuses the existing v9 SDG corpus.
+      Phase 3 — SKIPPED.  Adversarial augmentation deferred to
+                B-prime.6 (the v6 generator's slot vocabulary is
+                stale for v9 software_dev).
+      Phase 4 — train LoRA + run promotion gate.
 
     The adapter checkpoint lands at
     ``adapters/checkpoints/<domain>/<version>/``.  Use
@@ -512,8 +532,8 @@ def adapters_train(
         batch_size=batch_size,
         learning_rate=learning_rate,
         device=device,
-        skip_sdg=skip_sdg,
-        skip_adversarial=skip_adversarial,
+        skip_sdg=not regenerate_sdg,
+        skip_adversarial=not adversarial,
     )
 
 
