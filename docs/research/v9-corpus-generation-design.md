@@ -557,3 +557,70 @@ slightly down (93.3% → 92.3%) — fewer rows passed entity-
 presence validation, suggesting Nemotron at lower temp adheres
 more strictly to entity placement.
 
+
+### B'.8 archetype-design constraints (asymmetric outcome)
+
+Two design fixes from the B'.7 gpt-4o cross-judge findings:
+
+1. **Same-topic constraint on `alternative` slot.**  When sampling
+   the alternative-role entity in choice archetypes, restrict
+   the candidate pool to entities sharing the primary's topic.
+   Caught: "I chose hot chocolate over Kyoto" (food vs city) →
+   now produces "Seoul over Osaka", "documentary over true crime
+   podcasts", "gardening over canoeing".  All eight pairs in a
+   probe shared topic_hint.
+
+2. **Speaker voice constraint via `domain.yaml`.**  New
+   ``speaker_voice`` field on each domain spec, surfaced as its
+   own section in the SDG prompt.  Caught: "zoroastrianism
+   adopted keras over huggingface" → now every software_dev row
+   uses engineering-team voice ("we adopted", "the squad
+   picked", "our infrastructure").
+
+#### Per-domain outcome (gpt-4o cross-judge + adapter F1)
+
+| Domain | gpt-4o pct_faithful Δ | adapter F1 Δ | decision |
+|---|---|---|---|
+| clinical | 36.7% → 45.0% (+8.3) | net +0.015 | **promote B'.8** |
+| conversational | 40.0% → 51.7% (+11.7) | net −0.008 | hold at B'.7 |
+| software_dev | 46.7% → 45.0% (−1.7) | net −0.015 | hold at B'.7 |
+
+#### Why the asymmetry — topic granularity matters
+
+The same-topic constraint helps generation quality only when the
+domain's topic taxonomy is fine-grained enough to USE.
+
+* **Clinical** has 7 distinct topics (medication_mgmt /
+  procedure_care / symptom_observation / chronic_care / acute_care
+  / preventive_care / other) — same-topic produces meaningfully
+  narrower pairs.  Win.
+* **Conversational** has 7 inline-node-level topics (food_pref /
+  activity_pref / entertainment_pref / travel_pref / lifestyle_pref
+  / habit_pref / other) — also fine.  Mixed result: the gpt-4o
+  judge improvement was real, but the adapter's intent head
+  regressed slightly because lower temp + tighter constraint
+  reduced surface variety.
+* **Software_dev** has 8 topics in the gazetteer but they're
+  CATEGORIES, not subtypes — every web framework, mobile
+  framework, ML framework, and game engine is tagged
+  ``topic="framework"``.  Same-topic resolved to a 100+
+  entry pool with cross-category pairs ("tensorflow vs vue") still
+  possible.  Constraint added no diversity restriction; lower temp
+  + speaker_voice constraint reduced training-data variety.
+  Adapter regressed across heads.
+
+**B'.9 follow-up**: split software_dev's gazetteer ``topic`` into
+finer buckets (web-framework / mobile-framework / ml-framework /
+game-engine / etc.) before re-running B'.8 constraints.
+
+#### Adapter F1 final state (post-B'.8 promotion)
+
+| Domain | Intent | Topic | Admission | State |
+|---|---|---|---|---|
+| clinical (B'.8) | 0.990 | 0.851 | 1.000 | 0.996 |
+| conversational (B'.7) | 0.995 | 0.856 | 1.000 | 0.996 |
+| software_dev (B'.7) | 0.969 | 0.993 | 0.988 | 0.990 |
+
+11/12 head-domain pairs still ≥ 0.85 F1; clinical topic up
+from 0.810 → 0.851 with the B'.8 promotion.
+
