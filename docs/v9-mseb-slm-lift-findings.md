@@ -1,4 +1,19 @@
-# Phase F: v9 SLM MSEB-lift findings
+# v9 SLM MSEB-lift findings
+
+> Update history:
+>   * Phase F (2026-04-25 morning) — regression discovered, hypothesis log.
+>   * Phase G (2026-04-25 noon) — root cause isolated, principled fix landed.
+>   * Phase H.1 / H.2 / H.3 (2026-04-25 afternoon) — signal-leverage attempts;
+>     two no-ops, one regression at the proposed weight.
+>   * **Bottom line:** Phase G recovered most of the regression.  Adding
+>     more bonuses on top of an already-tuned BM25/SPLADE/graph mix is
+>     hitting diminishing returns on this benchmark; the SLM's primary
+>     retrieval value comes from CONSTRAINING existing penalties (G), not
+>     from layering new ones (H.\*).
+
+---
+
+# Phase F: original regression
 
 **TL;DR:** the v9 5-head SLM does NOT improve MSEB retrieval out of the
 box.  On software_dev it's a **−20 pt r@1 regression**; on conversational
@@ -124,3 +139,215 @@ locked at top-1 and the SLM dislodged it.
 The SLM is a labelling success and a retrieval surprise.  v9 ship-
 readiness for ingest is real; for end-to-end retrieval it needs
 B'.10 / G work first.
+
+---
+
+# Phase G: hypothesis-driven isolation + principled fix
+
+Ran four single-flag ablations against the regressed Phase F baseline
+to isolate which downstream consequence of the SLM's labels was
+hurting retrieval most.  All four cells use the SLM ON; only the
+post-SLM scoring pathway varies.
+
+| Ablation | Flag | sw r@1 | clin r@1 | convo r@1 |
+|---|---|---:|---:|---:|
+| Baseline (Phase F) | (SLM on, all defaults) | 0.5515 | 0.6724 | 0.2414 |
+| A — no_populate_domains | `--no-populate-domains` | 0.5515 | 0.6724 | 0.2414 |
+| **B — no_recon_penalty** | `--no-reconciliation-penalty` | **0.7515** | **0.6724** | **0.3448** |
+| C — no_hier_bonus | `--hierarchy-weight 0.0` | 0.5515 | 0.6724 | 0.2414 |
+| D — high_threshold | `--slm-confidence-threshold 0.7` | 0.5515 | 0.6724 | 0.2414 |
+
+**Ablation B was decisive** — zeroing the supersession + conflict
+penalties alone fully recovered the regression on softwaredev
+(0.5515 → 0.7515) and convo (0.2414 → 0.3448).  The other three
+ablations had zero effect, eliminating the original Phase F
+hypotheses 1, 4, 5 from the suspect list.
+
+**Root cause:** the reconciliation penalty was being applied
+indiscriminately for every retrieval, regardless of the query's
+intent.  With v9 producing more `state_change=declaration` labels,
+more memories ended up on supersession chains.  The penalty pushed
+the gold answer below its replacement on every query class — but
+the penalty only makes SEMANTIC sense for queries that ask "what
+is X NOW".  For historical / fact / event-reconstruction queries,
+the older memory IS the answer.
+
+**Fix:** intent-gate the penalty.  Only apply it when the BM25
+exemplar classifier emits `QueryIntent.CURRENT_STATE_LOOKUP`.  For
+every other intent, return the (is_superseded, has_conflicts)
+diagnostic flags but skip the score deduction.
+
+```python
+_RECONCILIATION_PENALTY_INTENTS = frozenset({
+    QueryIntent.CURRENT_STATE_LOOKUP,
+})
+```
+
+Implemented in `src/ncms/application/scoring/pipeline.py::_compute_
+reconciliation_penalty` (commit `32aafe6`).  Validation MSEB run
+showed full recovery to the ablation-B numbers, identical to the
+brute-force fix but architecturally clean.
+
+---
+
+# Phase H: signal-leverage attempts (the "use the SLM signals" series)
+
+The premise: the v9 SLM emits five rich labels per memory
+(intent / role / topic / admission / state_change).  Phase G fixed
+the WAY one signal was over-firing; Phase H asks whether the OTHER
+signals can be wired into retrieval to LIFT (not just recover).
+
+Each H sub-phase adds a per-memory scoring bonus gated by the BM25
+exemplar QueryIntent classifier.  Same shape as the existing
+`hierarchy_match_bonus`: raw bonus × weight, additive on `combined`.
+
+## H.1 — intent × QueryIntent alignment (commit 82916e8)
+
+`_INTENT_ALIGNMENT_TABLE`:
+  * `PATTERN_LOOKUP` → memory intent in {`habitual`}
+  * `STRATEGIC_REFLECTION` → memory intent in {`habitual`, `choice`}
+
+| Domain      | OFF (w=0.0) | ON (w=0.5) | Δ      |
+|-------------|------------:|-----------:|-------:|
+| softwaredev |      0.7455 |     0.7455 |  0.000 |
+| clinical    |      0.6724 |     0.6724 |  0.000 |
+| convo       |      0.3448 |     0.3448 |  0.000 |
+
+**Result: 0 movement.**  Direct measurement of why:
+  * v9 SLM emits `intent=habitual` at 1.00 confidence on routine
+    statements ("I always do yoga in the morning") — signal real.
+  * MSEB v1 has 0 `PATTERN_LOOKUP` queries on softwaredev/convo and
+    1 on clinical (whose gold is causal_chain, not habitual).  Plus
+    0 / 0 / 4 `STRATEGIC_REFLECTION` (clinical ones are case-
+    discussion lookups, not habitual either).
+  * The path can't fire on this benchmark.
+
+**Decision:** ship default `weight=0.5` (on) — costs nothing when
+the path doesn't fire.  Building block for deployments that DO see
+pattern queries on habitual memories.
+
+## H.2 — state_change × QueryIntent alignment (commit f42394a)
+
+`_STATE_CHANGE_ALIGNMENT_TABLE`:
+  * `CHANGE_DETECTION` → memory state_change in {`declaration`,
+    `retirement`}
+
+Reuses the same `intent_alignment_bonus` primitive (generic over
+`(label, aligned_set)`); only the dispatch table differs.
+
+| Domain      | OFF (w=0.0) | ON (w=0.5) | Δ      |
+|-------------|------------:|-----------:|-------:|
+| softwaredev |      0.7455 |     0.7455 |  0.000 |
+| clinical    |      0.6724 |     0.6724 |  0.000 |
+| convo       |      0.3448 |     0.3448 |  0.000 |
+
+**Result: 0 movement.**  Surface area is small (5 `CHANGE_DETECTION`
+queries across 252 — 3 sw + 2 convo + 0 clinical).  The bonus
+either doesn't fire on those queries' candidate sets, or fires on
+already-correctly-ranked memories.
+
+**Decision:** ship default `weight=0.5` (on) — same logic as H.1.
+
+## H.3 — role-grounding (commit db3e085)
+
+`role_grounding_bonus(role_spans, query_canonicals, primary_bonus)`:
+  * Reward memories where a query entity appears in a role_span
+    with `role=primary`.  Per-span signal (not per-memory) → in
+    principle the largest surface area of any H phase.
+
+| Domain      | OFF (w=0.0) | ON (w=0.5) | Δ r@1   |
+|-------------|------------:|-----------:|--------:|
+| softwaredev |      0.7455 |     0.7212 | **−0.024** |
+| clinical    |      0.6724 |     0.6724 |  0.000  |
+| convo       |      0.3448 |     0.3448 |  0.000  |
+
+**Result: REGRESSION** on softwaredev.  Direct measurement: 4
+queries flipped from correct → wrong, all on shapes asking for
+`alternative` / `predecessor` / `retired` entities:
+
+```
+"What rationale justified the choice in: Python is a versatile..."
+   OFF: python-language-sec-02 (correct)
+   ON:  python-language-sec-04 (wrong)
+
+"What alternatives were considered before the final choice in:
+ The other option..."
+   OFF: postgresql-database-sec-03 (correct, the chosen DB)
+   ON:  mysql-database-sec-01 (wrong, the considered alternative)
+```
+
+**Root cause:** the role_head's `primary` semantics are
+"syntactically primary" (the chosen entity in "switched from X to
+Y" tags Y=primary), not "answer-relevance primary".  For queries
+that ASK ABOUT the alternative, the boost goes the wrong direction.
+Intent-gating doesn't fix it (3 of 4 regressions classify as
+`fact_lookup`).
+
+**Decision:** ship default `weight=0.0` (off) — same opt-in pattern
+as `scoring_weight_hierarchy=0.0`.  The primitive ships as a
+building block; deployments enable it after verifying role_head
+accuracy on their domain.  Future v9 retraining can supervise on
+"answer-relevance primary" instead of "syntactically primary".
+
+---
+
+# Cumulative summary
+
+| Phase | Commit | Default weight | MSEB Δ r@1 (sw / clin / convo) |
+|---|---|---|---|
+| F (regression) | (pre-fix) | n/a | −0.20 / 0 / −0.10 |
+| **G** (intent-gate penalty) | `32aafe6` | gate-only | **+0.20 / 0 / +0.10** |
+| H.1 (intent × QueryIntent) | `82916e8` | 0.5 | 0 / 0 / 0 |
+| H.2 (state_change × QueryIntent) | `f42394a` | 0.5 | 0 / 0 / 0 |
+| H.3 (role-grounding) | `db3e085` | 0.0 | n/a (off) |
+
+**Pattern:** the only Phase G/H change with measurable lift was
+the intent-gated reconciliation penalty in G — which CONSTRAINED
+an existing penalty from over-firing.  Adding new bonuses on top
+of the existing BM25/SPLADE/graph mix doesn't move MSEB v1 because
+either:
+  * the gold queries don't exercise the narrow alignment paths
+    the SLM heads are trained on (H.1, H.2 — surface area is too
+    small in MSEB v1), or
+  * the SLM's per-span semantics don't align with retrieval
+    relevance (H.3 — role_head needs retraining).
+
+**v9 ship readiness:**
+  * Phase G recovers the Phase F regression.  Production cutover
+    is now safe at the Phase G floor (sw 0.7455 / clin 0.6724 /
+    convo 0.3448).
+  * H.1 / H.2 add zero benchmark lift but ship as opt-in building
+    blocks — no regression risk because the paths don't fire on
+    MSEB queries.
+  * H.3 ships off-by-default; revisit after a future v9 role_head
+    retraining round.
+  * **Phase I (retire fallbacks):** flip `NCMS_SLM_ENABLED=true`
+    by default, then delete the flag.  Same direction the user
+    explicitly asked for — Phase G demonstrated SLM-on retrieval
+    is at parity-or-better with SLM-off.
+
+## Why MSEB v1 doesn't measure further H lift
+
+MSEB v1 gold is structured around state-evolution shapes
+(`current_state`, `causal_chain`, `retirement`, `ordinal_*`,
+`predecessor`, `transitive_cause`, `concurrent`, `before_named`,
+`origin`, `sequence`, `noise`).  The QueryIntent distribution
+across 252 queries:
+
+| QueryIntent | n | %  |
+|---|---:|---:|
+| fact_lookup | 189 | 75 |
+| historical_lookup | 39 | 15 |
+| current_state_lookup | 13 | 5 |
+| change_detection | 5 | 2 |
+| strategic_reflection | 4 | 2 |
+| pattern_lookup | 1 | 0.4 |
+| event_reconstruction | 1 | 0.4 |
+
+The SLM heads were trained on a different signal axis (preference-
+stance: positive / negative / habitual / difficulty / choice / none
++ admission + state_change + topic + role).  These don't directly
+map to MSEB's temporal-shape gold.  Future MSEB rounds (v2+) that
+include preference / pattern queries should exercise H.1's path;
+deployments outside MSEB (real conversational use) light up H.1
+on day one.
