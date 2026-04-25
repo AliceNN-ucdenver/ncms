@@ -401,6 +401,32 @@ class ScoringPipeline:
                         bonus=self._config.intent_alignment_bonus,
                     )
 
+            # Phase H.2 — state_change × QueryIntent alignment.  When
+            # the query asks "what changed?", memories tagged with
+            # state_change ∈ {declaration, retirement} are by
+            # definition state-change events.  Reuses the
+            # ``intent_alignment_bonus`` primitive: generic over
+            # (label, aligned_set).  No-op when the query intent has
+            # no state_change rule, when the memory has no SLM label,
+            # or when the master temporal flag is off.
+            sc_bonus = 0.0
+            if (
+                self._config.temporal_enabled
+                and intent_result
+                and self._config.scoring_weight_state_change_alignment > 0
+            ):
+                sc_aligned = self._STATE_CHANGE_ALIGNMENT_TABLE.get(
+                    intent_result.intent,
+                )
+                if sc_aligned:
+                    sc_bonus = intent_alignment_bonus(
+                        memory_intent=(
+                            self._memory_state_change_label(memory)
+                        ),
+                        aligned_intents=sc_aligned,
+                        bonus=self._config.state_change_alignment_bonus,
+                    )
+
             # Phase H.3 — role-grounding bonus.  When the query
             # mentions an entity, memories where that entity has
             # role=primary in the SLM's per-span output are genuinely
@@ -456,6 +482,7 @@ class ScoringPipeline:
                 "act": act, "bl": bl, "spread": spread, "noise": noise,
                 "penalty": penalty, "h_bonus": h_bonus,
                 "ia_bonus": ia_bonus,
+                "sc_bonus": sc_bonus,
                 "rg_bonus": rg_bonus,
                 "rec_score": rec_score,
                 "is_superseded": is_superseded,
@@ -533,6 +560,23 @@ class ScoringPipeline:
         QueryIntent.STRATEGIC_REFLECTION: frozenset({"habitual", "choice"}),
     }
 
+    # Phase H.2 — QueryIntent → set of state_change labels that align.
+    # The 5-head SLM emits ``state_change`` per memory drawn from
+    # ``STATE_CHANGES`` (declaration / retirement / none).  When the
+    # query intent is CHANGE_DETECTION, memories tagged as actual
+    # changes (declaration of a new state, retirement of an old one)
+    # are by definition the answer.  Reuses the same scoring primitive
+    # as H.1 (``intent_alignment_bonus``) — the primitive is generic
+    # over (label, aligned_set), so passing the state_change field
+    # works identically.  Conservative table: only CHANGE_DETECTION
+    # has an alignment rule.  HISTORICAL_LOOKUP could plausibly align
+    # with ``retirement`` but the older state itself (NOT the
+    # retirement event) is usually the answer there, so deliberately
+    # absent.  See Phase H.2 ablation.
+    _STATE_CHANGE_ALIGNMENT_TABLE: dict[QueryIntent, frozenset[str]] = {
+        QueryIntent.CHANGE_DETECTION: frozenset({"declaration", "retirement"}),
+    }
+
     @staticmethod
     def _memory_intent_label(memory: object) -> str | None:
         """Pull the ``intent_slot.intent`` label baked into a Memory.
@@ -551,6 +595,24 @@ class ScoringPipeline:
             return None
         intent = slot.get("intent")
         return intent if isinstance(intent, str) and intent else None
+
+    @staticmethod
+    def _memory_state_change_label(memory: object) -> str | None:
+        """Pull the ``intent_slot.state_change`` label baked into a Memory.
+
+        Mirrors :meth:`_memory_intent_label` for the state_change
+        head's output.  Returns the string label (declaration /
+        retirement / none) or ``None`` on heuristic fallback or
+        malformed payloads.
+        """
+        structured = getattr(memory, "structured", None)
+        if not isinstance(structured, dict):
+            return None
+        slot = structured.get("intent_slot")
+        if not isinstance(slot, dict):
+            return None
+        sc = slot.get("state_change")
+        return sc if isinstance(sc, str) and sc else None
 
     @staticmethod
     def _memory_role_spans(memory: object) -> list[dict]:
@@ -657,6 +719,9 @@ class ScoringPipeline:
 
         w_hierarchy = self._config.scoring_weight_hierarchy
         w_intent_align = self._config.scoring_weight_intent_alignment
+        w_state_change_align = (
+            self._config.scoring_weight_state_change_alignment
+        )
         w_role_ground = self._config.scoring_weight_role_grounding
         w_temporal = (
             self._config.scoring_weight_temporal
@@ -676,6 +741,7 @@ class ScoringPipeline:
                 w_graph=w_graph, w_recency=w_recency,
                 w_hierarchy=w_hierarchy,
                 w_intent_align=w_intent_align,
+                w_state_change_align=w_state_change_align,
                 w_role_ground=w_role_ground,
                 w_temporal=w_temporal,
                 w_ce=w_ce, actr_enabled=actr_enabled,
@@ -716,6 +782,7 @@ class ScoringPipeline:
         w_graph: float, w_recency: float,
         w_hierarchy: float,
         w_intent_align: float,
+        w_state_change_align: float,
         w_role_ground: float,
         w_temporal: float,
         w_ce: float, actr_enabled: bool,
@@ -732,13 +799,15 @@ class ScoringPipeline:
         temporal_n = c["temporal_raw"] / maxes["temporal"]
         temporal_contrib = temporal_n * w_temporal
 
-        # Phase H.1 / H.3 — intent alignment + role grounding are
-        # additive on both score paths (CE-rerank and weighted-sum),
-        # each gated by its own weight.  Both stay at 0.0 when their
-        # signal is absent (no QueryIntent match for H.1; empty
-        # role_spans or no query entities for H.3) so the lines
-        # below are a no-op cost when the SLM didn't tag the memory.
+        # Phase H.1 / H.2 / H.3 — intent alignment + state_change
+        # alignment + role grounding are additive on both score paths
+        # (CE-rerank and weighted-sum), each gated by its own weight.
+        # All three stay at 0.0 when their signal is absent (no
+        # QueryIntent match, no SLM label on the memory, etc.) so
+        # the lines below are a no-op cost when the SLM didn't tag
+        # the memory.
         ia_contrib = c.get("ia_bonus", 0.0) * w_intent_align
+        sc_contrib = c.get("sc_bonus", 0.0) * w_state_change_align
         rg_contrib = c.get("rg_bonus", 0.0) * w_role_ground
 
         if ce_scores:
@@ -751,7 +820,7 @@ class ScoringPipeline:
                 + bm25_n * (1.0 - w_ce) * 0.67
                 + splade_n * (1.0 - w_ce) * 0.33
                 + temporal_contrib - c["penalty"]
-                + ia_contrib + rg_contrib
+                + ia_contrib + sc_contrib + rg_contrib
             )
         else:
             combined = (
@@ -760,7 +829,7 @@ class ScoringPipeline:
                 + c["h_bonus"] * w_hierarchy
                 + c["rec_score"] * w_recency
                 + temporal_contrib - c["penalty"]
-                + ia_contrib + rg_contrib
+                + ia_contrib + sc_contrib + rg_contrib
             )
 
         # ACT-R threshold filter

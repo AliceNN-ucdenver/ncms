@@ -430,6 +430,16 @@ def main() -> None:
              "casual/not_relevant) lifts retrieval across all "
              "query intent classes.",
     )
+    ap.add_argument(
+        "--state-change-alignment-weight", type=float, default=None,
+        help="[Phase H.2 ablation] Override "
+             "scoring_weight_state_change_alignment (default 0.5).  "
+             "Use 0.0 to disable the per-memory state_change × "
+             "QueryIntent alignment bonus.  Tests whether boosting "
+             "memories tagged state_change=declaration or "
+             "state_change=retirement on CHANGE_DETECTION queries "
+             "lifts retrieval (small MSEB surface: 5 queries).",
+    )
 
     args = ap.parse_args()
     feature_set = _parse_feature_set(args)
@@ -472,6 +482,10 @@ def main() -> None:
         if args.role_grounding_weight is not None:
             weight_overrides["scoring_weight_role_grounding"] = (
                 args.role_grounding_weight
+            )
+        if args.state_change_alignment_weight is not None:
+            weight_overrides["scoring_weight_state_change_alignment"] = (
+                args.state_change_alignment_weight
             )
         if weight_overrides:
             backend_kwargs["ncms_config_overrides"] = weight_overrides

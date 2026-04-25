@@ -160,6 +160,18 @@ class NCMSConfig(BaseSettings):
     role_grounding_bonus: float = 0.5
     scoring_weight_role_grounding: float = 0.0
 
+    # Phase H.2 — per-memory state_change × QueryIntent alignment.
+    # When CHANGE_DETECTION queries arrive, memories whose 5-head SLM
+    # tagged them as ``state_change ∈ {declaration, retirement}`` ARE
+    # the change events the query is asking about.  Reuses the same
+    # primitive as H.1 (``intent_alignment_bonus`` is generic over
+    # label fields).  Default ``weight=0.5`` (on) — the table is
+    # narrow (CHANGE_DETECTION only) and the surface area in MSEB v1
+    # is small (5 queries), so the regression risk is bounded; verify
+    # via the ``--state-change-alignment-weight 0.0`` ablation flag.
+    state_change_alignment_bonus: float = 0.5
+    scoring_weight_state_change_alignment: float = 0.5
+
     # Phase H.1 — per-memory intent-label × QueryIntent alignment bonus.
     # The 5-head SLM emits a per-memory intent label (positive /
     # negative / habitual / difficulty / choice / none).  When the
