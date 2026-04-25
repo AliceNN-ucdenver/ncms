@@ -218,6 +218,23 @@ class NCMSConfig(BaseSettings):
     temporal_enabled: bool = False
     scoring_weight_temporal: float = 0.2  # Weight of the temporal signal when temporal_enabled=True
 
+    # CTLG (Causal-Temporal Linguistic Geometry) LLM fallback.
+    # The TLG dispatcher composes cue_tags from the SLM's cue head
+    # into a structured ``TLGQuery``.  When the rules-first
+    # synthesizer (``domain/tlg/grammar.py``) doesn't recognise a
+    # composition (cue pattern outside the trained taxonomy), we
+    # have two options: drop to BM25 (current behavior; preserves
+    # the "never confidently wrong" invariant) or invoke an LLM
+    # fallback that produces a structured query the dispatcher can
+    # consume.  This flag enables option 2.  Default ``False`` —
+    # LLM fallback adds latency + cost and the cue head isn't
+    # trained yet (v9 ships ``cue: 0``), so the path is dark today
+    # regardless of this flag.  Wires in once the cue head is
+    # producing real ``cue_tags`` at ingest.  See
+    # ``docs/research/ctlg-design.md`` §4 (LLM fallback design) +
+    # CLAUDE.md §29.
+    tlg_llm_fallback_enabled: bool = False
+
     # P1-temporal-experiment: GLiNER-extracted date ranges + hard-filter
     # retrieval.  See docs/retired/p1-temporal-experiment.md (historical).
     temporal_range_filter_enabled: bool = False

@@ -1018,6 +1018,7 @@ class MemoryService:
         agent_id: str | None = None,
         intent_override: str | None = None,
         reference_time: datetime | None = None,
+        stage_candidates_out: dict[str, list[str]] | None = None,
     ) -> list[ScoredMemory]:
         """Execute the full retrieval pipeline: BM25 -> ACT-R rescoring.
 
@@ -1027,6 +1028,13 @@ class MemoryService:
                 conversational sessions from a past date) so "yesterday"
                 resolves relative to the conversation's time, not the
                 current wall-clock time.  Defaults to ``datetime.now(UTC)``.
+            stage_candidates_out: Optional dict that, when provided, is
+                populated with per-stage candidate memory ID lists --
+                ``bm25``, ``splade``, ``rrf_fused``, ``expanded``,
+                ``scored``, ``returned``.  Used by the MSEB harness for
+                recall@K-by-stage diagnostics (``gold_in_bm25@50``,
+                etc.); production callers leave this ``None`` to avoid
+                the per-stage list-allocation overhead.
         """
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()
@@ -1084,6 +1092,22 @@ class MemoryService:
             bm25_scores, splade_scores, query_entity_names, parallel_ms,
         ) = retrieval
 
+        # Capture per-stage candidate IDs for opt-in harness
+        # diagnostics (gold_in_bm25@50, gold_in_splade@50, etc.).
+        # Each stage list is the memory IDs visible AT THAT STAGE
+        # before downstream filtering / scoring.  Populated in-place
+        # so the caller's dict accumulates as the pipeline runs.
+        if stage_candidates_out is not None:
+            stage_candidates_out["bm25"] = [
+                mid for mid, _ in bm25_results
+            ]
+            stage_candidates_out["splade"] = [
+                mid for mid, _ in splade_results
+            ]
+            stage_candidates_out["rrf_fused"] = [
+                mid for mid, _ in fused_candidates
+            ]
+
         # P1-temporal-experiment: extract the query-side range (Phase
         # A instrumentation ships the log; Phase B.4 uses it below as
         # a hard filter).
@@ -1108,6 +1132,10 @@ class MemoryService:
                 intent_result, bm25_scores, parallel_ms, _emit_stage,
             )
         )
+        if stage_candidates_out is not None:
+            stage_candidates_out["expanded"] = [
+                mid for mid, _ in all_candidates
+            ]
 
         # P1-temporal-experiment Phase B.4 — explicit-range primitive.
         # When the query has a resolvable calendar range AND temporal
@@ -1148,6 +1176,8 @@ class MemoryService:
         )
 
         scored.sort(key=lambda s: s.total_activation, reverse=True)
+        if stage_candidates_out is not None:
+            stage_candidates_out["scored"] = [s.memory.id for s in scored]
 
         # P1-temporal-experiment Phase B.2 — ordinal-sequence primitive.
         # Classify temporal intent (pure, fast) and, on an ordinal
@@ -1218,6 +1248,10 @@ class MemoryService:
                     query, results, limit,
                 )
             )
+        if stage_candidates_out is not None:
+            stage_candidates_out["returned"] = [
+                r.memory.id for r in results
+            ]
 
         # ── Per-query diagnostic ─────────────────────────────────────
         # Always emit (not gated by pipeline_debug).  See

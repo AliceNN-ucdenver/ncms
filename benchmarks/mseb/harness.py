@@ -155,10 +155,27 @@ async def _run_queries(
     """
     preds: list[Prediction] = []
     classify = getattr(backend, "classify_query", None)
+    # Per-stage gold-recall capture is opt-in: only NCMS backend
+    # exposes ``search_with_stages``.  mem0 baseline doesn't have
+    # per-stage candidates, so we fall back to plain ``search``.
+    search_with_stages = getattr(backend, "search_with_stages", None)
+    stage_recall_top_k = 50
+
+    def _gold_set(q: GoldQuery) -> set[str]:
+        return {q.gold_mid} | set(q.gold_alt or [])
+
     for q in queries:
         t0 = time.perf_counter()
+        stages: dict[str, list[str]] = {}
         try:
-            rankings = await backend.search(query=q.text, limit=top_k)
+            if search_with_stages is not None:
+                rankings, stages = await search_with_stages(
+                    query=q.text, limit=top_k, capture_stages=True,
+                )
+            else:
+                rankings = await backend.search(
+                    query=q.text, limit=top_k,
+                )
         except Exception as exc:  # pragma: no cover — surface in log
             logger.warning("qid=%s search failed: %s", q.qid, exc)
             rankings = []
@@ -172,6 +189,26 @@ async def _run_queries(
                     "qid=%s classify_query failed: %s", q.qid, exc,
                 )
         intent_conf = head_outputs.get("intent_conf")
+
+        # Per-stage gold-recall flags.  For each stage, check
+        # whether ANY gold mid (gold_mid + gold_alt) appears in
+        # the first ``stage_recall_top_k`` candidates.  Stays
+        # ``None`` when the backend didn't expose per-stage
+        # candidates.
+        gold = _gold_set(q)
+
+        def _gold_in_stage(
+            stage_key: str,
+            *,
+            _stages: dict[str, list[str]] = stages,
+            _gold: set[str] = gold,
+            _k: int = stage_recall_top_k,
+        ) -> bool | None:
+            ids = _stages.get(stage_key)
+            if ids is None:
+                return None
+            return bool(set(ids[:_k]) & _gold)
+
         preds.append(Prediction(
             qid=q.qid,
             ranked_mids=[r.mid for r in rankings],
@@ -181,6 +218,12 @@ async def _run_queries(
                 float(intent_conf) if isinstance(intent_conf, (int, float))
                 else None
             ),
+            gold_in_bm25=_gold_in_stage("bm25"),
+            gold_in_splade=_gold_in_stage("splade"),
+            gold_in_rrf_fused=_gold_in_stage("rrf_fused"),
+            gold_in_expanded=_gold_in_stage("expanded"),
+            gold_in_scored=_gold_in_stage("scored"),
+            stage_recall_top_k=stage_recall_top_k,
         ))
     return preds
 
@@ -282,8 +325,54 @@ async def run(cfg: RunConfig) -> dict[str, object]:
                 "latency_ms": p.latency_ms,
                 "intent_confidence": p.intent_confidence,
                 "head_outputs": p.head_outputs,
+                # Per-stage gold-recall (None when backend doesn't
+                # expose per-stage candidates -- e.g. mem0 baseline).
+                "gold_in_bm25": p.gold_in_bm25,
+                "gold_in_splade": p.gold_in_splade,
+                "gold_in_rrf_fused": p.gold_in_rrf_fused,
+                "gold_in_expanded": p.gold_in_expanded,
+                "gold_in_scored": p.gold_in_scored,
+                "stage_recall_top_k": p.stage_recall_top_k,
             }, ensure_ascii=False))
             fh.write("\n")
+
+    # Aggregate per-stage gold recall into the results.json + summary.
+    # Lets ``Δ recall`` between stages tell us where the gold drops
+    # out of the funnel — the canonical "where did the gold disappear?"
+    # diagnostic.  Skipped silently for backends that don't expose
+    # per-stage candidates (bool flags stay None).
+    def _stage_recall(attr: str) -> dict[str, object] | None:
+        vals = [getattr(p, attr) for p in preds]
+        present = [v for v in vals if v is not None]
+        if not present:
+            return None
+        return {
+            "n": len(present),
+            "recall": round(sum(present) / len(present), 4),
+        }
+
+    stage_recall_block = {
+        f"gold_in_bm25@{preds[0].stage_recall_top_k if preds else 50}":
+            _stage_recall("gold_in_bm25"),
+        f"gold_in_splade@{preds[0].stage_recall_top_k if preds else 50}":
+            _stage_recall("gold_in_splade"),
+        f"gold_in_rrf_fused@{preds[0].stage_recall_top_k if preds else 50}":
+            _stage_recall("gold_in_rrf_fused"),
+        f"gold_in_expanded@{preds[0].stage_recall_top_k if preds else 50}":
+            _stage_recall("gold_in_expanded"),
+        f"gold_in_scored@{preds[0].stage_recall_top_k if preds else 50}":
+            _stage_recall("gold_in_scored"),
+    }
+    if any(v is not None for v in stage_recall_block.values()):
+        # Re-write results.json with the stage-recall block injected
+        # under ``stage_recall``.  Keeps the existing summary.md
+        # unchanged for backwards compat; consumers that want
+        # per-stage recall read results.json directly.
+        result["stage_recall"] = stage_recall_block
+        (cfg.out_dir / f"{cfg.run_id}.results.json").write_text(
+            json.dumps(result, indent=2, sort_keys=True, default=str),
+        )
+
     return result
 
 

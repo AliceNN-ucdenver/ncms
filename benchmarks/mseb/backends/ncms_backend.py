@@ -251,6 +251,14 @@ class NcmsBackend:
             "ingest complete: %d memories, all indexed (pool drained)",
             len(mid_map),
         )
+
+        # Cache reverse map (ncms_id -> mseb_mid) for the per-stage
+        # candidate translation in :meth:`search_with_stages`.  Each
+        # search stage returns NCMS internal IDs; gold-recall stats
+        # need MSEB mids on both sides.
+        self._ncms_to_mseb: dict[str, str] = {
+            ncms_id: mseb_mid for mseb_mid, ncms_id in mid_map.items()
+        }
         return mid_map
 
     # -------------------------------------------------------------------
@@ -260,17 +268,45 @@ class NcmsBackend:
     async def search(
         self, query: str, *, limit: int = 10,
     ) -> list[BackendRanking]:
+        rankings, _ = await self.search_with_stages(
+            query, limit=limit, capture_stages=False,
+        )
+        return rankings
+
+    async def search_with_stages(
+        self, query: str, *, limit: int = 10,
+        capture_stages: bool = True,
+    ) -> tuple[list[BackendRanking], dict[str, list[str]]]:
+        """Search with optional per-stage candidate capture.
+
+        When ``capture_stages=True``, returns ``(rankings, stages)``
+        where ``stages`` maps stage name → memory-ID list at that
+        stage (``bm25``, ``splade``, ``rrf_fused``, ``expanded``,
+        ``scored``, ``returned``).  Used by the harness to compute
+        recall@K-by-stage diagnostics; production callers go through
+        :meth:`search` (no stage capture, no overhead).
+
+        The IDs in each stage list are NCMS memory IDs (UUID-ish).
+        Translation to MSEB ``mid`` tag values happens in the
+        harness when needed (gold IDs are MSEB tags, not memory
+        IDs — the harness already does this lookup for the final
+        ranking).
+        """
         from ncms.application.memory_service import MemoryService
 
         if self._svc is None:
             raise RuntimeError("setup() must be called before search()")
         svc: MemoryService = self._svc  # type: ignore[assignment]
 
+        stages: dict[str, list[str]] = {} if capture_stages else None  # type: ignore[assignment]
         try:
-            results = await svc.search(query=query, limit=limit)
+            results = await svc.search(
+                query=query, limit=limit,
+                stage_candidates_out=stages,
+            )
         except Exception as exc:  # pragma: no cover — surface to harness
             logger.warning("search failed: %s", exc)
-            return []
+            return [], (stages or {})
 
         rankings: list[BackendRanking] = []
         for rank, r in enumerate(results):
@@ -284,7 +320,23 @@ class NcmsBackend:
                 continue
             score = float(getattr(r, "score", 1.0 / (rank + 1)))
             rankings.append(BackendRanking(mid=mid, score=score))
-        return rankings
+
+        # Translate per-stage NCMS internal IDs -> MSEB mids using
+        # the reverse map cached during ingest.  IDs without a tag
+        # mapping (e.g. supplementary candidates injected by
+        # intent-driven expansion that aren't in the gold corpus)
+        # are dropped from the stage list.
+        if stages:
+            ncms_to_mseb = getattr(self, "_ncms_to_mseb", {})
+            stages = {
+                stage: [
+                    ncms_to_mseb[nid]
+                    for nid in nids
+                    if nid in ncms_to_mseb
+                ]
+                for stage, nids in stages.items()
+            }
+        return rankings, (stages or {})
 
     # -------------------------------------------------------------------
     # Forensic: expose per-query SLM head outputs for predictions dump

@@ -57,6 +57,23 @@ class Prediction:
     """The SLM's self-reported confidence on the top label for this
     query; used to compute the `confidently_wrong` rate."""
 
+    # Per-stage gold-recall flags.  Populated by the harness when
+    # the backend reports per-stage candidate sets.  Each is a bool
+    # ("did the gold mid show up in this stage's top_K candidates?")
+    # so the dump can answer "where did the gold disappear?" by
+    # walking the funnel: bm25 → splade → rrf_fused → expanded →
+    # scored → returned.  ``None`` when the backend doesn't expose
+    # per-stage candidates (mem0 baseline) or capture was skipped.
+    gold_in_bm25: bool | None = None
+    gold_in_splade: bool | None = None
+    gold_in_rrf_fused: bool | None = None
+    gold_in_expanded: bool | None = None
+    gold_in_scored: bool | None = None
+    stage_recall_top_k: int = 50
+    """The K used for per-stage gold-recall flags above (default 50;
+    each stage's candidate list is intersected with the top-K head
+    of the SCORED stage to get a stable recall horizon)."""
+
 
 # ---------------------------------------------------------------------------
 # Core scoring primitives
