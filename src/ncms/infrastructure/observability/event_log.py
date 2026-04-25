@@ -835,6 +835,97 @@ class EventLog:
             },
         ))
 
+    def query_diagnostic(
+        self,
+        *,
+        query: str,
+        intent: str | None,
+        intent_confidence: float | None,
+        query_entities: list[str],
+        resolved_entity_ids: list[str],
+        temporal_ref: str | None,
+        grammar_composed: bool,
+        grammar_confidence: float | None,
+        candidate_counts: dict[str, int],
+        signal_coverage: dict[str, int],
+        htmg_subject_stats: dict[str, int],
+        top_breakdown: dict[str, object] | None,
+        result_count: int,
+        total_ms: float,
+        agent_id: str | None = None,
+    ) -> None:
+        """Emit a comprehensive per-query diagnostic.
+
+        Always emits (not gated by ``pipeline_debug``).  This is the
+        operator-visible "what did the system do for this query?"
+        record — used during the v9 SLM rollout (Phase I.2-I.6) to
+        verify that retiring regex/heuristic/GLiNER fallbacks doesn't
+        regress retrieval, and prepped for CTLG (cue_tags + causal-
+        edge contributions slot into ``signal_coverage`` /
+        ``top_breakdown`` as new fields).
+
+        Payload categories:
+
+          * **Intent classification** — ``intent`` + ``confidence``
+            from the BM25 exemplar classifier (or keyword fallback).
+            ``None`` when ``temporal_enabled=False``.
+          * **Query entities** — extracted names + their resolved
+            graph-node IDs.  Missing IDs mean the entity wasn't in
+            the graph (cold-start or typo).
+          * **TLG composition** — whether the grammar dispatcher
+            confidently produced an answer that displaced the BM25
+            top-1 (true/false + confidence value).
+          * **Candidate counts** — per-stage funnel (``bm25``,
+            ``splade``, ``rrf_fused``, ``graph_expanded``,
+            ``intent_supplement``, ``scored``, ``returned``).
+          * **Signal coverage** — count of candidates whose
+            contribution from each retrieval signal was non-zero
+            (``intent_alignment``, ``state_change_alignment``,
+            ``role_grounding``, ``temporal``, ``graph``,
+            ``hierarchy_bonus``, ``reconciliation_penalty``).
+            Lets operators see which signals are actually firing.
+          * **HTMG subject stats** — counts of L2 entity_state
+            nodes / supersession edges / causal edges associated
+            with the query's resolved entity IDs.  Useful for
+            "why didn't the gold answer surface?" debugging when
+            the corpus has rich state evolution.  Empty {} when
+            ``temporal_enabled=False`` (no L2 path in cold mode).
+          * **Top breakdown** — full signal vector for the rank-1
+            result: ``{memory_id, content_preview, bm25, splade,
+            graph, h_bonus, ia_contrib, sc_contrib, rg_contrib,
+            temporal, penalty, total}``.
+
+        See ``docs/v9-mseb-slm-lift-findings.md`` for the
+        diagnostic-driven debugging methodology that motivated this
+        event.
+        """
+        self.emit(DashboardEvent(
+            type="query.diagnostic",
+            agent_id=agent_id,
+            data={
+                "query": query[:200],
+                "intent": intent,
+                "intent_confidence": (
+                    round(intent_confidence, 3)
+                    if intent_confidence is not None else None
+                ),
+                "query_entities": query_entities[:20],
+                "resolved_entity_ids": resolved_entity_ids[:20],
+                "temporal_ref": temporal_ref,
+                "grammar_composed": grammar_composed,
+                "grammar_confidence": (
+                    round(grammar_confidence, 3)
+                    if grammar_confidence is not None else None
+                ),
+                "candidate_counts": candidate_counts,
+                "signal_coverage": signal_coverage,
+                "htmg_subject_stats": htmg_subject_stats,
+                "top_breakdown": top_breakdown,
+                "result_count": result_count,
+                "total_ms": round(total_ms, 1),
+            },
+        ))
+
     def search_feedback(
         self,
         query: str,

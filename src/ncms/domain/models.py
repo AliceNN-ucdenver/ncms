@@ -493,6 +493,18 @@ class ScoredMemory(BaseModel):
     hierarchy_bonus: float = 0.0
     # Phase 4 temporal: temporal query match score
     temporal_score: float = 0.0
+    # Phase H — per-query SLM-signal contributions (post-weight, the
+    # actual additions to ``total_activation``).  Surfaced for the
+    # query_diagnostic event so operators can see which heads moved
+    # this candidate's rank.  CTLG (causal-temporal cue contributions)
+    # will land alongside these as new fields.
+    intent_alignment_contrib: float = 0.0
+    state_change_alignment_contrib: float = 0.0
+    role_grounding_contrib: float = 0.0
+    # Phase G — reconciliation penalty applied (always >= 0; subtracted
+    # from combined).  ``0.0`` means no supersession/conflict edges
+    # OR the query intent didn't qualify for the penalty gate.
+    reconciliation_penalty: float = 0.0
 
 
 # ---------------------------------------------------------------------------

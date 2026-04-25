@@ -78,6 +78,143 @@ class TestEventLog:
 
         assert log.count() == 9
 
+    def test_query_diagnostic_emits_full_payload(self):
+        """Per-query diagnostic event must include all signal fields.
+
+        Phase I — operators rely on this event to verify retrieval
+        behaviour as we retire regex/heuristic/GLiNER fallbacks.
+        Adding new signal fields to the payload (e.g. CTLG cue
+        coverage) should extend this test rather than break it.
+        """
+        log = EventLog()
+        log.query_diagnostic(
+            query="what database do we use",
+            intent="fact_lookup",
+            intent_confidence=0.82,
+            query_entities=["database"],
+            resolved_entity_ids=["ent-db"],
+            temporal_ref=None,
+            grammar_composed=False,
+            grammar_confidence=None,
+            candidate_counts={
+                "bm25": 50, "splade": 50, "rrf_fused": 60,
+                "expanded": 75, "scored": 75, "returned": 5,
+            },
+            signal_coverage={
+                "intent_alignment": 0,
+                "state_change_alignment": 0,
+                "role_grounding": 12,
+                "hierarchy_bonus": 0,
+                "temporal": 0,
+                "graph": 30,
+                "reconciliation_penalty": 0,
+            },
+            htmg_subject_stats={
+                "l2_entity_states": 3,
+                "supersession_chain_size": 1,
+                "causal_edges": 0,
+            },
+            top_breakdown={
+                "memory_id": "mem-top",
+                "content_preview": "Postgres is the database",
+                "node_types": ["atomic"],
+                "bm25_raw": 5.2, "splade_raw": 0.0,
+                "graph_raw": 1.5, "h_bonus": 0.0,
+                "ia_contrib": 0.0, "sc_contrib": 0.0,
+                "rg_contrib": 0.25, "temporal": 0.0,
+                "penalty": 0.0, "total": 6.7,
+                "is_superseded": False, "has_conflicts": False,
+            },
+            result_count=5,
+            total_ms=42.3,
+        )
+
+        recent = log.recent(2)
+        assert len(recent) == 1
+        evt = recent[0]
+        assert evt.type == "query.diagnostic"
+        d = evt.data
+        # Core query info
+        assert d["query"] == "what database do we use"
+        assert d["intent"] == "fact_lookup"
+        assert d["intent_confidence"] == 0.82
+        assert d["query_entities"] == ["database"]
+        assert d["resolved_entity_ids"] == ["ent-db"]
+        # TLG composition
+        assert d["grammar_composed"] is False
+        assert d["grammar_confidence"] is None
+        # Per-stage funnel
+        assert d["candidate_counts"]["bm25"] == 50
+        assert d["candidate_counts"]["returned"] == 5
+        # Signal coverage — the H-series + CTLG-extension surface
+        assert d["signal_coverage"]["role_grounding"] == 12
+        assert d["signal_coverage"]["graph"] == 30
+        assert d["signal_coverage"]["intent_alignment"] == 0
+        # HTMG stats
+        assert d["htmg_subject_stats"]["l2_entity_states"] == 3
+        assert d["htmg_subject_stats"]["supersession_chain_size"] == 1
+        # Top breakdown — full signal vector for rank-1
+        top = d["top_breakdown"]
+        assert top["memory_id"] == "mem-top"
+        assert top["bm25_raw"] == 5.2
+        assert top["rg_contrib"] == 0.25
+        assert top["total"] == 6.7
+        assert top["is_superseded"] is False
+        assert d["result_count"] == 5
+        assert d["total_ms"] == 42.3
+
+    def test_query_diagnostic_truncates_long_query(self):
+        """Long queries should be truncated to 200 chars."""
+        log = EventLog()
+        long_q = "x" * 500
+        log.query_diagnostic(
+            query=long_q, intent=None, intent_confidence=None,
+            query_entities=[], resolved_entity_ids=[],
+            temporal_ref=None, grammar_composed=False,
+            grammar_confidence=None,
+            candidate_counts={}, signal_coverage={},
+            htmg_subject_stats={}, top_breakdown=None,
+            result_count=0, total_ms=1.0,
+        )
+        evt = log.recent(1)[0]
+        assert len(evt.data["query"]) == 200
+
+    def test_query_diagnostic_caps_entity_lists(self):
+        """Large entity lists capped at 20 to keep the event payload sane."""
+        log = EventLog()
+        many = [f"e-{i}" for i in range(50)]
+        log.query_diagnostic(
+            query="q", intent=None, intent_confidence=None,
+            query_entities=many, resolved_entity_ids=many,
+            temporal_ref=None, grammar_composed=False,
+            grammar_confidence=None,
+            candidate_counts={}, signal_coverage={},
+            htmg_subject_stats={}, top_breakdown=None,
+            result_count=0, total_ms=1.0,
+        )
+        evt = log.recent(1)[0]
+        assert len(evt.data["query_entities"]) == 20
+        assert len(evt.data["resolved_entity_ids"]) == 20
+
+    def test_convenience_emitters_event_types(self):
+        """Tail of the convenience-emitters test — verifies that all
+        emitted convenience events show up in ``recent()``.  Split off
+        from ``test_convenience_emitters`` so this assertion-block
+        survives reorderings of the new diagnostic-event tests above.
+        """
+        log = EventLog()
+        log.agent_registered("api-agent", ["api"])
+        log.bus_ask("ask-1", "frontend", "q", ["api"], ["api-agent"])
+        log.bus_response("ask-1", "api-agent", "live", 0.85)
+        log.bus_announce(
+            "ann-1", "db-agent", "evt", ["db"], "info", ["api-agent"],
+        )
+        log.bus_surrogate("ask-2", "api-agent", 0.65, 3600.0)
+        log.memory_stored(
+            "mem-1", "Hello", "fact", ["api"], 3, "api-agent",
+        )
+        log.memory_searched("q", 5, 0.92, "frontend")
+
         recent = log.recent(20)
         types = [e.type for e in recent]
         assert "agent.registered" in types

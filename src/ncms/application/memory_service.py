@@ -219,7 +219,8 @@ class MemoryService:
         if self._config.admission_enabled:
             features.append("admission")
         if self._config.temporal_enabled:
-            features.append("temporal_stack")  # reconciliation + episodes + intent + tlg + temporal scoring
+            # reconciliation + episodes + intent + tlg + temporal scoring
+            features.append("temporal_stack")
         if self._config.slm_enabled:
             features.append("slm")
         if self._config.content_classification_enabled:
@@ -1209,10 +1210,39 @@ class MemoryService:
         # confident answer; otherwise the BM25-derived ranking is
         # returned unchanged (the invariant that guarantees zero
         # confidently-wrong results).
+        grammar_composed = False
+        grammar_confidence: float | None = None
         if self._config.temporal_enabled:
-            results = await self._compose_grammar_with_results(
-                query, results, limit,
+            results, grammar_composed, grammar_confidence = (
+                await self._compose_grammar_with_results(
+                    query, results, limit,
+                )
             )
+
+        # ── Per-query diagnostic ─────────────────────────────────────
+        # Always emit (not gated by pipeline_debug).  See
+        # ``EventLog.query_diagnostic`` docstring for payload semantics.
+        # Defensive: never let diagnostic emission affect search results.
+        try:
+            await self._emit_query_diagnostic(
+                query=query,
+                intent_result=intent_result,
+                query_entity_names=query_entity_names,
+                context_entity_ids=context_entity_ids,
+                temporal_ref=temporal_ref,
+                grammar_composed=grammar_composed,
+                grammar_confidence=grammar_confidence,
+                bm25_count=len(bm25_results),
+                splade_count=len(splade_results),
+                fused_count=len(fused_candidates),
+                expanded_count=len(all_candidates),
+                scored=scored,
+                results=results,
+                total_ms=(time.perf_counter() - pipeline_start) * 1000,
+                agent_id=agent_id,
+            )
+        except Exception:
+            logger.debug("query_diagnostic emit failed", exc_info=True)
 
         return results
 
@@ -1923,12 +1953,200 @@ class MemoryService:
             "marker_counts": marker_counts,
         }
 
+    async def _emit_query_diagnostic(
+        self,
+        *,
+        query: str,
+        intent_result: object | None,
+        query_entity_names: list[dict],
+        context_entity_ids: list[str],
+        temporal_ref: object | None,
+        grammar_composed: bool,
+        grammar_confidence: float | None,
+        bm25_count: int,
+        splade_count: int,
+        fused_count: int,
+        expanded_count: int,
+        scored: list[ScoredMemory],
+        results: list[ScoredMemory],
+        total_ms: float,
+        agent_id: str | None,
+    ) -> None:
+        """Build and emit the comprehensive per-query diagnostic.
+
+        See :meth:`EventLog.query_diagnostic` for the payload spec.
+        Always-on (not gated by ``pipeline_debug``); the user wants
+        visibility on every query so retiring the regex/heuristic
+        fallbacks (Phase I.2-I.6) can be verified-by-observation
+        rather than verified-by-rerunning-MSEB.
+
+        Designed to be CTLG-extensible: when the cue-tagger ships,
+        its ``cue_tags_count`` slots into ``signal_coverage`` and the
+        ``causal_edges`` field of ``htmg_subject_stats`` becomes
+        non-trivial.
+        """
+        # Signal coverage — how many candidates had a non-zero
+        # contribution from each retrieval signal.  Tells operators
+        # which heads are firing on this query's candidate set.
+        coverage = {
+            "intent_alignment": sum(
+                1 for s in scored if s.intent_alignment_contrib != 0.0
+            ),
+            "state_change_alignment": sum(
+                1 for s in scored
+                if s.state_change_alignment_contrib != 0.0
+            ),
+            "role_grounding": sum(
+                1 for s in scored if s.role_grounding_contrib != 0.0
+            ),
+            "hierarchy_bonus": sum(
+                1 for s in scored if s.hierarchy_bonus != 0.0
+            ),
+            "temporal": sum(
+                1 for s in scored if s.temporal_score != 0.0
+            ),
+            "graph": sum(1 for s in scored if s.spreading != 0.0),
+            "reconciliation_penalty": sum(
+                1 for s in scored if s.reconciliation_penalty != 0.0
+            ),
+        }
+
+        # HTMG subject stats — for each resolved entity ID, count
+        # the L2 / supersession / causal edges in its neighborhood.
+        # Helpful for "why didn't the gold answer surface?" debugging
+        # when the corpus has rich state evolution.  Skip when
+        # temporal disabled (no L2 path active anyway).
+        htmg_stats: dict[str, int] = {}
+        if self._config.temporal_enabled and context_entity_ids:
+            try:
+                l2_count = 0
+                sup_count = 0
+                causal_count = 0
+                for eid in context_entity_ids[:10]:  # cap I/O
+                    states = (
+                        await self._store.get_entity_states_by_entity(
+                            eid,
+                        )
+                    )
+                    l2_count += len(states)
+                    for s in states:
+                        if not s.is_current:
+                            sup_count += 1
+                htmg_stats = {
+                    "l2_entity_states": l2_count,
+                    "supersession_chain_size": sup_count,
+                    "causal_edges": causal_count,  # CTLG fills this
+                }
+            except Exception:
+                logger.debug(
+                    "htmg_subject_stats lookup failed", exc_info=True,
+                )
+
+        # Top-result signal breakdown — full vector for the rank-1
+        # result so operators can see exactly which signals moved it
+        # there.  Includes raw + post-weight fields where available.
+        top_breakdown: dict[str, object] | None = None
+        if results:
+            top = results[0]
+            top_breakdown = {
+                "memory_id": top.memory.id,
+                "content_preview": top.memory.content[:120],
+                "node_types": top.node_types,
+                "bm25_raw": round(top.bm25_score, 3),
+                "splade_raw": round(top.splade_score, 3),
+                "graph_raw": round(top.spreading, 3),
+                "h_bonus": round(top.hierarchy_bonus, 3),
+                "ia_contrib": round(top.intent_alignment_contrib, 3),
+                "sc_contrib": round(
+                    top.state_change_alignment_contrib, 3,
+                ),
+                "rg_contrib": round(top.role_grounding_contrib, 3),
+                "temporal": round(top.temporal_score, 3),
+                "penalty": round(top.reconciliation_penalty, 3),
+                "total": round(top.total_activation, 3),
+                "is_superseded": top.is_superseded,
+                "has_conflicts": top.has_conflicts,
+            }
+
+        intent_str: str | None = None
+        intent_conf: float | None = None
+        if intent_result is not None:
+            intent_str = getattr(
+                getattr(intent_result, "intent", None), "value", None,
+            )
+            intent_conf = getattr(intent_result, "confidence", None)
+
+        temporal_ref_str: str | None = None
+        if temporal_ref is not None:
+            temporal_ref_str = repr(temporal_ref)[:200]
+
+        query_names = [
+            qe["name"] for qe in query_entity_names
+            if isinstance(qe, dict) and qe.get("name")
+        ]
+
+        self._event_log.query_diagnostic(
+            query=query,
+            intent=intent_str,
+            intent_confidence=intent_conf,
+            query_entities=query_names,
+            resolved_entity_ids=list(context_entity_ids),
+            temporal_ref=temporal_ref_str,
+            grammar_composed=grammar_composed,
+            grammar_confidence=grammar_confidence,
+            candidate_counts={
+                "bm25": bm25_count,
+                "splade": splade_count,
+                "rrf_fused": fused_count,
+                "expanded": expanded_count,
+                "scored": len(scored),
+                "returned": len(results),
+            },
+            signal_coverage=coverage,
+            htmg_subject_stats=htmg_stats,
+            top_breakdown=top_breakdown,
+            result_count=len(results),
+            total_ms=total_ms,
+            agent_id=agent_id,
+        )
+
+        # One-line INFO log for grep-ability.  Format is stable so
+        # downstream tooling (CTLG verification harness, dashboards)
+        # can parse it.  Compact: [diag] q="..." intent=... ents=N
+        # cnt=B/S/F/E/Sc/R sigcov=ia,sc,rg,h,t,g,pen top=mid:total
+        sig_compact = "/".join(
+            str(coverage[k]) for k in (
+                "intent_alignment",
+                "state_change_alignment",
+                "role_grounding",
+                "hierarchy_bonus",
+                "temporal",
+                "graph",
+                "reconciliation_penalty",
+            )
+        )
+        top_compact = (
+            f"{top_breakdown['memory_id']}:{top_breakdown['total']}"
+            if top_breakdown else "none"
+        )
+        logger.info(
+            "[diag] q=%r intent=%s/%s ents=%d cnt=%d/%d/%d/%d/%d/%d "
+            "sigcov=%s gram=%s top=%s ms=%.1f",
+            query[:80], intent_str, intent_conf,
+            len(query_names),
+            bm25_count, splade_count, fused_count,
+            expanded_count, len(scored), len(results),
+            sig_compact,
+            f"y@{grammar_confidence:.2f}" if grammar_composed else "n",
+            top_compact, total_ms,
+        )
+
     async def _compose_grammar_with_results(
         self,
         query: str,
         results: list[ScoredMemory],
         limit: int,
-    ) -> list[ScoredMemory]:
+    ) -> tuple[list[ScoredMemory], bool, float | None]:
         """Apply the grammar ∨ BM25 invariant to ``search`` results.
 
         Runs ``retrieve_lg`` and, when the trace is confident, moves
@@ -1941,14 +2159,25 @@ class MemoryService:
         returns the original list.  Benchmarks / callers observe
         strict graceful-degradation semantics — TLG can only improve
         results, not break search.
+
+        Returns a tuple of ``(results, did_compose, confidence)``:
+          * ``results`` — the (possibly reordered) result list.
+          * ``did_compose`` — True iff the grammar trace was
+            confident enough to displace the BM25 top-1.
+          * ``confidence`` — the trace's confidence value when
+            composition fired, otherwise ``None``.
+
+        The tuple feeds the per-query ``query_diagnostic`` event so
+        operators can see whether grammar composition actually
+        contributed to a given query's ranking.
         """
         try:
             trace = await self.retrieve_lg(query)
         except Exception:
             logger.warning("TLG dispatch failed during search", exc_info=True)
-            return results
+            return results, False, None
         if not trace.has_confident_answer():
-            return results
+            return results, False, None
 
         # grammar_answer is a MemoryNode ID — resolve it to the
         # backing Memory.  Zone context IDs get the same treatment.
@@ -1972,7 +2201,7 @@ class MemoryService:
             )
         except Exception:  # pragma: no cover — defensive guard
             pass
-        return composed
+        return composed, True, trace.confidence.value
 
     async def _compose_trace_onto_scored(
         self,

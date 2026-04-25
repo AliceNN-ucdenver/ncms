@@ -857,6 +857,19 @@ class ScoringPipeline:
             ),
             hierarchy_bonus=c["h_bonus"],
             temporal_score=temporal_contrib,
+            # Phase H signal contributions (post-weight, the actual
+            # additive impact on combined).  Surfaced for the
+            # query_diagnostic event so operators can see which heads
+            # moved each candidate's rank.
+            intent_alignment_contrib=ia_contrib,
+            state_change_alignment_contrib=sc_contrib,
+            role_grounding_contrib=rg_contrib,
+            # Phase G — penalty stored as POSITIVE (always >= 0); the
+            # combined-score expression subtracts it, so reading
+            # ``combined + reconciliation_penalty`` recovers the
+            # pre-penalty score.  ``0.0`` when the intent gate
+            # didn't fire OR no supersession/conflict edges existed.
+            reconciliation_penalty=c["penalty"],
         )
 
     # ── Per-Intent Weight Routing ────────────────────────────────────────
