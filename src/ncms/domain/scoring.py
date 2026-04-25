@@ -372,6 +372,49 @@ def hierarchy_match_bonus(
     return 0.0
 
 
+def intent_alignment_bonus(
+    memory_intent: str | None,
+    aligned_intents: frozenset[str] | set[str] | tuple[str, ...] | None,
+    bonus: float = 0.5,
+) -> float:
+    """Return a scoring bonus when a memory's preference-intent label aligns
+    with the classified query intent.
+
+    The 5-head SLM emits a per-memory ``intent`` label drawn from the
+    ``INTENT_CATEGORIES`` taxonomy (positive / negative / habitual /
+    difficulty / choice / none).  At retrieval time, the BM25 exemplar
+    classifier emits a ``QueryIntent``.  Some query intents are a clean
+    semantic match for specific memory-intent labels — for example, a
+    PATTERN_LOOKUP query ("what do I usually do?") is exactly what a
+    memory labelled ``intent="habitual"`` was extracted to support.
+
+    The mapping itself lives at the call site (``ScoringPipeline``);
+    this function is the pure scoring primitive: given the memory's
+    intent label and the set of labels the query intent considers
+    aligned, apply the full bonus on match, zero otherwise.
+
+    Args:
+        memory_intent: The ``intent_slot.intent`` value baked into
+            ``memory.structured`` at ingest time.  May be ``None``
+            (heuristic fallback chain emits no label, or the SLM
+            output was below the confidence floor).
+        aligned_intents: The set / tuple of memory-intent labels the
+            query intent considers a match.  ``None`` or empty means
+            this query intent has no alignment rule, return 0.0.
+        bonus: Maximum bonus value applied on match.  Default 0.5
+            mirrors :func:`hierarchy_match_bonus` so the two intent-
+            aware bonuses share a calibration scale.
+
+    Returns:
+        ``bonus`` if ``memory_intent in aligned_intents``, else 0.0.
+    """
+    if not memory_intent or not aligned_intents:
+        return 0.0
+    if memory_intent in aligned_intents:
+        return bonus
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Admission Scoring (Phase 1 — NCMS-Next §8)
 # ---------------------------------------------------------------------------

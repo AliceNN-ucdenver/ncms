@@ -31,6 +31,7 @@ from ncms.domain.scoring import (
     conflict_annotation_penalty,
     graph_spreading_activation,
     hierarchy_match_bonus,
+    intent_alignment_bonus,
     ppr_graph_score,
     recency_score,
     retrieval_probability,
@@ -364,6 +365,30 @@ class ScoringPipeline:
                     bonus=self._config.intent_hierarchy_bonus,
                 )
 
+            # Phase H.1 — per-memory intent-label × QueryIntent alignment.
+            # The SLM's preference-intent label is exactly the kind of
+            # query-side signal PATTERN_LOOKUP / STRATEGIC_REFLECTION
+            # were waiting for: a memory tagged ``habitual`` IS the
+            # answer to "what do you usually do?".  No-op when the
+            # query intent has no alignment rule, when the memory has
+            # no SLM label, or when the master temporal flag is off
+            # (no QueryIntent → nothing to align against).
+            ia_bonus = 0.0
+            if (
+                self._config.temporal_enabled
+                and intent_result
+                and self._config.scoring_weight_intent_alignment > 0
+            ):
+                aligned = self._INTENT_ALIGNMENT_TABLE.get(
+                    intent_result.intent,
+                )
+                if aligned:
+                    ia_bonus = intent_alignment_bonus(
+                        memory_intent=self._memory_intent_label(memory),
+                        aligned_intents=aligned,
+                        bonus=self._config.intent_alignment_bonus,
+                    )
+
             act = total_activation(
                 bl, spread, noise, mismatch_penalty=0.0,
             )
@@ -397,6 +422,7 @@ class ScoringPipeline:
                 "graph_raw": graph_spread, "temporal_raw": temporal_raw,
                 "act": act, "bl": bl, "spread": spread, "noise": noise,
                 "penalty": penalty, "h_bonus": h_bonus,
+                "ia_bonus": ia_bonus,
                 "rec_score": rec_score,
                 "is_superseded": is_superseded,
                 "has_conflicts": has_conflicts,
@@ -445,11 +471,58 @@ class ScoringPipeline:
         QueryIntent.CURRENT_STATE_LOOKUP,
     })
 
+    # Phase H.1 — QueryIntent → set of per-memory intent labels that
+    # are a clean semantic match.  The 5-head SLM emits one label per
+    # memory drawn from ``INTENT_CATEGORIES`` (positive / negative /
+    # habitual / difficulty / choice / none).  When the BM25 exemplar
+    # classifier produces a QueryIntent with an entry in this table,
+    # memories whose ``intent_slot.intent`` is in the aligned set get
+    # a small additive bonus on top of the BM25 / SPLADE / graph mix.
+    #
+    # The table is conservative on purpose — only mappings where the
+    # query→memory alignment is unambiguous earn an entry:
+    #
+    #   PATTERN_LOOKUP  ── "what's the recurring theme / what do you
+    #                       usually do?" — ``habitual`` memories are
+    #                       extracted as exactly that signal.
+    #   STRATEGIC_REFLECTION ── "what should we do / what have we
+    #                       learned?" — habits + explicit choices
+    #                       both carry insight weight here.
+    #
+    # Other QueryIntents either care about state evolution (handled
+    # by the reconciliation gate + temporal scoring) or have no
+    # natural mapping to the preference taxonomy and are deliberately
+    # absent.  Adding new mappings is one line each — see Phase H.5
+    # (preference-style FACT_LOOKUP queries) for a likely follow-up.
+    _INTENT_ALIGNMENT_TABLE: dict[QueryIntent, frozenset[str]] = {
+        QueryIntent.PATTERN_LOOKUP: frozenset({"habitual"}),
+        QueryIntent.STRATEGIC_REFLECTION: frozenset({"habitual", "choice"}),
+    }
+
+    @staticmethod
+    def _memory_intent_label(memory: object) -> str | None:
+        """Pull the ``intent_slot.intent`` label baked into a Memory.
+
+        Returns the string label or ``None`` when the memory lacks
+        structured intent_slot output (heuristic fallback chain, or
+        SLM disabled at ingest time).  Defensive against malformed
+        ``structured`` payloads — bad shapes return ``None`` rather
+        than raising into the scoring loop.
+        """
+        structured = getattr(memory, "structured", None)
+        if not isinstance(structured, dict):
+            return None
+        slot = structured.get("intent_slot")
+        if not isinstance(slot, dict):
+            return None
+        intent = slot.get("intent")
+        return intent if isinstance(intent, str) and intent else None
+
     async def _compute_reconciliation_penalty(
         self,
         nodes: list,
         *,
-        intent_result: "IntentResult | None" = None,
+        intent_result: IntentResult | None = None,
     ) -> tuple[float, bool, bool]:
         """Compute reconciliation penalties for superseded/conflicted states.
 
@@ -525,6 +598,7 @@ class ScoringPipeline:
         }
 
         w_hierarchy = self._config.scoring_weight_hierarchy
+        w_intent_align = self._config.scoring_weight_intent_alignment
         w_temporal = (
             self._config.scoring_weight_temporal
             if temporal_ref is not None else 0.0
@@ -541,7 +615,9 @@ class ScoringPipeline:
                 min_ce=min_ce, ce_range=ce_range,
                 w_bm25=w_bm25, w_actr=w_actr, w_splade=w_splade,
                 w_graph=w_graph, w_recency=w_recency,
-                w_hierarchy=w_hierarchy, w_temporal=w_temporal,
+                w_hierarchy=w_hierarchy,
+                w_intent_align=w_intent_align,
+                w_temporal=w_temporal,
                 w_ce=w_ce, actr_enabled=actr_enabled,
                 intent_result=intent_result,
             )
@@ -578,7 +654,9 @@ class ScoringPipeline:
         ce_range: float,
         w_bm25: float, w_actr: float, w_splade: float,
         w_graph: float, w_recency: float,
-        w_hierarchy: float, w_temporal: float,
+        w_hierarchy: float,
+        w_intent_align: float,
+        w_temporal: float,
         w_ce: float, actr_enabled: bool,
         intent_result: IntentResult | None,
     ) -> ScoredMemory | None:
@@ -593,6 +671,10 @@ class ScoringPipeline:
         temporal_n = c["temporal_raw"] / maxes["temporal"]
         temporal_contrib = temporal_n * w_temporal
 
+        # Phase H.1 — intent alignment is additive on both score paths
+        # (CE-rerank and weighted-sum), gated by ``w_intent_align``.
+        ia_contrib = c.get("ia_bonus", 0.0) * w_intent_align
+
         if ce_scores:
             ce_norm = (
                 (ce_scores.get(c["memory_id"], min_ce) - min_ce)
@@ -603,6 +685,7 @@ class ScoringPipeline:
                 + bm25_n * (1.0 - w_ce) * 0.67
                 + splade_n * (1.0 - w_ce) * 0.33
                 + temporal_contrib - c["penalty"]
+                + ia_contrib
             )
         else:
             combined = (
@@ -611,6 +694,7 @@ class ScoringPipeline:
                 + c["h_bonus"] * w_hierarchy
                 + c["rec_score"] * w_recency
                 + temporal_contrib - c["penalty"]
+                + ia_contrib
             )
 
         # ACT-R threshold filter

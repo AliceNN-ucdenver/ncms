@@ -137,6 +137,22 @@ class NCMSConfig(BaseSettings):
     intent_supplement_max: int = 20            # Max supplementary candidates per intent
     intent_llm_fallback_enabled: bool = False  # LLM fallback when BM25 confidence low
 
+    # Phase H.1 — per-memory intent-label × QueryIntent alignment bonus.
+    # The 5-head SLM emits a per-memory intent label (positive /
+    # negative / habitual / difficulty / choice / none).  When the
+    # classified QueryIntent has a defined alignment rule (see
+    # ``ScoringPipeline._INTENT_ALIGNMENT_TABLE``), memories whose
+    # intent label is in the aligned set get an additive boost.
+    # ``intent_alignment_bonus`` is the raw bonus magnitude; the
+    # ``scoring_weight_intent_alignment`` weight scales it.  Both
+    # default to 0.5 so the max contribution to ``combined`` is 0.25
+    # — comparable to a moderate normalised BM25 signal.  Gated by
+    # ``temporal_enabled`` (the master flag that turns on the BM25
+    # exemplar QueryIntent classifier in the first place); without
+    # a classified query intent there is nothing to align against.
+    intent_alignment_bonus: float = 0.5
+    scoring_weight_intent_alignment: float = 0.5
+
     # Episode LLM fallback (Phase 3 tuning)
     episode_llm_fallback_enabled: bool = False  # LLM fallback when no episode matches
 

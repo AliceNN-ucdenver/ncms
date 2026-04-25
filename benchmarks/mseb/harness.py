@@ -411,6 +411,15 @@ def main() -> None:
              "floor — tests whether the lowered threshold admits "
              "low-confidence labels that perturb retrieval.",
     )
+    ap.add_argument(
+        "--intent-alignment-weight", type=float, default=None,
+        help="[Phase H.1 ablation] Override "
+             "scoring_weight_intent_alignment (default 0.5).  Use "
+             "0.0 to disable the per-memory intent × QueryIntent "
+             "alignment bonus — tests whether the SLM's preference-"
+             "intent label adds retrieval lift on PATTERN_LOOKUP / "
+             "STRATEGIC_REFLECTION queries.",
+    )
 
     args = ap.parse_args()
     feature_set = _parse_feature_set(args)
@@ -446,6 +455,10 @@ def main() -> None:
             weight_overrides["reconciliation_conflict_penalty"] = 0.0
         if args.slm_confidence_threshold is not None:
             weight_overrides["slm_confidence_threshold"] = args.slm_confidence_threshold
+        if args.intent_alignment_weight is not None:
+            weight_overrides["scoring_weight_intent_alignment"] = (
+                args.intent_alignment_weight
+            )
         if weight_overrides:
             backend_kwargs["ncms_config_overrides"] = weight_overrides
 
