@@ -23,6 +23,15 @@ intended_content: |
   "Patient reports moderate back pain, persistent for 2 weeks."
   "Switched from atorvastatin to rosuvastatin."
 
+# Speaker constraint baked into the SDG prompt — prevents the LLM
+# from inventing nonsensical subjects.  Caught in B'.7 by the
+# gpt-4o cross-judge ("zoroastrianism adopted keras..." on
+# software_dev; the same risk applies to clinical).
+speaker_voice: >-
+  a clinician or care-team member writing a brief observational
+  note about a specific patient (third-person clinical voice; no
+  direct quotes from the patient unless explicitly quoting)
+
 slots:
   - medication
   - procedure

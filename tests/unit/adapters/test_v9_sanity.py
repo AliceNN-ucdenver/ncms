@@ -57,6 +57,7 @@ def _minimal_spec(tmp_path: Path) -> DomainSpec:
         name="clinical",
         description="test",
         intended_content="",
+        speaker_voice="a clinician",
         slots=("medication",),
         topics=("medication_mgmt", "other"),
         gazetteer=gazetteer,

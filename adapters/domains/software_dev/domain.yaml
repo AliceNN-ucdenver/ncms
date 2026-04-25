@@ -19,6 +19,17 @@ intended_content: |
   "Root cause: config drift after v2.3 rollout."
   Prose only — raw git diffs are out of scope for v9.
 
+# Speaker constraint baked into the SDG prompt — engineering-team
+# voice ("we", "the team", "our service", named teams or roles).
+# Prevents the LLM from inventing pathological subjects
+# ("zoroastrianism adopted keras over huggingface" — caught by
+# the gpt-4o cross-judge in B'.7).
+speaker_voice: >-
+  a software engineer, tech lead, or engineering team writing
+  about their own project decisions ("we", "the team", "our
+  service") — never a religion, philosophy, country, or other
+  abstract entity
+
 slots:
   - language
   - framework

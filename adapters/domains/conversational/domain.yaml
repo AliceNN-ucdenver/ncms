@@ -23,6 +23,14 @@ intended_content: |
   "I go bouldering twice a week."
   "Really into A24 films lately."
 
+# Speaker constraint baked into the SDG prompt — first-person
+# casual voice; prevents the LLM from inventing third-party
+# subjects when it should be a personal preference statement.
+speaker_voice: >-
+  an individual person speaking in the FIRST PERSON about their
+  own preferences and habits ("I", "my") — never about a third
+  party or organisation
+
 slots:
   - object        # the thing the preference is about (open-vocab)
   - alternative   # contrast partner for choice preferences

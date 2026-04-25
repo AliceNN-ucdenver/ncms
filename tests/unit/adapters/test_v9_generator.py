@@ -360,6 +360,7 @@ class TestGenerateForArchetype:
         spec = DomainSpec(
             name="clinical",
             description="", intended_content="",
+            speaker_voice="a clinician",
             slots=("medication",),
             topics=("medication_mgmt",),
             gazetteer=(

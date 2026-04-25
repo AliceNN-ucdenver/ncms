@@ -128,6 +128,7 @@ def build_archetype_prompt(
     *,
     entity_rows: list[dict[tuple[str, str], str]],
     domain_description: str = "",
+    speaker_voice: str = "",
 ) -> str:
     """Render the full LLM prompt for a batch of ``len(entity_rows)`` rows.
 
@@ -170,6 +171,20 @@ def build_archetype_prompt(
     )
     if domain_description:
         sections.append(f"Domain framing: {domain_description}")
+
+    # ── Speaker voice constraint ─────────────────────────────────────
+    # Strong hint to the LLM about WHO is speaking — pulled from
+    # ``DomainSpec.speaker_voice``.  Prevents the pathological
+    # subjects gpt-4o flagged in B'.7 ("zoroastrianism adopted keras
+    # over huggingface" — the LLM had no constraint that the subject
+    # had to be a software-engineering speaker).  Goes in its own
+    # section so it stays visible to the model rather than being
+    # buried in domain framing.
+    if speaker_voice:
+        sections.append(
+            "# Speaker voice (every row must use this voice)\n"
+            f"{speaker_voice.strip()}",
+        )
 
     # ── Scenario (behavioural descriptions — NO label strings) ──────
     sections.append(

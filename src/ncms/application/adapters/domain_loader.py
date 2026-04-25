@@ -163,6 +163,7 @@ class DomainSpec:
     name: str                                 # e.g. "software_dev"
     description: str
     intended_content: str
+    speaker_voice: str                        # SDG-prompt constraint
 
     slots: tuple[str, ...]                    # domain's slot taxonomy
     topics: tuple[str, ...]                   # topic head vocabulary
@@ -626,6 +627,15 @@ def load_domain(
         )
     description = _opt_str(manifest, "description")
     intended_content = _opt_str(manifest, "intended_content")
+    # Optional but strongly recommended: pin the SDG generator's
+    # speaker voice so the LLM doesn't invent nonsensical subjects
+    # ("zoroastrianism adopted keras over huggingface" was caught
+    # by the gpt-4o cross-judge in B'.7).  Falls back to a generic
+    # phrasing when absent.
+    speaker_voice = _opt_str(
+        manifest, "speaker_voice",
+        "an unspecified speaker (use natural prose for the domain)",
+    )
     slots = _require_list_of_str(manifest, "slots", manifest_path)
     topics = _require_list_of_str(manifest, "topics", manifest_path)
 
@@ -725,6 +735,7 @@ def load_domain(
         name=name,
         description=description,
         intended_content=intended_content,
+        speaker_voice=speaker_voice,
         slots=slots,
         topics=topics,
         gazetteer=gazetteer,

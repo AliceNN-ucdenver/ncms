@@ -148,6 +148,7 @@ def _sample_entities(
     used_per_slot: dict[str, set[str]] = {}
     primary_topic: str | None = None
     first_any_topic: str | None = None
+    primary_source_topic: str | None = None  # entity's own gazetteer / inline topic
     # Iterate in a stable order so seed determinism holds across
     # reruns; role_spans is a tuple so its order is already stable.
     for rs in archetype.role_spans:
@@ -156,6 +157,16 @@ def _sample_entities(
         for i in range(rs.count):
             key_suffix = "" if rs.count == 1 else f"#{i}"
             key = (rs.role, rs.slot + key_suffix)
+            # Same-topic constraint: when drawing the ``alternative``
+            # role and a primary has already been sampled, restrict
+            # the candidate pool to entities sharing the primary's
+            # topic.  Prevents cross-category choice pairs like
+            # "hot chocolate over Kyoto" (food vs city) and
+            # "Tesla Model 3 over Filson" (car vs clothing) that
+            # gpt-4o flagged as unfaithful in B-prime.7.
+            must_match_topic = (
+                primary_source_topic if rs.role == "alternative" else None
+            )
             draw = _draw_one(
                 slot=rs.slot,
                 gaz_by_slot=gaz_by_slot,
@@ -163,6 +174,7 @@ def _sample_entities(
                 archetype=archetype,
                 already_used=used_per_slot.setdefault(rs.slot, set()),
                 rng=rng,
+                must_match_topic=must_match_topic,
             )
             if draw is None:
                 # No entity available for this (role, slot) pair —
@@ -172,6 +184,10 @@ def _sample_entities(
                 return {}, None
             surface, source_topic = draw
             used_per_slot[rs.slot].add(surface.lower())
+            # Capture the FIRST primary's source-topic for use as the
+            # same-topic filter on later alternative draws.
+            if rs.role == "primary" and primary_source_topic is None:
+                primary_source_topic = source_topic
             out[key] = surface
             # Topic inheritance — prefer the first PRIMARY entity's
             # topic, but fall back to the first entity of any role
@@ -206,6 +222,7 @@ def _draw_one(
     archetype: ArchetypeSpec,
     already_used: set[str],
     rng: random.Random,
+    must_match_topic: str | None = None,
 ) -> tuple[str, str | None] | None:
     """Return ``(surface, source_topic)`` for ``slot`` not in ``already_used``,
     or ``None`` when the pool is exhausted / nonexistent.
@@ -215,18 +232,34 @@ def _draw_one(
 
     * Gazetteer path → the chosen catalog entry's ``topic``.
     * Inline path → the chosen diversity node's ``topic_hint``.
+
+    ``must_match_topic`` (B'.8 same-topic-alternative constraint)
+    restricts the candidate pool to entities whose topic matches
+    the supplied value.  Used when drawing an ``alternative``-role
+    entity that must share the primary entity's topic so the choice
+    pair makes sense ("matcha over coffee", not "matcha over
+    Kyoto").  Falls back to the unconstrained pool when no match
+    exists in the requested topic — preserves yield at the cost
+    of an occasional cross-topic pair.
     """
     # Gazetteer path.
     gaz_entries = gaz_by_slot.get(slot, ())
     if gaz_entries:
-        candidates = [
+        usable = [
             e for e in gaz_entries
             if e.canonical.lower() not in already_used
         ]
-        if candidates:
-            picked = rng.choice(candidates)
-            return picked.canonical, picked.topic
-        return None
+        if not usable:
+            return None
+        # Same-topic filter for alternative draws.  Prefer matching
+        # entries; fall back to the full pool if the topic is too
+        # narrow to satisfy the constraint AND avoid same-canonical.
+        if must_match_topic is not None:
+            preferred = [e for e in usable if e.topic == must_match_topic]
+            if preferred:
+                usable = preferred
+        picked = rng.choice(usable)
+        return picked.canonical, picked.topic
 
     # Open-vocab path: filter inline nodes by slot compatibility
     # FIRST, then by topic_hint.  The slot filter uses
@@ -243,15 +276,27 @@ def _draw_one(
     if not slot_compatible:
         return None
 
-    # Prefer nodes whose topic_hint matches the archetype's topic
-    # (when declared); fall back to all slot-compatible nodes so
-    # archetypes with topic=None still get entities.
-    matching = [
-        n for n in slot_compatible
-        if archetype.topic is not None and n.topic_hint == archetype.topic
-    ]
-    if not matching:
-        matching = slot_compatible
+    # Topic preference order (most-specific to least):
+    #   1. ``must_match_topic`` (B'.8 same-topic-alternative — pinned
+    #      to the primary's topic when drawing alternatives).
+    #   2. archetype.topic (when declared on the archetype).
+    #   3. Any slot-compatible node (fallback).
+    #
+    # Each filter yields a STRICT subset; we walk down to the first
+    # non-empty pool.  This keeps yield high (no abrupt drop to zero
+    # when the strictest filter fails) while honouring the most-
+    # specific constraint that's satisfiable.
+    pools: list[list[DiversityNode]] = []
+    if must_match_topic is not None:
+        pools.append(
+            [n for n in slot_compatible if n.topic_hint == must_match_topic]
+        )
+    if archetype.topic is not None:
+        pools.append(
+            [n for n in slot_compatible if n.topic_hint == archetype.topic]
+        )
+    pools.append(slot_compatible)
+    matching = next((p for p in pools if p), slot_compatible)
 
     # Sample uniformly across candidate nodes (not weighted by size —
     # avoids dominant-category bias).
@@ -375,6 +420,7 @@ def generate_for_archetype(
                 archetype,
                 entity_rows=entity_rows,
                 domain_description=spec.description,
+                speaker_voice=spec.speaker_voice,
             )
             raw_rows = backend.generate(
                 prompt=prompt, n=batch_n, rng=rng,
