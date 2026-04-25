@@ -739,23 +739,43 @@ def main() -> None:
     # YAML).  Falls back to None when the v9 plugin directory isn't
     # present (e.g. an old domain without a YAML migration); phase4
     # then uses the YAML's topic_labels.
+    #
+    # Path resolution: walk up from this module to the first
+    # ancestor containing pyproject.toml (mirrors the heuristic in
+    # schemas._hydrate_from_domain_registry and cli/_find_domain_source_dir).
+    # We do NOT use ``parents[N]`` literals — that resolved to
+    # ``src/`` in pip-installed layouts and silently fell through
+    # to the YAML fallback, leaving the topic head stuck on the
+    # legacy v6/v7 vocab while the corpus carried v9 labels.
     domain_topics: tuple[str, ...] | None = None
-    try:
-        from ncms.application.adapters.domain_loader import load_domain
-        v9_root = Path(__file__).resolve().parents[3] / "adapters/domains"
-        v9_dir = v9_root / args.domain
-        if v9_dir.is_dir():
+    v9_dir: Path | None = None
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            candidate = parent / "adapters" / "domains" / args.domain
+            if candidate.is_dir():
+                v9_dir = candidate
+            break
+    if v9_dir is not None:
+        try:
+            from ncms.application.adapters.domain_loader import load_domain
             spec = load_domain(v9_dir)
             domain_topics = spec.topics
             logger.info(
                 "[phase4] v9 DomainSpec loaded for %s — topics=%s",
                 args.domain, list(domain_topics),
             )
-    except Exception as exc:  # noqa: BLE001 — non-fatal; falls back to YAML
-        logger.warning(
-            "[phase4] could not load v9 DomainSpec for %s (%s); "
-            "falling back to legacy taxonomy YAML",
-            args.domain, exc,
+        except Exception as exc:  # noqa: BLE001 — non-fatal
+            logger.warning(
+                "[phase4] could not load v9 DomainSpec at %s (%s); "
+                "falling back to legacy taxonomy YAML",
+                v9_dir, exc,
+            )
+    else:
+        logger.info(
+            "[phase4] no v9 DomainSpec for %s — using legacy "
+            "taxonomy YAML",
+            args.domain,
         )
 
     # Phase 4
