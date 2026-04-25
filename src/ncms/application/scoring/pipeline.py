@@ -341,9 +341,19 @@ class ScoringPipeline:
             nodes = nodes_by_memory.get(memory_id, [])
             node_types = [mn.node_type.value for mn in nodes]
 
-            # Reconciliation penalties
+            # Reconciliation penalties — intent-gated.  The supersession
+            # / conflict penalties only make sense for queries that
+            # ask about CURRENT STATE; they actively HURT historical /
+            # general / event-reconstruction queries because the
+            # superseded memory IS the gold answer for those.  Phase
+            # G ablation B caught this: with v9 SLM producing more
+            # state_change=declaration labels, more memories ended up
+            # on supersession chains, and the indiscriminately-applied
+            # penalty pushed the gold answer below its replacement.
             penalty, is_superseded, has_conflicts = (
-                await self._compute_reconciliation_penalty(nodes)
+                await self._compute_reconciliation_penalty(
+                    nodes, intent_result=intent_result,
+                )
             )
 
             # Hierarchy bonus
@@ -424,12 +434,33 @@ class ScoringPipeline:
             return memory.observed_at  # type: ignore[attr-defined]
         return getattr(memory, "created_at", None)
 
+    # Query intents for which a memory being on a supersession chain
+    # is actually meaningful — the user is asking "what is X NOW",
+    # so older states should rank below the current one.  For every
+    # other intent class (fact lookup, historical / event reconstruction,
+    # pattern / strategic, change detection) the OLDER memory IS often
+    # the answer, so penalising it hurts retrieval.  See Phase G
+    # ablation B + the docs/v9-mseb-slm-lift-findings.md writeup.
+    _RECONCILIATION_PENALTY_INTENTS = frozenset({
+        QueryIntent.CURRENT_STATE_LOOKUP,
+    })
+
     async def _compute_reconciliation_penalty(
-        self, nodes: list,
+        self,
+        nodes: list,
+        *,
+        intent_result: "IntentResult | None" = None,
     ) -> tuple[float, bool, bool]:
         """Compute reconciliation penalties for superseded/conflicted states.
 
-        Returns (penalty, is_superseded, has_conflicts).
+        Returns (penalty, is_superseded, has_conflicts).  The penalty
+        is non-zero ONLY when the classified query intent is in
+        :attr:`_RECONCILIATION_PENALTY_INTENTS` (currently just
+        CURRENT_STATE_LOOKUP).  For every other intent class — and
+        for queries we couldn't classify confidently — the
+        is_superseded / has_conflicts flags are still returned so
+        callers can include them in their output struct, but the
+        scoring penalty stays at 0.0.
         """
         if not self._config.temporal_enabled or not nodes:
             return 0.0, False, False
@@ -444,6 +475,16 @@ class ScoringPipeline:
                 )
                 if conflict_edges:
                     has_conflicts = True
+
+            # Intent gate — only penalise when the query is
+            # specifically asking for current state.
+            apply_penalty = (
+                intent_result is not None
+                and intent_result.intent in self._RECONCILIATION_PENALTY_INTENTS
+            )
+            if not apply_penalty:
+                return 0.0, is_superseded, has_conflicts
+
             sup_pen = supersession_penalty(
                 is_superseded,
                 self._config.reconciliation_supersession_penalty,

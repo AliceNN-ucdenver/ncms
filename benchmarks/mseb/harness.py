@@ -384,6 +384,34 @@ def main() -> None:
         help="Evaluate ONE head in isolation.",
     )
 
+    # Phase G ablation flags — fine-grained SLM signal toggles for
+    # isolating which SLM-derived input is responsible for the
+    # MSEB retrieval regression seen in Phase F.  Each one disables
+    # ONE downstream consequence of the SLM's classification while
+    # leaving the SLM itself enabled and producing labels.
+    ap.add_argument(
+        "--no-populate-domains", action="store_true",
+        help="[Phase G ablation] Set slm_populate_domains=False — "
+             "disables auto-appending the topic head's prediction "
+             "to Memory.domains.  Hypothesis: domain auto-expansion "
+             "widens the domain-filter surface area and adds noise "
+             "to retrieval.",
+    )
+    ap.add_argument(
+        "--no-reconciliation-penalty", action="store_true",
+        help="[Phase G ablation] Zero out reconciliation supersession "
+             "+ conflict penalties.  Hypothesis: SLM-driven state "
+             "labels create more supersession edges; the per-result "
+             "penalty pushes correct memories below their replacements.",
+    )
+    ap.add_argument(
+        "--slm-confidence-threshold", type=float, default=None,
+        help="[Phase G ablation] Override slm_confidence_threshold "
+             "(default 0.3).  Use 0.7 to revert to the v6/v7-era "
+             "floor — tests whether the lowered threshold admits "
+             "low-confidence labels that perturb retrieval.",
+    )
+
     args = ap.parse_args()
     feature_set = _parse_feature_set(args)
 
@@ -395,7 +423,9 @@ def main() -> None:
         backend_kwargs["infer"] = args.mem0_infer
         backend_kwargs["rerank"] = args.mem0_rerank
     if args.backend == "ncms":
-        weight_overrides: dict[str, float] = {}
+        # Loose typing because Phase G ablation flags inject bool
+        # (slm_populate_domains) alongside the float scoring weights.
+        weight_overrides: dict[str, object] = {}
         if args.temporal_weight is not None:
             weight_overrides["scoring_weight_temporal"] = args.temporal_weight
         if args.hierarchy_weight is not None:
@@ -406,6 +436,16 @@ def main() -> None:
             weight_overrides["scoring_weight_bm25"] = args.bm25_weight
         if args.splade_weight is not None:
             weight_overrides["scoring_weight_splade"] = args.splade_weight
+        # Phase G: SLM signal-isolation flags routed through the
+        # same overrides dict so the ablation runs are a one-line
+        # CLI change.
+        if args.no_populate_domains:
+            weight_overrides["slm_populate_domains"] = False
+        if args.no_reconciliation_penalty:
+            weight_overrides["reconciliation_supersession_penalty"] = 0.0
+            weight_overrides["reconciliation_conflict_penalty"] = 0.0
+        if args.slm_confidence_threshold is not None:
+            weight_overrides["slm_confidence_threshold"] = args.slm_confidence_threshold
         if weight_overrides:
             backend_kwargs["ncms_config_overrides"] = weight_overrides
 
