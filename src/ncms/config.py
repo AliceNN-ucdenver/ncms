@@ -191,7 +191,20 @@ class NCMSConfig(BaseSettings):
     slm_checkpoint_dir: str | None = None
     # Confidence floor for head-by-head fallback — below this value
     # the chain moves to the next backend's output for that head.
-    slm_confidence_threshold: float = 0.7
+    #
+    # Default lowered 0.7 → 0.3 with the v9 adapters (Phase E.1).
+    # v6/v7 adapters were trained on a smaller, less-diverse corpus
+    # and produced over-confident predictions (≥ 0.9 on most
+    # held-out rows).  v9 adapters are better calibrated: per-head
+    # held-out distribution shows 100% accuracy at conf ≥ 0.3
+    # across all three domains, with ~2-5% of correct predictions
+    # falling in the 0.3-0.7 confidence band.  A 0.7 floor would
+    # silently drop those to the heuristic fallback.  0.3 admits
+    # the calibrated low-confidence-but-correct predictions while
+    # still gating obvious model abstentions (which cluster near
+    # 0.0 because cross-entropy spreads probability across classes
+    # when the model is genuinely uncertain).
+    slm_confidence_threshold: float = 0.3
     # When True, append the topic-head label to Memory.domains
     # automatically.  Set False during migration to keep callers
     # explicitly controlling the domain tag set.

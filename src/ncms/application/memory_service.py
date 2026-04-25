@@ -422,17 +422,21 @@ class MemoryService:
                 # the L2 ENTITY_STATE builder can source state_value
                 # from the primary-role span's canonical form (e.g.
                 # ``database=postgresql``) instead of the raw sentence.
-                # Serialise to list-of-dicts for JSON round-trip.
+                #
+                # ``ExtractedLabel.role_spans`` is typed
+                # ``list[dict]`` (see domain/models.py) so the adapter
+                # boundary already serialised these to dicts via
+                # ``_to_domain_label`` in lora_adapter.py.  Pass
+                # them through unchanged — earlier code accessed
+                # ``r.char_start`` as attribute, which raised
+                # ``AttributeError: 'dict' object has no attribute
+                # 'char_start'`` whenever the gazetteer detected
+                # entities (i.e. on every clinical / software_dev
+                # row but no conversational rows since that domain
+                # has no gazetteer).
                 "role_spans": [
-                    {
-                        "char_start": r.char_start,
-                        "char_end": r.char_end,
-                        "surface": r.surface,
-                        "canonical": r.canonical,
-                        "slot": r.slot,
-                        "role": r.role,
-                    }
-                    for r in getattr(intent_slot_label, "role_spans", ())
+                    dict(r) for r in
+                    getattr(intent_slot_label, "role_spans", ()) or ()
                 ],
                 # Also keep the reconstructed slots dict (primary-role
                 # slots + alternative) — the L2 builder checks this as
