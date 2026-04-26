@@ -466,7 +466,7 @@ Note: the ingest-side intent-slot SLM (`bert-base-uncased` + LoRA) runs happily 
 - [x] Temporal query parsing with proximity boost
 
 **Tools & interfaces**
-- [x] 25 MCP tools via FastMCP
+- [x] 26 MCP tools via FastMCP
 - [x] HTTP REST API with bearer token auth
 - [x] A2A JSON-RPC 2.0 bridge (agent discovery + task routing)
 - [x] CLI: `ncms serve|demo|dashboard|info|load|lint|reindex|export|maintenance|watch|topics|state|episodes|topic-map|tlg`

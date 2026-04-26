@@ -143,7 +143,7 @@ src/ncms/
 │   ├── index_worker.py          # Background indexing queue + worker pool (BM25/SPLADE/GLiNER async)
 │   └── knowledge_loader.py      # "Matrix download" — import files into memory
 ├── infrastructure/   # Concrete implementations of domain protocols
-│   ├── storage/sqlite_store.py  # aiosqlite — 27 tables, WAL mode, parameterized SQL
+│   ├── storage/sqlite_store.py  # aiosqlite — 32 tables, WAL mode, parameterized SQL
 │   ├── storage/migrations.py    # DDL for schema creation (single-pass, schema version 13)
 │   ├── indexing/tantivy_engine.py # BM25 search via tantivy-py (Rust)
 │   ├── indexing/splade_engine.py  # SPLADE v3 sparse neural retrieval (sentence-transformers)
@@ -174,7 +174,7 @@ src/ncms/
 │   └── observability/event_log.py # Ring buffer event log + NullEventLog + SSE subscribers
 ├── interfaces/       # External-facing boundaries
 │   ├── mcp/server.py           # FastMCP composition root
-│   ├── mcp/tools.py            # 25 MCP tools (see list below)
+│   ├── mcp/tools.py            # 26 MCP tools (see list below)
 │   ├── mcp/resources.py        # 5 MCP resources (ncms://...)
 │   ├── http/api.py             # Hub HTTP API (REST endpoints for agent communication)
 │   ├── http/dashboard.py       # Starlette dashboard server (SSE + REST + entity/episode APIs)
@@ -203,7 +203,7 @@ src/ncms/
 3. **ACT-R scoring**: `activation(m) = ln(sum(t^-d)) + jaccard_spread + noise`. Spreading activation uses Jaccard normalization (`|overlap| / |union|` instead of `|overlap| / |context|`). Weight defaults to 0.0 — grid search showed ACT-R hurts on cold corpora with no access history; designed to activate after dream cycles build differential access patterns.
 4. **Protocol-based DI** — Domain layer has zero infrastructure deps. Swap SQLite → Postgres, NetworkX → Neo4j, AsyncIO → Redis without changing application code.
 5. **AsyncIO in-process bus** — Zero deps, <1ms latency. Protocol interface allows Redis/NATS swap later.
-6. **Raw SQL via aiosqlite** — 27 tables don't need an ORM. WAL mode for concurrent reads.
+6. **Raw SQL via aiosqlite** — 32 tables don't need an ORM. WAL mode for concurrent reads.
 7. **Surrogate via keyword matching** — Fast, deterministic, traceable (no LLM synthesis for surrogates).
 8. **Embedded first** — Everything runs in-process with `pip install ncms`. No Docker, no Redis, no vector DB.
 9. **Automatic text chunking** — GLiNER (1,200 char chunks) and SPLADE v3 (2,000 char chunks) automatically split long text at sentence boundaries, merging results (entity dedup / max-pool) to avoid silent truncation from underlying model token limits.
@@ -268,7 +268,7 @@ Dashboard (`content[:200]`), event logs (`[:200]`), demo output (`[:200]`), CLI 
 5. **Surrogate**: Question → no live agent → snapshot lookup → keyword matching → warm response
 6. **Announce**: Event → Knowledge Bus → subscription matching → fan-out to subscriber inboxes
 
-## Database Schema (27 tables, schema version 13)
+## Database Schema (32 tables, schema version 13)
 
 Single-pass creation in `migrations.py`. All tables created together.
 

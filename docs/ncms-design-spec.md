@@ -52,7 +52,7 @@ The system delivers four production capabilities, all shipped:
 
 The architecture runs **embedded in-process** with `pip install ncms` (SQLite + Tantivy + NetworkX + sentence-transformers).  No Docker, no external services, no vector store required.  Production deployments bake the adapters into a NemoClaw hub Docker image; the hub defaults to the `software_dev` adapter.
 
-Integration surfaces: NAT MemoryEditor plugin for NeMo Agent Toolkit v1.4+, MCP Server (25 tools), HTTP API (Hub mode), and direct Python API.
+Integration surfaces: NAT MemoryEditor plugin for NeMo Agent Toolkit v1.4+, MCP Server (26 tools), HTTP API (Hub mode), and direct Python API.
 
 Forward direction (v10): a **dedicated sibling CTLG adapter** for query-side cue tagging, enabling compositional semantic parsing of state-evolution queries — see §14.
 
@@ -117,7 +117,7 @@ NCMS is composed of three layers — Storage, Memory Core, and Knowledge Bus —
 │  Per-query diagnostic event with full signal vector + signal coverage│
 ├──────────────────────────────────────────────────────────────────────┤
 │  Layer 1: Storage Backends (Pluggable)                               │
-│  Embedded: SQLite (27 tables, schema v13, WAL) + Tantivy + NetworkX  │
+│  Embedded: SQLite (32 tables, schema v13, WAL) + Tantivy + NetworkX  │
 │  Hub: same + Docker volume mount for persistence                     │
 │  Scaled (planned): Milvus / Neo4j / Postgres swap-in via protocols   │
 │  Background Workers: Consolidation | Distillation | Dream Cycle      │
@@ -127,7 +127,7 @@ NCMS is composed of three layers — Storage, Memory Core, and Knowledge Bus —
 ### Integration Surfaces
 
 - **NAT MemoryEditor Plugin:** Drop-in replacement for Mem0 / Zep / Redis memory backends in NeMo Agent Toolkit v1.4+.  Compatible with all NAT agent types (ReAct, ReWOO, Tool Calling, Router).
-- **MCP Server:** 25 tools and 5 resources surfaced via FastMCP — store_memory / search_memory / recall_memory / ask_knowledge / announce_knowledge / get_provenance / synthesize / traverse / etc.  Compatible with any MCP client (Claude, VS Code extensions, third-party agents).
+- **MCP Server:** 26 tools and 6 resources surfaced via FastMCP — store_memory / search_memory / recall_memory / ask_knowledge / announce_knowledge / get_provenance / synthesize / traverse / etc.  Compatible with any MCP client (Claude, VS Code extensions, third-party agents).
 - **HTTP API (Hub mode):** REST endpoints for agent registration + ask/respond + heartbeat over SSE.  Used by the NemoClaw hub deployment to coordinate sandboxed agents.
 - **Direct Python API:** `from ncms.application import MemoryService` — embed in any Python application.
 - **CLI:** `ncms` entry-point for serve / demo / dashboard / load / lint / reindex / export / maintenance / topics / state / episodes / adapters / topic-map.
@@ -1486,7 +1486,7 @@ On startup, NCMS rebuilds all derived structures from the durable SQLite store:
 
 ### Implementation Status (2026-04-12)
 
-The storage schema has grown from the 7-table design above to 27 tables (schema version 9, single-pass creation). Key additions since the original design:
+The storage schema has grown from the 7-table design above to 32 tables (schema version 13, single-pass creation). Key additions since the original design:
 
 | Table | Purpose |
 |-------|---------|
