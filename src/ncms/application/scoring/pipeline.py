@@ -377,76 +377,17 @@ class ScoringPipeline:
                     bonus=self._config.intent_hierarchy_bonus,
                 )
 
-            # Phase H.1 — per-memory intent-label × QueryIntent alignment.
-            # The SLM's preference-intent label is exactly the kind of
-            # query-side signal PATTERN_LOOKUP / STRATEGIC_REFLECTION
-            # were waiting for: a memory tagged ``habitual`` IS the
-            # answer to "what do you usually do?".  No-op when the
-            # query intent has no alignment rule, when the memory has
-            # no SLM label, or when the master temporal flag is off
-            # (no QueryIntent → nothing to align against).
-            ia_bonus = 0.0
-            if (
-                self._config.temporal_enabled
-                and intent_result
-                and self._config.scoring_weight_intent_alignment > 0
-            ):
-                aligned = self._INTENT_ALIGNMENT_TABLE.get(
-                    intent_result.intent,
-                )
-                if aligned:
-                    ia_bonus = intent_alignment_bonus(
-                        memory_intent=self._memory_intent_label(memory),
-                        aligned_intents=aligned,
-                        bonus=self._config.intent_alignment_bonus,
-                    )
-
-            # Phase H.2 — state_change × QueryIntent alignment.  When
-            # the query asks "what changed?", memories tagged with
-            # state_change ∈ {declaration, retirement} are by
-            # definition state-change events.  Reuses the
-            # ``intent_alignment_bonus`` primitive: generic over
-            # (label, aligned_set).  No-op when the query intent has
-            # no state_change rule, when the memory has no SLM label,
-            # or when the master temporal flag is off.
-            sc_bonus = 0.0
-            if (
-                self._config.temporal_enabled
-                and intent_result
-                and self._config.scoring_weight_state_change_alignment > 0
-            ):
-                sc_aligned = self._STATE_CHANGE_ALIGNMENT_TABLE.get(
-                    intent_result.intent,
-                )
-                if sc_aligned:
-                    sc_bonus = intent_alignment_bonus(
-                        memory_intent=(
-                            self._memory_state_change_label(memory)
-                        ),
-                        aligned_intents=sc_aligned,
-                        bonus=self._config.state_change_alignment_bonus,
-                    )
-
-            # Phase H.3 — role-grounding bonus.  When the query
-            # mentions an entity, memories where that entity has
-            # role=primary in the SLM's per-span output are genuinely
-            # *about* the entity, not just string-matching it.  This
-            # signal is independent of QueryIntent (applies to
-            # FACT_LOOKUP, CURRENT_STATE_LOOKUP, all of them) so the
-            # surface area is much larger than H.1.  No-op on
-            # heuristic-fallback memories (empty role_spans) or
-            # queries with no extracted entities — both correctly
-            # return 0.0 from the primitive.
-            rg_bonus = 0.0
-            if (
-                self._config.scoring_weight_role_grounding > 0
-                and query_canonicals
-            ):
-                rg_bonus = role_grounding_bonus(
-                    role_spans=self._memory_role_spans(memory),
-                    query_canonicals=query_canonicals,
-                    primary_bonus=self._config.role_grounding_bonus,
-                )
+            # Phase H.1 / H.2 / H.3 — per-memory SLM-signal bonuses.
+            # All three computed in one helper to keep this loop body
+            # under the D-grade complexity gate.  The helper handles
+            # the gating logic (temporal flag, intent_result presence,
+            # weight > 0, alignment-table hit) for each bonus and
+            # returns 0.0 for any path that doesn't fire.
+            ia_bonus, sc_bonus, rg_bonus = self._compute_slm_bonuses(
+                memory=memory,
+                intent_result=intent_result,
+                query_canonicals=query_canonicals,
+            )
 
             act = total_activation(
                 bl, spread, noise, mismatch_penalty=0.0,
@@ -689,6 +630,94 @@ class ScoringPipeline:
             return sup_pen + con_pen, is_superseded, has_conflicts
         except Exception:
             return 0.0, False, False
+
+    def _compute_slm_bonuses(
+        self,
+        *,
+        memory: object,
+        intent_result: IntentResult | None,
+        query_canonicals: set[str] | frozenset[str] | None,
+    ) -> tuple[float, float, float]:
+        """Compute the three Phase-H per-candidate SLM bonuses.
+
+        Returns ``(ia_bonus, sc_bonus, rg_bonus)`` — each 0.0 when
+        its gate condition isn't met (master temporal flag off,
+        weight 0, no QueryIntent in the alignment table, no SLM
+        label on the memory, etc.).  Extracted from the per-candidate
+        loop in :meth:`_compute_raw_signals` so the loop stays under
+        the D-grade complexity gate.
+        """
+        ia_bonus = self._compute_ia_bonus(memory, intent_result)
+        sc_bonus = self._compute_sc_bonus(memory, intent_result)
+        rg_bonus = self._compute_rg_bonus(memory, query_canonicals)
+        return ia_bonus, sc_bonus, rg_bonus
+
+    def _compute_ia_bonus(
+        self,
+        memory: object,
+        intent_result: IntentResult | None,
+    ) -> float:
+        """Phase H.1 — intent × QueryIntent alignment per candidate."""
+        if not (
+            self._config.temporal_enabled
+            and intent_result
+            and self._config.scoring_weight_intent_alignment > 0
+        ):
+            return 0.0
+        aligned = self._INTENT_ALIGNMENT_TABLE.get(intent_result.intent)
+        if not aligned:
+            return 0.0
+        return intent_alignment_bonus(
+            memory_intent=self._memory_intent_label(memory),
+            aligned_intents=aligned,
+            bonus=self._config.intent_alignment_bonus,
+        )
+
+    def _compute_sc_bonus(
+        self,
+        memory: object,
+        intent_result: IntentResult | None,
+    ) -> float:
+        """Phase H.2 — state_change × QueryIntent alignment per candidate."""
+        if not (
+            self._config.temporal_enabled
+            and intent_result
+            and self._config.scoring_weight_state_change_alignment > 0
+        ):
+            return 0.0
+        sc_aligned = self._STATE_CHANGE_ALIGNMENT_TABLE.get(
+            intent_result.intent,
+        )
+        if not sc_aligned:
+            return 0.0
+        return intent_alignment_bonus(
+            memory_intent=self._memory_state_change_label(memory),
+            aligned_intents=sc_aligned,
+            bonus=self._config.state_change_alignment_bonus,
+        )
+
+    def _compute_rg_bonus(
+        self,
+        memory: object,
+        query_canonicals: set[str] | frozenset[str] | None,
+    ) -> float:
+        """Phase H.3 — role-grounding per candidate.
+
+        Independent of QueryIntent — fires whenever the memory's
+        role_spans include a primary-role span for one of the query's
+        extracted entities.  No-op on heuristic-fallback memories
+        (empty role_spans) and queries with no entities.
+        """
+        if not (
+            self._config.scoring_weight_role_grounding > 0
+            and query_canonicals
+        ):
+            return 0.0
+        return role_grounding_bonus(
+            role_spans=self._memory_role_spans(memory),
+            query_canonicals=query_canonicals,
+            primary_bonus=self._config.role_grounding_bonus,
+        )
 
     # ── Pass 2: Normalize and Combine ────────────────────────────────────
 

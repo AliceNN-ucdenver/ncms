@@ -1987,42 +1987,12 @@ class MemoryService:
             "marker_counts": marker_counts,
         }
 
-    async def _emit_query_diagnostic(
-        self,
-        *,
-        query: str,
-        intent_result: object | None,
-        query_entity_names: list[dict],
-        context_entity_ids: list[str],
-        temporal_ref: object | None,
-        grammar_composed: bool,
-        grammar_confidence: float | None,
-        bm25_count: int,
-        splade_count: int,
-        fused_count: int,
-        expanded_count: int,
+    @staticmethod
+    def _diag_signal_coverage(
         scored: list[ScoredMemory],
-        results: list[ScoredMemory],
-        total_ms: float,
-        agent_id: str | None,
-    ) -> None:
-        """Build and emit the comprehensive per-query diagnostic.
-
-        See :meth:`EventLog.query_diagnostic` for the payload spec.
-        Always-on (not gated by ``pipeline_debug``); the user wants
-        visibility on every query so retiring the regex/heuristic
-        fallbacks (Phase I.2-I.6) can be verified-by-observation
-        rather than verified-by-rerunning-MSEB.
-
-        Designed to be CTLG-extensible: when the cue-tagger ships,
-        its ``cue_tags_count`` slots into ``signal_coverage`` and the
-        ``causal_edges`` field of ``htmg_subject_stats`` becomes
-        non-trivial.
-        """
-        # Signal coverage — how many candidates had a non-zero
-        # contribution from each retrieval signal.  Tells operators
-        # which heads are firing on this query's candidate set.
-        coverage = {
+    ) -> dict[str, int]:
+        """Count candidates with non-zero contribution per signal."""
+        return {
             "intent_alignment": sum(
                 1 for s in scored if s.intent_alignment_contrib != 0.0
             ),
@@ -2045,75 +2015,109 @@ class MemoryService:
             ),
         }
 
-        # HTMG subject stats — for each resolved entity ID, count
-        # the L2 / supersession / causal edges in its neighborhood.
-        # Helpful for "why didn't the gold answer surface?" debugging
-        # when the corpus has rich state evolution.  Skip when
-        # temporal disabled (no L2 path active anyway).
-        htmg_stats: dict[str, int] = {}
-        if self._config.temporal_enabled and context_entity_ids:
-            try:
-                l2_count = 0
-                sup_count = 0
-                causal_count = 0
-                for eid in context_entity_ids[:10]:  # cap I/O
-                    states = (
-                        await self._store.get_entity_states_by_entity(
-                            eid,
-                        )
-                    )
-                    l2_count += len(states)
-                    for s in states:
-                        if not s.is_current:
-                            sup_count += 1
-                htmg_stats = {
-                    "l2_entity_states": l2_count,
-                    "supersession_chain_size": sup_count,
-                    "causal_edges": causal_count,  # CTLG fills this
-                }
-            except Exception:
-                logger.debug(
-                    "htmg_subject_stats lookup failed", exc_info=True,
+    async def _diag_htmg_stats(
+        self, context_entity_ids: list[str],
+    ) -> dict[str, int]:
+        """L2 / supersession / causal edge counts for query subjects.
+
+        Returns ``{}`` when temporal disabled or no entities resolved
+        — both legitimate "no signal" cases.  CTLG fills ``causal_edges``
+        when the cue tagger ships.
+        """
+        if not (self._config.temporal_enabled and context_entity_ids):
+            return {}
+        try:
+            l2_count = 0
+            sup_count = 0
+            for eid in context_entity_ids[:10]:  # cap I/O
+                states = (
+                    await self._store.get_entity_states_by_entity(eid)
                 )
-
-        # Top-result signal breakdown — full vector for the rank-1
-        # result so operators can see exactly which signals moved it
-        # there.  Includes raw + post-weight fields where available.
-        top_breakdown: dict[str, object] | None = None
-        if results:
-            top = results[0]
-            top_breakdown = {
-                "memory_id": top.memory.id,
-                "content_preview": top.memory.content[:120],
-                "node_types": top.node_types,
-                "bm25_raw": round(top.bm25_score, 3),
-                "splade_raw": round(top.splade_score, 3),
-                "graph_raw": round(top.spreading, 3),
-                "h_bonus": round(top.hierarchy_bonus, 3),
-                "ia_contrib": round(top.intent_alignment_contrib, 3),
-                "sc_contrib": round(
-                    top.state_change_alignment_contrib, 3,
-                ),
-                "rg_contrib": round(top.role_grounding_contrib, 3),
-                "temporal": round(top.temporal_score, 3),
-                "penalty": round(top.reconciliation_penalty, 3),
-                "total": round(top.total_activation, 3),
-                "is_superseded": top.is_superseded,
-                "has_conflicts": top.has_conflicts,
+                l2_count += len(states)
+                sup_count += sum(1 for s in states if not s.is_current)
+            return {
+                "l2_entity_states": l2_count,
+                "supersession_chain_size": sup_count,
+                "causal_edges": 0,  # CTLG fills this
             }
-
-        intent_str: str | None = None
-        intent_conf: float | None = None
-        if intent_result is not None:
-            intent_str = getattr(
-                getattr(intent_result, "intent", None), "value", None,
+        except Exception:
+            logger.debug(
+                "htmg_subject_stats lookup failed", exc_info=True,
             )
-            intent_conf = getattr(intent_result, "confidence", None)
+            return {}
 
-        temporal_ref_str: str | None = None
-        if temporal_ref is not None:
-            temporal_ref_str = repr(temporal_ref)[:200]
+    @staticmethod
+    def _diag_top_breakdown(
+        results: list[ScoredMemory],
+    ) -> dict[str, object] | None:
+        """Full signal vector for the rank-1 result, or None if empty."""
+        if not results:
+            return None
+        top = results[0]
+        return {
+            "memory_id": top.memory.id,
+            "content_preview": top.memory.content[:120],
+            "node_types": top.node_types,
+            "bm25_raw": round(top.bm25_score, 3),
+            "splade_raw": round(top.splade_score, 3),
+            "graph_raw": round(top.spreading, 3),
+            "h_bonus": round(top.hierarchy_bonus, 3),
+            "ia_contrib": round(top.intent_alignment_contrib, 3),
+            "sc_contrib": round(top.state_change_alignment_contrib, 3),
+            "rg_contrib": round(top.role_grounding_contrib, 3),
+            "temporal": round(top.temporal_score, 3),
+            "penalty": round(top.reconciliation_penalty, 3),
+            "total": round(top.total_activation, 3),
+            "is_superseded": top.is_superseded,
+            "has_conflicts": top.has_conflicts,
+        }
 
+    async def _emit_query_diagnostic(
+        self,
+        *,
+        query: str,
+        intent_result: object | None,
+        query_entity_names: list[dict],
+        context_entity_ids: list[str],
+        temporal_ref: object | None,
+        grammar_composed: bool,
+        grammar_confidence: float | None,
+        bm25_count: int,
+        splade_count: int,
+        fused_count: int,
+        expanded_count: int,
+        scored: list[ScoredMemory],
+        results: list[ScoredMemory],
+        total_ms: float,
+        agent_id: str | None,
+    ) -> None:
+        """Build and emit the comprehensive per-query diagnostic.
+
+        See :meth:`EventLog.query_diagnostic` for the payload spec.
+        Always-on (not gated by ``pipeline_debug``).  Designed CTLG-
+        extensible: when the cue-tagger ships, its ``cue_tags_count``
+        slots into ``signal_coverage`` and ``causal_edges`` in
+        ``htmg_subject_stats`` becomes non-trivial.
+
+        Composition keeps complexity low: ``_diag_signal_coverage``,
+        ``_diag_htmg_stats``, and ``_diag_top_breakdown`` each own
+        one piece of the payload.
+        """
+        coverage = self._diag_signal_coverage(scored)
+        htmg_stats = await self._diag_htmg_stats(context_entity_ids)
+        top_breakdown = self._diag_top_breakdown(results)
+
+        intent_str = (
+            getattr(getattr(intent_result, "intent", None), "value", None)
+            if intent_result is not None else None
+        )
+        intent_conf = (
+            getattr(intent_result, "confidence", None)
+            if intent_result is not None else None
+        )
+        temporal_ref_str = (
+            repr(temporal_ref)[:200] if temporal_ref is not None else None
+        )
         query_names = [
             qe["name"] for qe in query_entity_names
             if isinstance(qe, dict) and qe.get("name")
