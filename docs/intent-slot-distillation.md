@@ -1,38 +1,38 @@
 # Intent & Slot Distillation: Replacing Regex Preference with a Learned Classifier
 
-> **Status (2026-04-20).** Sprints 0–4 **complete and SHIPPED**.
-> The LoRA multi-head classifier is fully wired into NCMS ingest:
-> its `admission_head` / `state_change_head` / `topic_head`
-> outputs replace the regex paths at `MemoryService.store_memory`
-> time when confident.  Three reference adapters
-> (conversational / software_dev / clinical) publish at
-> `~/.ncms/adapters/<domain>/v4/` at **F1 = 1.000 on gold across
-> every head** and 2.4 MB per artifact.  Fine-tuning pipeline
-> shipped (`experiments/intent_slot_distillation/train_adapter.py`).
-> Benchmark runner wired (`--intent-slot-domain` on LongMemEval).
+> **Status (2026-04-25).**  This is the **original pre-paper** that
+> motivated the P2 multi-head SLM.  The architecture it describes
+> (multi-head LoRA on a shared encoder) shipped and is now in v9
+> with five heads (intent / role / topic / admission / state_change).
+> Treat this doc as the v6-era theoretical foundation; it has been
+> superseded in places by the production architecture and the
+> Phase G/H/I retrieval-discipline work.  Read alongside:
 >
-> **Status progression:**
+> - **Current state:** [`v9-mseb-slm-lift-findings.md`](v9-mseb-slm-lift-findings.md)
+>   (Phase F→G→H→I cumulative findings, regex-vs-SLM retrieval audit)
+> - **Domain-author guide:** [`add-a-domain.md`](add-a-domain.md)
+>   (v9 plugin architecture)
+> - **Original P2 plan (historical):**
+>   [`completed/p2-plan.md`](completed/p2-plan.md)
+> - **Sprint findings (historical):** under
+>   [`completed/intent-slot-history/`](completed/intent-slot-history/)
 >
-> | Phase | Status | Findings doc |
-> |---|---|---|
-> | Sprint 0 — full-FT baseline | ✅ complete | [`intent-slot-distillation-findings.md`](intent-slot-distillation-findings.md) |
-> | Sprints 1–3 — LoRA + multi-head + orchestrator | ✅ complete | [`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md) |
-> | Sprint 4 — NCMS integration + fitness tests | ✅ **SHIPPED 2026-04-20** | [`intent-slot-sprint-4-findings.md`](intent-slot-sprint-4-findings.md) |
->
-> **Scope expansion.** The original pre-paper framed this as
-> "replace regex preference extraction."  Sprints 1–3 showed
-> the same multi-head architecture absorbs **five** pieces of
-> brittle NCMS code — admission scoring, state-change
-> detection, LLM topic labelling, domain tagging, and
-> preference extraction — into one forward pass.  See
-> [`p2-plan.md`](p2-plan.md) §0 for the unified story.
+> What's NOT in this pre-paper:
+> - The v6 BIO `slot_head` was retired in v7 / v9 in favour of the
+>   per-span `role_head` (primary / alternative / casual / not_relevant)
+> - The v8 attempt to add a 6th cue-tagger head saturated under joint
+>   training; CTLG ships as a sibling adapter instead — see
+>   [`research/ctlg-design.md`](research/ctlg-design.md)
+> - Phase I retired the `NCMS_SLM_ENABLED` boolean flag — chain
+>   presence at MemoryService construction is the kill-switch now,
+>   driven by `NCMS_DEFAULT_ADAPTER_DOMAIN`
 >
 > ---
 >
-> **Date.** 2026-04-19.
-> **Relates to.** [`docs/p2-plan.md`](p2-plan.md) (Sprint 4 integration plan), [`docs/temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md) (query-time retrieval intent, separate axis).
-> **Experiment code.** `experiments/intent_slot_distillation/` — fully populated with gate-PASS adapters at `adapters/{conversational,software_dev,clinical}/v4/`.
-> **Prerequisite reads.** The earlier regex approach is retired at [`docs/retired/p2-plan-regex.md`](retired/p2-plan-regex.md).
+> **Original date.** 2026-04-19.
+> **Relates to.** [`completed/p2-plan.md`](completed/p2-plan.md) (Sprint 4 integration plan), [`temporal-linguistic-geometry.md`](temporal-linguistic-geometry.md) (query-time retrieval intent, separate axis).
+> **Experiment code.** `experiments/intent_slot_distillation/` — original Sprint 0–4 codebase; v9 adapters now ship via `ncms.application.adapters` and are deployed at `~/.ncms/adapters/{conversational,software_dev,clinical}/v9/`.
+> **Prerequisite reads.** The earlier regex approach is retired at [`retired/p2-plan-regex.md`](retired/p2-plan-regex.md).
 
 ---
 

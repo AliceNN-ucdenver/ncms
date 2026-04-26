@@ -2,39 +2,54 @@
 
 **A Grammar-First Theory of Memory-Trajectory Retrieval**
 
-*Pre-paper draft · 2026-04-18 · NCMS integration status updated 2026-04-20 · CTLG extension pointer added 2026-04-23*
+*Pre-paper draft · 2026-04-18 · NCMS integration status updated 2026-04-20 · CTLG extension pointer revised 2026-04-25 (post-v8 / post-Phase-I)*
 
-> **Status: SHIPPED into NCMS (P1 2026-04-19).**  The grammar
-> layer at `src/ncms/domain/tlg/` and `src/ncms/application/tlg/`
+> **Status: SHIPPED into NCMS.**  The grammar layer at
+> `src/ncms/domain/tlg/` and `src/ncms/application/tlg/`
 > provides query-side structural retrieval behind
-> `NCMS_TEMPORAL_ENABLED`.  32/32 top-5 and rank-1 on the ADR state-
-> evolution corpus vs. BM25 41 % / 16 %; see
-> [`docs/tlg-validation-findings.md`](tlg-validation-findings.md).
-> Composes cleanly with the P2 intent-slot SLM (2026-04-20) —
-> the SLM's `state_change_head` emits the ingest-side signal
-> that drives TLG's retirement extractor at zone-induction time.
-> See §7.6 M1 / M2 below for the shipped milestones.
+> `NCMS_TEMPORAL_ENABLED`.  32/32 top-5 and rank-1 on the ADR
+> state-evolution corpus vs. BM25 41 % / 16 %; see
+> [`docs/completed/tlg-history/tlg-validation-findings.md`](completed/tlg-history/tlg-validation-findings.md).
+> Composes cleanly with the v9 5-head SLM — the SLM's
+> `state_change_head` emits the ingest-side signal that drives
+> TLG's retirement extractor at zone-induction time.  See §7.6
+> M1 / M2 below for the shipped milestones.
 >
-> **Extension in flight (CTLG, 2026-04-23 pivot):** the machinery
-> in this doc (trajectory grammar, zone grammar, target grammar,
-> confident abstention, zero-confidently-wrong invariant) stays.
-> What's being added: a causal trajectory subgrammar `G_tr,c` over
-> new `CAUSED_BY` / `ENABLES` edges, a typed `Trajectory` class, an
-> explicit causal-heuristic suite that replaces implicit per-walker
-> scoring, and grammar-guided search reduction (instead of the
-> current O(n_memories) walker scans).  The shape_intent classifier
-> in the SLM is replaced by a sequence-labeled cue tagger feeding a
-> compositional synthesizer.  See
-> [`docs/research/ctlg-design.md`](research/ctlg-design.md) (overall
-> pivot),
-> [`docs/research/ctlg-grammar.md`](research/ctlg-grammar.md)
-> (formal grammar extension + causal heuristics),
+> **Phase G/H/I retrieval discipline (2026-04-25).**  The
+> reconciliation penalty driven by `state_change_head` is now
+> intent-gated (only fires on `CURRENT_STATE_LOOKUP`); cross-
+> retrieval-stage SLM signals (intent / state_change / role) feed
+> typed scoring bonuses; per-query diagnostics emit a structured
+> trace of which signals fired.  Full cumulative findings:
+> [`docs/v9-mseb-slm-lift-findings.md`](v9-mseb-slm-lift-findings.md).
+>
+> **Extension in flight (CTLG).**  The machinery in this doc
+> (trajectory grammar, zone grammar, target grammar, confident
+> abstention, zero-confidently-wrong invariant) stays.  What's
+> being added: a causal trajectory subgrammar `G_tr,c` over new
+> `CAUSED_BY` / `ENABLES` edges, a typed `Trajectory` class, an
+> explicit causal-heuristic suite that replaces implicit per-
+> walker scoring, and grammar-guided search reduction.
+>
+> **Architectural correction (post-v8 saturation, 2026-04-25):**
+> the cue tagger ships as a **dedicated sibling adapter**, NOT a
+> 6th head on the v9 5-head SLM encoder.  v8 attempted joint 6-head
+> training and saturated — per-token BIO sequence labeling and
+> per-CLS classification competed for encoder capacity.  The CTLG
+> adapter forks training while keeping the runtime architecture
+> coherent: two adapters at runtime, one per cognitive role.  See
+> [`docs/research/ctlg-design.md`](research/ctlg-design.md) for
+> the revised plan,
+> [`docs/research/ctlg-grammar.md`](research/ctlg-grammar.md) for
+> the formal grammar extension,
 > [`docs/research/ctlg-cue-guidelines.md`](research/ctlg-cue-guidelines.md)
-> (annotator contract), and
-> [`docs/research/ctlg-migration-audit.md`](research/ctlg-migration-audit.md)
-> (what stays / reframes / retires).  The shape_intent failure
+> for the annotator contract, and
+> [`docs/completed/failed-experiments/v8-joint-training-saturation.md`](completed/failed-experiments/v8-joint-training-saturation.md)
+> for the v8 retrospective.  The earlier shape_intent (v7) failure
 > retrospective is at
 > [`docs/completed/failed-experiments/shape-intent-classification.md`](completed/failed-experiments/shape-intent-classification.md).
+> The post-v7→pre-v8 migration audit is at
+> [`docs/completed/intent-slot-history/ctlg-migration-audit.md`](completed/intent-slot-history/ctlg-migration-audit.md).
 
 ---
 
@@ -1633,7 +1648,7 @@ axis TLG was designed for — across every intent shape we ship.
 * Reproducible runner (`experiments/temporal_trajectory/run.py`)
   with full per-query trace + syntactic proof print-out
   (`results/adr_validation_20260419_142727.log`, 454 lines).
-* Write-up: `docs/tlg-validation-findings.md`.
+* Write-up: `docs/completed/tlg-history/tlg-validation-findings.md`.
 
 **Measurable outcome.**
 
@@ -1669,7 +1684,7 @@ graph unchanged.  The axis is *conversational recall*, not
 *state evolution*.  LongMemEval remains a non-regression check;
 the head-to-head SOTA comparison that used to live here moves to
 **M3b** below on a state-evolution corpus (see also the SWE
-benchmark proposal in `docs/tlg-validation-findings.md` §4).
+benchmark proposal in `docs/completed/tlg-history/tlg-validation-findings.md` §4).
 
 **Actual effort.**  ~2 days (corpus + queries + run harness +
 write-up), shipped alongside the Phase 6 validation commit.
@@ -2355,8 +2370,8 @@ Raw experimental data and logs are committed at:
 
 ```
 docs/temporal-linguistic-geometry.md   # this paper
-docs/tlg-scale-validation.md           # scale regression report
-docs/p1-experiment-diary.md            # development diary
+docs/completed/tlg-history/tlg-scale-validation.md  # scale regression report
+docs/completed/p1-experiment-diary.md  # development diary
 experiments/temporal_trajectory/       # source code (~4,000 LOC)
 experiments/temporal_trajectory/scale_results/
     lme_500.json                       # 500-question results

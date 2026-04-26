@@ -534,7 +534,7 @@ uv run python -m benchmarks.run_ablation --datasets scifact \
 
 The hub runs as a Docker container with a persistent SQLite database. **It is NOT in-memory.**
 
-- **Runbook**: `docs/nemoclaw-analysis-runbook.md` — read this FIRST before any runtime analysis
+- **Runbook**: `docs/deployment/nemoclaw-analysis-runbook.md` — read this FIRST before any runtime analysis
 - **DB location**: `/app/data/ncms.db` inside `ncms-hub` container
 - **Copy DB with WAL**: `docker cp ncms-hub:/app/data/ncms.db /tmp/hub.db && docker cp ncms-hub:/app/data/ncms.db-wal /tmp/hub.db-wal 2>/dev/null` (without WAL you get stale data)
 - **Hub logs**: `docker logs ncms-hub --tail 100`

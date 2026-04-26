@@ -263,26 +263,37 @@ The ingest-side complement to TLG's query-side grammar: a
 time and replaces five brittle pattern-matching code paths with
 one forward pass.  Shipped end-to-end in P2 Sprint 4; three
 reference adapters (conversational / software_dev / clinical)
-at F1 = 1.000 on gold across every head are published at
-`~/.ncms/adapters/<domain>/v4/` (2.4 MB each).  Integration
-findings:
-[`intent-slot-sprint-4-findings.md`](intent-slot-sprint-4-findings.md).
-Plan: [`p2-plan.md`](p2-plan.md).  Sprint 1–3 research:
-[`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md).
+ship at `~/.ncms/adapters/<domain>/v9/` (2.4 MB each).
+Current findings:
+[`v9-mseb-slm-lift-findings.md`](v9-mseb-slm-lift-findings.md).
+Original plan: [`completed/p2-plan.md`](completed/p2-plan.md).
+Historical sprint research:
+[`completed/intent-slot-history/intent-slot-sprints-1-3.md`](completed/intent-slot-history/intent-slot-sprints-1-3.md).
 
-Gated behind `NCMS_SLM_ENABLED` (default `False` at
-ship; flips to `True` one release later).
+Activated by setting `NCMS_DEFAULT_ADAPTER_DOMAIN` to a deployed
+adapter name; unset → SLM stays dark and ingestion uses the
+heuristic chain.  The legacy `NCMS_SLM_ENABLED` boolean flag was
+retired in Phase I.6 — the chain's presence at MemoryService
+construction is the kill-switch now.
 
-**Architecture.**  One shared `bert-base-uncased` encoder +
+**Architecture (v9).**  One shared `bert-base-uncased` encoder +
 per-deployment LoRA adapter + five classification heads:
 
-| Head | Output | Replaces today |
+| Head | Output | Replaces |
 |---|---|---|
 | `intent_head` | positive / negative / habitual / difficulty / choice / none | Never-shipped regex preference extractor |
-| `slot_head` | BIO tags over domain slot taxonomy | Regex slot fills |
+| `role_head` | per-span: primary / alternative / casual / not_relevant | v6 BIO `slot_head` (retired); sources canonical state values for L2 |
 | `topic_head` | Domain taxonomy label (e.g. `framework`, `medication`, `food_pref`) | `infrastructure/extraction/label_detector.py` (LLM topic detection) |
 | `admission_head` | persist / ephemeral / discard | `application/admission_service.py` (4-feature heuristic) |
 | `state_change_head` | declaration / retirement / none | `application/index_worker.py::_has_state_declaration` regex |
+
+**Note (post-v8).**  v8 attempted a 6th head (`shape_cue_head`,
+BIO sequence labeler for CTLG cues) on this same encoder.  Joint
+training saturated — per-token BIO and per-CLS classification
+competed for encoder capacity (see
+[`completed/failed-experiments/v8-joint-training-saturation.md`](completed/failed-experiments/v8-joint-training-saturation.md)).
+v9 ships the 5 heads only; query-side cue tagging is a separate
+sibling adapter (see [`research/ctlg-design.md`](research/ctlg-design.md)).
 
 **One forward pass, 20–65 ms on MPS, 2.4 MB per adapter.**
 Swap adapter = swap domain behaviour.  Topic output optionally
@@ -323,15 +334,19 @@ ncms train-adapter --corpus ./my-docs \
 
 The CLI runs the four-phase pipeline (bootstrap → SDG expand →
 adversarial augment → train + gate) and refuses to promote an
-adapter that fails the gate.  See
-[`intent-slot-sprints-1-3.md`](intent-slot-sprints-1-3.md) for
-the gate design.
+adapter that fails the gate.  Current operator playbook:
+[`add-a-domain.md`](add-a-domain.md).  Historical gate design:
+[`completed/intent-slot-history/intent-slot-sprints-1-3.md`](completed/intent-slot-history/intent-slot-sprints-1-3.md).
 
-**Deprecated in favour of the SLM.**  One release after
-`NCMS_SLM_ENABLED` defaults to true, the following
-retire entirely: `application/admission_service.py`,
-`application/index_worker._has_state_declaration`,
-`infrastructure/extraction/label_detector.py`.
+**Demoted to cold-start fallbacks (Phase I, 2026-04).**  The
+following retain their code paths but only run when no SLM
+chain is wired into MemoryService (i.e.
+`NCMS_DEFAULT_ADAPTER_DOMAIN` unset):
+`application/admission_service.py` (regex admission scorer),
+`application/index_worker._has_state_declaration` (state-change
+regex), `infrastructure/extraction/label_detector.py` (LLM topic
+labeller — also kept for one-time domain bootstrap via
+`ncms topics detect`).
 
 ---
 
