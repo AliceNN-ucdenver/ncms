@@ -596,6 +596,13 @@ class IndexWorkerPool:
             memory, l1_node, linked_entity_ids,
         )
 
+    # Section content types skip L2 creation — structural document
+    # content triggers false positives on state-declaration regexes.
+    _SECTION_CONTENT_TYPES = frozenset({
+        "document_section", "document_chunk",
+        "section_index", "document",
+    })
+
     async def _detect_and_create_l2_node(
         self,
         memory: Any,
@@ -604,163 +611,120 @@ class IndexWorkerPool:
         l1_node: MemoryNode,
         subject: str | None = None,
     ) -> None:
-        """Detect state changes and create L2 entity_state node.
+        """Async-indexing-path L2 entity_state creation.
 
-        Checks admission signal threshold and regex-based state
-        declaration patterns. Validates detected entity exists in
-        GLiNER extraction set. Runs reconciliation if enabled.
-
-        When ``subject`` is provided (Option D' Part 4), the caller
-        has asserted the entity-subject and we create the ENTITY_STATE
-        node unconditionally with ``entity_id = subject`` — bypassing
-        the state-change / regex / GLiNER-validation fork.
+        Mirrors the synchronous path in
+        ``IngestionPipeline._detect_and_create_l2_node``: dispatch
+        on the ``subject`` kwarg, then either the caller-asserted-
+        subject path (SLM-confident state change required) or the
+        SLM-first state-detection path (regex fallback only when
+        LoRA didn't run).  Section content (document_chunk /
+        document_section / document) skips L2 unconditionally to
+        avoid false-positives on structural content.
         """
-        import re
-
-        from ncms.domain.models import (
-            EdgeType,
-            GraphEdge,
-            MemoryNode,
-            NodeType,
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        if subject:
+            await self._bg_create_l2_with_subject(
+                memory=memory, l1_node=l1_node,
+                slm_label=slm_label, subject=subject,
+            )
+            return
+        if memory.type in self._SECTION_CONTENT_TYPES:
+            return
+        await self._bg_create_l2_via_state_detection(
+            memory=memory,
+            all_entities=all_entities,
+            l1_node=l1_node,
+            admission_features=admission_features,
+            slm_label=slm_label,
         )
 
-        # ── Caller-asserted subject + SLM state_change gate ──────────
-        # See pipeline.py::_detect_and_create_l2_node for the full
-        # rationale.  Summary: subject kwarg alone is not enough;
-        # L2 creation also requires the SLM state_change head to
-        # fire declaration/retirement with confidence.  Otherwise
-        # we'd create one L2 per memory (measured on MSEB mini:
-        # 186 L2 from 186 memories, which floods reconciliation
-        # and turns subject entities into graph hubs).  The
-        # subject is already linked as an entity upstream; that's
-        # enough for TLG vocabulary seeding.  NO REGEX.
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
-        _caller_slm_state = slm_label.get("state_change")
-        _caller_slm_state_conf = slm_label.get("state_change_confidence") or 0.0
-        _caller_slm_confident = (
-            _caller_slm_state in {"declaration", "retirement"}
-            and _caller_slm_state_conf
+    async def _bg_create_l2_with_subject(
+        self,
+        *,
+        memory: Any,
+        l1_node: MemoryNode,
+        slm_label: dict,
+        subject: str,
+    ) -> None:
+        """L2 path 1 — caller-asserted subject + SLM-confident state change.
+
+        Subject kwarg alone is NOT enough — L2 creation requires the
+        state_change head to fire declaration/retirement above the
+        confidence floor.  Without that gate we'd create one L2 per
+        memory (measured on MSEB mini: 186 L2 from 186 memories,
+        which floods reconciliation).  Subject entity is already
+        linked upstream; that's enough for TLG vocabulary seeding.
+        """
+        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
+
+        slm_state = slm_label.get("state_change")
+        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
+        confident = (
+            slm_state in {"declaration", "retirement"}
+            and slm_state_conf
             >= self._svc._config.slm_confidence_threshold
         )
-        if subject and _caller_slm_confident:
-            snippet = memory.content.strip()[:200] or "(empty)"
-            node_metadata = {
-                "entity_id": subject,
-                "state_key": "status",
-                "state_value": snippet,
-                "source": "caller_subject_slm_state_change",
-                "slm_state_change": _caller_slm_state,
-            }
-            l2_node = MemoryNode(
-                memory_id=memory.id,
-                node_type=NodeType.ENTITY_STATE,
-                importance=memory.importance,
-                metadata=node_metadata,
-            )
-            await self._svc._store.save_memory_node(l2_node)
-            await self._svc._store.save_graph_edge(GraphEdge(
-                source_id=l2_node.id,
-                target_id=l1_node.id,
-                edge_type=EdgeType.DERIVED_FROM,
-            ))
-            config = self._svc._config
-            if config.temporal_enabled:
-                try:
-                    from ncms.application.reconciliation_service import (
-                        ReconciliationService,
-                    )
-                    recon = ReconciliationService(
-                        store=self._svc._store, config=config,
-                    )
-                    await recon.reconcile(l2_node)
-                except Exception:
-                    logger.warning(
-                        "Reconciliation failed for %s", l2_node.id,
-                        exc_info=True,
-                    )
-                self._svc.invalidate_tlg_vocabulary()
-            return
-        if subject:
-            # Subject provided but SLM did not declare state change.
-            # No L2 node; subject entity link is sufficient.
-            return
+        if not confident:
+            return  # subject linked upstream is enough
 
-        # Skip document sections — structural content triggers
-        # false positives on state-declaration regexes.
-        _is_section_content = memory.type in (
-            "document_section", "document_chunk",
-            "section_index", "document",
+        snippet = memory.content.strip()[:200] or "(empty)"
+        node_metadata = {
+            "entity_id": subject,
+            "state_key": "status",
+            "state_value": snippet,
+            "source": "caller_subject_slm_state_change",
+            "slm_state_change": slm_state,
+        }
+        l2_node = MemoryNode(
+            memory_id=memory.id,
+            node_type=NodeType.ENTITY_STATE,
+            importance=memory.importance,
+            metadata=node_metadata,
         )
+        await self._svc._store.save_memory_node(l2_node)
+        await self._svc._store.save_graph_edge(GraphEdge(
+            source_id=l2_node.id,
+            target_id=l1_node.id,
+            edge_type=EdgeType.DERIVED_FROM,
+        ))
+        await self._bg_reconcile_and_invalidate(l2_node)
 
-        # Phase I.2 — SLM-first via the shared
-        # ``slm_state_change_decision`` helper.  Same retirement
-        # discipline as IngestionPipeline.create_memory_nodes: when
-        # the LoRA adapter ran confidently, its verdict (incl. "none")
-        # is authoritative.  Section content always skips L2 to avoid
-        # false-positives on structural document content.
-        from ncms.domain.intent_slot_taxonomy import (
-            slm_state_change_decision,
-        )
+    async def _bg_create_l2_via_state_detection(
+        self,
+        *,
+        memory: Any,
+        all_entities: list[dict],
+        l1_node: MemoryNode,
+        admission_features: object | None,
+        slm_label: dict,
+    ) -> None:
+        """L2 path 2 — SLM-first state detection (regex fallback when SLM absent).
 
-        _slm_label = (memory.structured or {}).get("intent_slot") or {}
-        _slm_decision = slm_state_change_decision(
-            _slm_label,
-            threshold=self._svc._config.slm_confidence_threshold,
-        )
-        if _is_section_content:
-            _has_state_change = False
-            _has_state_declaration = False
-        elif _slm_decision is not None:
-            _has_state_change, _has_state_declaration = _slm_decision
-        else:
-            # Cold-start regex/heuristic fallback — LoRA adapter
-            # missing for this domain.
-            _has_state_change = (
-                admission_features is not None
-                and hasattr(admission_features, "state_change_signal")
-                and admission_features.state_change_signal >= 0.35
-            )
-            _has_state_declaration = bool(
-                re.search(
-                    r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                    memory.content,
-                    re.MULTILINE,
-                )
-                or re.search(
-                    r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+",
-                    memory.content,
-                )
-                or re.search(
-                    r"^\s*status\s*:\s*\w+",
-                    memory.content,
-                    re.MULTILINE | re.IGNORECASE,
-                )
-            )
+        Reuses the IngestionPipeline.extract_entity_state_meta
+        helper for canonical state_value sourcing from role_spans.
+        """
+        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
 
-        if not (_has_state_change or _has_state_declaration):
+        if not self._bg_state_change_detected(
+            slm_label=slm_label,
+            content=memory.content,
+            admission_features=admission_features,
+        ):
             return
 
-        # v7+ async indexing path: also source canonical state_value
-        # from the persisted SLM role_spans when present.  The ingest
-        # stage stashed the full dict under ``memory.structured["intent_slot"]``.
-        slm_label_bg = (memory.structured or {}).get("intent_slot") or None
         node_metadata = self._svc._ingestion.extract_entity_state_meta(
-            memory.content, all_entities, slm_label=slm_label_bg,
+            memory.content, all_entities, slm_label=slm_label or None,
         )
-
-        # Validate detected entity exists in GLiNER extraction
-        # (skip for SLM-sourced metadata — the primary canonical is
-        # authoritative even when GLiNER didn't echo it verbatim).
-        if node_metadata.get("source") != "slm_role_span":
-            _entity_names_lower = {
-                e["name"].lower() for e in all_entities
-            }
-            _detected_entity = node_metadata.get("entity_id", "")
-            if _detected_entity.lower() not in _entity_names_lower:
-                return  # suppress L2 creation
-
         if not node_metadata:
             return
+        if node_metadata.get("source") != "slm_role_span":
+            entity_names_lower = {
+                e["name"].lower() for e in all_entities
+            }
+            detected = node_metadata.get("entity_id", "")
+            if detected.lower() not in entity_names_lower:
+                return  # suppress L2 — entity not in GLiNER set
 
         l2_node = MemoryNode(
             memory_id=memory.id,
@@ -769,36 +733,84 @@ class IndexWorkerPool:
             metadata=node_metadata,
         )
         await self._svc._store.save_memory_node(l2_node)
-
-        edge = GraphEdge(
+        await self._svc._store.save_graph_edge(GraphEdge(
             source_id=l2_node.id,
             target_id=l1_node.id,
             edge_type=EdgeType.DERIVED_FROM,
+        ))
+        await self._bg_reconcile_and_invalidate(l2_node)
+
+    def _bg_state_change_detected(
+        self,
+        *,
+        slm_label: dict,
+        content: str,
+        admission_features: object | None,
+    ) -> bool:
+        """Decide whether L2 detection should fire on this memory.
+
+        Phase I.2 — SLM-first via the shared
+        ``slm_state_change_decision`` helper.  The regex block fires
+        only on cold-start deployments without an adapter loaded.
+        """
+        import re
+
+        from ncms.domain.intent_slot_taxonomy import slm_state_change_decision
+
+        decision = slm_state_change_decision(
+            slm_label,
+            threshold=self._svc._config.slm_confidence_threshold,
         )
-        await self._svc._store.save_graph_edge(edge)
+        if decision is not None:
+            has_state_change, has_state_declaration = decision
+            return has_state_change or has_state_declaration
 
-        # Reconciliation
+        # Cold-start fallback — LoRA adapter missing.
+        has_state_change = (
+            admission_features is not None
+            and hasattr(admission_features, "state_change_signal")
+            and admission_features.state_change_signal >= 0.35
+        )
+        has_state_declaration = bool(
+            re.search(
+                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                content, re.MULTILINE,
+            )
+            or re.search(
+                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
+            )
+            or re.search(
+                r"^\s*status\s*:\s*\w+",
+                content, re.MULTILINE | re.IGNORECASE,
+            )
+        )
+        return has_state_change or has_state_declaration
+
+    async def _bg_reconcile_and_invalidate(
+        self, l2_node: MemoryNode,
+    ) -> None:
+        """Reconciliation + TLG vocabulary invalidation tail.
+
+        Shared by both L2-creation paths.  Reconciliation failure is
+        logged but doesn't break ingest.
+        """
         config = self._svc._config
-        if config.temporal_enabled:
-            try:
-                from ncms.application.reconciliation_service import (
-                    ReconciliationService,
-                )
-                recon = ReconciliationService(
-                    store=self._svc._store, config=config,
-                )
-                await recon.reconcile(l2_node)
-            except Exception:
-                logger.warning(
-                    "Reconciliation failed for %s", l2_node.id,
-                    exc_info=True,
-                )
-
-        # TLG Phase 3c — background path also creates ENTITY_STATE
-        # nodes.  Invalidate the L1 vocabulary cache so the next
-        # retrieve_lg call sees the new subject / entity tokens.
-        if config.temporal_enabled:
-            self._svc.invalidate_tlg_vocabulary()
+        if not config.temporal_enabled:
+            return
+        try:
+            from ncms.application.reconciliation_service import (
+                ReconciliationService,
+            )
+            recon = ReconciliationService(
+                store=self._svc._store, config=config,
+            )
+            await recon.reconcile(l2_node)
+        except Exception:
+            logger.warning(
+                "Reconciliation failed for %s", l2_node.id,
+                exc_info=True,
+            )
+        self._svc.invalidate_tlg_vocabulary()
 
     async def _run_episode_formation(
         self,
