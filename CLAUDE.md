@@ -314,10 +314,29 @@ Single-pass creation in `migrations.py`. All tables created together.
 - All tests use in-memory backends (`:memory:` SQLite, ephemeral Tantivy/NetworkX)
 - Fixtures in `tests/conftest.py` provide `memory_service`, `bus_service`, `snapshot_service`
 - No hardcoded expected values — use formula-computed expectations or relative assertions
-- No collection-count assertions (e.g. `len(tools) == 25`) — test for specific members instead, or delete the test
+- No collection-count assertions (e.g. `len(tools) == 26`) — test for specific members instead, or delete the test
 - Integration tests use real service compositions (not mocks)
 - Test files mirror source structure: `tests/unit/domain/`, `tests/unit/infrastructure/`, `tests/integration/`
 - `tests/architecture/` holds fitness functions that enforce structural invariants (D+ complexity, import boundaries, dead code) — see `docs/fitness-functions.md`
+
+## Pre-commit checklist (mandatory routine)
+
+Before any commit that touches `src/`, run **all four** checks.  Don't ship until each is clean on the touched files.
+
+```bash
+uv run pytest tests/unit/ -q                          # 1. Unit tests (~1100, ~70-150s)
+uv run ruff check <touched-files>                     # 2. Lint
+uv run pytest tests/architecture/ -q                  # 3. Fitness functions (D+ complexity, import boundaries, dead code) — fast (~1s)
+uv run --with vulture vulture src/ncms/ --min-confidence 80   # 4. Dead-code sweep
+```
+
+**Expectations:**
+- **Unit tests:** zero failures.  If a test fails, fix it or explicitly mark it as a known regression in the commit message.
+- **Lint:** zero new errors on files you touched.  Pre-existing E501s in unrelated files are not yours to chase, but if you're editing the file, fix them.
+- **Fitness:** zero NEW D+ complexity regressions on files you touched.  The current accepted-debt baseline is 11 failures (all in pre-existing pipeline / SDG / TLG dispatch / demo orchestrators); don't add to it.  If a refactor introduces a D+ method, extract sub-helpers before committing.
+- **Vulture:** investigate every 100%-confidence finding.  Pre-existing 80%-confidence findings are tracked but not blocking unless you introduced them.
+
+When a fitness or vulture failure is genuinely pre-existing in a file you didn't touch, note it in the commit message rather than chasing the rabbit-hole.  When you DID touch the file, fix it — the rule "if you're touching the file, leave it cleaner than you found it" applies.
 
 ## Configuration
 

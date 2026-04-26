@@ -349,112 +349,25 @@ class MemoryService:
             return gate_result  # dedup hit or navigable classification
         content_hash, tags = gate_result
 
-        # ── Intent-slot SLM extraction (P2) ───────────────────────────────
-        # Runs BEFORE admission + state-change checks so the SLM's
-        # admission_head / state_change_head replace the regex paths
-        # when confident.  Returns None when the flag is off or no
-        # extractor is wired — downstream code treats None as "use
-        # legacy regex paths".
-        domain_hint = (domains or [""])[0]
-        intent_slot_label = await self._ingestion.run_intent_slot_extraction(
-            content, domain=domain_hint,
+        # ── Intent-slot SLM extraction (P2) + admission gate ─────────────
+        # The SLM runs BEFORE admission so its heads can drive the
+        # routing decision.  Topic auto-populates ``Memory.domains``;
+        # the rest is baked into ``structured["intent_slot"]`` after
+        # admission (and BEFORE save_memory) so the column-persistence
+        # path writes everything in one INSERT.
+        slm_result = await self._run_slm_and_admission(
+            content=content, domains=domains, tags=tags,
+            source_agent=source_agent, project=project,
+            memory_type=memory_type, importance=importance,
+            structured=structured, emit_stage=_emit_stage,
+            pipeline_start=pipeline_start,
         )
-        if intent_slot_label is not None:
-            _emit_stage(
-                "intent_slot", intent_slot_label.latency_ms,
-                {
-                    "method": intent_slot_label.method,
-                    "intent": intent_slot_label.intent,
-                    "topic": intent_slot_label.topic,
-                    "admission": intent_slot_label.admission,
-                    "state_change": intent_slot_label.state_change,
-                    "n_slots": len(intent_slot_label.slots),
-                },
-            )
-            # Auto-populate Memory.domains from the SLM topic head
-            # when the operator opted in via slm_populate_domains.
-            # This replaces the "user hands us a domain string" flow.
-            if (
-                intent_slot_label.topic is not None
-                and intent_slot_label.is_topic_confident(
-                    self._config.slm_confidence_threshold,
-                )
-                and self._config.slm_populate_domains
-            ):
-                domains = list(domains or [])
-                if intent_slot_label.topic not in domains:
-                    domains.append(intent_slot_label.topic)
-
-        # ── Admission scoring — SLM-first, regex fallback ────────────────
-        admission_route: str | None = None
-        admission_features: object | None = None
-        if self._admission is not None and self._config.admission_enabled:
-            result = await self._ingestion.gate_admission(
-                content=content, domains=domains, tags=tags,
-                source_agent=source_agent, project=project,
-                memory_type=memory_type, importance=importance,
-                structured=structured,
-                intent_slot_label=intent_slot_label,
-                emit_stage=_emit_stage, pipeline_start=pipeline_start,
-            )
-            if isinstance(result, Memory):
-                return result  # discard or ephemeral — early exit
-            admission_route, admission_features, structured = result
-
-        # Bake the SLM outputs into structured BEFORE save_memory so
-        # the ``memories`` columns (intent / topic / admission /
-        # state_change / intent_slot_method) land in the single INSERT.
-        if intent_slot_label is not None:
-            structured = dict(structured or {})
-            structured["intent_slot"] = {
-                "intent": intent_slot_label.intent,
-                "intent_confidence": intent_slot_label.intent_confidence,
-                "topic": intent_slot_label.topic,
-                "topic_confidence": intent_slot_label.topic_confidence,
-                "admission": intent_slot_label.admission,
-                "admission_confidence": intent_slot_label.admission_confidence,
-                "state_change": intent_slot_label.state_change,
-                "state_change_confidence": (
-                    intent_slot_label.state_change_confidence
-                ),
-                "method": intent_slot_label.method,
-                "latency_ms": intent_slot_label.latency_ms,
-                # v7+: role-classified spans.  Thread these through so
-                # the L2 ENTITY_STATE builder can source state_value
-                # from the primary-role span's canonical form (e.g.
-                # ``database=postgresql``) instead of the raw sentence.
-                #
-                # ``ExtractedLabel.role_spans`` is typed
-                # ``list[dict]`` (see domain/models.py) so the adapter
-                # boundary already serialised these to dicts via
-                # ``_to_domain_label`` in lora_adapter.py.  Pass
-                # them through unchanged — earlier code accessed
-                # ``r.char_start`` as attribute, which raised
-                # ``AttributeError: 'dict' object has no attribute
-                # 'char_start'`` whenever the gazetteer detected
-                # entities (i.e. on every clinical / software_dev
-                # row but no conversational rows since that domain
-                # has no gazetteer).
-                "role_spans": [
-                    dict(r) for r in
-                    getattr(intent_slot_label, "role_spans", ()) or ()
-                ],
-                # Also keep the reconstructed slots dict (primary-role
-                # slots + alternative) — the L2 builder checks this as
-                # a fallback when role_spans is empty (e.g. pre-v7
-                # adapters that only populated ``slots``).
-                "slots": dict(getattr(intent_slot_label, "slots", {}) or {}),
-                # v8+ CTLG cue tags — per-token BIO labels from the
-                # ``shape_cue_head``.  Consumed by the ingest pipeline's
-                # ``_extract_and_persist_causal_edges`` to emit
-                # CAUSED_BY / ENABLES graph edges.  Empty list on
-                # pre-v8 adapters.  Already JSON-ready (list[dict])
-                # from both the production and experiment extract()
-                # paths — no conversion needed.
-                "cue_tags": list(
-                    getattr(intent_slot_label, "cue_tags", ()) or ()
-                ),
-            }
+        if isinstance(slm_result, Memory):
+            return slm_result  # discard or ephemeral — early exit
+        (
+            intent_slot_label, domains, admission_route,
+            admission_features, structured,
+        ) = slm_result
 
         memory = Memory(
             content=content,
@@ -570,10 +483,199 @@ class MemoryService:
             )
         )
 
-        # Contradiction detection — fire-and-forget async task (deferred).
-        # Memory is already stored and indexed; contradiction is metadata
-        # enrichment, not a gate.  This avoids blocking ingestion for the
-        # 500-2000ms LLM round-trip.
+        await self._finalize_inline_store(
+            memory=memory, content=content, memory_type=memory_type,
+            relationships=relationships,
+            all_entities=all_entities,
+            linked_entity_ids=linked_entity_ids,
+            admission_route=admission_route,
+            admission_features=admission_features,
+            source_agent=source_agent, subject=subject,
+            pipeline_id=pipeline_id, pipeline_start=pipeline_start,
+            emit_stage=_emit_stage,
+        )
+        return memory
+
+    async def _run_slm_and_admission(
+        self,
+        *,
+        content: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        project: str | None,
+        memory_type: str,
+        importance: float,
+        structured: dict | None,
+        emit_stage: Callable,
+        pipeline_start: float,
+    ) -> Memory | tuple[
+        Any, list[str] | None, str | None, object | None, dict | None,
+    ]:
+        """Run the SLM extraction + admission gate in sequence.
+
+        Returns a ``Memory`` for early-exit (admission discard /
+        ephemeral) or a tuple of ``(intent_slot_label, domains,
+        admission_route, admission_features, structured)`` to
+        continue the persist path.
+
+        Extracted from :meth:`store_memory` to keep the orchestrator
+        under the D-grade complexity gate.  The SLM block runs
+        BEFORE admission so the SLM heads can drive routing
+        decisions; ``structured["intent_slot"]`` is baked AFTER
+        admission so the column-persistence INSERT writes everything
+        in one pass.
+        """
+        # SLM extraction
+        domain_hint = (domains or [""])[0]
+        intent_slot_label = await self._ingestion.run_intent_slot_extraction(
+            content, domain=domain_hint,
+        )
+        if intent_slot_label is not None:
+            emit_stage(
+                "intent_slot", intent_slot_label.latency_ms,
+                {
+                    "method": intent_slot_label.method,
+                    "intent": intent_slot_label.intent,
+                    "topic": intent_slot_label.topic,
+                    "admission": intent_slot_label.admission,
+                    "state_change": intent_slot_label.state_change,
+                    "n_slots": len(intent_slot_label.slots),
+                },
+            )
+            domains = self._auto_populate_topic_domain(
+                intent_slot_label, domains,
+            )
+
+        # Admission scoring — SLM-first, regex fallback
+        admission_route: str | None = None
+        admission_features: object | None = None
+        if self._admission is not None and self._config.admission_enabled:
+            result = await self._ingestion.gate_admission(
+                content=content, domains=domains, tags=tags,
+                source_agent=source_agent, project=project,
+                memory_type=memory_type, importance=importance,
+                structured=structured,
+                intent_slot_label=intent_slot_label,
+                emit_stage=emit_stage, pipeline_start=pipeline_start,
+            )
+            if isinstance(result, Memory):
+                return result  # discard / ephemeral early exit
+            admission_route, admission_features, structured = result
+
+        # Bake SLM outputs into structured BEFORE save_memory so the
+        # ``memories`` columns land in the single INSERT.
+        if intent_slot_label is not None:
+            structured = self._bake_intent_slot_payload(
+                intent_slot_label, structured,
+            )
+
+        return (
+            intent_slot_label, domains, admission_route,
+            admission_features, structured,
+        )
+
+    def _auto_populate_topic_domain(
+        self,
+        intent_slot_label: Any,
+        domains: list[str] | None,
+    ) -> list[str] | None:
+        """Auto-append SLM topic-head label to ``Memory.domains``.
+
+        Replaces the "user hands us a domain string" flow with
+        "SLM-classifies-content-against-learned-taxonomy" when
+        ``slm_populate_domains`` is enabled.  Topic must clear the
+        confidence floor.
+        """
+        if (
+            intent_slot_label.topic is None
+            or not intent_slot_label.is_topic_confident(
+                self._config.slm_confidence_threshold,
+            )
+            or not self._config.slm_populate_domains
+        ):
+            return domains
+        result = list(domains or [])
+        if intent_slot_label.topic not in result:
+            result.append(intent_slot_label.topic)
+        return result
+
+    @staticmethod
+    def _bake_intent_slot_payload(
+        intent_slot_label: Any,
+        structured: dict | None,
+    ) -> dict:
+        """Serialise the SLM extraction output into ``memory.structured``.
+
+        Threads role_spans (v7+) and cue_tags (v8+) through as JSON-
+        ready list[dict] so the ingest pipeline downstream consumers
+        (L2 ENTITY_STATE builder, ``_extract_and_persist_causal_edges``)
+        can read them without per-row conversion.
+
+        The ``role_spans`` block carries primary / alternative role
+        classifications from the role_head; the L2 builder uses the
+        primary span's canonical form as ``state_value`` (e.g.
+        ``database=postgresql``) instead of the raw sentence.
+
+        ``cue_tags`` is empty on pre-CTLG adapters (v9 ships ``cue: 0``).
+        Reserved for the dedicated CTLG sibling adapter — see
+        ``docs/research/ctlg-design.md``.
+        """
+        result = dict(structured or {})
+        result["intent_slot"] = {
+            "intent": intent_slot_label.intent,
+            "intent_confidence": intent_slot_label.intent_confidence,
+            "topic": intent_slot_label.topic,
+            "topic_confidence": intent_slot_label.topic_confidence,
+            "admission": intent_slot_label.admission,
+            "admission_confidence": (
+                intent_slot_label.admission_confidence
+            ),
+            "state_change": intent_slot_label.state_change,
+            "state_change_confidence": (
+                intent_slot_label.state_change_confidence
+            ),
+            "method": intent_slot_label.method,
+            "latency_ms": intent_slot_label.latency_ms,
+            "role_spans": [
+                dict(r) for r in
+                getattr(intent_slot_label, "role_spans", ()) or ()
+            ],
+            "slots": dict(
+                getattr(intent_slot_label, "slots", {}) or {},
+            ),
+            "cue_tags": list(
+                getattr(intent_slot_label, "cue_tags", ()) or ()
+            ),
+        }
+        return result
+
+    async def _finalize_inline_store(
+        self,
+        *,
+        memory: Memory,
+        content: str,
+        memory_type: str,
+        relationships: list[dict] | None,
+        all_entities: list[dict],
+        linked_entity_ids: list[str],
+        admission_route: str | None,
+        admission_features: object | None,
+        source_agent: str | None,
+        subject: str | None,
+        pipeline_id: str,
+        pipeline_start: float,
+        emit_stage: Callable,
+    ) -> None:
+        """Tail of the inline-indexing path: contradictions + edges +
+        access log + L1/L2 nodes + completion event + memory.stored.
+
+        Extracted from :meth:`store_memory` so the orchestrator stays
+        under the D-grade complexity gate.  Called only on the inline
+        ingestion path; the async-indexing path delegates equivalent
+        work to ``IndexWorkerPool`` (see ``_try_enqueue_indexing``).
+        """
+        # Contradiction detection — fire-and-forget (deferred).
         if self._config.contradiction_detection_enabled:
             asyncio.create_task(
                 self._ingestion.deferred_contradiction_check(
@@ -584,7 +686,7 @@ class MemoryService:
                 )
             )
 
-        # Process relationships if provided
+        # Caller-provided relationships
         if relationships:
             for r_data in relationships:
                 rel = Relationship(
@@ -596,26 +698,30 @@ class MemoryService:
                 await self._store.save_relationship(rel)
                 self._graph.add_relationship(rel)
 
-        # Log initial access
         await self._store.log_access(
-            AccessRecord(memory_id=memory.id, accessing_agent=source_agent)
+            AccessRecord(
+                memory_id=memory.id, accessing_agent=source_agent,
+            ),
         )
 
-        # Pipeline complete
         total_ms = (time.perf_counter() - pipeline_start) * 1000
-        _emit_stage("complete", total_ms, {
+        emit_stage("complete", total_ms, {
             "memory_id": memory.id,
             "entity_count": len(all_entities),
             "total_duration_ms": round(total_ms, 2),
         }, memory_id=memory.id)
 
-        # Write MemoryNodes (additive layering: L1 atomic always, L2 entity_state if detected)
-        _should_create_node = (
+        # L1 atomic always; L2 entity_state when detected.  Episode-
+        # formation runs only when the temporal stack is on.
+        should_create_node = (
             admission_route == "persist"
-            or admission_route is None  # admission disabled, always create
-            or (self._config.temporal_enabled and self._episode is not None)
+            or admission_route is None
+            or (
+                self._config.temporal_enabled
+                and self._episode is not None
+            )
         )
-        if _should_create_node:
+        if should_create_node:
             try:
                 await self._ingestion.create_memory_nodes(
                     memory=memory,
@@ -623,25 +729,22 @@ class MemoryService:
                     all_entities=all_entities,
                     linked_entity_ids=linked_entity_ids,
                     admission_features=admission_features,
-                    emit_stage=_emit_stage,
+                    emit_stage=emit_stage,
                     subject=subject,
                 )
             except Exception:
                 logger.warning(
-                    "MemoryNode creation failed for %s, continuing", memory.id,
-                    exc_info=True,
+                    "MemoryNode creation failed for %s, continuing",
+                    memory.id, exc_info=True,
                 )
-
-            # TLG Phase 3c — ingestion may have produced an L2
-            # ENTITY_STATE node (via the state-detection fork inside
-            # create_memory_nodes).  Invalidate the L1 vocabulary cache
-            # so the next retrieve_lg call rebuilds with the new
-            # subject / entity tokens.  Cheap: invalidation is just a
-            # None-assignment; rebuild is lazy.
+            # TLG Phase 3c — invalidate vocabulary cache so the next
+            # retrieve_lg picks up the new subject / entity tokens.
             if self._config.temporal_enabled:
                 self._tlg_vocab_cache.invalidate()
 
-        logger.info("Stored memory %s: %s", memory.id, content[:80])
+        logger.info(
+            "Stored memory %s: %s", memory.id, content[:80],
+        )
         self._event_log.memory_stored(
             memory_id=memory.id,
             content_preview=content,
@@ -650,7 +753,6 @@ class MemoryService:
             entity_count=len(all_entities),
             agent_id=source_agent,
         )
-        return memory
 
     def _try_enqueue_indexing(
         self,
@@ -1179,79 +1281,19 @@ class MemoryService:
         if stage_candidates_out is not None:
             stage_candidates_out["scored"] = [s.memory.id for s in scored]
 
-        # P1-temporal-experiment Phase B.2 — ordinal-sequence primitive.
-        # Classify temporal intent (pure, fast) and, on an ordinal
-        # match with subjects, reorder by ``observed_at`` within the
-        # top-K head.  No-op on all other intents.
-        subject_names = [
-            qe.get("name", "") for qe in query_entity_names
-            if isinstance(qe, dict) and qe.get("name")
-        ]
-        scored = self._apply_ordinal_if_eligible(
-            query, scored, temporal_ref,
-            context_entity_ids, subject_names, _emit_stage,
-        )
-
-        results = scored[:limit]
-
-        # Log access ONLY for returned results (not all scored candidates)
-        for sm in results:
-            await self._store.log_access(
-                AccessRecord(
-                    memory_id=sm.memory.id,
-                    accessing_agent=agent_id,
-                    query_context=query,
-                )
+        results, grammar_composed, grammar_confidence = (
+            await self._search_post_score_finalize(
+                query=query, limit=limit,
+                scored=scored,
+                query_entity_names=query_entity_names,
+                context_entity_ids=context_entity_ids,
+                temporal_ref=temporal_ref,
+                agent_id=agent_id,
+                pipeline_start=pipeline_start,
+                emit_stage=_emit_stage,
+                stage_candidates_out=stage_candidates_out,
             )
-
-        # Pipeline complete
-        total_ms = (time.perf_counter() - pipeline_start) * 1000
-        _emit_stage("complete", total_ms, {
-            "result_count": len(results),
-            "total_candidates_evaluated": len(scored),
-            "top_score": round(results[0].total_activation, 3) if results else None,
-            "total_duration_ms": round(total_ms, 2),
-        })
-
-        self._event_log.memory_searched(
-            query=query,
-            result_count=len(results),
-            top_score=results[0].total_activation if results else None,
-            agent_id=agent_id,
         )
-
-        # Phase 8: Log search for dream cycle PMI computation
-        if self._config.dream_cycle_enabled and results:
-            try:
-                entity_names_for_log = [
-                    e["name"] for e in query_entity_names
-                ] if query_entity_names else []
-                await self._store.log_search(SearchLogEntry(
-                    query=query,
-                    query_entities=entity_names_for_log,
-                    returned_ids=[r.memory.id for r in results],
-                    agent_id=agent_id,
-                ))
-            except Exception:
-                logger.debug("Failed to log search for dream cycle", exc_info=True)
-
-        # TLG Phase 3c — grammar ∨ BM25 composition.  Runs only when
-        # ``NCMS_TEMPORAL_ENABLED=true`` and the grammar dispatch returns a
-        # confident answer; otherwise the BM25-derived ranking is
-        # returned unchanged (the invariant that guarantees zero
-        # confidently-wrong results).
-        grammar_composed = False
-        grammar_confidence: float | None = None
-        if self._config.temporal_enabled:
-            results, grammar_composed, grammar_confidence = (
-                await self._compose_grammar_with_results(
-                    query, results, limit,
-                )
-            )
-        if stage_candidates_out is not None:
-            stage_candidates_out["returned"] = [
-                r.memory.id for r in results
-            ]
 
         # ── Per-query diagnostic ─────────────────────────────────────
         # Always emit (not gated by pipeline_debug).  See
@@ -2071,6 +2113,128 @@ class MemoryService:
             "is_superseded": top.is_superseded,
             "has_conflicts": top.has_conflicts,
         }
+
+    async def _search_post_score_finalize(
+        self,
+        *,
+        query: str,
+        limit: int,
+        scored: list[ScoredMemory],
+        query_entity_names: list[dict],
+        context_entity_ids: list[str],
+        temporal_ref: object | None,
+        agent_id: str | None,
+        pipeline_start: float,
+        emit_stage: Callable,
+        stage_candidates_out: dict[str, list[str]] | None,
+    ) -> tuple[list[ScoredMemory], bool, float | None]:
+        """Tail of :meth:`search` after scoring.
+
+        Returns ``(results, grammar_composed, grammar_confidence)``.
+        Extracted from ``search`` to keep the orchestrator under
+        the D-grade complexity gate.  Steps:
+
+        1. P1-temporal Phase B.2 ordinal reordering (no-op outside
+           ordinal intents).
+        2. Slice to ``limit``.
+        3. Log access for returned results (not all scored candidates).
+        4. Emit ``complete`` pipeline-stage event.
+        5. Emit ``memory.searched`` event.
+        6. Phase 8 dream-cycle search log.
+        7. TLG Phase 3c grammar ∨ BM25 composition.
+        8. Capture ``returned`` stage candidates for harness recall@K.
+        """
+        # 1. Ordinal reordering — pure, fast, no-op outside ordinal intents
+        subject_names = [
+            qe.get("name", "") for qe in query_entity_names
+            if isinstance(qe, dict) and qe.get("name")
+        ]
+        scored = self._apply_ordinal_if_eligible(
+            query, scored, temporal_ref,
+            context_entity_ids, subject_names, emit_stage,
+        )
+
+        # 2. Slice + 3. log access for returned set
+        results = scored[:limit]
+        for sm in results:
+            await self._store.log_access(
+                AccessRecord(
+                    memory_id=sm.memory.id,
+                    accessing_agent=agent_id,
+                    query_context=query,
+                ),
+            )
+
+        # 4. Pipeline complete event + 5. memory.searched event
+        total_ms = (time.perf_counter() - pipeline_start) * 1000
+        emit_stage("complete", total_ms, {
+            "result_count": len(results),
+            "total_candidates_evaluated": len(scored),
+            "top_score": (
+                round(results[0].total_activation, 3) if results else None
+            ),
+            "total_duration_ms": round(total_ms, 2),
+        })
+        self._event_log.memory_searched(
+            query=query,
+            result_count=len(results),
+            top_score=results[0].total_activation if results else None,
+            agent_id=agent_id,
+        )
+
+        # 6. Dream-cycle search log
+        if self._config.dream_cycle_enabled and results:
+            await self._log_search_for_dream_cycle(
+                query=query,
+                query_entity_names=query_entity_names,
+                results=results, agent_id=agent_id,
+            )
+
+        # 7. TLG composition
+        grammar_composed = False
+        grammar_confidence: float | None = None
+        if self._config.temporal_enabled:
+            results, grammar_composed, grammar_confidence = (
+                await self._compose_grammar_with_results(
+                    query, results, limit,
+                )
+            )
+
+        # 8. Capture final-stage candidates
+        if stage_candidates_out is not None:
+            stage_candidates_out["returned"] = [
+                r.memory.id for r in results
+            ]
+        return results, grammar_composed, grammar_confidence
+
+    async def _log_search_for_dream_cycle(
+        self,
+        *,
+        query: str,
+        query_entity_names: list[dict],
+        results: list[ScoredMemory],
+        agent_id: str | None,
+    ) -> None:
+        """Phase 8 — record query→result associations for PMI computation.
+
+        Defensive: failures here are debug-logged, never raised.
+        Dream-cycle PMI is opt-in via ``dream_cycle_enabled``.
+        """
+        try:
+            entity_names_for_log = [
+                e["name"] for e in (query_entity_names or [])
+                if isinstance(e, dict) and e.get("name")
+            ]
+            await self._store.log_search(SearchLogEntry(
+                query=query,
+                query_entities=entity_names_for_log,
+                returned_ids=[r.memory.id for r in results],
+                agent_id=agent_id,
+            ))
+        except Exception:
+            logger.debug(
+                "Failed to log search for dream cycle", exc_info=True,
+            )
 
     async def _emit_query_diagnostic(
         self,

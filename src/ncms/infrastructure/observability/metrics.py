@@ -45,21 +45,28 @@ except ImportError:
 
 
 class NullMetric:
-    """No-op metric for when prometheus_client is not installed."""
+    """No-op metric for when prometheus_client is not installed.
 
-    def inc(self, amount: float = 1) -> None:
+    Method signatures match the prometheus_client API (Counter /
+    Gauge / Histogram) so callers can use them interchangeably.
+    Args are intentionally unused — the leading underscore on
+    parameter names silences vulture without forcing ``*_args``
+    syntax that would obscure the API contract for readers.
+    """
+
+    def inc(self, _amount: float = 1) -> None:
         pass
 
-    def dec(self, amount: float = 1) -> None:
+    def dec(self, _amount: float = 1) -> None:
         pass
 
-    def set(self, value: float) -> None:
+    def set(self, _value: float) -> None:
         pass
 
-    def observe(self, value: float) -> None:
+    def observe(self, _value: float) -> None:
         pass
 
-    def labels(self, **kwargs: str) -> NullMetric:
+    def labels(self, **_kwargs: str) -> NullMetric:
         return self
 
 
