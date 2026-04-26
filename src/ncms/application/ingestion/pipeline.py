@@ -158,194 +158,248 @@ class IngestionPipeline:
     ) -> dict:
         """Extract entity state metadata from content + SLM output.
 
-        **v7+ preferred path** — when ``slm_label["role_spans"]``
-        contains a ``primary``-role entry, use the span's catalog
-        canonical (e.g. ``"postgresql"``) as ``state_value`` and its
-        catalog slot (``"database"``, ``"framework"``, ...) as
-        ``state_key``.  This gives reconciliation a stable comparison
-        key so supersedes/refines edges can actually fire.  Falls
-        back to the legacy regex patterns when role_spans is empty
-        or doesn't contain a primary.
+        Strategy chain — first match wins:
 
-        Heuristic patterns (tried in order, post-SLM):
+        1. **SLM role-span path** (v7+ preferred) — when the SLM's
+           role_head emitted a primary-role span, use the canonical
+           form as ``state_value`` and the slot as ``state_key``.
+           Reconciliation gets a stable comparison key.
+        2. **Regex pattern chain** (cold-start fallback when SLM
+           absent) — six patterns in order: assignment / transition /
+           colon-transition / declaration / markdown-status /
+           yaml-status.
+        3. **First-line fallback** — when no pattern matches but
+           entities are present, attach the first assignment-like
+           line as the state value.
 
-        1. ``EntityName: key = value`` — structured assignment
-        2. ``EntityName key changed/updated from X to Y`` — transition
-        3. ``EntityName: key changed/updated from X to Y`` — colon + transition
-        4. ``EntityName key is/was/set to value`` — declaration
-        5. Markdown ``## Status\\n\\nvalue`` (ADRs, design docs)
-        6. YAML ``status: value`` (checklists, config)
-        7. Fallback: first GLiNER entity, first assignment-like line
-
-        Returns a dict suitable for ``MemoryNode.metadata`` with
-        ``entity_id``, ``state_key``, ``state_value``, and optionally
-        ``state_previous``, ``state_scope``, ``state_alternative``,
-        ``source`` (where this metadata came from).
+        Returns ``{}`` when nothing matches (no entities, no patterns
+        — caller skips L2 creation).  Otherwise returns a dict suitable
+        for ``MemoryNode.metadata`` with ``entity_id``, ``state_key``,
+        ``state_value``, and optionally ``state_previous``,
+        ``state_alternative``, ``source``.
         """
-        # ── v7+ SLM role-span path (preferred) ──────────────────────
-        # When the role head produced a primary-role catalog hit we
-        # use its canonical form as state_value and its slot as
-        # state_key.  The entity_id comes from the first GLiNER
-        # entity (the memory's subject) or from the caller.  When
-        # role_spans also contains an alternative, record it too —
-        # reconciliation can use it to verify the supersession.
-        if slm_label and slm_label.get("role_spans"):
-            role_spans = slm_label["role_spans"]
-            primary = next(
-                (r for r in role_spans if r.get("role") == "primary"),
-                None,
-            )
-            if primary:
-                alt = next(
-                    (r for r in role_spans if r.get("role") == "alternative"),
-                    None,
-                )
-                # Pick the subject entity — prefer a GLiNER entity
-                # that isn't itself the primary/alternative canonical
-                # (so the state belongs to something other than the
-                # value that CHANGED).  Example narrative:
-                # "auth-service migrated from PostgreSQL to CockroachDB"
-                # — GLiNER finds {auth-service, PostgreSQL, CockroachDB};
-                # primary=CockroachDB, alt=PostgreSQL, so subject
-                # should be auth-service.
-                primary_canon = primary["canonical"].lower()
-                alt_canon = alt["canonical"].lower() if alt else None
-                subject_entity = None
-                for ent in entities:
-                    name_l = ent["name"].lower()
-                    if name_l == primary_canon:
-                        continue
-                    if alt_canon and name_l == alt_canon:
-                        continue
-                    subject_entity = ent["name"]
-                    break
-                meta = {
-                    "entity_id": subject_entity or primary["canonical"],
-                    "state_key": primary["slot"],
-                    "state_value": primary["canonical"],
-                    "source": "slm_role_span",
-                }
-                if alt:
-                    meta["state_previous"] = alt["canonical"]
-                    meta["state_alternative"] = alt["canonical"]
+        meta = IngestionPipeline._meta_from_role_spans(slm_label, entities)
+        if meta is not None:
+            return meta
+        for pattern_fn in IngestionPipeline._STATE_PATTERN_FNS:
+            meta = pattern_fn(content, entities)
+            if meta is not None:
                 return meta
-
-        # ── Legacy regex patterns (fallback when no role_spans) ────
-        # Pattern 1: "EntityName: key = value"
-        p_assign = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
-            re.MULTILINE,
+        return IngestionPipeline._meta_first_line_fallback(
+            content, entities,
         )
-        m = p_assign.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(3).strip(),
-            }
 
-        # Pattern 2: "EntityName key changed/updated from X to Y"
-        p_transition = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
-            r"(?:\s+(?:due|for|after|because)\b.*)?$",
-            re.MULTILINE | re.IGNORECASE,
+    @staticmethod
+    def _meta_from_role_spans(
+        slm_label: dict | None, entities: list[dict],
+    ) -> dict | None:
+        """Strategy 1 — v7+ SLM role-span path (preferred).
+
+        Subject-resolution: prefer a GLiNER entity that ISN'T the
+        primary or alternative canonical, so the state belongs to
+        something other than the value that changed.  Example:
+        "auth-service migrated from PostgreSQL to CockroachDB" →
+        GLiNER finds {auth-service, PostgreSQL, CockroachDB};
+        primary=CockroachDB, alt=PostgreSQL, so subject =
+        auth-service.
+        """
+        if not (slm_label and slm_label.get("role_spans")):
+            return None
+        role_spans = slm_label["role_spans"]
+        primary = next(
+            (r for r in role_spans if r.get("role") == "primary"),
+            None,
         )
-        m = p_transition.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(4).strip(),
-                "state_previous": m.group(3).strip(),
-            }
-
-        # Pattern 3: "EntityName: key changed/updated from X to Y"
-        p_colon_transition = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s+"
-            r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
-            r"(?:\s+(?:due|for|after|because|per)\b.*)?$",
-            re.MULTILINE | re.IGNORECASE,
+        if not primary:
+            return None
+        alt = next(
+            (r for r in role_spans if r.get("role") == "alternative"),
+            None,
         )
-        m = p_colon_transition.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(4).strip(),
-                "state_previous": m.group(3).strip(),
-            }
+        primary_canon = primary["canonical"].lower()
+        alt_canon = alt["canonical"].lower() if alt else None
+        subject_entity = None
+        for ent in entities:
+            name_l = ent["name"].lower()
+            if name_l == primary_canon:
+                continue
+            if alt_canon and name_l == alt_canon:
+                continue
+            subject_entity = ent["name"]
+            break
+        meta = {
+            "entity_id": subject_entity or primary["canonical"],
+            "state_key": primary["slot"],
+            "state_value": primary["canonical"],
+            "source": "slm_role_span",
+        }
+        if alt:
+            meta["state_previous"] = alt["canonical"]
+            meta["state_alternative"] = alt["canonical"]
+        return meta
 
-        # Pattern 4: "EntityName key is/are/was/were/changed to/set to value"
-        p_declaration = re.compile(
-            r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-            r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_declaration.search(content)
-        if m:
-            return {
-                "entity_id": m.group(1).strip(),
-                "state_key": m.group(2).strip(),
-                "state_value": m.group(3).strip(),
-            }
+    # Compiled patterns — module-level for reuse across calls.
+    _RX_ASSIGN = re.compile(
+        r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
+        re.MULTILINE,
+    )
+    _RX_TRANSITION = re.compile(
+        r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
+        r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
+        r"(?:\s+(?:due|for|after|because)\b.*)?$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    _RX_COLON_TRANSITION = re.compile(
+        r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s+"
+        r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
+        r"(?:\s+(?:due|for|after|because|per)\b.*)?$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    _RX_DECLARATION = re.compile(
+        r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
+        r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+    _RX_MD_STATUS = re.compile(
+        r"^#\s+(.+?)$.*?^##?\s*[Ss]tatus\s*$\s*^(\w[\w\s]*)$",
+        re.MULTILINE | re.DOTALL,
+    )
+    _RX_YAML_STATUS = re.compile(
+        r"^\s*status\s*:\s*(\w[\w_\-]*)",
+        re.MULTILINE | re.IGNORECASE,
+    )
 
-        # Pattern 5: Markdown "## Status\n\nvalue" (ADR documents)
-        p_md_status = re.compile(
-            r"^#\s+(.+?)$.*?^##?\s*[Ss]tatus\s*$\s*^(\w[\w\s]*)$",
-            re.MULTILINE | re.DOTALL,
-        )
-        m = p_md_status.search(content)
-        if m and entities:
-            title = m.group(1).strip()
-            status_val = m.group(2).strip()
-            entity_id = entities[0]["name"]
-            title_lower = title.lower()
-            for ent in entities:
-                if ent["name"].lower() in title_lower:
-                    entity_id = ent["name"]
-                    break
-            return {
-                "entity_id": entity_id,
-                "state_key": "status",
-                "state_value": status_val,
-            }
+    @staticmethod
+    def _meta_assign(content: str, _entities: list[dict]) -> dict | None:
+        """Pattern 1 — ``EntityName: key = value``."""
+        m = IngestionPipeline._RX_ASSIGN.search(content)
+        if not m:
+            return None
+        return {
+            "entity_id": m.group(1).strip(),
+            "state_key": m.group(2).strip(),
+            "state_value": m.group(3).strip(),
+        }
 
-        # Pattern 6: YAML "status: value"
-        p_yaml_status = re.compile(
-            r"^\s*status\s*:\s*(\w[\w_\-]*)",
-            re.MULTILINE | re.IGNORECASE,
-        )
-        m = p_yaml_status.search(content)
-        if m and entities:
-            return {
-                "entity_id": entities[0]["name"],
-                "state_key": "status",
-                "state_value": m.group(1).strip(),
-            }
+    @staticmethod
+    def _meta_transition(
+        content: str, _entities: list[dict],
+    ) -> dict | None:
+        """Pattern 2 — ``Entity key changed/updated from X to Y``."""
+        m = IngestionPipeline._RX_TRANSITION.search(content)
+        if not m:
+            return None
+        return {
+            "entity_id": m.group(1).strip(),
+            "state_key": m.group(2).strip(),
+            "state_value": m.group(4).strip(),
+            "state_previous": m.group(3).strip(),
+        }
 
-        # Fallback: first entity + first assignment-like line
-        if entities:
-            best_line = ""
-            for line in content.splitlines():
-                stripped = line.strip()
-                if stripped and any(
-                    c in stripped for c in ("=", ":", "→")
-                ):
-                    best_line = stripped[:200]
-                    break
-            if not best_line:
-                best_line = (
-                    content.splitlines()[0].strip()[:200]
-                    if content else ""
-                )
-            return {
-                "entity_id": entities[0]["name"],
-                "state_key": "state",
-                "state_value": best_line,
-            }
+    @staticmethod
+    def _meta_colon_transition(
+        content: str, _entities: list[dict],
+    ) -> dict | None:
+        """Pattern 3 — ``Entity: key changed/updated from X to Y``."""
+        m = IngestionPipeline._RX_COLON_TRANSITION.search(content)
+        if not m:
+            return None
+        return {
+            "entity_id": m.group(1).strip(),
+            "state_key": m.group(2).strip(),
+            "state_value": m.group(4).strip(),
+            "state_previous": m.group(3).strip(),
+        }
 
-        return {}
+    @staticmethod
+    def _meta_declaration(
+        content: str, _entities: list[dict],
+    ) -> dict | None:
+        """Pattern 4 — ``Entity key is/was/set to value``."""
+        m = IngestionPipeline._RX_DECLARATION.search(content)
+        if not m:
+            return None
+        return {
+            "entity_id": m.group(1).strip(),
+            "state_key": m.group(2).strip(),
+            "state_value": m.group(3).strip(),
+        }
+
+    @staticmethod
+    def _meta_md_status(
+        content: str, entities: list[dict],
+    ) -> dict | None:
+        """Pattern 5 — Markdown ``## Status\\n\\nvalue`` (ADRs)."""
+        m = IngestionPipeline._RX_MD_STATUS.search(content)
+        if not (m and entities):
+            return None
+        title_lower = m.group(1).strip().lower()
+        status_val = m.group(2).strip()
+        entity_id = entities[0]["name"]
+        for ent in entities:
+            if ent["name"].lower() in title_lower:
+                entity_id = ent["name"]
+                break
+        return {
+            "entity_id": entity_id,
+            "state_key": "status",
+            "state_value": status_val,
+        }
+
+    @staticmethod
+    def _meta_yaml_status(
+        content: str, entities: list[dict],
+    ) -> dict | None:
+        """Pattern 6 — YAML ``status: value``."""
+        m = IngestionPipeline._RX_YAML_STATUS.search(content)
+        if not (m and entities):
+            return None
+        return {
+            "entity_id": entities[0]["name"],
+            "state_key": "status",
+            "state_value": m.group(1).strip(),
+        }
+
+    @staticmethod
+    def _meta_first_line_fallback(
+        content: str, entities: list[dict],
+    ) -> dict:
+        """Final fallback — first entity + first assignment-like line.
+
+        Returns ``{}`` when no entities (caller skips L2 creation).
+        """
+        if not entities:
+            return {}
+        best_line = ""
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped and any(c in stripped for c in ("=", ":", "→")):
+                best_line = stripped[:200]
+                break
+        if not best_line:
+            best_line = (
+                content.splitlines()[0].strip()[:200] if content else ""
+            )
+        return {
+            "entity_id": entities[0]["name"],
+            "state_key": "state",
+            "state_value": best_line,
+        }
+
+    # Strategy chain consumed by ``extract_entity_state_meta`` —
+    # first match wins.  Defined as a class attribute (after the
+    # method definitions resolve) so the chain is allocated once
+    # per process, not per call.  Order matters: more-specific
+    # patterns (assign / transition) before less-specific (yaml /
+    # markdown).
+    _STATE_PATTERN_FNS: tuple = (
+        _meta_assign,
+        _meta_transition,
+        _meta_colon_transition,
+        _meta_declaration,
+        _meta_md_status,
+        _meta_yaml_status,
+    )
 
     # ── Stage 1: Pre-Admission Gates ────────────────────────────────────
 
@@ -520,23 +574,20 @@ class IngestionPipeline:
         """Run admission scoring.
 
         When ``intent_slot_label`` is supplied and its
-        ``admission_head`` is confident (by the configured
-        threshold), the SLM's decision replaces the 4-feature
-        regex heuristic entirely — features are still computed
-        (cheap) for logging / admission_scored event, but the
-        routing decision comes from the classifier.
+        ``admission_head`` is confident (by the configured threshold),
+        the SLM's decision replaces the 4-feature regex heuristic
+        entirely — features are still computed (cheap) for logging /
+        admission_scored event, but the routing decision comes from
+        the classifier.
 
         Returns a ``Memory`` for early exit (discard / ephemeral) or
         ``(route, features, structured)`` to continue the persist path.
         """
         from dataclasses import asdict as _asdict
 
-        from ncms.domain.models import EphemeralEntry
-        from ncms.domain.scoring import route_memory, score_admission
+        from ncms.domain.scoring import score_admission
 
         assert self._admission is not None
-
-        _skip_routing = importance >= 8.0
 
         t0 = time.perf_counter()
         try:
@@ -544,124 +595,50 @@ class IngestionPipeline:
                 content, domains=domains, source_agent=source_agent,
             )
             score = score_admission(features)
-
-            # Phase I.3 — SLM-first routing.  When the LoRA adapter
-            # ran (``method == "joint_bert_lora"``) AND its
-            # admission_head cleared the confidence floor, its
-            # decision is authoritative -- including ``"discard"``
-            # and ``"ephemeral"``.  Otherwise fall back to the
-            # 4-feature regex heuristic.  The method-name check is
-            # defense-in-depth: the chain factory already marks
-            # heuristic_fallback's admission output with
-            # ``confidence=0.0`` (so it can't clear any positive
-            # threshold), but pinning to the LoRA backend makes the
-            # discipline explicit and CTLG-extensible (a future
-            # cue-tagger that produces admission decisions would
-            # register its own method name).
-            slm_route: str | None = None
-            _slm_method = getattr(intent_slot_label, "method", "") or ""
-            if (
-                intent_slot_label is not None
-                and _slm_method == "joint_bert_lora"
-                and getattr(intent_slot_label, "admission", None)
-                is not None
-                and intent_slot_label.is_admission_confident(
-                    self._config.slm_confidence_threshold,
-                )
-            ):
-                # Normalise label values ("ephemeral" ↔ "ephemeral_cache")
-                raw = intent_slot_label.admission
-                slm_route = (
-                    "ephemeral_cache" if raw == "ephemeral" else raw
-                )
-            route = slm_route if slm_route is not None else route_memory(
-                features, score,
+            route, slm_route = self._resolve_admission_route(
+                intent_slot_label, features, score,
             )
-
             feature_dict = _asdict(features)
-            emit_stage("admission", (time.perf_counter() - t0) * 1000, {
-                "score": round(score, 3), "route": route,
-                "route_source": (
-                    "intent_slot" if slm_route is not None else "regex"
-                ),
-                "features": {
-                    k: round(v, 3) for k, v in feature_dict.items()
-                },
-            })
-            self._event_log.admission_scored(
-                memory_id=None, score=score, route=route,
-                features=feature_dict, agent_id=source_agent,
+            self._emit_admission_event(
+                t0=t0, score=score, route=route, slm_route=slm_route,
+                feature_dict=feature_dict,
+                source_agent=source_agent,
+                emit_stage=emit_stage,
             )
 
-            if _skip_routing:
-                route = None
+            # importance >= 8.0 bypasses admission entirely (force-store)
+            if importance >= 8.0:
                 logger.debug(
                     "Admission: features computed (state_change=%.2f) "
                     "but routing skipped for high-importance content "
                     "(%.1f)",
                     features.state_change_signal, importance,
                 )
-            elif route == "discard":
-                logger.info(
-                    "Admission: discarding content (score=%.3f)", score,
-                )
-                emit_stage(
-                    "complete",
-                    (time.perf_counter() - pipeline_start) * 1000,
-                    {
-                        "result": "discarded",
-                        "admission_score": round(score, 3),
-                    },
-                )
-                return Memory(
-                    content=content, type=cast(Any, memory_type),
-                    domains=domains or [], tags=tags or [],
-                    source_agent=source_agent, project=project,
-                    structured={
-                        "admission": {"score": score, "route": "discard"},
-                    },
-                )
-            elif route == "ephemeral_cache":
-                ttl = self._config.admission_ephemeral_ttl_seconds
-                now = datetime.now(UTC)
-                entry = EphemeralEntry(
-                    content=content, source_agent=source_agent,
-                    domains=domains or [], admission_score=score,
-                    ttl_seconds=ttl, created_at=now,
-                    expires_at=now + timedelta(seconds=ttl),
-                )
-                await self._store.save_ephemeral(entry)
-                logger.info(
-                    "Admission: ephemeral cache (score=%.3f, ttl=%ds)",
-                    score, ttl,
-                )
-                emit_stage(
-                    "complete",
-                    (time.perf_counter() - pipeline_start) * 1000,
-                    {
-                        "result": "ephemeral",
-                        "admission_score": round(score, 3),
-                        "ephemeral_id": entry.id,
-                    },
-                )
-                return Memory(
-                    content=content, type=cast(Any, memory_type),
-                    domains=domains or [], tags=tags or [],
-                    source_agent=source_agent, project=project,
-                    structured={"admission": {
-                        "score": score, "route": "ephemeral_cache",
-                        "ephemeral_id": entry.id,
-                    }},
+                return self._build_persist_continuation(
+                    structured, score, "persist", feature_dict, features,
                 )
 
-            # Persist path: attach features as structured metadata
-            if structured is None:
-                structured = {}
-            structured["admission"] = {
-                "score": round(score, 3), "route": route,
-                **{k: round(v, 3) for k, v in feature_dict.items()},
-            }
-            return route, features, structured
+            if route == "discard":
+                return self._handle_discard_route(
+                    content=content, memory_type=memory_type,
+                    domains=domains, tags=tags,
+                    source_agent=source_agent, project=project,
+                    score=score,
+                    emit_stage=emit_stage,
+                    pipeline_start=pipeline_start,
+                )
+            if route == "ephemeral_cache":
+                return await self._handle_ephemeral_route(
+                    content=content, memory_type=memory_type,
+                    domains=domains, tags=tags,
+                    source_agent=source_agent, project=project,
+                    score=score,
+                    emit_stage=emit_stage,
+                    pipeline_start=pipeline_start,
+                )
+            return self._build_persist_continuation(
+                structured, score, route, feature_dict, features,
+            )
 
         except Exception:
             logger.warning(
@@ -672,6 +649,165 @@ class IngestionPipeline:
                 "admission_error", (time.perf_counter() - t0) * 1000,
             )
             return None, None, structured
+
+    def _resolve_admission_route(
+        self,
+        intent_slot_label: Any | None,
+        features: object,
+        score: float,
+    ) -> tuple[str, str | None]:
+        """Decide admission route: SLM-first, regex fallback.
+
+        Returns ``(route, slm_route)`` — ``slm_route`` is non-None
+        only when the SLM drove the decision (used for the
+        ``route_source`` field of the dashboard event).
+        """
+        from ncms.domain.scoring import route_memory
+
+        slm_method = getattr(intent_slot_label, "method", "") or ""
+        slm_route: str | None = None
+        if (
+            intent_slot_label is not None
+            and slm_method == "joint_bert_lora"
+            and getattr(intent_slot_label, "admission", None) is not None
+            and intent_slot_label.is_admission_confident(
+                self._config.slm_confidence_threshold,
+            )
+        ):
+            raw = intent_slot_label.admission
+            slm_route = "ephemeral_cache" if raw == "ephemeral" else raw
+        route = slm_route or route_memory(features, score)
+        return route, slm_route
+
+    def _emit_admission_event(
+        self,
+        *,
+        t0: float,
+        score: float,
+        route: str,
+        slm_route: str | None,
+        feature_dict: dict,
+        source_agent: str | None,
+        emit_stage: Callable,
+    ) -> None:
+        emit_stage(
+            "admission", (time.perf_counter() - t0) * 1000, {
+                "score": round(score, 3), "route": route,
+                "route_source": (
+                    "intent_slot" if slm_route is not None else "regex"
+                ),
+                "features": {
+                    k: round(v, 3) for k, v in feature_dict.items()
+                },
+            },
+        )
+        self._event_log.admission_scored(
+            memory_id=None, score=score, route=route,
+            features=feature_dict, agent_id=source_agent,
+        )
+
+    def _handle_discard_route(
+        self,
+        *,
+        content: str,
+        memory_type: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        project: str | None,
+        score: float,
+        emit_stage: Callable,
+        pipeline_start: float,
+    ) -> Memory:
+        """Admission-discard early exit.  Memory is NOT persisted."""
+        logger.info(
+            "Admission: discarding content (score=%.3f)", score,
+        )
+        emit_stage(
+            "complete",
+            (time.perf_counter() - pipeline_start) * 1000,
+            {
+                "result": "discarded",
+                "admission_score": round(score, 3),
+            },
+        )
+        return Memory(
+            content=content, type=cast(Any, memory_type),
+            domains=domains or [], tags=tags or [],
+            source_agent=source_agent, project=project,
+            structured={
+                "admission": {"score": score, "route": "discard"},
+            },
+        )
+
+    async def _handle_ephemeral_route(
+        self,
+        *,
+        content: str,
+        memory_type: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        project: str | None,
+        score: float,
+        emit_stage: Callable,
+        pipeline_start: float,
+    ) -> Memory:
+        """Admission-ephemeral early exit.
+
+        Saves an ``EphemeralEntry`` with TTL but does NOT promote
+        to the persistent ``memories`` table.  Returns a synthetic
+        Memory carrying the ephemeral_id in structured metadata.
+        """
+        from ncms.domain.models import EphemeralEntry
+
+        ttl = self._config.admission_ephemeral_ttl_seconds
+        now = datetime.now(UTC)
+        entry = EphemeralEntry(
+            content=content, source_agent=source_agent,
+            domains=domains or [], admission_score=score,
+            ttl_seconds=ttl, created_at=now,
+            expires_at=now + timedelta(seconds=ttl),
+        )
+        await self._store.save_ephemeral(entry)
+        logger.info(
+            "Admission: ephemeral cache (score=%.3f, ttl=%ds)",
+            score, ttl,
+        )
+        emit_stage(
+            "complete",
+            (time.perf_counter() - pipeline_start) * 1000,
+            {
+                "result": "ephemeral",
+                "admission_score": round(score, 3),
+                "ephemeral_id": entry.id,
+            },
+        )
+        return Memory(
+            content=content, type=cast(Any, memory_type),
+            domains=domains or [], tags=tags or [],
+            source_agent=source_agent, project=project,
+            structured={"admission": {
+                "score": score, "route": "ephemeral_cache",
+                "ephemeral_id": entry.id,
+            }},
+        )
+
+    @staticmethod
+    def _build_persist_continuation(
+        structured: dict | None,
+        score: float,
+        route: str | None,
+        feature_dict: dict,
+        features: object,
+    ) -> tuple[str | None, object, dict]:
+        """Attach admission features to ``structured`` for the persist path."""
+        result = dict(structured or {})
+        result["admission"] = {
+            "score": round(score, 3), "route": route,
+            **{k: round(v, 3) for k, v in feature_dict.items()},
+        }
+        return route, features, result
 
     # ── Stage 3: Inline Indexing ────────────────────────────────────────
 
@@ -1101,176 +1237,236 @@ class IngestionPipeline:
     ) -> MemoryNode | None:
         """Detect entity state change and create L2 ENTITY_STATE node.
 
-        When ``subject`` is provided (Option D' Part 4), create the
-        node unconditionally with ``entity_id = subject`` and skip
-        the state-change / regex / GLiNER-validation fork.
+        Two strategies dispatched by the ``subject`` kwarg:
+
+        - **Caller-asserted subject** (Option D' Part 4) — when the
+          caller knows the entity-subject of this memory (MSEB
+          backend, ticket system, patient record), create the L2
+          node only when the SLM state_change head says declaration
+          / retirement with confidence.  Subject alone is NOT enough:
+          it asserts "this memory is ABOUT X" but L2 means "this
+          memory IS a state of X".
+        - **No subject** — SLM-first state-change detection via the
+          shared ``slm_state_change_decision`` helper, with regex
+          fallback only when the LoRA adapter didn't run.
         """
-        from ncms.domain.models import (
-            EdgeType,
-            GraphEdge,
-            NodeType,
+        slm_label = (memory.structured or {}).get("intent_slot") or {}
+        if subject:
+            return await self._create_l2_with_subject(
+                memory=memory, content=content, l1_node=l1_node,
+                slm_label=slm_label, subject=subject,
+                emit_stage=emit_stage,
+            )
+        return await self._create_l2_via_state_detection(
+            memory=memory, content=content,
+            all_entities=all_entities, l1_node=l1_node,
+            admission_features=admission_features,
+            slm_label=slm_label, emit_stage=emit_stage,
         )
 
-        # ── Caller-asserted subject + SLM state_change gate ──────────
-        # The subject kwarg alone is NOT enough to create an L2
-        # ENTITY_STATE node.  An L2 node means "this memory IS a
-        # state of entity X", but `subject` only asserts "this
-        # memory is ABOUT entity X" — those are different things
-        # for multi-section content (ADR sections, ticket threads,
-        # patient-record paragraphs).
-        #
-        # The subject is already linked as a graph entity upstream
-        # in memory_service.store_memory, which is all the TLG
-        # vocabulary-cache rebuild needs (see vocabulary_cache.
-        # _rebuild Signal 2).  We only create an L2 node here when
-        # the SLM state_change head says declaration/retirement with
-        # confidence — i.e. when the memory content genuinely marks
-        # a state transition.
-        #
-        # NO REGEX on this path — the legacy regex state-declaration
-        # fork below runs only when subject is NOT provided and the
-        # SLM either abstained or is disabled.
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
+    async def _create_l2_with_subject(
+        self,
+        *,
+        memory: Memory,
+        content: str,
+        l1_node: MemoryNode,
+        slm_label: dict,
+        subject: str,
+        emit_stage: Callable,
+    ) -> MemoryNode | None:
+        """L2 path 1 — caller-asserted subject + SLM-confident state change.
+
+        Creates the L2 node ONLY when the SLM state_change head
+        emitted ``declaration`` or ``retirement`` above the confidence
+        floor.  Subject alone is insufficient (would create false-
+        positive L2s on multi-section ADRs / patient threads).
+        """
         slm_state = slm_label.get("state_change")
         slm_state_conf = slm_label.get("state_change_confidence") or 0.0
-        slm_state_change_confident = (
+        slm_change_confident = (
             slm_state in {"declaration", "retirement"}
             and slm_state_conf >= self._config.slm_confidence_threshold
         )
-        if subject and slm_state_change_confident:
-            # v7+ canonical state_value from role head (when present):
-            # prefer the primary-role catalog canonical over the raw
-            # content snippet so reconciliation has a stable
-            # comparison key across memories.  Falls back to the
-            # snippet when no role_spans (pre-v7 adapter or out-of-
-            # catalog content).
-            primary_span = None
-            alt_span = None
-            for r in slm_label.get("role_spans") or ():
-                if r.get("role") == "primary" and primary_span is None:
-                    primary_span = r
-                elif r.get("role") == "alternative" and alt_span is None:
-                    alt_span = r
-            if primary_span:
-                node_metadata = {
-                    "entity_id": subject,
-                    "state_key": primary_span["slot"],
-                    "state_value": primary_span["canonical"],
-                    "source": "caller_subject_slm_role_span",
-                    "slm_state_change": slm_state,
-                }
-                if alt_span:
-                    node_metadata["state_previous"] = alt_span["canonical"]
-                    node_metadata["state_alternative"] = alt_span["canonical"]
-            else:
-                # Pin state_key="status" on the fallback since the
-                # SLM topic head can misclassify domain-specific
-                # content (a team-culture ADR observed as topic=
-                # 'tooling' at conf 0.81).  Reconciliation lookup
-                # stays consistent per subject.
-                snippet = content.strip()[:200] or "(empty)"
-                node_metadata = {
-                    "entity_id": subject,
-                    "state_key": "status",
-                    "state_value": snippet,
-                    "source": "caller_subject_slm_state_change",
-                    "slm_state_change": slm_state,
-                }
-            l2_node = MemoryNode(
-                memory_id=memory.id,
-                node_type=NodeType.ENTITY_STATE,
-                importance=memory.importance,
-                metadata=node_metadata,
-            )
-            await self._store.save_memory_node(l2_node)
-            await self._store.save_graph_edge(GraphEdge(
-                source_id=l2_node.id,
-                target_id=l1_node.id,
-                edge_type=EdgeType.DERIVED_FROM,
-                metadata={"layer": "L2_from_L1"},
-            ))
-            emit_stage("memory_node", 0.0, {
-                "node_id": l2_node.id,
-                "node_type": "entity_state",
-                "layer": "L2",
-                "derived_from": l1_node.id,
-                "has_entity_state": True,
-                "source": "caller_subject_slm_state_change",
-            }, memory_id=memory.id)
-            return l2_node
-        if subject:
-            # Subject provided but SLM did not declare a state change
-            # — no L2 node.  Subject entity link (done upstream in
-            # store_memory) is sufficient for vocabulary seeding.
+        if not slm_change_confident:
             return None
 
-        # Phase I.2 — SLM-first state-change detection via the shared
-        # ``slm_state_change_decision`` helper.  When the LoRA adapter
-        # ran confidently, its verdict is authoritative (including
-        # ``"none"`` — that's a real "no change here" answer, not an
-        # invitation to second-guess with regex).  The regex path is
-        # only reached when SLM didn't run (cold-start without
-        # adapter, or below threshold).
+        node_metadata = self._build_subject_l2_metadata(
+            content=content, slm_label=slm_label,
+            slm_state=slm_state, subject=subject,
+        )
+        return await self._save_l2_node(
+            memory=memory, l1_node=l1_node,
+            node_metadata=node_metadata,
+            emit_stage=emit_stage,
+            extra_event_fields={
+                "has_entity_state": True,
+                "source": "caller_subject_slm_state_change",
+            },
+        )
+
+    @staticmethod
+    def _build_subject_l2_metadata(
+        *,
+        content: str,
+        slm_label: dict,
+        slm_state: str,
+        subject: str,
+    ) -> dict:
+        """Build the L2 node metadata for the caller-subject path.
+
+        Prefers the v7+ role_head's canonical primary span (e.g.
+        ``database=postgresql``) over the raw content snippet, so
+        reconciliation has a stable comparison key.  Falls back to
+        ``state_key="status"`` + content snippet on pre-v7 adapters
+        or out-of-catalog content.
+        """
+        primary_span = None
+        alt_span = None
+        for r in slm_label.get("role_spans") or ():
+            role = r.get("role")
+            if role == "primary" and primary_span is None:
+                primary_span = r
+            elif role == "alternative" and alt_span is None:
+                alt_span = r
+        if primary_span:
+            meta = {
+                "entity_id": subject,
+                "state_key": primary_span["slot"],
+                "state_value": primary_span["canonical"],
+                "source": "caller_subject_slm_role_span",
+                "slm_state_change": slm_state,
+            }
+            if alt_span:
+                meta["state_previous"] = alt_span["canonical"]
+                meta["state_alternative"] = alt_span["canonical"]
+            return meta
+        # Fallback — pin state_key="status" because the SLM topic
+        # head can misclassify domain-specific content; reconciliation
+        # lookup needs a consistent key per subject.
+        snippet = content.strip()[:200] or "(empty)"
+        return {
+            "entity_id": subject,
+            "state_key": "status",
+            "state_value": snippet,
+            "source": "caller_subject_slm_state_change",
+            "slm_state_change": slm_state,
+        }
+
+    async def _create_l2_via_state_detection(
+        self,
+        *,
+        memory: Memory,
+        content: str,
+        all_entities: list[dict],
+        l1_node: MemoryNode,
+        admission_features: object | None,
+        slm_label: dict,
+        emit_stage: Callable,
+    ) -> MemoryNode | None:
+        """L2 path 2 — SLM-first state detection (cold-start regex fallback).
+
+        The Phase I.2 ``slm_state_change_decision`` helper is the
+        primary path: when the LoRA adapter ran confidently, its
+        verdict (incl. ``"none"``) is authoritative.  The regex
+        block fires only on cold-start deployments without an
+        adapter loaded.
+        """
+        if not self._state_change_detected(
+            slm_label=slm_label, content=content,
+            admission_features=admission_features,
+        ):
+            return None
+
+        # Pass the full SLM label dict through so role_spans drive
+        # extract_entity_state_meta to source canonical state_values.
+        node_metadata = self.extract_entity_state_meta(
+            content, all_entities, slm_label=slm_label,
+        )
+        if not node_metadata:
+            return None
+
+        # Validate detected entity exists in GLiNER set, EXCEPT
+        # when metadata came from the SLM role span (canonical form
+        # may not match GLiNER's mixed-case variant verbatim).
+        if node_metadata.get("source") != "slm_role_span":
+            entity_names_lower = {
+                e["name"].lower() for e in all_entities
+            }
+            detected = node_metadata.get("entity_id", "")
+            if detected.lower() not in entity_names_lower:
+                return None
+
+        return await self._save_l2_node(
+            memory=memory, l1_node=l1_node,
+            node_metadata=node_metadata,
+            emit_stage=emit_stage,
+            extra_event_fields={
+                "has_entity_state": bool(node_metadata.get("entity_id")),
+            },
+        )
+
+    def _state_change_detected(
+        self,
+        *,
+        slm_label: dict,
+        content: str,
+        admission_features: object | None,
+    ) -> bool:
+        """Decide whether the L2-creation path should run.
+
+        SLM-first via the shared decision helper; falls through to
+        regex only when the LoRA didn't run.  Returns True iff there's
+        a detected state-change event OR a state-declaration pattern.
+        """
         from ncms.domain.intent_slot_taxonomy import (
             slm_state_change_decision,
         )
 
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
         slm_decision = slm_state_change_decision(
             slm_label,
             threshold=self._config.slm_confidence_threshold,
         )
         if slm_decision is not None:
-            _has_state_change, _has_state_declaration = slm_decision
-        else:
-            # Cold-start regex/heuristic fallback — only reached when
-            # the LoRA adapter isn't loaded for this domain.
-            _has_state_change = (
-                admission_features is not None
-                and hasattr(admission_features, "state_change_signal")
-                and admission_features.state_change_signal >= 0.35
-            )
-            _has_state_declaration = bool(
-                re.search(
-                    r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                    content, re.MULTILINE,
-                )
-                or re.search(
-                    r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
-                )
-                or re.search(
-                    r"^\s*status\s*:\s*\w+",
-                    content, re.MULTILINE | re.IGNORECASE,
-                )
-            )
+            has_state_change, has_state_declaration = slm_decision
+            return has_state_change or has_state_declaration
 
-        if not (_has_state_change or _has_state_declaration):
-            return None
-
-        # Pass the full SLM label dict through so the role-span path
-        # in ``extract_entity_state_meta`` can source a canonical
-        # state_value (the catalog's primary entry) instead of
-        # falling through to the raw-sentence regex heuristics.
-        node_metadata = self.extract_entity_state_meta(
-            content, all_entities, slm_label=slm_label,
+        # Cold-start regex/heuristic fallback.
+        has_state_change = (
+            admission_features is not None
+            and hasattr(admission_features, "state_change_signal")
+            and admission_features.state_change_signal >= 0.35
         )
+        has_state_declaration = bool(
+            re.search(
+                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
+                content, re.MULTILINE,
+            )
+            or re.search(
+                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
+            )
+            or re.search(
+                r"^\s*status\s*:\s*\w+",
+                content, re.MULTILINE | re.IGNORECASE,
+            )
+        )
+        return has_state_change or has_state_declaration
 
-        # Validate detected entity exists in GLiNER extraction set.
-        # Skip this guard when the metadata came from the SLM role
-        # span path — the primary-canonical form (``"postgresql"``,
-        # ``"yugabytedb"``) is authoritative and may not appear in
-        # the GLiNER entity names as-is (GLiNER often outputs
-        # mixed-case variants like ``"PostgreSQL"``).
-        if node_metadata.get("source") != "slm_role_span":
-            _entity_names_lower = {
-                e["name"].lower() for e in all_entities
-            }
-            _detected_entity = node_metadata.get("entity_id", "")
-            if _detected_entity.lower() not in _entity_names_lower:
-                return None
+    async def _save_l2_node(
+        self,
+        *,
+        memory: Memory,
+        l1_node: MemoryNode,
+        node_metadata: dict,
+        emit_stage: Callable,
+        extra_event_fields: dict,
+    ) -> MemoryNode:
+        """Persist an L2 ENTITY_STATE node + DERIVED_FROM edge to L1.
 
-        if not node_metadata:
-            return None
+        Shared tail of both L2-creation strategies.  Emits the
+        ``memory_node`` pipeline event with the ``extra_event_fields``
+        merged in (each strategy carries its own provenance metadata).
+        """
+        from ncms.domain.models import EdgeType, GraphEdge, NodeType
 
         l2_node = MemoryNode(
             memory_id=memory.id,
@@ -1279,24 +1475,22 @@ class IngestionPipeline:
             metadata=node_metadata,
         )
         await self._store.save_memory_node(l2_node)
-
-        # DERIVED_FROM edge: L2 → L1
         await self._store.save_graph_edge(GraphEdge(
             source_id=l2_node.id,
             target_id=l1_node.id,
             edge_type=EdgeType.DERIVED_FROM,
             metadata={"layer": "L2_from_L1"},
         ))
-        emit_stage("memory_node", 0.0, {
+        event_fields = {
             "node_id": l2_node.id,
             "node_type": "entity_state",
             "layer": "L2",
             "derived_from": l1_node.id,
-            "has_entity_state": bool(
-                node_metadata.get("entity_id"),
-            ),
-        }, memory_id=memory.id)
-
+        }
+        event_fields.update(extra_event_fields)
+        emit_stage(
+            "memory_node", 0.0, event_fields, memory_id=memory.id,
+        )
         return l2_node
 
     # ── Stage 5: Reconciliation ─────────────────────────────────────────
@@ -1397,39 +1591,58 @@ class IngestionPipeline:
     ) -> None:
         """Extract CAUSED_BY / ENABLES edges from memory-voice cue tags.
 
-        Gated on ``cue_tags`` presence in ``memory.structured["intent_slot"]``.
-        For v7.x adapters (no cue_labels trained) this is a no-op —
-        the cue_tags field is empty.  For v8+ adapters, the SLM's
-        ``shape_cue_head`` produces cue tags at ingest time; this
-        method turns them into typed :class:`CausalEdge` s persisted
-        as :class:`GraphEdge`s.
+        Gated on ``cue_tags`` presence in
+        ``memory.structured["intent_slot"]``.  No-op on pre-CTLG
+        adapters (v9 ships ``cue: 0``).  When the dedicated CTLG
+        sibling adapter ships (see ``docs/research/ctlg-design.md``)
+        cue tags will populate, this method will turn them into
+        typed graph edges, and the dispatcher can walk causal chains
+        directly.
 
-        Surface resolution: each REFERENT surface in the extracted
-        pair is resolved to a memory id by:
-
-        1. If it matches ``l2_node.metadata["state_value"]`` of the
-           current memory's L2 node → use this memory's L1 id.
-        2. Else look up entity-state nodes whose ``state_value``
-           matches the surface → use their memory id.
-        3. Else drop the pair (dangling edge).
-
-        Any failure (lookup errors, schema mismatch) is logged and
-        swallowed — causal extraction is best-effort; a dropped
-        edge doesn't break ingest.
+        Best-effort: any lookup error is logged and swallowed; a
+        dropped pair doesn't break ingest.
         """
-        from ncms.domain.models import EdgeType, GraphEdge
-        from ncms.domain.tlg.causal_extractor import (
-            extract_causal_pairs,
-            pairs_to_causal_edges,
+        tokens = self._parse_cue_tags(memory)
+        if not tokens:
+            return
+
+        t0 = time.perf_counter()
+        pairs = self._extract_causal_pairs_safe(tokens, memory)
+        if not pairs:
+            return
+
+        lookup = await self._build_causal_surface_lookup(
+            memory=memory, l2_node=l2_node, pairs=pairs,
         )
+        emitted, total_edges = await self._persist_causal_edges(
+            pairs=pairs, lookup=lookup, memory=memory,
+        )
+        if emitted > 0:
+            emit_stage(
+                "ctlg_causal_edges",
+                (time.perf_counter() - t0) * 1000,
+                {
+                    "memory_id": memory.id,
+                    "n_pairs_extracted": len(pairs),
+                    "n_edges_persisted": emitted,
+                    "n_pairs_unresolved": len(pairs) - total_edges,
+                },
+                memory_id=memory.id,
+            )
+
+    @staticmethod
+    def _parse_cue_tags(memory: Memory) -> list:
+        """Deserialise ``intent_slot.cue_tags`` into TaggedToken dataclasses.
+
+        Returns ``[]`` when no cues present (pre-CTLG adapter or
+        empty cue head) or when every entry is malformed.
+        """
         from ncms.domain.tlg.cue_taxonomy import TaggedToken
 
         slm_label = (memory.structured or {}).get("intent_slot") or {}
         cue_tag_dicts = slm_label.get("cue_tags") or []
         if not cue_tag_dicts:
-            return  # pre-v8 adapter or no cues detected — no-op
-
-        # Convert the serialised dicts back to TaggedToken dataclasses.
+            return []
         tokens: list[TaggedToken] = []
         for t in cue_tag_dicts:
             try:
@@ -1442,12 +1655,20 @@ class IngestionPipeline:
                 ))
             except (KeyError, TypeError, ValueError):
                 continue
-        if not tokens:
-            return
+        return tokens
 
-        t0 = time.perf_counter()
+    def _extract_causal_pairs_safe(
+        self, tokens: list, memory: Memory,
+    ) -> list:
+        """Wrap the causal-extractor in a try/except.
+
+        Returns ``[]`` when the extractor raises; logs the error
+        but doesn't break ingest.
+        """
+        from ncms.domain.tlg.causal_extractor import extract_causal_pairs
+
         try:
-            pairs = extract_causal_pairs(
+            return extract_causal_pairs(
                 tokens,
                 min_confidence=getattr(
                     self._config, "ctlg_causal_min_confidence", 0.6,
@@ -1458,35 +1679,48 @@ class IngestionPipeline:
                 "[ctlg] causal extraction failed for memory %s",
                 memory.id, exc_info=True,
             )
-            return
-        if not pairs:
-            return
+            return []
 
-        # Build surface → memory_id lookup.  First pass: this
-        # memory's L2 node if present.  Second pass: search
-        # entity_state nodes by state_value match.
+    async def _build_causal_surface_lookup(
+        self,
+        *,
+        memory: Memory,
+        l2_node: MemoryNode | None,
+        pairs: list,
+    ) -> dict[str, str]:
+        """Resolve cue surfaces → memory IDs.
+
+        Two-pass: (1) this memory's L2 node values + entity_id;
+        (2) entity-state nodes elsewhere in the graph for any
+        surface still unresolved.  Surfaces that don't resolve get
+        dropped from the resulting edge set (dangling-edge guard).
+        """
         lookup: dict[str, str] = {}
         if l2_node is not None:
-            sv = str(l2_node.metadata.get("state_value", "")).lower().strip()
-            eid = str(l2_node.metadata.get("entity_id", "")).lower().strip()
+            sv = str(
+                l2_node.metadata.get("state_value", ""),
+            ).lower().strip()
+            eid = str(
+                l2_node.metadata.get("entity_id", ""),
+            ).lower().strip()
             if sv:
                 lookup[sv] = memory.id
             if eid and eid not in lookup:
                 lookup[eid] = memory.id
 
-        # Surfaces we still need to resolve — pull candidate matches
-        # from the graph store's entity_state nodes.
-        needed_surfaces: set[str] = set()
+        needed: set[str] = set()
         for p in pairs:
             for surf in (p.effect_surface, p.cause_surface):
                 surf_low = surf.lower()
                 if surf_low not in lookup:
-                    needed_surfaces.add(surf_low)
+                    needed.add(surf_low)
 
-        if needed_surfaces:
+        if needed:
             try:
-                l2_candidates = await self._store.get_memory_nodes_by_type(
-                    "entity_state",
+                l2_candidates = (
+                    await self._store.get_memory_nodes_by_type(
+                        "entity_state",
+                    )
                 )
                 for node in l2_candidates:
                     sv = str(
@@ -1495,22 +1729,37 @@ class IngestionPipeline:
                     eid = str(
                         node.metadata.get("entity_id", ""),
                     ).lower().strip()
-                    if sv and sv in needed_surfaces and sv not in lookup:
+                    if sv and sv in needed and sv not in lookup:
                         lookup[sv] = node.memory_id
-                    if eid and eid in needed_surfaces and eid not in lookup:
+                    if eid and eid in needed and eid not in lookup:
                         lookup[eid] = node.memory_id
             except Exception:
                 logger.warning(
                     "[ctlg] entity_state lookup failed — some pairs "
                     "may be dropped", exc_info=True,
                 )
+        return lookup
+
+    async def _persist_causal_edges(
+        self,
+        *,
+        pairs: list,
+        lookup: dict[str, str],
+        memory: Memory,
+    ) -> tuple[int, int]:
+        """Persist resolved causal pairs as typed GraphEdges.
+
+        Returns ``(n_emitted, n_total_edges)`` — n_total_edges
+        is what the resolver produced (≤ len(pairs)); n_emitted
+        is what survived the per-edge save.  Direction convention:
+        causal edges go effect → cause (src=effect, dst=cause).
+        """
+        from ncms.domain.models import EdgeType, GraphEdge
+        from ncms.domain.tlg.causal_extractor import pairs_to_causal_edges
 
         edges = pairs_to_causal_edges(
             pairs, surface_to_memory_id=lookup,
         )
-        # Persist each as a typed GraphEdge.  The Causal edges have
-        # direction effect->cause (src=effect, dst=cause); the
-        # EdgeType enum values already encode this convention.
         emitted = 0
         for edge in edges:
             edge_type = (
@@ -1531,22 +1780,10 @@ class IngestionPipeline:
                 emitted += 1
             except Exception:
                 logger.warning(
-                    "[ctlg] failed to persist causal edge "
-                    "%s -> %s", edge.src, edge.dst, exc_info=True,
+                    "[ctlg] failed to persist causal edge %s -> %s",
+                    edge.src, edge.dst, exc_info=True,
                 )
-
-        if emitted > 0:
-            emit_stage(
-                "ctlg_causal_edges",
-                (time.perf_counter() - t0) * 1000,
-                {
-                    "memory_id": memory.id,
-                    "n_pairs_extracted": len(pairs),
-                    "n_edges_persisted": emitted,
-                    "n_pairs_unresolved": len(pairs) - len(edges),
-                },
-                memory_id=memory.id,
-            )
+        return emitted, len(edges)
 
     # ── Stage 7: Deferred Contradiction Detection ──────────────────────
 
