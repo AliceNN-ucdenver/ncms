@@ -4,7 +4,17 @@
 
 **Vector-Free Retrieval / Embedded Knowledge Bus / NeMo Agent Templates**
 
-Version 0.1 Draft | March 2026 | Shawn McCarthy / Chief Archeologist
+Version 0.2 | April 2026 | Shawn McCarthy / Chief Archeologist
+
+> **Document status:** v0.2 reflects the **shipped architecture**
+> as of Phase I completion (2026-04-25).  The original v0.1
+> (March 2026) was the design proposal that motivated NCMS;
+> v0.2 describes what NCMS actually is today: vector-free
+> hybrid retrieval, the 5-head ingest-side SLM, TLG state-
+> evolution grammar, intent-gated reconciliation, per-query
+> diagnostics, and the embedded Knowledge Bus — all production-
+> ready.  Forward direction (CTLG cue tagger as a sibling
+> adapter, query-side compositional parsing) is in §14.
 
 ---
 
@@ -22,23 +32,29 @@ Version 0.1 Draft | March 2026 | Shawn McCarthy / Chief Archeologist
 10. [MCP Server Integration](#10-mcp-server-integration)
 11. [Coding Agent Integration: Hooks and Commit Patterns](#11-coding-agent-integration-hooks-and-commit-patterns)
 12. [Storage Architecture and Rehydration](#12-storage-architecture-and-rehydration)
-13. [Implementation Roadmap](#13-implementation-roadmap)
-14. [Appendix A: Comparison with Existing Systems](#appendix-a-comparison-with-existing-systems)
-15. [Appendix B: Key References](#appendix-b-key-references)
+13. [Phase Ladder — what shipped](#13-phase-ladder--what-shipped-and-when)
+14. [Forward Direction](#14-forward-direction)
+15. [Appendix A: Comparison with Existing Systems](#appendix-a-comparison-with-existing-systems)
+16. [Appendix B: Key References](#appendix-b-key-references)
 
 ---
 
 ## 1. Executive Summary
 
-This document specifies the NeMo Cognitive Memory System (NCMS), a next-generation persistent memory architecture for NVIDIA's NeMo Agent Toolkit. NCMS addresses three fundamental gaps in the current agentic AI landscape: the absence of GPU-accelerated memory services, the lack of real-time collaborative knowledge sharing between agents, and the dependency on vector embedding pipelines that sacrifice precision for speed.
+The NeMo Cognitive Memory System (NCMS) is a persistent cognitive memory layer for AI agents.  Unlike existing memory systems, NCMS rejects the dense-vector embedding shortcut: retrieval is **hybrid sparse-neural + graph + grammar**, and the per-memory metadata that drives ranking comes from a **fine-tunable 5-head BERT classifier** that runs at ingest, not from an LLM at query time.
 
-The system introduces three core innovations:
+The system delivers four production capabilities, all shipped:
 
-- **Vector-Free GPU-Accelerated Retrieval.** A three-tier pipeline combining SPLADE learned sparse retrieval, knowledge graph traversal via cuGraph, and LLM-as-judge reasoning. No embedding vectors. Full semantic understanding at every tier.
-- **Embedded Knowledge Bus.** An in-process, zero-dependency event bus enabling non-blocking broadcast/ask/subscribe patterns between collaborative agents. No external message brokers required. Agents discover knowledge osmotically without interrupting their current tasks.
-- **NeMo Agent Template with Knowledge Callbacks.** A standardized base class for NeMo agents that implements knowledge provider/consumer interfaces, automatic memory capture, and lifecycle hooks for the Knowledge Bus.
+- **Vector-Free Hybrid Retrieval.** Tantivy BM25 + SPLADE v3 sparse-neural + NetworkX graph traversal with PMI-weighted edges, fused via Reciprocal Rank Fusion, normalized per-query, and reranked by a 22M-parameter cross-encoder for fact-lookup intents.  No dense vectors anywhere.  nDCG@10 = 0.7206 on SciFact (exceeds published ColBERTv2 + SPLADE++).
+- **5-Head Ingest-Side SLM.** A per-deployment LoRA adapter (BERT-base, ~2.4 MB on disk, 20-65 ms forward pass on MPS) classifies every memory at ingest into typed labels: `intent / role / topic / admission / state_change`.  Each head's output drives a downstream decision (admission routing, L2 entity-state induction, supersession edges, domain expansion, retrieval scoring bonuses).  Three reference adapters ship: conversational / software_dev / clinical.  Activated by setting `NCMS_DEFAULT_ADAPTER_DOMAIN`.
+- **Temporal Linguistic Geometry (TLG).** A grammar-first retrieval layer for state-evolution queries ("what is the current X?", "what came before X?", "what caused X?").  TLG composes with hybrid retrieval via a zero-confidently-wrong invariant: it promotes confident grammar answers to rank-1; otherwise it abstains and the BM25 ordering passes through unchanged.  32/32 top-5 + rank-1 on the ADR validation corpus vs BM25's 41% / 16%.
+- **Embedded Knowledge Bus.** In-process AsyncIO event bus for ask/respond + announce/subscribe between collaborative agents.  Zero external broker dependencies.  Optional Redis/NATS transports for distributed deployments.  Surrogate response via knowledge snapshots when agents go offline.
 
-The architecture is packaged as a NIM-compatible container with Helm charts, deployable alongside existing NeMo infrastructure. It integrates with NeMo Agent Toolkit v1.4+ through the MemoryEditor and MemoryManager plugin interfaces, making it immediately compatible with all NAT agent types including ReAct, ReWOO, Tool Calling, and Router agents.
+The architecture runs **embedded in-process** with `pip install ncms` (SQLite + Tantivy + NetworkX + sentence-transformers).  No Docker, no external services, no vector store required.  Production deployments bake the adapters into a NemoClaw hub Docker image; the hub defaults to the `software_dev` adapter.
+
+Integration surfaces: NAT MemoryEditor plugin for NeMo Agent Toolkit v1.4+, MCP Server (25 tools), HTTP API (Hub mode), and direct Python API.
+
+Forward direction (v10): a **dedicated sibling CTLG adapter** for query-side cue tagging, enabling compositional semantic parsing of state-evolution queries — see §14.
 
 ---
 
@@ -70,33 +86,52 @@ NeMo Agent Toolkit provides agent orchestration and memory hooks, but no standar
 
 ## 3. Architecture Overview
 
-The NeMo Cognitive Memory System consists of three layers, each independently useful but designed to compose into a unified cognitive infrastructure.
+NCMS is composed of three layers — Storage, Memory Core, and Knowledge Bus — plus two adapter-driven cross-cutting components: the ingest-side 5-head SLM and the query-side TLG grammar.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Layer 3: Knowledge Bus (Embedded)                              │
-│  [Ask/Respond] [Announce/Subscribe] [Domain Router] [Inbox Mgr]│
-│  Transport: In-Process EventEmitter | Optional: Redis | NATS    │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 2: Memory Core (Vector-Free Retrieval)                   │
-│  Tier 1: SPLADE Sparse Neural Index (GPU-accelerated)           │
-│  Tier 2: Knowledge Graph Traversal (cuGraph / NetworkX)         │
-│  Tier 3: LLM-as-Judge Reasoning (NIM / local model)            │
-│  ACT-R Scorer | Provenance Engine | Contradiction Detector      │
-├─────────────────────────────────────────────────────────────────┤
-│  Layer 1: Storage Backends (Pluggable)                          │
-│  Embedded: SQLite + Tantivy | Scaled: Milvus + Neo4j + Redis   │
-│  Background Workers: Consolidation | Distillation | Decay       │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  Layer 3: Knowledge Bus (Embedded)                                   │
+│  [Ask/Respond] [Announce/Subscribe] [Domain Router] [Inbox Mgr]      │
+│  [Heartbeat + Surrogate Response via Snapshot]                       │
+│  Transport: AsyncIO (default) | HTTP/SSE (Hub mode) | Redis/NATS opt.│
+├──────────────────────────────────────────────────────────────────────┤
+│  Layer 2: Memory Core (Vector-Free Hybrid Retrieval)                 │
+│  ┌─ Ingest-side adapter ──────────────────────────────────────────┐  │
+│  │  5-head SLM (BERT+LoRA, per-domain): intent / role / topic /  │  │
+│  │  admission / state_change.  ~2.4 MB, 20-65 ms.                │  │
+│  └─ chain ─→ heuristic-fallback (always-available null output) ──┘  │
+│                                                                      │
+│  Retrieval pipeline:                                                 │
+│  Tier 0: Intent classification (BM25 exemplar, 7 classes)            │
+│  Tier 1: BM25 (Tantivy) + SPLADE v3 + RRF fusion                     │
+│  Tier 1.5: Graph spreading activation (NetworkX, PMI/IDF-weighted)   │
+│  Tier 2: ACT-R + multi-signal scoring (per-query min-max norm)       │
+│  Tier 2.5: Reconciliation discipline — supersession penalty          │
+│            intent-gated to CURRENT_STATE_LOOKUP only (Phase G)       │
+│  Tier 3: Selective cross-encoder reranking (ms-marco-MiniLM-L-6-v2)  │
+│         — for fact / pattern / strategic intents only                │
+│  Tier 4: TLG grammar dispatch (state-evolution axis, opt-in)         │
+│  Tier 5: Structured recall (entity states, episodes, causal chains,  │
+│         document sections)                                           │
+│                                                                      │
+│  Per-query diagnostic event with full signal vector + signal coverage│
+├──────────────────────────────────────────────────────────────────────┤
+│  Layer 1: Storage Backends (Pluggable)                               │
+│  Embedded: SQLite (27 tables, schema v13, WAL) + Tantivy + NetworkX  │
+│  Hub: same + Docker volume mount for persistence                     │
+│  Scaled (planned): Milvus / Neo4j / Postgres swap-in via protocols   │
+│  Background Workers: Consolidation | Distillation | Dream Cycle      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Integration Surfaces
 
-NCMS exposes three integration surfaces, each targeting a different consumer:
-
-- **NAT MemoryEditor Plugin:** Implements the MemoryEditor and MemoryManager abstract interfaces from NeMo Agent Toolkit. This makes NCMS a drop-in replacement for Mem0, Zep, or Redis memory backends. Compatible with auto_memory_agent and all NAT agent types.
-- **MCP Server:** Exposes store_memory, search_memory, ask_knowledge, announce_knowledge, and get_provenance as MCP tools. Memory contents are browsable as MCP resources. Compatible with any MCP client including Claude, VS Code extensions, and third-party agents.
-- **REST/gRPC API:** OpenAI-compatible endpoint structure following NIM conventions. For service-to-service integration, microservice deployments, and non-Python consumers.
+- **NAT MemoryEditor Plugin:** Drop-in replacement for Mem0 / Zep / Redis memory backends in NeMo Agent Toolkit v1.4+.  Compatible with all NAT agent types (ReAct, ReWOO, Tool Calling, Router).
+- **MCP Server:** 25 tools and 5 resources surfaced via FastMCP — store_memory / search_memory / recall_memory / ask_knowledge / announce_knowledge / get_provenance / synthesize / traverse / etc.  Compatible with any MCP client (Claude, VS Code extensions, third-party agents).
+- **HTTP API (Hub mode):** REST endpoints for agent registration + ask/respond + heartbeat over SSE.  Used by the NemoClaw hub deployment to coordinate sandboxed agents.
+- **Direct Python API:** `from ncms.application import MemoryService` — embed in any Python application.
+- **CLI:** `ncms` entry-point for serve / demo / dashboard / load / lint / reindex / export / maintenance / topics / state / episodes / adapters / topic-map.
+- **Dashboard:** Starlette + SSE web UI at `:8420` for real-time pipeline observability.
 
 ---
 
@@ -129,13 +164,36 @@ The knowledge graph stores three types of nodes:
 
 For embedded mode, the graph uses NetworkX (in-memory, zero dependencies). For GPU-accelerated deployments, NVIDIA cuGraph provides massively parallel graph traversal on GPU. For persistent scaled deployments, Neo4j or FalkorDB serve as the graph backend. The PathHD hyperdimensional computing approach provides an encoder-free alternative for path retrieval, using simple cosine similarity over GHRR-encoded relation paths instead of neural scorers.
 
-### Tier 3: LLM-as-Judge Reasoning
+### Tier 3: Cross-Encoder Reranking (replaces v0.1 LLM-as-Judge)
 
-The final tier uses an LLM to reason over the candidate set produced by Tiers 1 and 2. This is the approach that Google's Always-On Memory Agent uses for its entire pipeline, but we apply it only to a small, pre-filtered candidate set (typically 5 to 20 memories), making it both accurate and efficient.
+> **v0.1 → v0.2 design change.**  The original spec proposed an
+> LLM-as-Judge tier (Phi-3 / Mistral 7B / NIM-hosted reasoning
+> model) over the Tier 1+2 candidate set.  That approach was
+> redesigned during P3: a 22M-parameter cross-encoder
+> (`cross-encoder/ms-marco-MiniLM-L-6-v2`) replaces the LLM at
+> query time.  Two reasons: latency (cross-encoder ~5-15 ms vs
+> LLM ~500-2000 ms), and avoiding the dependency on a hosted LLM
+> for retrieval to function.  No LLM runs at query time in v9.
 
-The LLM receives the original query, the candidate memories with their provenance and graph context, and a structured prompt that asks it to: (a) rank candidates by relevance to the query, (b) identify any contradictions between candidates, (c) synthesize a coherent response with citations to specific memories, and (d) flag any knowledge gaps where no candidate adequately addresses the query.
+The cross-encoder takes (query, candidate-memory) pairs and emits
+a relevance score.  Applied **selectively by classified intent**:
 
-For embedded mode, this tier uses a local small language model (e.g., Phi-3 or Mistral 7B via llama.cpp). For production, a NIM-hosted model handles the reasoning with enterprise-grade throughput and latency guarantees.
+- **Enabled for** `fact_lookup`, `pattern_lookup`,
+  `strategic_reflection` — where textual relevance dominates.
+- **Disabled for** `current_state_lookup`, `historical_lookup`,
+  `change_detection`, `event_reconstruction` — where reranking
+  destroys chronological / causal ordering (measured −4.2pts CR
+  and −28pts LRU on temporal queries).
+
+Configured via `NCMS_RERANKER_ENABLED` (default false until
+operator opts in), `NCMS_RERANKER_TOP_K=50` (RRF candidates fed
+to the reranker), `NCMS_RERANKER_OUTPUT_K=20`,
+`NCMS_SCORING_WEIGHT_CE=0.7`.
+
+LLMs **are** used in NCMS — but at ingest time (consolidation,
+contradiction detection, abstract synthesis) and at content
+classification time (`label_detector.py` for one-time domain
+bootstrap).  The retrieval hot path is LLM-free.
 
 ### ACT-R Inspired Scoring
 
@@ -157,19 +215,73 @@ retrieval_probability(m) = 1 / (1 + exp(-activation(m) / tau))
 
 This scoring function naturally implements human-like memory dynamics: frequently and recently accessed memories have higher base-level activation, contextually relevant memories receive spreading activation from the current query, and the noise parameter introduces stochastic variability that prevents the system from always returning the same memories for similar queries.
 
-### Implementation Status (2026-04-12)
+### Implementation Status (Phase I closure, 2026-04-25)
 
-The retrieval pipeline as implemented differs from the original design in several ways:
+The retrieval pipeline as shipped in v9:
 
-- **Tier 1** is fully implemented: BM25 (Tantivy) + SPLADE v3 (sentence-transformers SparseEncoder, naver/splade-v3, 110M params) + RRF fusion. SPLADE uses asymmetric encoding (`encode_document()` at ingest, `encode_query()` at search) with MPS/CUDA auto-detection.
-- **Tier 2** is fully implemented: NetworkX knowledge graph with GLiNER entity extraction (urchade/gliner_medium-v2.1, 209M params). Graph spreading activation uses BFS traversal with per-hop decay, PMI-weighted co-occurrence edges, and IDF-weighted entity matching. Co-occurrence edges persist to SQLite `relationships` table.
-- **Tier 3** was redesigned: LLM-as-Judge (Section 4 above) was **not implemented**. Instead, a 22M-parameter cross-encoder reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`, not an LLM) provides Tier 3 reranking. It runs selectively based on classified intent — enabled for fact_lookup, pattern_lookup, strategic_reflection; disabled for temporal/state queries where it destroys ordering. No LLM is used at query time.
-- **Scoring** is fully implemented: ACT-R with Jaccard-normalized spreading activation, per-query min-max normalization of all signals, and reconciliation penalties on the combined score. ACT-R weight defaults to 0.0 (activates after dream cycles build differential access patterns).
-- **Additional signals** added post-design: intent classification (7 classes via BM25 exemplar index), hierarchy bonus, temporal scoring, domain-scoped filtering.
-- **Structured recall** wraps the full search pipeline with entity state snapshots, episode context, causal chains, and document section expansion.
-- **Content-aware ingestion**: two-class gate (ATOMIC vs NAVIGABLE) routes content. NAVIGABLE documents produce a single document profile memory + sections in the document store. Content-hash dedup at the store boundary.
+- **Tier 1** ✅ BM25 (Tantivy, Rust) + SPLADE v3
+  (`naver/splade-v3` via sentence-transformers SparseEncoder, 110 M
+  params) + Reciprocal Rank Fusion.  SPLADE uses asymmetric encoding
+  (`encode_document()` at ingest, `encode_query()` at search) with
+  MPS / CUDA auto-detection.
+- **Tier 1.5** ✅ Graph spreading activation: NetworkX in-memory
+  digraph + GLiNER entity extraction (`urchade/gliner_medium-v2.1`,
+  209 M params).  BFS traversal with per-hop decay,
+  PMI-weighted co-occurrence edges, IDF-weighted entity matching.
+  Personalized PageRank as an alternative scoring path.
+  Co-occurrence edges persist to SQLite `relationships` table.
+- **Tier 2** ✅ ACT-R + multi-signal scoring with **per-query
+  min-max normalization** (fixes the BM25 vs SPLADE scale
+  mismatch).  ACT-R weight defaults to 0.0 (activates after
+  dream cycles build differential access patterns); BM25 0.6,
+  SPLADE 0.3, graph 0.3, hierarchy 0.0, recency 0.0, temporal
+  0.2 (when temporal_enabled).
+- **Tier 2.5** ✅ Reconciliation discipline (Phase G fix).
+  Supersession + conflict penalties intent-gated to
+  `CURRENT_STATE_LOOKUP` only.  Older states ARE the gold
+  answer for fact / historical / event queries; the previous
+  unconditional penalty was actively hurting those.  Recovered
+  +20 pts r@1 on softwaredev MSEB.
+- **Tier 3** ✅ Cross-encoder reranking — selective by intent
+  (see redesigned section above).
+- **Tier 4** ✅ TLG state-evolution grammar — see §4 (Tier 4)
+  below.
+- **Tier 5** ✅ Structured recall — `recall()` wraps `search()`
+  and layers entity state snapshots, episode context, causal
+  chains, document section expansion.
 
-See `CLAUDE.md` Key Design Decisions #1-26 and `docs/ncms-resilience-update.md` for full implementation details.
+**Plus, post-v0.1 additions:**
+
+- **Intent classification** (BM25 exemplar index, 7 classes:
+  fact_lookup / current_state_lookup / historical_lookup /
+  event_reconstruction / change_detection / pattern_lookup /
+  strategic_reflection).  Drives Tier-3 reranker gate, Tier-4
+  TLG dispatch, and the Phase H signal-alignment bonuses
+  (intent / state_change / role grounding).
+- **Per-query diagnostic event** — `query.diagnostic` emitted
+  unconditionally on every search with the full signal vector
+  for the rank-1 result, per-stage candidate counts, signal
+  coverage tallies, HTMG subject stats, grammar composition
+  status, and total ms.  Plus a one-line INFO log per query.
+- **Content-aware ingestion** — two-class gate (ATOMIC vs
+  NAVIGABLE).  NAVIGABLE documents produce a single
+  vocabulary-dense profile memory + child sections in the
+  document store.  Content-hash dedup at the store boundary.
+- **Phase H signal-alignment bonuses** — additive contributions
+  on `combined` from the SLM heads when the BM25 exemplar
+  classifier identifies a matching query intent
+  (`PATTERN_LOOKUP × habitual`, `CHANGE_DETECTION × state_change`,
+  role-grounding for closed-vocab domains).  Each gated by its
+  own weight knob; role-grounding off-by-default pending v10
+  calibration.
+- **Harness gold-recall@K** — MSEB harness captures per-stage
+  candidate sets (`stage_candidates_out` opt-in kwarg on
+  `MemoryService.search`) and reports `gold_in_bm25@50` /
+  `gold_in_splade@50` / `gold_in_rrf_fused@50` / `gold_in_expanded@50` /
+  `gold_in_scored@50` per query.  Answers "where did the gold
+  disappear?" by walking the funnel.
+
+See `CLAUDE.md` Key Design Decisions #1-30 and `docs/v9-mseb-slm-lift-findings.md` for the full Phase G/H/I retrieval-discipline write-up.
 
 ### Tier 4 (optional): Temporal Linguistic Geometry
 
@@ -244,7 +356,7 @@ subjects, TLG falls through, and retrieval runs unchanged
 through the Tier 1–3 pipeline.  LongMemEval therefore serves
 as a non-regression check, not a headline benchmark.  The
 at-scale benchmark on the state-evolution axis is the SWE
-state-evolution corpus planned in `docs/p3-state-evolution-benchmark.md`.
+state-evolution corpus shipped as MSEB v1 (see `docs/mseb-results.md`; design at `docs/completed/p3-state-evolution-benchmark.md`).
 
 **Deprecated in favour of TLG.**  The following modules carry
 `DeprecationWarning` on use and will be removed one release
@@ -1405,59 +1517,225 @@ For scaled mode, standard database backup procedures apply: Neo4j dump, PostgreS
 
 ---
 
-## 13. Implementation Roadmap
+## 13. Phase Ladder — what shipped (and when)
 
-### Phase 1: Foundation (Weeks 1 to 4)
+The original v0.1 4-phase 16-week roadmap (Foundation / Retrieval
+Pipeline / GPU Acceleration / Production Packaging) was largely
+absorbed into a longer phase ladder that addressed the actual
+emergent design pressure as NCMS ran on real corpora.  This
+section catalogs the shipped phases by date and outcome.
 
-Deliver the embedded-mode core with Knowledge Bus, basic memory CRUD, Knowledge Persistence lifecycle, and the NeMo agent template.
+### Foundation (P0, March 2026)
 
-- Implement KnowledgeBus with AsyncIO transport and domain routing
-- Build CognitiveMemoryEditor implementing NAT's MemoryEditor interface
-- Create KnowledgeAgent base class with all four callback hooks plus lifecycle hooks (on_startup, on_suspend, on_shutdown)
-- Implement Knowledge Snapshot serialization and surrogate response resolution (live/warm/cold)
-- SQLite storage backend with Tantivy sparse index
-- Basic SPLADE integration (ONNX checkpoint, CPU inference)
-- MCP server with stdio transport exposing core tools (search, store, ask_knowledge_sync, commit_knowledge)
-- ncms-commit-hook script for Claude Code Stop/PreCompact/SessionEnd events
-- ncms-context-loader script for Claude Code SessionStart
-- SQLite schema implementation with full rehydration sequence
-- Unit tests and integration tests with a three-agent coding scenario including agent sleep/wake cycles
+Embedded-mode core: SQLite + Tantivy + NetworkX, Knowledge Bus
+(AsyncIO transport), MemoryEditor interface, KnowledgeAgent
+base class, Knowledge Snapshot + surrogate response, MCP server,
+SQLite schema with full rehydration sequence.
 
-### Phase 2: Retrieval Pipeline (Weeks 5 to 8)
+Replaced original v0.1 §13 Phase 1 + Phase 2 (LLM-as-Judge tier
+specifically did not ship — replaced by selective cross-encoder
+reranking in P3).
 
-Build the full three-tier vector-free retrieval pipeline with knowledge graph, LLM reasoning, and complete MCP surface.
+### P1 — Temporal Linguistic Geometry (April 2026)
 
-- NetworkX knowledge graph with entity extraction and relationship creation
-- ACT-R scoring function with access tracking and decay
-- LLM-as-judge tier with structured prompting
-- Consolidation background worker with importance-threshold triggering
-- Contradiction detection engine
-- Full MCP server with all 9 tools and browsable ncms:// resources
-- Periodic snapshot scheduler with incremental delta publishing
-- Snapshot TTL management and stale snapshot cleanup
+Grammar layer at `src/ncms/domain/tlg/` and
+`src/ncms/application/tlg/`.  Retirement extractor, L1
+vocabulary induction, L2 state-change markers, content markers,
+aliases, zone graph, structural query parser, shape cache,
+composition rules, four-level confidence label.  Composes with
+hybrid retrieval via the zero-confidently-wrong invariant.
+Validation: 32/32 top-5 + rank-1 on the ADR validation corpus
+vs BM25 41% / 16%.
 
-### Phase 3: GPU Acceleration (Weeks 9 to 12)
+### P2 — Intent-Slot SLM (April 2026)
 
-Add GPU acceleration paths for SPLADE, graph traversal, and batch operations.
+Original P2 produced the multi-head LoRA adapter pipeline:
+bootstrap → SDG expand → adversarial augment → train + gate.
+Three reference adapters shipped at v6 (later v9, the current
+production set).  Replaces five regex / heuristic / LLM code
+paths with one BERT+LoRA forward pass at ingest.
 
-- SPLADE expansion and scoring on GPU via NIM or PyTorch
-- cuGraph integration for GPU-accelerated graph traversal
-- Milvus backend for GPU-accelerated sparse vector search
-- NIM integration for consolidation and reasoning LLMs
-- Hardware-aware memory tiering (VRAM / RAM / disk)
+### P3 — MSEB v1 + cross-encoder reranking (April 2026)
 
-### Phase 4: Production Packaging (Weeks 13 to 16)
+Four-domain state-evolution benchmark (MSEB-SoftwareDev,
+MSEB-Clinical, MSEB-SWE, MSEB-Convo) with locked gold sets and
+per-class evaluation (general / temporal / preference / noise).
+Cross-encoder reranking at Tier 3 with intent-driven selectivity
+(replaces the v0.1 LLM-as-Judge plan).  NCMS hybrid beats mem0
+dense on all four domains by +0.14 to +0.45 rank-1.
 
-Package as NIM-compatible container with full observability and enterprise features.
+### Phases A through F — domain-plugin migration (April 2026)
 
-- Docker container with Helm charts and Kubernetes operator
-- Redis and NATS transport adapters for Knowledge Bus
-- Neo4j and FalkorDB graph backends
-- REST/gRPC API following NIM conventions
-- Prometheus metrics, OpenTelemetry traces, structured logging
-- RBAC and multi-tenant memory isolation
-- GitHub Copilot .github/hooks/ configuration
-- Benchmark suite comparing against Mem0, Zep, and raw vector search
+YAML-native domain plugins under `adapters/domains/<name>/`
+(domain.yaml + gazetteer.yaml + diversity.yaml + archetypes.yaml).
+Catalog-first extraction with self-evolving entity catalogs.
+v6/v7 retired; v8 attempted joint 6-head training and saturated
+(see §14 + the v8 retro doc); v9 ships 5 heads.
+
+### Phase G — intent-gated reconciliation penalty (2026-04-25)
+
+Identified the canonical retrieval bug in the v9 SLM-on
+regression: the supersession + conflict penalties were applying
+unconditionally on every retrieval.  Older states ARE the gold
+answer for fact / historical / event-reconstruction queries; the
+unconditional penalty pushed the gold below its replacement.
+
+Fix: intent-gate the penalty to `CURRENT_STATE_LOOKUP` only.
+Recovered +0.20 r@1 on softwaredev MSEB and +0.10 on convo, with
+clinical at parity.  Architecturally clean (constraining an
+existing penalty, not adding a new bonus).  Commit `32aafe6`.
+
+### Phase H — signal-leverage bonuses (2026-04-25)
+
+Added scoring bonuses driven by SLM head outputs:
+
+- **H.1** intent × QueryIntent alignment (`82916e8`) — boosts
+  habitual-tagged memories on PATTERN_LOOKUP + STRATEGIC_REFLECTION.
+  0 movement on MSEB v1 (gold doesn't exercise the path); ships
+  default-on as a building block.
+- **H.2** state_change × QueryIntent alignment (`f42394a`) —
+  boosts declaration / retirement memories on CHANGE_DETECTION
+  queries.  0 movement on MSEB v1 (5-query surface area); ships
+  default-on as a building block.
+- **H.3** role-grounding bonus (`db3e085`) — boosts memories
+  where the query entity has `role=primary` in the SLM's
+  per-span output.  Regressed −2.4 pts on softwaredev at
+  weight=0.5 (role_head emits "syntactically primary" not
+  "answer-relevance primary" on `predecessor` / `retirement`
+  shapes); ships default-off pending v10 calibration.
+
+### Phase I — SLM-first ingest discipline + flag retirement (2026-04-25)
+
+- **I.1** Promoted intent-slot factory to application layer
+  (`a499404`) + wired into CLI / MCP / dashboard / hub
+  constructors with single-tenant `NCMS_DEFAULT_ADAPTER_DOMAIN`
+  selection (`842b2f5`).  Hub default = `software_dev`.
+- **I.2** SLM-first state_change with shared
+  `slm_state_change_decision` helper (`0e347c3`).  Trusts the
+  SLM's "none" verdict instead of falling through to regex.
+- **I.3** SLM-first admission with `method=="joint_bert_lora"`
+  gate.  Defense-in-depth against non-LoRA backends driving
+  routing decisions.
+- **I.5** Renamed `skip_gliner` → `slot_entities_present` for
+  semantic clarity.  GLiNER is NOT redundant with the SLM slot
+  head — it covers open-vocab domains (conversational) where
+  the SLM emits no slots by design.
+- **I.6** Retired the `NCMS_SLM_ENABLED` boolean flag entirely.
+  Chain presence at MemoryService construction is the kill-switch
+  now; the legacy double-gate (config flag AND chain) was
+  redundant.  24 files touched; 134 insertions / 129 deletions.
+
+### Per-query diagnostics (2026-04-25)
+
+`query.diagnostic` event emitted unconditionally on every search
+(`217f4a0`).  Full signal vector for the rank-1 result, per-stage
+candidate counts, signal coverage tallies (which heads fired on
+which candidates), HTMG subject stats, grammar composition status.
+Plus a one-line INFO log per query for grep-ability.  Designed
+CTLG-extensible: cue-tag coverage slots into `signal_coverage`
+when the cue tagger ships.
+
+### Harness gold-recall@K (2026-04-25)
+
+MSEB harness gains `search_with_stages()` to capture per-stage
+candidate sets (BM25 / SPLADE / RRF / expanded / scored / returned)
+and computes `gold_in_<stage>@50` per query.  Answers "where did
+the gold disappear?" by walking the funnel.  Output goes into the
+predictions.jsonl dump + aggregated into results.json.
+
+### Doc audit + reorganization (2026-04-25)
+
+`docs/` root reduced from 23 to 9 active files.  Sprint findings,
+audits, and v6/v7 architecture docs moved to `docs/completed/`.
+NemoClaw deployment guides moved to `docs/deployment/`.  README +
+SVG updated to 5-head v9 with CTLG sibling-adapter tease.  This
+spec rewritten as v0.2.
+
+### Original v0.1 §13 outcomes
+
+| v0.1 Phase | Status | Notes |
+|---|---|---|
+| Phase 1 — Foundation | ✅ shipped | P0 |
+| Phase 2 — Retrieval Pipeline | ✅ shipped (modulo Tier 3 redesign) | P3 |
+| Phase 3 — GPU Acceleration | 🟡 partial | SPLADE on MPS/CUDA; cuGraph + Milvus + NIM not done |
+| Phase 4 — Production Packaging | 🟡 partial | NemoClaw hub Docker; bus HTTP/SSE; K8s + Helm + REST/gRPC + RBAC + Neo4j not done |
+
+---
+
+## 14. Forward Direction
+
+### Near-term: CTLG cue tagger as a sibling adapter
+
+The query-side counterpart to the 5-head ingest SLM is a **dedicated
+CTLG cue-tagging adapter** — a separate BERT+LoRA model with a
+single per-token BIO sequence-labeling head over ~30 typed cue
+labels (causal / temporal / ordinal / modal / referent / subject /
+scope).  See [`docs/research/ctlg-design.md`](research/ctlg-design.md).
+
+**Why a sibling adapter, not a 6th head on the v9 encoder:** v8
+attempted exactly that and saturated.  Joint training of per-token
+BIO sequence labeling alongside per-CLS classification heads on a
+shared encoder caused training loss to oscillate and several
+previously-healthy heads to regress.  The v8 retrospective is at
+[`docs/completed/failed-experiments/v8-joint-training-saturation.md`](completed/failed-experiments/v8-joint-training-saturation.md).
+The CTLG adapter forks training while keeping the runtime
+architecture coherent: two adapters at runtime, one per cognitive
+role (content classification at ingest vs cue tagging at query +
+ingest).
+
+**Plumbing already in place:**
+- `EdgeType.CAUSED_BY` + `EdgeType.ENABLES` on graph edges
+- `cue_tags: list[dict]` field on `ExtractedLabel`
+- `_extract_and_persist_causal_edges` ingestion path gated on
+  `cue_tags` presence (no-op when adapter not loaded)
+- Rules-first synthesizer at `domain/tlg/composition.py`
+- `NCMS_TLG_LLM_FALLBACK_ENABLED` knob reserved for the LLM
+  fallback path on uncovered cue compositions
+
+**Only missing piece:** the cue-tagger adapter itself.  Corpus
+annotation (PDTB 3.0 + AltLex + TempEval + MAVEN-ERE) + dedicated
+training pipeline.
+
+### Medium-term: scaled-mode backends
+
+Original v0.1 Phase 3 + Phase 4 items not yet shipped:
+
+- **GPU acceleration** — cuGraph for graph traversal, Milvus for
+  GPU-accelerated sparse vector backend, NIM integration for
+  consolidation / contradiction LLMs.  Currently SPLADE runs on
+  MPS / CUDA via sentence-transformers but graph stays on
+  NetworkX (CPU).
+- **Persistent graph backend** — Neo4j or FalkorDB swap-in via
+  the existing graph protocol.  The protocol-driven architecture
+  means this is a backend choice, not a refactor.
+- **Persistent storage** — Postgres backend via the MemoryStore
+  protocol for deployments beyond SQLite's single-writer ceiling.
+- **K8s + Helm + operator** — Kubernetes operator + Helm charts
+  for production multi-tenant deployments.  REST/gRPC API
+  following NIM conventions.  RBAC + multi-tenant memory isolation.
+- **Bus transport adapters** — Redis Pub/Sub and NATS transports
+  for distributed deployments (the in-process AsyncIO bus + HTTP/SSE
+  hub transport are shipped).
+
+### Long-term: research directions
+
+- **Counterfactual reasoning** — the CTLG `axis="modal"` query
+  form supports "what would be current if we'd kept X?"; the
+  dispatcher walks the supersedes chain with a skip-edge filter.
+  Needs corpus + benchmark.
+- **Self-improving catalog** — gazetteer entries auto-promoted
+  from observed novel surfaces.  CLI scaffold exists
+  (`ncms catalog {review, suggest, auto-merge}`); LLM-driven
+  classification of novel surfaces + human review loop.
+- **Multi-agent collaborative learning** — agents publishing
+  knowledge snapshots feed back into shared catalog evolution.
+- **Episode-level abstraction quality** — current consolidation
+  produces L4 abstracts via LLM synthesis; quality is uneven.
+  Possible direction: structured templates + human-in-the-loop
+  approval before promotion.
+- **Dream-cycle ablation studies** — measure the actual lift
+  from PMI association strengths and importance drift on a
+  long-running corpus (current evidence is anecdotal).
 
 ---
 
