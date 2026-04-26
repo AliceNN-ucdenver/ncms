@@ -67,9 +67,9 @@ def software_dev_spec():
 
 class TestTemplateBackend:
     def test_fills_free_text_placeholders(self):
-        be = TemplateBackend(phrasings=(
-            "Started patient on metformin {frequency} for {condition}.",
-        ))
+        be = TemplateBackend(
+            phrasings=("Started patient on metformin {frequency} for {condition}.",)
+        )
         rng = random.Random(17)
         rows = be.generate(prompt="", n=3, rng=rng)
         assert len(rows) == 3
@@ -83,10 +83,12 @@ class TestTemplateBackend:
         assert rows == []
 
     def test_rotates_through_phrasings(self):
-        be = TemplateBackend(phrasings=(
-            "alpha {condition}.",
-            "beta {condition}.",
-        ))
+        be = TemplateBackend(
+            phrasings=(
+                "alpha {condition}.",
+                "beta {condition}.",
+            )
+        )
         rng = random.Random(17)
         rows = be.generate(prompt="", n=4, rng=rng)
         assert sum("alpha" in r for r in rows) == 2
@@ -95,10 +97,14 @@ class TestTemplateBackend:
     def test_deterministic_with_seed(self):
         phrasings = ("Took {condition} today with {rationale}.",)
         r1 = TemplateBackend(phrasings=phrasings).generate(
-            prompt="", n=3, rng=random.Random(42),
+            prompt="",
+            n=3,
+            rng=random.Random(42),
         )
         r2 = TemplateBackend(phrasings=phrasings).generate(
-            prompt="", n=3, rng=random.Random(42),
+            prompt="",
+            n=3,
+            rng=random.Random(42),
         )
         assert r1 == r2
 
@@ -114,7 +120,9 @@ class TestTemplateBackend:
 
 
 def _archetype_for_validation(
-    *, min_chars: int = 20, max_chars: int = 160,
+    *,
+    min_chars: int = 20,
+    max_chars: int = 160,
     role_spans: tuple[RoleSpec, ...] = (),
 ) -> ArchetypeSpec:
     return ArchetypeSpec(
@@ -284,13 +292,14 @@ class TestValidateAndLabel:
 
 class TestGenerateForArchetype:
     def test_clinical_positive_medication_start(self, clinical_spec):
-        arch = next(
-            a for a in clinical_spec.archetypes
-            if a.name == "positive_medication_start"
-        )
+        arch = next(a for a in clinical_spec.archetypes if a.name == "positive_medication_start")
         be = TemplateBackend()  # empty — generator fills phrasings per-batch
         rows, stats = generate_for_archetype(
-            clinical_spec, arch, n=10, backend=be, seed=7,
+            clinical_spec,
+            arch,
+            n=10,
+            backend=be,
+            seed=7,
         )
         assert len(rows) == 10, f"yield too low: stats={stats}"
         assert stats.accepted == 10
@@ -310,12 +319,15 @@ class TestGenerateForArchetype:
 
     def test_conversational_open_vocab_archetype(self, conversational_spec):
         arch = next(
-            a for a in conversational_spec.archetypes
-            if a.name == "positive_object_adoption"
+            a for a in conversational_spec.archetypes if a.name == "positive_object_adoption"
         )
         be = TemplateBackend()
         rows, stats = generate_for_archetype(
-            conversational_spec, arch, n=8, backend=be, seed=5,
+            conversational_spec,
+            arch,
+            n=8,
+            backend=be,
+            seed=5,
         )
         assert len(rows) >= 1, f"open-vocab zero yield: stats={stats}"
         for r in rows:
@@ -326,13 +338,14 @@ class TestGenerateForArchetype:
             assert any(rs.role == "primary" for rs in r.role_spans)
 
     def test_choice_archetype_samples_two_distinct_entities(self, clinical_spec):
-        arch = next(
-            a for a in clinical_spec.archetypes
-            if a.name == "choice_medication_switch"
-        )
+        arch = next(a for a in clinical_spec.archetypes if a.name == "choice_medication_switch")
         be = TemplateBackend()
         rows, _ = generate_for_archetype(
-            clinical_spec, arch, n=5, backend=be, seed=11,
+            clinical_spec,
+            arch,
+            n=5,
+            backend=be,
+            seed=11,
         )
         assert rows
         for r in rows:
@@ -347,10 +360,14 @@ class TestGenerateForArchetype:
         # Construct an archetype whose phrasings leak placeholders the
         # filler pool doesn't know — validation should reject many.
         arch = ArchetypeSpec(
-            name="leaky_test", domain="clinical",
-            intent="positive", admission="persist", state_change="none",
+            name="leaky_test",
+            domain="clinical",
+            intent="positive",
+            admission="persist",
+            state_change="none",
             role_spans=(RoleSpec(role="primary", slot="medication", count=1),),
-            description="test", phrasings=("Short on {primary}.",),
+            description="test",
+            phrasings=("Short on {primary}.",),
             target_min_chars=100,  # too short envelope → forces rejects
         )
         # Use a minimal spec that has the slot.
@@ -359,13 +376,15 @@ class TestGenerateForArchetype:
 
         spec = DomainSpec(
             name="clinical",
-            description="", intended_content="",
+            description="",
+            intended_content="",
             speaker_voice="a clinician",
             slots=("medication",),
             topics=("medication_mgmt",),
             gazetteer=(
                 CatalogEntry(
-                    canonical="metformin", slot="medication",
+                    canonical="metformin",
+                    slot="medication",
                     topic="medication_mgmt",
                 ),
             ),
@@ -380,7 +399,11 @@ class TestGenerateForArchetype:
             source_dir=Path("/tmp/x"),
         )
         rows, stats = generate_for_archetype(
-            spec, arch, n=5, backend=TemplateBackend(), seed=3,
+            spec,
+            arch,
+            n=5,
+            backend=TemplateBackend(),
+            seed=3,
         )
         # Short-envelope target should produce 0 accepted + many rejects.
         assert stats.accepted == 0
@@ -401,11 +424,12 @@ class TestGenerateDomain:
         # check we get >= 100 rows in total.
         be = TemplateBackend()
         rows, stats_by = generate_domain(
-            clinical_spec, backend=be, split="gold", seed=1,
+            clinical_spec,
+            backend=be,
+            split="gold",
+            seed=1,
         )
-        assert len(rows) >= 100, (
-            f"combined gold yield too low: {len(rows)}"
-        )
+        assert len(rows) >= 100, f"combined gold yield too low: {len(rows)}"
         # Every shipped archetype should have at least one stats entry.
         assert set(stats_by.keys()) == {a.name for a in clinical_spec.archetypes}
         # Spot check: every row is tagged gold + belongs to a
@@ -457,8 +481,10 @@ class TestSparkBackend:
     def _patch_call_once(self, **async_mock_kwargs):
         """Shorthand: replace ``SparkBackend._call_once`` with an AsyncMock."""
         return patch.object(
-            SparkBackend, "_call_once",
-            new_callable=AsyncMock, **async_mock_kwargs,
+            SparkBackend,
+            "_call_once",
+            new_callable=AsyncMock,
+            **async_mock_kwargs,
         )
 
     def test_happy_path_returns_rows(self):
@@ -477,11 +503,15 @@ class TestSparkBackend:
     def test_short_count_logged_not_raised(self, caplog):
         """Model returns fewer rows than asked — WARNING logged, no exception."""
         import logging
+
         be = SparkBackend(model="openai/test", api_base="http://x")
-        with caplog.at_level(
-            logging.WARNING,
-            logger="ncms.application.adapters.sdg.v9.backends",
-        ), self._patch_call_once(return_value=["only one"]):
+        with (
+            caplog.at_level(
+                logging.WARNING,
+                logger="ncms.application.adapters.sdg.v9.backends",
+            ),
+            self._patch_call_once(return_value=["only one"]),
+        ):
             rows = be.generate(prompt="ignored", n=5, rng=self._rng())
         assert rows == ["only one"]
         assert any("short-count" in rec.message for rec in caplog.records)
@@ -498,19 +528,26 @@ class TestSparkBackend:
     def test_non_list_response_retries_then_raises(self):
         """call_llm_json returned a dict — malformed; retry then fail."""
         be = SparkBackend(
-            model="openai/test", api_base="http://x",
-            max_attempts=2, backoff_base_seconds=0.0,
+            model="openai/test",
+            api_base="http://x",
+            max_attempts=2,
+            backoff_base_seconds=0.0,
         )
-        with self._patch_call_once(
-            side_effect=[{"wrong": "shape"}, {"still": "wrong"}],
-        ), pytest.raises(RuntimeError, match="malformed"):
+        with (
+            self._patch_call_once(
+                side_effect=[{"wrong": "shape"}, {"still": "wrong"}],
+            ),
+            pytest.raises(RuntimeError, match="malformed"),
+        ):
             be.generate(prompt="ignored", n=3, rng=self._rng())
 
     def test_transient_error_retried_then_succeeds(self):
         """First call raises a network-style error; second succeeds."""
         be = SparkBackend(
-            model="openai/test", api_base="http://x",
-            max_attempts=3, backoff_base_seconds=0.0,
+            model="openai/test",
+            api_base="http://x",
+            max_attempts=3,
+            backoff_base_seconds=0.0,
         )
         with self._patch_call_once(
             side_effect=[
@@ -523,15 +560,20 @@ class TestSparkBackend:
 
     def test_all_attempts_fail_raises_with_last_error(self):
         be = SparkBackend(
-            model="openai/test", api_base="http://x",
-            max_attempts=2, backoff_base_seconds=0.0,
+            model="openai/test",
+            api_base="http://x",
+            max_attempts=2,
+            backoff_base_seconds=0.0,
         )
-        with self._patch_call_once(
-            side_effect=[
-                TimeoutError("attempt 1"),
-                TimeoutError("attempt 2"),
-            ],
-        ), pytest.raises(RuntimeError, match="all 2 attempts failed"):
+        with (
+            self._patch_call_once(
+                side_effect=[
+                    TimeoutError("attempt 1"),
+                    TimeoutError("attempt 2"),
+                ],
+            ),
+            pytest.raises(RuntimeError, match="all 2 attempts failed"),
+        ):
             be.generate(prompt="ignored", n=2, rng=self._rng())
 
 
@@ -560,13 +602,9 @@ class TestBuildArchetypePrompt:
             intent="positive",
             admission="persist",
             state_change="declaration",
-            role_spans=(
-                RoleSpec(role="primary", slot="medication", count=1),
-            ),
+            role_spans=(RoleSpec(role="primary", slot="medication", count=1),),
             description="Clinician starts a patient on a new medication.",
-            example_utterances=(
-                "Started metformin 500mg BID.",
-            ),
+            example_utterances=("Started metformin 500mg BID.",),
             phrasings=("Started patient on {primary}.",),
         )
 
@@ -582,11 +620,8 @@ class TestBuildArchetypePrompt:
         # Case-sensitive check — the label vocabulary is all
         # lowercase so a case-insensitive check would catch
         # legitimate English uses of "positive" in descriptions.
-        for forbidden in ("intent: positive", "admission: persist",
-                          "state_change: declaration"):
-            assert forbidden not in prompt, (
-                f"literal label token {forbidden!r} leaked into prompt"
-            )
+        for forbidden in ("intent: positive", "admission: persist", "state_change: declaration"):
+            assert forbidden not in prompt, f"literal label token {forbidden!r} leaked into prompt"
 
     def test_behavioral_cues_present(self):
         """The three heads must be described, not labelled."""
@@ -670,71 +705,63 @@ class TestPerRowEntitySampling:
         only looked at ``archetype.topic`` (unset on all three
         shipped domains) and ignored gazetteer-entry topics.
         """
-        arch = next(
-            a for a in clinical_spec.archetypes
-            if a.name == "habitual_medication_regimen"
-        )
+        arch = next(a for a in clinical_spec.archetypes if a.name == "habitual_medication_regimen")
         rows, _ = generate_for_archetype(
-            clinical_spec, arch,
-            n=5, backend=TemplateBackend(), seed=17,
+            clinical_spec,
+            arch,
+            n=5,
+            backend=TemplateBackend(),
+            seed=17,
         )
         topics = [r.topic for r in rows]
-        assert all(t is not None for t in topics), (
-            f"expected non-None topics, got {topics}"
-        )
+        assert all(t is not None for t in topics), f"expected non-None topics, got {topics}"
         # Topic must be a valid clinical-domain topic drawn from the
         # gazetteer entry (not None, not an unknown string).
         allowed = set(clinical_spec.topics)
         for t in topics:
-            assert t in allowed, (
-                f"topic {t!r} not in clinical topic vocab {sorted(allowed)}"
-            )
+            assert t in allowed, f"topic {t!r} not in clinical topic vocab {sorted(allowed)}"
 
     def test_row_topic_inherits_from_inline_node(self, conversational_spec):
         """Open-vocab domain: topic must come from the sampled
         inline node's ``topic_hint``.
         """
         arch = next(
-            a for a in conversational_spec.archetypes
-            if a.name == "positive_object_adoption"
+            a for a in conversational_spec.archetypes if a.name == "positive_object_adoption"
         )
         rows, _ = generate_for_archetype(
-            conversational_spec, arch,
-            n=10, backend=TemplateBackend(), seed=17,
+            conversational_spec,
+            arch,
+            n=10,
+            backend=TemplateBackend(),
+            seed=17,
         )
         # Every row's topic must be in the conversational topic vocab
         # (not None, not "habit_pref" — since frequency nodes are
         # filter_slots-scoped, they can't supply object-slot entities).
         allowed_object_topics = set(conversational_spec.topics) - {"habit_pref"}
         for r in rows:
-            assert r.topic is not None, (
-                f"row had None topic: {r.text}"
-            )
+            assert r.topic is not None, f"row had None topic: {r.text}"
             assert r.topic in allowed_object_topics, (
-                f"row topic {r.topic!r} not in "
-                f"{sorted(allowed_object_topics)}: {r.text}"
+                f"row topic {r.topic!r} not in {sorted(allowed_object_topics)}: {r.text}"
             )
 
     def test_batch_uses_multiple_medications(self, clinical_spec):
         """Across a 10-row batch from habitual_medication_regimen,
         more than one medication must appear in slots."""
-        arch = next(
-            a for a in clinical_spec.archetypes
-            if a.name == "habitual_medication_regimen"
-        )
+        arch = next(a for a in clinical_spec.archetypes if a.name == "habitual_medication_regimen")
         rows, _ = generate_for_archetype(
-            clinical_spec, arch,
-            n=10, backend=TemplateBackend(), seed=42,
+            clinical_spec,
+            arch,
+            n=10,
+            backend=TemplateBackend(),
+            seed=42,
         )
         meds = {r.slots.get("medication") for r in rows}
         # The medication gazetteer has > 150 entries; sampling 10
         # with replacement should yield > 1 distinct med almost
         # always.  We use >= 3 as a robust floor that still
         # guarantees we're not reusing a single pick.
-        assert len(meds) >= 3, (
-            f"expected diverse medications; got {meds} across "
-            f"{len(rows)} rows"
-        )
+        assert len(meds) >= 3, f"expected diverse medications; got {meds} across {len(rows)} rows"
 
 
 # ---------------------------------------------------------------------------
@@ -761,8 +788,7 @@ class TestInlineNodeSlotScoping:
     def test_times_nodes_declare_frequency_only(self, conversational_spec):
         """The YAML change is honoured by the loader."""
         times_nodes = [
-            n for n in conversational_spec.diversity.nodes
-            if n.path and n.path[0] == "times"
+            n for n in conversational_spec.diversity.nodes if n.path and n.path[0] == "times"
         ]
         assert times_nodes, "expected times.* nodes in conversational diversity"
         for n in times_nodes:
@@ -772,7 +798,8 @@ class TestInlineNodeSlotScoping:
             )
 
     def test_object_slot_sampling_skips_frequency_nodes(
-        self, conversational_spec,
+        self,
+        conversational_spec,
     ):
         """Direct test on the generator: asking for ``slot=object``
         must never return a frequency-phrase example.
@@ -780,13 +807,9 @@ class TestInlineNodeSlotScoping:
         from ncms.application.adapters.sdg.v9.generator import _draw_one
 
         arch = next(
-            a for a in conversational_spec.archetypes
-            if a.name == "positive_object_adoption"
+            a for a in conversational_spec.archetypes if a.name == "positive_object_adoption"
         )
-        inline_nodes = tuple(
-            n for n in conversational_spec.diversity.nodes
-            if n.source == "inline"
-        )
+        inline_nodes = tuple(n for n in conversational_spec.diversity.nodes if n.source == "inline")
         # Collect every frequency-only example so we can assert
         # absence across many draws.
         frequency_only_examples = {
@@ -817,26 +840,19 @@ class TestInlineNodeSlotScoping:
 
         assert drawn, "expected _draw_one to return SOMETHING"
         leaks = [s for s in drawn if s in frequency_only_examples]
-        assert leaks == [], (
-            f"object-slot draw returned frequency-scoped phrases: {leaks}"
-        )
+        assert leaks == [], f"object-slot draw returned frequency-scoped phrases: {leaks}"
 
     def test_frequency_slot_still_reaches_frequency_nodes(
-        self, conversational_spec,
+        self,
+        conversational_spec,
     ):
         """Sanity: the filter_slots change must not cut off the
         frequency slot from its legitimate sources.
         """
         from ncms.application.adapters.sdg.v9.generator import _draw_one
 
-        arch = next(
-            a for a in conversational_spec.archetypes
-            if a.name == "habitual_routine"
-        )
-        inline_nodes = tuple(
-            n for n in conversational_spec.diversity.nodes
-            if n.source == "inline"
-        )
+        arch = next(a for a in conversational_spec.archetypes if a.name == "habitual_routine")
+        inline_nodes = tuple(n for n in conversational_spec.diversity.nodes if n.source == "inline")
         rng_state = random.Random(99)
         drawn: list[str] = []
         for _ in range(30):
@@ -855,13 +871,9 @@ class TestInlineNodeSlotScoping:
         # At least one draw must come from the frequency-scoped pool
         # — if we never hit it, the filter went the wrong way.
         frequency_examples = {
-            ex.lower()
-            for n in inline_nodes
-            if "frequency" in n.filter_slots
-            for ex in n.examples
+            ex.lower() for n in inline_nodes if "frequency" in n.filter_slots for ex in n.examples
         }
         hits = sum(1 for s in drawn if s in frequency_examples)
         assert hits > 0, (
-            f"frequency-slot draws never hit scoped frequency pool; "
-            f"drew: {drawn[:5]}..."
+            f"frequency-slot draws never hit scoped frequency pool; drew: {drawn[:5]}..."
         )

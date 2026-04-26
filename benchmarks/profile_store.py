@@ -47,9 +47,15 @@ class TimingCollector:
         self.current_doc_stages: dict[str, float] = {}
 
     def pipeline_stage(
-        self, *, pipeline_id: str, pipeline_type: str, stage: str,
-        duration_ms: float, data: dict | None = None,
-        agent_id: str | None = None, memory_id: str | None = None,
+        self,
+        *,
+        pipeline_id: str,
+        pipeline_type: str,
+        stage: str,
+        duration_ms: float,
+        data: dict | None = None,
+        agent_id: str | None = None,
+        memory_id: str | None = None,
     ) -> None:
         if stage in ("start",):
             self.current_doc_stages = {}
@@ -114,11 +120,12 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
         from ncms.application.episode_service import EpisodeService
         from ncms.application.reconciliation_service import ReconciliationService
 
-        config_kwargs.update({
-            "admission_enabled": True,
-            "temporal_enabled": True,
-            "temporal_enabled": True,
-        })
+        config_kwargs.update(
+            {
+                "admission_enabled": True,
+                "temporal_enabled": True,
+            }
+        )
         config = NCMSConfig(**config_kwargs)
         admission = AdmissionService(store=store, index=index, graph=graph, config=config)
         reconciliation = ReconciliationService(store=store, config=config)
@@ -132,7 +139,8 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
     labels = topic_info.get("labels", []) if topic_info else []
     if labels:
         await store.set_consolidation_value(
-            f"entity_labels:{domain}", json.dumps(labels),
+            f"entity_labels:{domain}",
+            json.dumps(labels),
         )
         print(f"  Seeded topics for '{domain}': {labels}")
 
@@ -140,15 +148,22 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
     collector = TimingCollector()
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, event_log=collector,
-        admission=admission, reconciliation=reconciliation, episode=episode,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        event_log=collector,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
     )
 
     # Warm up GLiNER model (first call downloads/loads)
     print("\nWarming up GLiNER model (first-call load)...")
     t_warm = time.perf_counter()
     from ncms.infrastructure.extraction.gliner_extractor import extract_entities_gliner
+
     extract_entities_gliner("Test warmup text for model loading", labels=["person"])
     warm_ms = (time.perf_counter() - t_warm) * 1000
     print(f"  GLiNER warm-up: {warm_ms:.0f}ms")
@@ -157,6 +172,7 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
     print("Warming up SPLADE model...")
     t_warm = time.perf_counter()
     from ncms.domain.models import Memory as _WarmupMemory
+
     _dummy = _WarmupMemory(content="Test warmup text for SPLADE model loading", type="fact")
     with contextlib.suppress(Exception):
         splade.index_memory(_dummy)  # May fail without full init, but model loads
@@ -164,9 +180,9 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
     print(f"  SPLADE warm-up: {warm_ms:.0f}ms")
 
     # Ingest with per-doc timing
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"Ingesting {len(docs)} documents (phases {'1-3' if with_phases else 'off'})...")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     per_doc_times: list[float] = []
 
@@ -188,29 +204,33 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
         per_doc_times.append(doc_ms)
 
         content_len = len(content)
-        print(f"  [{i+1:3d}/{len(docs)}] {doc_ms:7.0f}ms  ({content_len:5d} chars)  {title[:60]}")
+        print(f"  [{i + 1:3d}/{len(docs)}] {doc_ms:7.0f}ms  ({content_len:5d} chars)  {title[:60]}")
 
     # Cleanup
     await store.close()
 
     # Report
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("PROFILE RESULTS")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     print(f"Documents: {len(per_doc_times)}")
-    print(f"Total wall time: {sum(per_doc_times):.0f}ms ({sum(per_doc_times)/1000:.1f}s)")
+    print(f"Total wall time: {sum(per_doc_times):.0f}ms ({sum(per_doc_times) / 1000:.1f}s)")
     print(f"Throughput: {len(per_doc_times) / (sum(per_doc_times) / 1000):.2f} docs/sec")
-    print(f"Per-doc: mean={statistics.mean(per_doc_times):.0f}ms  "
-          f"median={statistics.median(per_doc_times):.0f}ms  "
-          f"min={min(per_doc_times):.0f}ms  max={max(per_doc_times):.0f}ms")
+    print(
+        f"Per-doc: mean={statistics.mean(per_doc_times):.0f}ms  "
+        f"median={statistics.median(per_doc_times):.0f}ms  "
+        f"min={min(per_doc_times):.0f}ms  max={max(per_doc_times):.0f}ms"
+    )
     if len(per_doc_times) > 2:
         print(f"  stdev={statistics.stdev(per_doc_times):.0f}ms")
 
-    print(f"\n{'─'*70}")
-    print(f"{'Stage':<25s}  {'Count':>5s}  {'Total ms':>9s}  {'Mean ms':>8s}  "
-          f"{'Median':>8s}  {'Min':>7s}  {'Max':>7s}  {'% of total':>9s}")
-    print(f"{'─'*70}")
+    print(f"\n{'─' * 70}")
+    print(
+        f"{'Stage':<25s}  {'Count':>5s}  {'Total ms':>9s}  {'Mean ms':>8s}  "
+        f"{'Median':>8s}  {'Min':>7s}  {'Max':>7s}  {'% of total':>9s}"
+    )
+    print(f"{'─' * 70}")
 
     total_pipeline_ms = sum(collector.timings.get("total", [0]))
 
@@ -234,15 +254,17 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
             f"{median_ms:8.1f}  {min_ms:7.1f}  {max_ms:7.1f}  {pct:8.1f}%"
         )
 
-    print(f"{'─'*70}")
+    print(f"{'─' * 70}")
     print(f"  {'TOTAL':<23s}  {'':5s}  {total_pipeline_ms:9.1f}")
 
     # Show unaccounted time
     accounted = sum(sum(t) for s, t in collector.timings.items() if s != "total")
     unaccounted = total_pipeline_ms - accounted
     if total_pipeline_ms > 0:
-        print(f"  {'(unaccounted)':<23s}  {'':5s}  {unaccounted:9.1f}  "
-              f"{'':8s}  {'':8s}  {'':7s}  {'':7s}  {unaccounted/total_pipeline_ms*100:8.1f}%")
+        print(
+            f"  {'(unaccounted)':<23s}  {'':5s}  {unaccounted:9.1f}  "
+            f"{'':8s}  {'':8s}  {'':7s}  {'':7s}  {unaccounted / total_pipeline_ms * 100:8.1f}%"
+        )
 
     print()
 
@@ -252,26 +274,36 @@ async def run_profile(n_docs: int = 13, with_phases: bool = False) -> None:
         f.write(f"Profile: {len(per_doc_times)} docs, phases={'1-3' if with_phases else 'off'}\n")
         f.write(f"Throughput: {len(per_doc_times) / (sum(per_doc_times) / 1000):.2f} docs/sec\n\n")
         for stage, times in stage_totals:
-            f.write(f"{stage}: mean={statistics.mean(times):.1f}ms  "
-                    f"total={sum(times):.1f}ms  count={len(times)}\n")
+            f.write(
+                f"{stage}: mean={statistics.mean(times):.1f}ms  "
+                f"total={sum(times):.1f}ms  count={len(times)}\n"
+            )
     print(f"Results written to {log_path}")
 
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 
     parser = argparse.ArgumentParser(description="Profile store_memory pipeline")
     parser.add_argument("--docs", type=int, default=13, help="Number of documents to ingest")
-    parser.add_argument("--with-phases", action="store_true",
-                        help="Enable admission, reconciliation, and episodes (phases 1-3)")
-    parser.add_argument("--device", choices=["cpu", "mps", "cuda"],
-                        help="Force GLiNER device (default: auto-detect)")
+    parser.add_argument(
+        "--with-phases",
+        action="store_true",
+        help="Enable admission, reconciliation, and episodes (phases 1-3)",
+    )
+    parser.add_argument(
+        "--device",
+        choices=["cpu", "mps", "cuda"],
+        help="Force GLiNER device (default: auto-detect)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Debug logging")
     args = parser.parse_args()
 
     if args.device:
         import os
+
         os.environ["NCMS_GLINER_DEVICE"] = args.device
 
     level = logging.DEBUG if args.verbose else logging.WARNING

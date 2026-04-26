@@ -29,7 +29,6 @@ async def store() -> SQLiteStore:
 
 
 class TestContentRangeRoundTrip:
-
     async def test_save_and_get_single(self, store: SQLiteStore) -> None:
         await _seed_memory(store, "m1")
         await store.save_content_range(
@@ -53,12 +52,18 @@ class TestContentRangeRoundTrip:
         """Re-ingesting a memory's range replaces, doesn't duplicate."""
         await _seed_memory(store, "m1")
         await store.save_content_range(
-            "m1", "2024-01-01T00:00:00+00:00",
-            "2024-01-02T00:00:00+00:00", 1, "gliner",
+            "m1",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-02T00:00:00+00:00",
+            1,
+            "gliner",
         )
         await store.save_content_range(
-            "m1", "2025-06-01T00:00:00+00:00",
-            "2025-06-30T00:00:00+00:00", 5, "gliner",
+            "m1",
+            "2025-06-01T00:00:00+00:00",
+            "2025-06-30T00:00:00+00:00",
+            5,
+            "gliner",
         )
         got = await store.get_content_range("m1")
         assert got == (
@@ -70,12 +75,18 @@ class TestContentRangeRoundTrip:
         await _seed_memory(store, "a")
         await _seed_memory(store, "b")
         await store.save_content_range(
-            "a", "2024-01-01T00:00:00+00:00",
-            "2024-01-02T00:00:00+00:00", 1, "gliner",
+            "a",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-02T00:00:00+00:00",
+            1,
+            "gliner",
         )
         await store.save_content_range(
-            "b", "2024-02-01T00:00:00+00:00",
-            "2024-03-01T00:00:00+00:00", 2, "gliner",
+            "b",
+            "2024-02-01T00:00:00+00:00",
+            "2024-03-01T00:00:00+00:00",
+            2,
+            "gliner",
         )
         got = await store.get_content_ranges_batch(["a", "b", "missing"])
         assert set(got.keys()) == {"a", "b"}
@@ -97,13 +108,15 @@ class TestContentRangeRoundTrip:
         later observability work."""
         await _seed_memory(store, "m1")
         await store.save_content_range(
-            "m1", "2024-01-01T00:00:00+00:00",
-            "2024-01-02T00:00:00+00:00", 1, "mixed",
+            "m1",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-02T00:00:00+00:00",
+            1,
+            "mixed",
         )
         # Get back via raw SQL since the public API surfaces only the range
         cursor = await store.db.execute(
-            "SELECT source, span_count FROM memory_content_ranges "
-            "WHERE memory_id = ?",
+            "SELECT source, span_count FROM memory_content_ranges WHERE memory_id = ?",
             ("m1",),
         )
         row = await cursor.fetchone()

@@ -47,7 +47,7 @@ def build_context_from_memories(
         if total + len(segment) > max_chars:
             remaining = max_chars - total
             if remaining > len(header) + 10:
-                parts.append(f"{header}\n{content[:remaining - len(header) - 2]}\n")
+                parts.append(f"{header}\n{content[: remaining - len(header) - 2]}\n")
             break
         parts.append(segment)
         total += len(segment)
@@ -60,8 +60,7 @@ def build_context_from_memories(
 # ---------------------------------------------------------------------------
 
 _DEFAULT_SYSTEM_PROMPT = (
-    "Answer the question based on the provided context. "
-    "Be concise and precise."
+    "Answer the question based on the provided context. Be concise and precise."
 )
 
 

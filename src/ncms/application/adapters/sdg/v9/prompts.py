@@ -39,12 +39,9 @@ from ncms.application.adapters.sdg.v9.archetypes import ArchetypeSpec
 
 _INTENT_DESCRIPTIONS: dict[str, str] = {
     "positive": (
-        "Speaker expresses approval, adoption, enthusiasm, or commitment "
-        "toward the subject."
+        "Speaker expresses approval, adoption, enthusiasm, or commitment toward the subject."
     ),
-    "negative": (
-        "Speaker expresses disapproval, rejection, frustration, or rollback."
-    ),
+    "negative": ("Speaker expresses disapproval, rejection, frustration, or rollback."),
     "habitual": (
         "Describes a recurring routine, ongoing habit, or established "
         "pattern — no change of state is implied."
@@ -53,10 +50,7 @@ _INTENT_DESCRIPTIONS: dict[str, str] = {
         "Contrasts two named alternatives with a clear chosen winner "
         "(X over Y / X instead of Y / picked X over Y)."
     ),
-    "difficulty": (
-        "Expresses struggle, friction, or trouble — something isn't "
-        "working as hoped."
-    ),
+    "difficulty": ("Expresses struggle, friction, or trouble — something isn't working as hoped."),
     "none": (
         "Neutral factual statement — no expressed preference, emotion, "
         "or evaluation.  The subject is simply mentioned or described."
@@ -82,16 +76,12 @@ _ADMISSION_DESCRIPTIONS: dict[str, str] = {
 
 _STATE_CHANGE_DESCRIPTIONS: dict[str, str] = {
     "declaration": (
-        "Introduces a NEW state — a start, adoption, initiation, or "
-        "first declaration of something."
+        "Introduces a NEW state — a start, adoption, initiation, or first declaration of something."
     ),
     "retirement": (
-        "Removes / stops / discontinues / deprecates something — the "
-        "state is ending or has ended."
+        "Removes / stops / discontinues / deprecates something — the state is ending or has ended."
     ),
-    "none": (
-        "No state transition — ongoing, stable, or purely observational."
-    ),
+    "none": ("No state transition — ongoing, stable, or purely observational."),
 }
 
 
@@ -106,10 +96,12 @@ def _scenario_lines(archetype: ArchetypeSpec) -> list[str]:
     """
     intent_desc = _INTENT_DESCRIPTIONS.get(archetype.intent, archetype.intent)
     admission_desc = _ADMISSION_DESCRIPTIONS.get(
-        archetype.admission, archetype.admission,
+        archetype.admission,
+        archetype.admission,
     )
     state_desc = _STATE_CHANGE_DESCRIPTIONS.get(
-        archetype.state_change, archetype.state_change,
+        archetype.state_change,
+        archetype.state_change,
     )
     return [
         f"- Speaker stance: {intent_desc}",
@@ -182,8 +174,7 @@ def build_archetype_prompt(
     # buried in domain framing.
     if speaker_voice:
         sections.append(
-            "# Speaker voice (every row must use this voice)\n"
-            f"{speaker_voice.strip()}",
+            f"# Speaker voice (every row must use this voice)\n{speaker_voice.strip()}",
         )
 
     # ── Scenario (behavioural descriptions — NO label strings) ──────
@@ -211,8 +202,7 @@ def build_archetype_prompt(
         "# Per-row entity assignments\n"
         "Each row MUST naturally mention its assigned entities.  Use "
         "the surface as-is or inflect it naturally, but do NOT "
-        "substitute different entities.\n"
-        + "\n".join(row_lines),
+        "substitute different entities.\n" + "\n".join(row_lines),
     )
 
     # ── Style envelope ───────────────────────────────────────────────
@@ -235,20 +225,16 @@ def build_archetype_prompt(
 
     # ── Few-shot examples (optional) ────────────────────────────────
     if archetype.example_utterances:
-        shots = "\n".join(
-            f"- {ex.strip()}" for ex in archetype.example_utterances[:6]
-        )
+        shots = "\n".join(f"- {ex.strip()}" for ex in archetype.example_utterances[:6])
         sections.append(
-            "# Reference examples (match the STYLE; don't copy the content)\n"
-            + shots,
+            "# Reference examples (match the STYLE; don't copy the content)\n" + shots,
         )
 
     # ── Phrasings as loose inspiration (not templates) ──────────────
     if archetype.phrasings:
         ph = "\n".join(f"- {p.strip()}" for p in archetype.phrasings[:6])
         sections.append(
-            "# Phrasing inspirations (paraphrase freely, don't copy verbatim)\n"
-            + ph,
+            "# Phrasing inspirations (paraphrase freely, don't copy verbatim)\n" + ph,
         )
 
     # ── Output format ────────────────────────────────────────────────

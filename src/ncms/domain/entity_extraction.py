@@ -27,13 +27,13 @@ UNIVERSAL_LABELS: list[str] = [
 # the GLiNER call only when the temporal range-filter feature is
 # enabled.  See docs/retired/p1-temporal-experiment.md §2.1 (historical).
 TEMPORAL_LABELS: list[str] = [
-    "date",            # Absolute calendar dates: "April 18, 2026"
-    "relative date",   # "yesterday", "last Thursday", "next Monday"
-    "duration",        # "three days", "6 months", "a couple of weeks"
-    "start date",      # "since June 5", "starting Monday"
-    "end date",        # "until yesterday", "through Friday"
-    "time of day",     # "2pm", "in the morning"
-    "event anchor",    # "after the surgery", "before the meeting"
+    "date",  # Absolute calendar dates: "April 18, 2026"
+    "relative date",  # "yesterday", "last Thursday", "next Monday"
+    "duration",  # "three days", "6 months", "a couple of weeks"
+    "start date",  # "since June 5", "starting Monday"
+    "end date",  # "until yesterday", "through Friday"
+    "time of day",  # "2pm", "in the morning"
+    "event anchor",  # "after the surgery", "before the meeting"
 ]
 
 # Max entities per extraction (cap for GLiNER output)

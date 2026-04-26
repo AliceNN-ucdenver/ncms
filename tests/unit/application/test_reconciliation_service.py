@@ -120,10 +120,14 @@ class TestClassifyRelation:
         """Same entity+key, same value, same scope → SUPPORTS."""
         existing_node = _make_entity_node("svc-A", "status", "running")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.SUPPORTS
@@ -133,10 +137,14 @@ class TestClassifyRelation:
         """Value comparison is case-insensitive."""
         existing_node = _make_entity_node("svc-A", "status", "Running")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="Running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="Running",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.SUPPORTS
@@ -145,10 +153,14 @@ class TestClassifyRelation:
         """Values are stripped before comparison."""
         existing_node = _make_entity_node("svc-A", "status", " deployed ")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="deployed",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="deployed",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value=" deployed ",
+            entity_id="svc-A",
+            state_key="status",
+            state_value=" deployed ",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.SUPPORTS
@@ -156,14 +168,21 @@ class TestClassifyRelation:
     def test_refines_same_value_different_scope(self) -> None:
         """Same entity+key, same value, different scope → REFINES."""
         existing_node = _make_entity_node(
-            "svc-A", "status", "running", state_scope="global",
+            "svc-A",
+            "status",
+            "running",
+            state_scope="global",
         )
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
             state_scope="us-east-1",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
             state_scope="global",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
@@ -174,10 +193,14 @@ class TestClassifyRelation:
         """Same entity+key, different value, same/no scope → SUPERSEDES."""
         existing_node = _make_entity_node("svc-A", "status", "running")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="stopped",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="stopped",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.SUPERSEDES
@@ -189,10 +212,14 @@ class TestClassifyRelation:
         """No scope on either side → SUPERSEDES when values differ."""
         existing_node = _make_entity_node("db-1", "version", "3.2")
         new_meta = EntityStateMeta(
-            entity_id="db-1", state_key="version", state_value="3.3",
+            entity_id="db-1",
+            state_key="version",
+            state_value="3.3",
         )
         existing_meta = EntityStateMeta(
-            entity_id="db-1", state_key="version", state_value="3.2",
+            entity_id="db-1",
+            state_key="version",
+            state_value="3.2",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.SUPERSEDES
@@ -200,14 +227,21 @@ class TestClassifyRelation:
     def test_conflicts_different_value_different_scope(self) -> None:
         """Same entity+key, different value, different scope → CONFLICTS."""
         existing_node = _make_entity_node(
-            "svc-A", "status", "running", state_scope="us-east-1",
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="stopped",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="stopped",
             state_scope="eu-west-1",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
             state_scope="us-east-1",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
@@ -218,10 +252,14 @@ class TestClassifyRelation:
         """Different entity → UNRELATED."""
         existing_node = _make_entity_node("svc-B", "status", "running")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-B", state_key="status", state_value="running",
+            entity_id="svc-B",
+            state_key="status",
+            state_value="running",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.UNRELATED
@@ -230,10 +268,14 @@ class TestClassifyRelation:
         """Same entity, different key → UNRELATED."""
         existing_node = _make_entity_node("svc-A", "version", "2.0")
         new_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="status", state_value="running",
+            entity_id="svc-A",
+            state_key="status",
+            state_value="running",
         )
         existing_meta = EntityStateMeta(
-            entity_id="svc-A", state_key="version", state_value="2.0",
+            entity_id="svc-A",
+            state_key="version",
+            state_value="2.0",
         )
         result = self._classify(new_meta, existing_node, existing_meta)
         assert result.relation == RelationType.UNRELATED
@@ -244,13 +286,21 @@ class TestClassifyRelation:
 
 class TestReconcilePipeline:
     async def test_supports_creates_edge_and_boosts_importance(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         existing = await _save_entity_state(
-            recon_store, "svc-A", "status", "running",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
         )
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "running",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
         )
 
         results = await recon_service.reconcile(new_node)
@@ -272,13 +322,21 @@ class TestReconcilePipeline:
         assert edges[0].target_id == existing.id
 
     async def test_supersedes_flips_is_current_and_creates_edges(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         existing = await _save_entity_state(
-            recon_store, "svc-A", "status", "running",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
         )
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "stopped",
+            recon_store,
+            "svc-A",
+            "status",
+            "stopped",
         )
 
         results = await recon_service.reconcile(new_node)
@@ -300,25 +358,37 @@ class TestReconcilePipeline:
 
         # Check bidirectional edges
         supersedes_edges = await recon_store.get_graph_edges(
-            new_node.id, EdgeType.SUPERSEDES,
+            new_node.id,
+            EdgeType.SUPERSEDES,
         )
         assert len(supersedes_edges) == 1
         assert supersedes_edges[0].target_id == existing.id
 
         superseded_by_edges = await recon_store.get_graph_edges(
-            existing.id, EdgeType.SUPERSEDED_BY,
+            existing.id,
+            EdgeType.SUPERSEDED_BY,
         )
         assert len(superseded_by_edges) == 1
         assert superseded_by_edges[0].target_id == new_node.id
 
     async def test_refines_creates_edge(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="global",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="global",
         )
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="us-east-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
 
         results = await recon_service.reconcile(new_node)
@@ -329,13 +399,23 @@ class TestReconcilePipeline:
         assert len(edges) == 1
 
     async def test_conflicts_creates_bidirectional_edges(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         existing = await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="us-east-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "stopped", state_scope="eu-west-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "stopped",
+            state_scope="eu-west-1",
         )
 
         results = await recon_service.reconcile(new_node)
@@ -344,17 +424,21 @@ class TestReconcilePipeline:
 
         # Both directions
         edges_new = await recon_store.get_graph_edges(
-            new_node.id, EdgeType.CONFLICTS_WITH,
+            new_node.id,
+            EdgeType.CONFLICTS_WITH,
         )
         edges_existing = await recon_store.get_graph_edges(
-            existing.id, EdgeType.CONFLICTS_WITH,
+            existing.id,
+            EdgeType.CONFLICTS_WITH,
         )
         assert len(edges_new) == 1
         assert len(edges_existing) == 1
         assert edges_new[0].metadata.get("flagged_for_review") is True
 
     async def test_skips_self_comparison(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         """reconcile() should not compare the new node to itself."""
         node = await _save_entity_state(recon_store, "svc-A", "status", "running")
@@ -363,7 +447,9 @@ class TestReconcilePipeline:
         assert len(results) == 0
 
     async def test_returns_empty_for_non_entity_node(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         """Nodes without entity state metadata return empty results."""
         mem = Memory(content="Just a note", domains=["test"])
@@ -377,7 +463,9 @@ class TestReconcilePipeline:
         assert results == []
 
     async def test_supersession_chain(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         """v1 → v2 → v3: only v3 should be current at the end."""
         await _save_entity_state(recon_store, "svc-A", "status", "starting")
@@ -399,14 +487,24 @@ class TestReconcilePipeline:
         assert len(superseded) == 2
 
     async def test_importance_boost_capped_at_10(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         """Importance boost should not exceed 10.0."""
         existing = await _save_entity_state(
-            recon_store, "svc-A", "status", "running", importance=9.8,
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            importance=9.8,
         )
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "running", importance=9.9,
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            importance=9.9,
         )
 
         await recon_service.reconcile(new_node)
@@ -416,18 +514,32 @@ class TestReconcilePipeline:
         assert updated.importance == 10.0  # Capped, not 10.3
 
     async def test_multiple_existing_states(
-        self, recon_store: SQLiteStore, recon_service: ReconciliationService,
+        self,
+        recon_store: SQLiteStore,
+        recon_service: ReconciliationService,
     ) -> None:
         """When multiple current states exist, reconcile compares against each."""
         await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="us-east-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
         await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="eu-west-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="eu-west-1",
         )
 
         new_node = await _save_entity_state(
-            recon_store, "svc-A", "status", "running", state_scope="ap-south-1",
+            recon_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="ap-south-1",
         )
 
         results = await recon_service.reconcile(new_node)
@@ -446,8 +558,10 @@ class TestExtractEntityStateMeta:
     @staticmethod
     def _extract(content: str, entities: list[dict] | None = None) -> dict:
         from ncms.application.ingestion import IngestionPipeline
+
         return IngestionPipeline.extract_entity_state_meta(
-            content, entities or [],
+            content,
+            entities or [],
         )
 
     def test_colon_equals_pattern(self) -> None:
@@ -471,7 +585,8 @@ class TestExtractEntityStateMeta:
     def test_fallback_to_first_entity(self) -> None:
         entities = [{"name": "auth-service", "type": "service"}]
         result = self._extract(
-            "Deployed new release to production with zero downtime", entities,
+            "Deployed new release to production with zero downtime",
+            entities,
         )
         assert result["entity_id"] == "auth-service"
         assert result["state_key"] == "state"

@@ -64,6 +64,7 @@ def _generate_configs() -> list[dict]:
 
 # ── Query Runner ──────────────────────────────────────────────────────────
 
+
 async def _run_grid_queries(
     store: object,
     index: object,
@@ -100,7 +101,11 @@ async def _run_grid_queries(
     )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade_engine,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade_engine,
     )
 
     rankings: dict[str, list[str]] = {}
@@ -122,6 +127,7 @@ async def _run_grid_queries(
 
 # ── Evaluation ───────────────────────────────────────────────────────────
 
+
 async def evaluate_grid(
     dataset_name: str = "scifact",
 ) -> dict:
@@ -139,7 +145,8 @@ async def evaluate_grid(
     # Get git SHA
     try:
         sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
     except Exception:
         sha = "unknown"
@@ -168,8 +175,8 @@ async def evaluate_grid(
     # Ingest corpus ONCE
     print("Ingesting corpus (slow, ~2 min)...", flush=True)
     t0 = time.perf_counter()
-    store, index, graph, splade, _config, doc_to_mem, mem_to_doc = (
-        await ingest_corpus(corpus, dataset_name)
+    store, index, graph, splade, _config, doc_to_mem, mem_to_doc = await ingest_corpus(
+        corpus, dataset_name
     )
     ingest_time = time.perf_counter() - t0
     print(f"  Ingested in {ingest_time:.0f}s", flush=True)
@@ -220,10 +227,18 @@ async def evaluate_grid(
         logger.info(
             "[%d/%d] nDCG@10=%.5f bm25=%.1f actr=%.1f splade=%.1f "
             "graph=%.1f hier=%.1f (%.1fs, %.2f cfg/s, ETA %.0fs)%s",
-            i + 1, total_configs, metrics["nDCG@10"],
-            cfg["bm25"], cfg["actr"], cfg["splade"],
-            cfg["graph"], cfg["hierarchy"],
-            elapsed, rate, eta, best_marker,
+            i + 1,
+            total_configs,
+            metrics["nDCG@10"],
+            cfg["bm25"],
+            cfg["actr"],
+            cfg["splade"],
+            cfg["graph"],
+            cfg["hierarchy"],
+            elapsed,
+            rate,
+            eta,
+            best_marker,
         )
 
         # Save incremental results every 10 configs (crash recovery)
@@ -234,7 +249,7 @@ async def evaluate_grid(
         # Console progress every 10 configs
         if (i + 1) % 10 == 0 or i == total_configs - 1:
             print(
-                f"  [{i+1}/{total_configs}] "
+                f"  [{i + 1}/{total_configs}] "
                 f"best nDCG@10={best_ndcg:.4f} "
                 f"({rate:.1f} cfg/s, ETA {eta:.0f}s)",
                 flush=True,
@@ -286,45 +301,50 @@ def _write_report(results: dict) -> None:
     lines.append("")
 
     # Baseline reference
-    lines.extend([
-        "## Baseline Reference (Phase 6)",
-        "",
-        "| Config | nDCG@10 |",
-        "|--------|---------|",
-        "| BM25 Only | 0.6871 |",
-        "| + SPLADE + Graph | 0.6976 |",
-        "| Full (+ ACT-R) | 0.6903 |",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Baseline Reference (Phase 6)",
+            "",
+            "| Config | nDCG@10 |",
+            "|--------|---------|",
+            "| BM25 Only | 0.6871 |",
+            "| + SPLADE + Graph | 0.6976 |",
+            "| Full (+ ACT-R) | 0.6903 |",
+            "",
+        ]
+    )
 
     # Best config
-    lines.extend([
-        "## Best Config",
-        "",
-        f"**nDCG@10 = {best['nDCG@10']:.5f}** "
-        f"(MRR@10={best['MRR@10']:.4f}, Recall@100={best['Recall@100']:.4f})",
-        "",
-        "| Parameter | Value |",
-        "|-----------|-------|",
-    ])
+    lines.extend(
+        [
+            "## Best Config",
+            "",
+            f"**nDCG@10 = {best['nDCG@10']:.5f}** "
+            f"(MRR@10={best['MRR@10']:.4f}, Recall@100={best['Recall@100']:.4f})",
+            "",
+            "| Parameter | Value |",
+            "|-----------|-------|",
+        ]
+    )
     for k, v in best["weights"].items():
         lines.append(f"| {k} | {v} |")
     lines.append("")
 
     improvement = best["nDCG@10"] - 0.6976
     lines.append(
-        f"**Improvement over baseline**: "
-        f"{improvement:+.4f} ({improvement/0.6976*100:+.2f}%)"
+        f"**Improvement over baseline**: {improvement:+.4f} ({improvement / 0.6976 * 100:+.2f}%)"
     )
     lines.append("")
 
     # Top 10
-    lines.extend([
-        "## Top 10 Configs",
-        "",
-        "| Rank | nDCG@10 | MRR@10 | BM25 | ACT-R | SPLADE | Graph | Hierarchy | Threshold |",
-        "|------|---------|--------|------|-------|--------|-------|-----------|-----------|",
-    ])
+    lines.extend(
+        [
+            "## Top 10 Configs",
+            "",
+            "| Rank | nDCG@10 | MRR@10 | BM25 | ACT-R | SPLADE | Graph | Hierarchy | Threshold |",
+            "|------|---------|--------|------|-------|--------|-------|-----------|-----------|",
+        ]
+    )
     for rank, cfg in enumerate(top_10, 1):
         w = cfg["weights"]
         lines.append(
@@ -336,12 +356,14 @@ def _write_report(results: dict) -> None:
 
     # Bottom 5
     bottom_5 = sorted(configs, key=lambda c: c["nDCG@10"])[:5]
-    lines.extend([
-        "## Bottom 5 Configs (worst performing)",
-        "",
-        "| Rank | nDCG@10 | BM25 | ACT-R | SPLADE | Graph | Hierarchy | Threshold |",
-        "|------|---------|------|-------|--------|-------|-----------|-----------|",
-    ])
+    lines.extend(
+        [
+            "## Bottom 5 Configs (worst performing)",
+            "",
+            "| Rank | nDCG@10 | BM25 | ACT-R | SPLADE | Graph | Hierarchy | Threshold |",
+            "|------|---------|------|-------|--------|-------|-----------|-----------|",
+        ]
+    )
     for rank, cfg in enumerate(bottom_5, 1):
         w = cfg["weights"]
         lines.append(
@@ -357,6 +379,7 @@ def _write_report(results: dict) -> None:
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     # Log to file in tuning directory (not stderr) for provenance
     log_path = TUNING_DIR / "ranking_grid_run.log"

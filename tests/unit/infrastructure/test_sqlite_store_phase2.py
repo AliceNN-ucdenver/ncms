@@ -65,7 +65,11 @@ class TestGetCurrentEntityStates:
     async def test_excludes_superseded_states(self, phase2_store: SQLiteStore) -> None:
         await _save_entity_state(phase2_store, "svc-A", "status", "running")
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "stopped", is_current=False,
+            phase2_store,
+            "svc-A",
+            "status",
+            "stopped",
+            is_current=False,
         )
 
         results = await phase2_store.get_current_entity_states("svc-A", "status")
@@ -95,10 +99,18 @@ class TestGetCurrentEntityStates:
     async def test_multiple_current_states(self, phase2_store: SQLiteStore) -> None:
         """Multiple nodes can be current for same entity+key (e.g. different scopes)."""
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "running", state_scope="us-east-1",
+            phase2_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "running", state_scope="eu-west-1",
+            phase2_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="eu-west-1",
         )
 
         results = await phase2_store.get_current_entity_states("svc-A", "status")
@@ -112,7 +124,11 @@ class TestGetEntityStatesByEntity:
     async def test_returns_all_states_for_entity(self, phase2_store: SQLiteStore) -> None:
         await _save_entity_state(phase2_store, "svc-A", "status", "running")
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "stopped", is_current=False,
+            phase2_store,
+            "svc-A",
+            "status",
+            "stopped",
+            is_current=False,
         )
         await _save_entity_state(phase2_store, "svc-A", "version", "2.0")
 
@@ -233,10 +249,18 @@ class TestGetCurrentState:
     async def test_prefers_most_recent(self, phase2_store: SQLiteStore) -> None:
         """When multiple current states exist, returns the most recent."""
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "running", state_scope="us-east",
+            phase2_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="us-east",
         )
         newer = await _save_entity_state(
-            phase2_store, "svc-A", "status", "running", state_scope="eu-west",
+            phase2_store,
+            "svc-A",
+            "status",
+            "running",
+            state_scope="eu-west",
         )
         result = await phase2_store.get_current_state("svc-A", "status")
         assert result is not None
@@ -292,7 +316,11 @@ class TestGetStateHistory:
     async def test_returns_full_history(self, phase2_store: SQLiteStore) -> None:
         await _save_entity_state(phase2_store, "svc-A", "status", "starting")
         await _save_entity_state(
-            phase2_store, "svc-A", "status", "running", is_current=False,
+            phase2_store,
+            "svc-A",
+            "status",
+            "running",
+            is_current=False,
         )
         await _save_entity_state(phase2_store, "svc-A", "status", "stopped")
 

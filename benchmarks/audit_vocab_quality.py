@@ -14,11 +14,13 @@ Also cross-check the entity universe:
 Re-ingests softwaredev mini to get the same state the harness saw,
 then dumps a vocabulary report.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
 import re
+
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from collections import Counter
 from pathlib import Path
@@ -29,23 +31,47 @@ from benchmarks.mseb.schema import load_corpus
 
 ROOT = Path("/Users/shawnmccarthy/ncms")
 
-GENERIC_WORDS = frozenset({
-    # pronouns / determiners / fillers GLiNER often picks up
-    "we", "it", "they", "this", "that", "these", "those", "our",
-    "us", "the", "a", "an",
-    # generic nouns
-    "decision", "decisions", "approach", "approaches",
-    "team", "teams", "option", "options",
-    "choice", "choices", "alternative", "alternatives",
-    "consideration", "considerations",
-})
+GENERIC_WORDS = frozenset(
+    {
+        # pronouns / determiners / fillers GLiNER often picks up
+        "we",
+        "it",
+        "they",
+        "this",
+        "that",
+        "these",
+        "those",
+        "our",
+        "us",
+        "the",
+        "a",
+        "an",
+        # generic nouns
+        "decision",
+        "decisions",
+        "approach",
+        "approaches",
+        "team",
+        "teams",
+        "option",
+        "options",
+        "choice",
+        "choices",
+        "alternative",
+        "alternatives",
+        "consideration",
+        "considerations",
+    }
+)
 
 
 def is_uuid(s: str) -> bool:
-    return bool(re.match(
-        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-        s,
-    ))
+    return bool(
+        re.match(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            s,
+        )
+    )
 
 
 async def main() -> None:
@@ -82,16 +108,14 @@ async def main() -> None:
         # ── UUID smell test ─────────────────────────────────────────
         uuid_subjects = [s for s in subjects if is_uuid(s)]
         uuid_entities = [e for e in vocab.entity_lookup.values() if is_uuid(e)]
-        print(f"\n  UUID leakage: subjects={len(uuid_subjects)}, "
-              f"entities={len(uuid_entities)}  (expected 0 post-Part 1)")
+        print(
+            f"\n  UUID leakage: subjects={len(uuid_subjects)}, "
+            f"entities={len(uuid_entities)}  (expected 0 post-Part 1)"
+        )
 
         # ── Generic-word entities ───────────────────────────────────
-        generic_ents = sorted(
-            e for e in vocab.entity_lookup.values()
-            if e.lower() in GENERIC_WORDS
-        )
-        print(f"\n  Generic-word entities ({len(generic_ents)}):  "
-              f"{generic_ents[:12]}")
+        generic_ents = sorted(e for e in vocab.entity_lookup.values() if e.lower() in GENERIC_WORDS)
+        print(f"\n  Generic-word entities ({len(generic_ents)}):  {generic_ents[:12]}")
 
         # ── Subject distinctiveness ────────────────────────────────
         print()
@@ -101,15 +125,18 @@ async def main() -> None:
         by_subject: dict[str, list[str]] = {}
         for token, subj in vocab.subject_lookup.items():
             by_subject.setdefault(subj, []).append(token)
-        for subj, tokens in sorted(by_subject.items(),
-                                   key=lambda x: -len(x[1])):
+        for subj, tokens in sorted(by_subject.items(), key=lambda x: -len(x[1])):
             primary = [t for t in tokens if t in vocab.primary_tokens]
             secondary = [t for t in tokens if t not in vocab.primary_tokens]
             print(f"\n  subject: {subj}")
-            print(f"    primary tokens   ({len(primary):3d}): "
-                  f"{sorted(primary, key=len, reverse=True)[:6]}")
-            print(f"    secondary tokens ({len(secondary):3d}): "
-                  f"{sorted(secondary, key=len, reverse=True)[:6]}")
+            print(
+                f"    primary tokens   ({len(primary):3d}): "
+                f"{sorted(primary, key=len, reverse=True)[:6]}"
+            )
+            print(
+                f"    secondary tokens ({len(secondary):3d}): "
+                f"{sorted(secondary, key=len, reverse=True)[:6]}"
+            )
             # Short-and-suspicious tokens
             short = [t for t in tokens if len(t) <= 3]
             if short:
@@ -117,26 +144,30 @@ async def main() -> None:
 
         # ── Ambiguous tokens (appear in >1 subject) ────────────────
         ambiguous = [
-            (tok, counts) for tok, counts in vocab.distinctiveness.items()
-            if len(counts) > 1
+            (tok, counts) for tok, counts in vocab.distinctiveness.items() if len(counts) > 1
         ]
         print()
         print("=" * 86)
-        print(f"  AMBIGUOUS TOKENS (route to >1 subject):")
+        print("  AMBIGUOUS TOKENS (route to >1 subject):")
         print("=" * 86)
-        print(f"  total: {len(ambiguous)} of {len(vocab.subject_lookup)} "
-              f"tokens ({len(ambiguous)/max(1,len(vocab.subject_lookup))*100:.1f}%)")
+        print(
+            f"  total: {len(ambiguous)} of {len(vocab.subject_lookup)} "
+            f"tokens ({len(ambiguous) / max(1, len(vocab.subject_lookup)) * 100:.1f}%)"
+        )
         # Worst offenders — high degree (many subjects) + short tokens
         ambiguous_sorted = sorted(
-            ambiguous, key=lambda x: (-len(x[1]), len(x[0])),
+            ambiguous,
+            key=lambda x: (-len(x[1]), len(x[0])),
         )
-        print(f"\n  Top 20 most ambiguous tokens (more subjects = worse):")
+        print("\n  Top 20 most ambiguous tokens (more subjects = worse):")
         for tok, counts in ambiguous_sorted[:20]:
             winner = counts.most_common(1)[0][0]
             total = sum(counts.values())
-            print(f"    token={tok!r:24}  "
-                  f"routes_to={winner!r:45}  "
-                  f"n_subjects={len(counts):2d}  total_mentions={total}")
+            print(
+                f"    token={tok!r:24}  "
+                f"routes_to={winner!r:45}  "
+                f"n_subjects={len(counts):2d}  total_mentions={total}"
+            )
 
         # ── Entity type distribution ────────────────────────────────
         print()
@@ -151,14 +182,12 @@ async def main() -> None:
             print(f"    {t!r:25}  {n:5d}")
 
         # Sample suspicious generic entities
-        suspect = [e for e in all_entities
-                   if e.name.lower() in GENERIC_WORDS][:15]
-        print(f"\n  Generic-word entity rows (first 15):")
+        suspect = [e for e in all_entities if e.name.lower() in GENERIC_WORDS][:15]
+        print("\n  Generic-word entity rows (first 15):")
         for e in suspect:
             attrs = e.attributes or {}
             src = attrs.get("source", "(unset)")
-            print(f"    name={e.name!r:30}  type={e.type!r:18}  "
-                  f"source={src!r}")
+            print(f"    name={e.name!r:30}  type={e.type!r:18}  source={src!r}")
 
     finally:
         await backend.shutdown()

@@ -41,6 +41,7 @@ def _resolve_device() -> str:
     to work.
     """
     from ncms.infrastructure.hardware import resolve_device
+
     return resolve_device("NCMS_SPLADE_DEVICE")
 
 
@@ -118,7 +119,9 @@ class SpladeEngine:
 
             device = _resolve_device()
             logger.info(
-                "[SPLADE] Loading model: %s on %s (first call only)", self._model_name, device,
+                "[SPLADE] Loading model: %s on %s (first call only)",
+                self._model_name,
+                device,
             )
             kwargs: dict[str, Any] = {}
             if self._cache_dir:
@@ -131,14 +134,17 @@ class SpladeEngine:
     def _embed_document_chunked(self, text: str) -> SparseVector:
         """Encode document text with chunking, merging via max-pool per vocab index."""
         chunks = chunk_text(
-            text, max_chars=_SPLADE_CHUNK_MAX_CHARS, overlap=_SPLADE_CHUNK_OVERLAP,
+            text,
+            max_chars=_SPLADE_CHUNK_MAX_CHARS,
+            overlap=_SPLADE_CHUNK_OVERLAP,
         )
 
         # Encode all chunks as documents (asymmetric: document side)
         # Lock serializes GPU access (PyTorch models are not thread-safe).
         with self._lock:
             embeddings = self._model.encode_document(  # type: ignore[union-attr]
-                chunks, show_progress_bar=False,
+                chunks,
+                show_progress_bar=False,
             )
 
         if len(chunks) == 1:
@@ -158,7 +164,9 @@ class SpladeEngine:
         sorted_items = sorted(merged.items())
         logger.debug(
             "SPLADE chunked %d chars into %d chunks, %d merged dims",
-            len(text), len(chunks), len(sorted_items),
+            len(text),
+            len(chunks),
+            len(sorted_items),
         )
         return SparseVector(
             indices=[i for i, _ in sorted_items],
@@ -169,7 +177,8 @@ class SpladeEngine:
         """Encode a query string (asymmetric: query side)."""
         with self._lock:
             embeddings = self._model.encode_query(  # type: ignore[union-attr]
-                [query], show_progress_bar=False,
+                [query],
+                show_progress_bar=False,
             )
         if not len(embeddings):
             return SparseVector()

@@ -183,13 +183,15 @@ def load_locomo_dataset(
                         content = turn
                     else:
                         continue
-                    conv.turns.append(ConversationTurn(
-                        turn_id=turn_idx,
-                        role=str(role),
-                        content=str(content),
-                        session_id=session_id,
-                        conversation_id=str(cid),
-                    ))
+                    conv.turns.append(
+                        ConversationTurn(
+                            turn_id=turn_idx,
+                            role=str(role),
+                            content=str(content),
+                            session_id=session_id,
+                            conversation_id=str(cid),
+                        )
+                    )
                     turn_idx += 1
                 session_num += 1
         elif isinstance(raw_conv, list):
@@ -205,13 +207,15 @@ def load_locomo_dataset(
                     session_id = "0"
                 else:
                     continue
-                conv.turns.append(ConversationTurn(
-                    turn_id=turn_idx,
-                    role=str(role),
-                    content=str(content),
-                    session_id=session_id,
-                    conversation_id=str(cid),
-                ))
+                conv.turns.append(
+                    ConversationTurn(
+                        turn_id=turn_idx,
+                        role=str(role),
+                        content=str(content),
+                        session_id=session_id,
+                        conversation_id=str(cid),
+                    )
+                )
                 turn_idx += 1
 
         conversations.append(conv)
@@ -234,14 +238,16 @@ def load_locomo_dataset(
             else:
                 evidence_ids = []
 
-            questions.append(QAQuestion(
-                question_id=str(qid),
-                question=str(question_text),
-                answer=str(answer_text),
-                category=str(category),
-                conversation_id=str(cid),
-                evidence_turn_ids=evidence_ids,
-            ))
+            questions.append(
+                QAQuestion(
+                    question_id=str(qid),
+                    question=str(question_text),
+                    answer=str(answer_text),
+                    category=str(category),
+                    conversation_id=str(cid),
+                    evidence_turn_ids=evidence_ids,
+                )
+            )
 
     logger.info(
         "Loaded %d conversations (%d total turns) and %d questions",
@@ -311,7 +317,8 @@ def load_locomo_plus_dataset(
 
     if not checkpoint_file.is_file():
         logger.info(
-            "Kumiho checkpoint not found at %s, cloning repo...", checkpoint_file,
+            "Kumiho checkpoint not found at %s, cloning repo...",
+            checkpoint_file,
         )
         if (repo_dir / ".git").is_dir():
             logger.info("Kumiho repo exists at %s, pulling latest...", repo_dir)
@@ -326,8 +333,11 @@ def load_locomo_plus_dataset(
         else:
             result = subprocess.run(
                 [
-                    "git", "clone", "--recurse-submodules",
-                    KUMIHO_REPO_URL, str(repo_dir),
+                    "git",
+                    "clone",
+                    "--recurse-submodules",
+                    KUMIHO_REPO_URL,
+                    str(repo_dir),
                 ],
                 capture_output=True,
                 text=True,
@@ -360,15 +370,17 @@ def load_locomo_plus_dataset(
                 continue
 
             metadata = obj.get("metadata", {})
-            questions.append(PlusQuestion(
-                question_id=obj.get("question_id", f"plus_{line_num}"),
-                question=obj.get("question", ""),
-                ground_truth=obj.get("ground_truth", ""),
-                question_type=obj.get("question_type", "unknown"),
-                base_conv_idx=int(metadata.get("base_conv_idx", 0)),
-                cue_dialogue=obj.get("ground_truth", ""),
-                time_gap=metadata.get("time_gap", "two weeks later"),
-            ))
+            questions.append(
+                PlusQuestion(
+                    question_id=obj.get("question_id", f"plus_{line_num}"),
+                    question=obj.get("question", ""),
+                    ground_truth=obj.get("ground_truth", ""),
+                    question_type=obj.get("question_type", "unknown"),
+                    base_conv_idx=int(metadata.get("base_conv_idx", 0)),
+                    cue_dialogue=obj.get("ground_truth", ""),
+                    time_gap=metadata.get("time_gap", "two weeks later"),
+                )
+            )
 
     logger.info(
         "Loaded %d LoCoMo-Plus questions across %d question types",

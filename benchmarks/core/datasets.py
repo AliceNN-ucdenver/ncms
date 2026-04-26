@@ -28,25 +28,44 @@ DATASET_TOPICS: dict[str, dict[str, list[str] | str]] = {
         "domain": "science",
         # D_synonym_swap: 9.1 ent/doc, 181 unique — best doc coverage in taxonomy test
         "labels": [
-            "medical_condition", "medication", "protein", "gene",
-            "chemical_compound", "organism", "cell_type", "tissue",
-            "symptom", "therapy",
+            "medical_condition",
+            "medication",
+            "protein",
+            "gene",
+            "chemical_compound",
+            "organism",
+            "cell_type",
+            "tissue",
+            "symptom",
+            "therapy",
         ],
     },
     "nfcorpus": {
         "domain": "biomedical",
         # D_nutrition_bio: 9.3 ent/doc, 174 unique — nutrition-specific labels
         "labels": [
-            "disease", "nutrient", "vitamin", "mineral", "drug",
-            "food", "protein", "compound", "symptom", "treatment",
+            "disease",
+            "nutrient",
+            "vitamin",
+            "mineral",
+            "drug",
+            "food",
+            "protein",
+            "compound",
+            "symptom",
+            "treatment",
         ],
     },
     "arguana": {
         "domain": "argument",
         # A_traditional: 4.4 ent/doc, 77% query overlap — best for graph connectivity
         "labels": [
-            "person", "organization", "location", "nationality",
-            "event", "law",
+            "person",
+            "organization",
+            "location",
+            "nationality",
+            "event",
+            "law",
         ],
     },
 }
@@ -59,8 +78,16 @@ SWEBENCH_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "swebench_django": {
         "domain": "django",
         "labels": [
-            "class", "method", "function", "module", "field",
-            "model", "view", "middleware", "form", "command",
+            "class",
+            "method",
+            "function",
+            "module",
+            "field",
+            "model",
+            "view",
+            "middleware",
+            "form",
+            "command",
         ],
     },
 }
@@ -72,9 +99,16 @@ LOCOMO_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "locomo": {
         "domain": "personal",
         "labels": [
-            "person", "location", "event", "hobby",
-            "food", "organization", "health_condition",
-            "date", "travel_destination", "occupation",
+            "person",
+            "location",
+            "event",
+            "hobby",
+            "food",
+            "organization",
+            "health_condition",
+            "date",
+            "travel_destination",
+            "occupation",
         ],
     },
 }
@@ -86,9 +120,16 @@ LONGMEMEVAL_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "longmemeval": {
         "domain": "assistant",
         "labels": [
-            "person", "location", "date", "product",
-            "event", "organization", "task",
-            "preference", "vehicle", "appointment",
+            "person",
+            "location",
+            "date",
+            "product",
+            "event",
+            "organization",
+            "task",
+            "preference",
+            "vehicle",
+            "appointment",
         ],
     },
 }
@@ -100,9 +141,16 @@ MAB_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "mab": {
         "domain": "mab",
         "labels": [
-            "person", "organization", "location", "concept",
-            "event", "work_title", "scientific_term",
-            "date", "technology", "topic",
+            "person",
+            "organization",
+            "location",
+            "concept",
+            "event",
+            "work_title",
+            "scientific_term",
+            "date",
+            "technology",
+            "topic",
         ],
     },
 }
@@ -113,9 +161,16 @@ HUB_REPLAY_TOPICS: dict[str, dict[str, list[str] | str]] = {
     "hub_replay": {
         "domain": "architecture",
         "labels": [
-            "framework", "database", "protocol", "standard",
-            "threat", "pattern", "security_control",
-            "api_endpoint", "data_model", "architecture_decision",
+            "framework",
+            "database",
+            "protocol",
+            "standard",
+            "threat",
+            "pattern",
+            "security_control",
+            "api_endpoint",
+            "data_model",
+            "architecture_decision",
         ],
     },
 }

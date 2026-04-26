@@ -121,9 +121,7 @@ class TestGraphEdge:
         assert edge.metadata["reason"] == "version_update"
 
     def test_serialize_roundtrip(self):
-        edge = GraphEdge(
-            source_id="a", target_id="b", edge_type=EdgeType.SUPPORTS
-        )
+        edge = GraphEdge(source_id="a", target_id="b", edge_type=EdgeType.SUPPORTS)
         data = edge.model_dump(mode="json")
         restored = GraphEdge(**data)
         assert restored.edge_type == EdgeType.SUPPORTS

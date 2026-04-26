@@ -100,9 +100,12 @@ class TestEpisodeLifecycle:
         """Three fragments sharing entities → one episode with 3 members."""
         # Fragment 1: creates episode
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "Auth service deployment to staging",
+            store,
+            index,
+            "Auth service deployment to staging",
             ["auth-service", "deployment"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep = await episode_svc.assign_or_create(node1, mem1, entity_ids=eids1)
         assert ep is not None
@@ -110,9 +113,12 @@ class TestEpisodeLifecycle:
 
         # Fragment 2: joins episode (shared entities + domain + agent)
         mem2, node2, eids2 = await _save_fragment(
-            store, index, "Auth service endpoint changes ready for review",
+            store,
+            index,
+            "Auth service endpoint changes ready for review",
             ["auth-service", "endpoint"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep2 = await episode_svc.assign_or_create(node2, mem2, entity_ids=eids2)
         assert ep2 is not None
@@ -120,9 +126,12 @@ class TestEpisodeLifecycle:
 
         # Fragment 3: also joins
         mem3, node3, eids3 = await _save_fragment(
-            store, index, "Auth service deployed to production",
+            store,
+            index,
+            "Auth service deployed to production",
             ["auth-service", "production"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep3 = await episode_svc.assign_or_create(node3, mem3, entity_ids=eids3)
         assert ep3 is not None
@@ -143,7 +152,8 @@ class TestEpisodeLifecycle:
         # Verify BELONGS_TO_EPISODE edges
         for member in members:
             edges = await store.get_graph_edges(
-                member.id, EdgeType.BELONGS_TO_EPISODE,
+                member.id,
+                EdgeType.BELONGS_TO_EPISODE,
             )
             assert len(edges) == 1
             assert edges[0].target_id == ep.id
@@ -156,16 +166,20 @@ class TestEpisodeLifecycle:
     ) -> None:
         """Fragment with 'resolved' closes the episode."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "Investigating payment service outage",
+            store,
+            index,
+            "Investigating payment service outage",
             ["payment-service", "outage"],
-            domains=["payments"], source_agent="agent-beta",
+            domains=["payments"],
+            source_agent="agent-beta",
         )
         ep = await episode_svc.assign_or_create(node1, mem1, entity_ids=eids1)
         assert ep is not None
 
         # Check resolution on a fragment that says "resolved"
         closed = await episode_svc.check_resolution_closure(
-            "The payment outage has been resolved", ep,
+            "The payment outage has been resolved",
+            ep,
         )
         assert closed is True
 
@@ -188,7 +202,9 @@ class TestEpisodeLifecycle:
         svc = EpisodeService(store=store, index=index, config=short_config)
 
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "Database failover triggered by load spike",
+            store,
+            index,
+            "Database failover triggered by load spike",
             ["database", "failover"],
             domains=["db"],
         )
@@ -211,27 +227,37 @@ class TestEpisodeLifecycle:
         """Fragment joins episode via shared entities (primary matching path)."""
         # Create episode from first fragment
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "PROJ-200 auth service deployment started",
+            store,
+            index,
+            "PROJ-200 auth service deployment started",
             ["auth-service", "deployment"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         entity = Entity(name="auth-service", type="service")
         await store.save_entity(entity)
         await store.link_memory_entity(mem1.id, entity.id)
 
         ep = await episode_svc.assign_or_create(
-            node1, mem1, entity_ids=eids1,
+            node1,
+            mem1,
+            entity_ids=eids1,
         )
         assert ep is not None
 
         # Second fragment: shared entity + domain + agent
         mem2, node2, eids2 = await _save_fragment(
-            store, index, "Auth service health check passed after changes",
+            store,
+            index,
+            "Auth service health check passed after changes",
             ["auth-service", "health-check"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep2 = await episode_svc.assign_or_create(
-            node2, mem2, entity_ids=eids2,
+            node2,
+            mem2,
+            entity_ids=eids2,
         )
         assert ep2 is not None
         assert ep2.id == ep.id
@@ -244,7 +270,9 @@ class TestEpisodeLifecycle:
     ) -> None:
         """Episode's backing Memory (profile) is indexed and searchable."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "Working on payment refactor project",
+            store,
+            index,
+            "Working on payment refactor project",
             ["payment-service", "refactor"],
             domains=["payments"],
         )
@@ -266,7 +294,9 @@ class TestEpisodeLifecycle:
     ) -> None:
         """Fragments with different entity clusters create separate episodes."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index, "Frontend React component refactoring",
+            store,
+            index,
+            "Frontend React component refactoring",
             ["frontend", "react"],
             domains=["frontend"],
         )
@@ -274,7 +304,9 @@ class TestEpisodeLifecycle:
         assert ep1 is not None
 
         mem2, node2, eids2 = await _save_fragment(
-            store, index, "Backend database migration to PostgreSQL 16",
+            store,
+            index,
+            "Backend database migration to PostgreSQL 16",
             ["backend", "postgresql"],
             domains=["backend"],
         )
@@ -302,7 +334,8 @@ class TestCrossDomainEpisodes:
     ) -> None:
         """Scientific fragments about gene editing form an episode."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "CRISPR-Cas9 gene editing shows promising results in trials",
             ["CRISPR-Cas9", "gene-editing"],
             domains=["biology"],
@@ -317,7 +350,8 @@ class TestCrossDomainEpisodes:
 
         # Related scientific fragment joins
         mem2, node2, eids2 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "New CRISPR-Cas9 delivery mechanism improves efficiency",
             ["CRISPR-Cas9", "delivery-mechanism"],
             domains=["biology"],
@@ -334,7 +368,8 @@ class TestCrossDomainEpisodes:
     ) -> None:
         """Software ticket fragments form structured episode."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "Starting work on JIRA-500 payment refactor",
             ["payment-service", "JIRA-500"],
             domains=["payments"],
@@ -349,7 +384,8 @@ class TestCrossDomainEpisodes:
 
         # Related ticket fragment joins
         mem2, node2, eids2 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "JIRA-500 payment refactor code review complete",
             ["payment-service", "code-review"],
             domains=["payments"],
@@ -366,7 +402,8 @@ class TestCrossDomainEpisodes:
     ) -> None:
         """General prose fragments about same topic form an episode."""
         mem1, node1, eids1 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "Supply chain disruption affecting semiconductor availability",
             ["supply-chain", "semiconductor"],
             domains=["logistics"],
@@ -380,7 +417,8 @@ class TestCrossDomainEpisodes:
 
         # Related fragment about same topic
         mem2, node2, eids2 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "Semiconductor shortage impacts production schedule",
             ["semiconductor", "production"],
             domains=["logistics"],
@@ -398,7 +436,8 @@ class TestCrossDomainEpisodes:
         """Scientific, ticket, and general episodes stay separate."""
         # Scientific episode
         mem1, node1, eids1 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "Protein folding simulation using AlphaFold",
             ["protein-folding", "AlphaFold"],
             domains=["biology"],
@@ -407,7 +446,8 @@ class TestCrossDomainEpisodes:
 
         # Ticket episode
         mem2, node2, eids2 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "PROJ-123 user authentication redesign",
             ["authentication", "PROJ-123"],
             domains=["api"],
@@ -416,7 +456,8 @@ class TestCrossDomainEpisodes:
 
         # General episode
         mem3, node3, eids3 = await _save_fragment(
-            store, index,
+            store,
+            index,
             "Quarterly budget review for marketing department",
             ["budget-review", "marketing"],
             domains=["finance"],

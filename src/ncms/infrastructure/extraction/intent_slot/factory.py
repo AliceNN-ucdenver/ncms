@@ -57,7 +57,8 @@ class ChainedExtractor:
         self._threshold = confidence_threshold
         logger.info(
             "[intent_slot] chain order: %s  threshold=%.2f",
-            [b.name for b in backends], confidence_threshold,
+            [b.name for b in backends],
+            confidence_threshold,
         )
 
     @property
@@ -73,7 +74,9 @@ class ChainedExtractor:
         """
         primary = self._backends[0]
         manifest = getattr(primary, "_manifest", None) or getattr(
-            primary, "manifest", None,
+            primary,
+            "manifest",
+            None,
         )
         if manifest is not None:
             return getattr(manifest, "domain", None)
@@ -100,7 +103,9 @@ class ChainedExtractor:
             except Exception as exc:
                 logger.warning(
                     "[intent_slot] backend %s raised on domain=%s: %s",
-                    backend.name, domain, exc,
+                    backend.name,
+                    domain,
+                    exc,
                 )
                 chain_notes.append(f"{backend.name}:error")
                 continue
@@ -112,16 +117,14 @@ class ChainedExtractor:
             # backends in subsequent iterations.
             is_last_backend = backend is self._backends[-1]
 
-            if (label.intent_confidence >= self._threshold
-                    or is_last_backend):
+            if label.intent_confidence >= self._threshold or is_last_backend:
                 merged.intent = label.intent
                 merged.intent_confidence = label.intent_confidence
             if label.slots:
                 merged.slots = label.slots
                 merged.slot_confidences = label.slot_confidences
             if label.topic is not None and (
-                label.topic_confidence is None
-                or label.topic_confidence >= self._threshold
+                label.topic_confidence is None or label.topic_confidence >= self._threshold
             ):
                 merged.topic = label.topic
                 merged.topic_confidence = label.topic_confidence
@@ -155,9 +158,13 @@ class ChainedExtractor:
             "[intent_slot] chain extract: method=%s intent=%s "
             "topic=%s admission=%s state_change=%s chain=%s "
             "latency_ms=%.1f",
-            merged.method, merged.intent, merged.topic,
-            merged.admission, merged.state_change,
-            ",".join(reversed(chain_notes)), total_latency_ms,
+            merged.method,
+            merged.intent,
+            merged.topic,
+            merged.admission,
+            merged.state_change,
+            ",".join(reversed(chain_notes)),
+            total_latency_ms,
         )
         return merged
 
@@ -216,10 +223,12 @@ def build_extractor_chain(
             from ncms.infrastructure.extraction.intent_slot.e5_zero_shot import (
                 E5ZeroShotExtractor,
             )
+
             chain.append(E5ZeroShotExtractor())
         except Exception as exc:
             logger.warning(
-                "[intent_slot] E5 fallback unavailable: %s", exc,
+                "[intent_slot] E5 fallback unavailable: %s",
+                exc,
             )
 
     chain.append(HeuristicFallbackExtractor())
@@ -247,12 +256,15 @@ def _try_load_adapter(
 
         manifest = verify_adapter_dir(adapter_dir)
         return LoraJointExtractor(
-            adapter_dir, manifest=manifest, device=device,
+            adapter_dir,
+            manifest=manifest,
+            device=device,
         )
     except Exception as exc:
         logger.warning(
             "[intent_slot] adapter load failed at %s; skipping: %s",
-            adapter_dir, exc,
+            adapter_dir,
+            exc,
         )
         return None
 

@@ -102,12 +102,14 @@ def run_ncms(
         # Recall (Phase 11)
         try:
             from benchmarks.swebench.harness import measure_ar_recall, measure_lru_recall
+
             logger.info("NCMS: Measuring Recall AR...")
             t1 = time.time()
             recall_ar = await measure_ar_recall(state, ar_queries, ar_qrels)
             logger.info(
                 "  Recall AR nDCG@10=%.4f  (%.1fs)",
-                recall_ar["nDCG@10"], time.time() - t1,
+                recall_ar["nDCG@10"],
+                time.time() - t1,
             )
             results["metrics"]["recall_ar"] = recall_ar
 
@@ -116,7 +118,8 @@ def run_ncms(
             recall_lru = await measure_lru_recall(state, lru_queries, lru_qrels)
             logger.info(
                 "  Recall LRU nDCG@10=%.4f  (%.1fs)",
-                recall_lru["nDCG@10"], time.time() - t1,
+                recall_lru["nDCG@10"],
+                time.time() - t1,
             )
             results["metrics"]["recall_lru"] = recall_lru
         except Exception as e:
@@ -170,16 +173,18 @@ def generate_comparison_table(all_results: dict[str, dict[str, Any]]) -> str:
         lines.append(f"| {label} | " + " | ".join(values) + " |")
 
     # Add notes
-    lines.extend([
-        "",
-        "**Notes:**",
-        "- All systems evaluated on identical SWE-bench Django dataset (850 issues, "
-        "80/20 chrono split)",
-        "- Same queries, same relevance judgments (qrels), same metric computation",
-        "- NCMS: BM25 + SPLADE + Graph (no dense vectors, no OpenAI API calls)",
-        "- Mem0/Letta: OpenAI text-embedding-3-small dense vectors",
-        "- Recall metrics only available for NCMS (Phase 11 structured recall)",
-    ])
+    lines.extend(
+        [
+            "",
+            "**Notes:**",
+            "- All systems evaluated on identical SWE-bench Django dataset (850 issues, "
+            "80/20 chrono split)",
+            "- Same queries, same relevance judgments (qrels), same metric computation",
+            "- NCMS: BM25 + SPLADE + Graph (no dense vectors, no OpenAI API calls)",
+            "- Mem0/Letta: OpenAI text-embedding-3-small dense vectors",
+            "- Recall metrics only available for NCMS (Phase 11 structured recall)",
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -219,6 +224,7 @@ def main() -> None:
     # Load env
     try:
         from benchmarks.env import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
@@ -282,7 +288,10 @@ def main() -> None:
 
     logger.info(
         "  Queries: AR=%d  TTL=%d  CR=%d  LRU=%d",
-        len(ar_queries), len(ttl_labels), len(cr_queries), len(lru_queries),
+        len(ar_queries),
+        len(ttl_labels),
+        len(cr_queries),
+        len(lru_queries),
     )
 
     # ── Run each system ──────────────────────────────────────────────
@@ -304,9 +313,17 @@ def main() -> None:
         logger.info("Running NCMS benchmark...")
         logger.info("=" * 60)
         all_results["ncms"] = run_ncms(
-            train, test, ar_queries, ar_qrels, ttl_labels,
-            cr_queries, cr_qrels, lru_queries, lru_qrels,
-            args.llm_model, args.llm_api_base,
+            train,
+            test,
+            ar_queries,
+            ar_qrels,
+            ttl_labels,
+            cr_queries,
+            cr_qrels,
+            lru_queries,
+            lru_qrels,
+            args.llm_model,
+            args.llm_api_base,
         )
         _save_incremental()
 
@@ -315,9 +332,17 @@ def main() -> None:
         logger.info("Running Mem0 benchmark...")
         logger.info("=" * 60)
         from benchmarks.baselines.mem0_harness import run_mem0_experiment
+
         all_results["mem0"] = run_mem0_experiment(
-            train, test, ar_queries, ar_qrels, ttl_labels,
-            cr_queries, cr_qrels, lru_queries, lru_qrels,
+            train,
+            test,
+            ar_queries,
+            ar_qrels,
+            ttl_labels,
+            cr_queries,
+            cr_qrels,
+            lru_queries,
+            lru_qrels,
             args.embedding_model,
         )
         _save_incremental()
@@ -327,9 +352,17 @@ def main() -> None:
         logger.info("Running Letta (MemGPT) benchmark...")
         logger.info("=" * 60)
         from benchmarks.baselines.letta_harness import run_letta_experiment
+
         all_results["letta"] = run_letta_experiment(
-            train, test, ar_queries, ar_qrels, ttl_labels,
-            cr_queries, cr_qrels, lru_queries, lru_qrels,
+            train,
+            test,
+            ar_queries,
+            ar_qrels,
+            ttl_labels,
+            cr_queries,
+            cr_qrels,
+            lru_queries,
+            lru_qrels,
             args.embedding_model,
         )
         _save_incremental()

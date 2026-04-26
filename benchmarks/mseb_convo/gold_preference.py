@@ -30,24 +30,38 @@ from pathlib import Path
 
 _TARGET_PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "positive": [
-        re.compile(r"(?i)\bI\s+(?:love|adore|enjoy|prefer|really\s+like)\s+(?:using\s+|to\s+use\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"),
+        re.compile(
+            r"(?i)\bI\s+(?:love|adore|enjoy|prefer|really\s+like)\s+(?:using\s+|to\s+use\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
         re.compile(r"(?i)\bmy\s+(?:favou?rite|go[- ]?to)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
         re.compile(r"(?i)\bI\s+use\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
         re.compile(r"(?i)\bI'?ve\s+been\s+using\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
     ],
     "avoidance": [
-        re.compile(r"(?i)\bI\s+can(?:'|no)?t\s+(?:eat|have|use|take|handle)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
+        re.compile(
+            r"(?i)\bI\s+can(?:'|no)?t\s+(?:eat|have|use|take|handle)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
         re.compile(r"(?i)\bI\s+(?:am\s+)?allergic\s+to\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
-        re.compile(r"(?i)\bI\s+(?:avoid|don'?t\s+(?:eat|drink|use|like))\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
+        re.compile(
+            r"(?i)\bI\s+(?:avoid|don'?t\s+(?:eat|drink|use|like))\s+([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
     ],
     "habitual": [
-        re.compile(r"(?i)\bevery\s+(?:morning|evening|night|day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:I\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"),
-        re.compile(r"(?i)\bI\s+(?:usually|always|typically|tend\s+to)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
-        re.compile(r"(?i)\bmy\s+(?:routine|habit|practice)\s+(?:is\s+|involves\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"),
+        re.compile(
+            r"(?i)\bevery\s+(?:morning|evening|night|day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:I\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
+        re.compile(
+            r"(?i)\bI\s+(?:usually|always|typically|tend\s+to)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
+        re.compile(
+            r"(?i)\bmy\s+(?:routine|habit|practice)\s+(?:is\s+|involves\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
     ],
     "difficult": [
         re.compile(r"(?i)\bI\s+struggle\s+(?:with|to)\s+([A-Za-z0-9][\w\s.&'-]{2,40})"),
-        re.compile(r"(?i)\bmy\s+(?:biggest|main)\s+(?:pain|challenge|struggle|issue|problem)\s+(?:is\s+|with\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"),
+        re.compile(
+            r"(?i)\bmy\s+(?:biggest|main)\s+(?:pain|challenge|struggle|issue|problem)\s+(?:is\s+|with\s+)?([A-Za-z0-9][\w\s.&'-]{2,40})"
+        ),
     ],
 }
 
@@ -81,8 +95,18 @@ def _clean_target(raw: str) -> str:
     phrase."""
     raw = raw.strip().rstrip(".,;:")
     # Cut at conjunction-y words — likely end of the noun phrase.
-    for stop in (" for ", " because ", " since ", " when ", " at ", " on ",
-                 " that ", " which ", " with ", " and "):
+    for stop in (
+        " for ",
+        " because ",
+        " since ",
+        " when ",
+        " at ",
+        " on ",
+        " that ",
+        " which ",
+        " with ",
+        " and ",
+    ):
         idx = raw.lower().find(stop)
         if idx > 4:
             raw = raw[:idx]
@@ -99,7 +123,8 @@ def _extract_target(content: str, pref_kind: str) -> str:
 
 
 def build_preference_gold(
-    labeled_dir: Path, max_per_kind: int = 15,
+    labeled_dir: Path,
+    max_per_kind: int = 15,
 ) -> list[dict]:
     """Walk labeled turns, emit preference queries per kind."""
     rng = random.Random(42)
@@ -129,39 +154,39 @@ def build_preference_gold(
             # produce the identical wording.
             tpl = rng.choice(_QUERY_TEMPLATES[kind])
             query_text = tpl.format(target=target)
-            picked[kind].append({"row": row, "target": target, "tpl": tpl,
-                                 "text": query_text})
+            picked[kind].append({"row": row, "target": target, "tpl": tpl, "text": query_text})
 
     for kind, items in picked.items():
         for i, item in enumerate(items, start=1):
             row = item["row"]
             qid = f"convo-pref-{kind}-{i:03d}"
-            out.append({
-                "qid": qid,
-                "shape": "current_state",
-                "query_class": "preference",
-                "text": item["text"],
-                "subject": row["subject"],
-                "gold_mid": row["mid"],
-                "gold_alt": [],
-                "preference": kind,
-                "note": f"preference/{kind}/derived-from-user-turn",
-            })
+            out.append(
+                {
+                    "qid": qid,
+                    "shape": "current_state",
+                    "query_class": "preference",
+                    "text": item["text"],
+                    "subject": row["subject"],
+                    "gold_mid": row["mid"],
+                    "gold_alt": [],
+                    "preference": kind,
+                    "note": f"preference/{kind}/derived-from-user-turn",
+                }
+            )
     return out
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--labeled-dir", type=Path,
-                    default=Path("benchmarks/mseb_convo/raw_labeled"))
-    ap.add_argument("--out", type=Path,
-                    default=Path("benchmarks/mseb_convo/gold_preference.yaml"))
+    ap.add_argument("--labeled-dir", type=Path, default=Path("benchmarks/mseb_convo/raw_labeled"))
+    ap.add_argument("--out", type=Path, default=Path("benchmarks/mseb_convo/gold_preference.yaml"))
     ap.add_argument("--max-per-kind", type=int, default=15)
     args = ap.parse_args()
 
     rows = build_preference_gold(args.labeled_dir, max_per_kind=args.max_per_kind)
     try:
         import yaml
+
         body = yaml.safe_dump(rows, sort_keys=False, allow_unicode=True)
     except ImportError:
         body = json.dumps(rows, indent=2, ensure_ascii=False)
@@ -171,6 +196,7 @@ def main() -> None:
         encoding="utf-8",
     )
     from collections import Counter
+
     by_kind = Counter(r["preference"] for r in rows)
     print(f"wrote {len(rows)} preference queries to {args.out}")
     print(f"by kind: {dict(by_kind)}")

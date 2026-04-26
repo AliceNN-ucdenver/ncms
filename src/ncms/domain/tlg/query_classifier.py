@@ -60,7 +60,8 @@ INTENT_ORDER: tuple[str, ...] = ("still", "origin", "current")
 
 
 def _match_any(
-    patterns: Iterable[re.Pattern[str]], query: str,
+    patterns: Iterable[re.Pattern[str]],
+    query: str,
 ) -> bool:
     return any(p.search(query) is not None for p in patterns)
 
@@ -75,9 +76,9 @@ def classify_query_intent(query: str) -> str | None:
        slots, not just the intent name.
     """
     import warnings
+
     warnings.warn(
-        "classify_query_intent is deprecated; "
-        "use ncms.domain.tlg.analyze_query instead.",
+        "classify_query_intent is deprecated; use ncms.domain.tlg.analyze_query instead.",
         DeprecationWarning,
         stacklevel=2,
     )

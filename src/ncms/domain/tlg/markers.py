@@ -128,8 +128,7 @@ def induce_edge_markers(
         distinctive: set[str] = set()
         for head, count in heads.items():
             others_max = max(
-                (accum[other].get(head, 0)
-                 for other in accum if other != ttype),
+                (accum[other].get(head, 0) for other in accum if other != ttype),
                 default=0,
             )
             if count > others_max:
@@ -152,7 +151,8 @@ def _word_in(token: str, query_lower: str) -> bool:
 
 
 def match_intent_from_markers(
-    query: str, induced: InducedEdgeMarkers,
+    query: str,
+    induced: InducedEdgeMarkers,
 ) -> str | None:
     """Return the transition type most implied by the query, or None.
 
@@ -201,7 +201,6 @@ def summary(induced: InducedEdgeMarkers) -> str:
 def retirement_verbs_from(induced: InducedEdgeMarkers) -> frozenset[str]:
     """Flatten ``supersedes`` + ``retires`` marker buckets into the
     verb set consumed by the retirement extractor."""
-    return (
-        induced.markers.get("supersedes", frozenset())
-        | induced.markers.get("retires", frozenset())
+    return induced.markers.get("supersedes", frozenset()) | induced.markers.get(
+        "retires", frozenset()
     )

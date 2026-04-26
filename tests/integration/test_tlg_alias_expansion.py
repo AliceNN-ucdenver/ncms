@@ -11,16 +11,13 @@ from __future__ import annotations
 
 import pytest_asyncio
 
-from ncms.application.reconciliation_service import ReconciliationService
-from ncms.application.tlg import VocabularyCache, retrieve_lg
-from ncms.config import NCMSConfig
+from ncms.application.tlg import VocabularyCache
 from ncms.domain.models import (
     Entity,
     Memory,
     MemoryNode,
     NodeType,
 )
-from ncms.domain.tlg import Confidence
 from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 
@@ -67,16 +64,14 @@ async def _seed_state(
     return node
 
 
-
 # NOTE: ``TestStillWithAlias`` was removed in the v6 cleanup — the
 # dispatcher it exercised is no longer reachable via the SLM
 # ``shape_intent_head`` taxonomy.  See docs for the v6 deletion
 # rationale.
 
+
 class TestAliasCacheInvalidation:
-    async def test_aliases_cleared_on_invalidate(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_aliases_cleared_on_invalidate(self, store: SQLiteStore) -> None:
         # Empty store
         cache = VocabularyCache()
         first = await cache.get_aliases(store)

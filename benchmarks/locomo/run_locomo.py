@@ -98,7 +98,8 @@ async def _run_plus(
         conversations = conversations[:1]
         plus_questions = [q for q in plus_questions if q.base_conv_idx == 0]
         logger.info(
-            "Test mode: using 1 conversation (%d Plus questions)", len(plus_questions),
+            "Test mode: using 1 conversation (%d Plus questions)",
+            len(plus_questions),
         )
 
     results = await run_locomo_plus_benchmark(
@@ -346,7 +347,8 @@ def main() -> None:
         help="LLM API base URL for judge scoring (RAG mode)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable debug logging",
     )

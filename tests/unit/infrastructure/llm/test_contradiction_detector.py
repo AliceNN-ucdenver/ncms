@@ -179,9 +179,7 @@ class TestContradictionDetector:
 
         with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = _mock_response("[]")
-            await detect_contradictions(
-                new, [existing], api_base="http://localhost:8000/v1"
-            )
+            await detect_contradictions(new, [existing], api_base="http://localhost:8000/v1")
 
         call_kwargs = mock_llm.call_args[1]
         assert call_kwargs["api_base"] == "http://localhost:8000/v1"

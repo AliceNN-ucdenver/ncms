@@ -22,15 +22,19 @@ from typing import Literal
 # ---------------------------------------------------------------------------
 
 MemoryKind = Literal[
-    "declaration",     # "foo: field = value" / initial state observation
-    "retirement",      # "deprecated X in favour of Y" / ruled-out diagnosis
-    "causal_link",     # "caused by" / "regression from" / "due to"
+    "declaration",  # "foo: field = value" / initial state observation
+    "retirement",  # "deprecated X in favour of Y" / ruled-out diagnosis
+    "causal_link",  # "caused by" / "regression from" / "due to"
     "ordinal_anchor",  # first presentation, first report, final outcome
-    "none",            # no state-change signal (neutral / informational)
+    "none",  # no state-change signal (neutral / informational)
 ]
 
 MESSAGE_KINDS: tuple[MemoryKind, ...] = (
-    "declaration", "retirement", "causal_link", "ordinal_anchor", "none",
+    "declaration",
+    "retirement",
+    "causal_link",
+    "ordinal_anchor",
+    "none",
 )
 
 
@@ -41,15 +45,19 @@ MESSAGE_KINDS: tuple[MemoryKind, ...] = (
 # ---------------------------------------------------------------------------
 
 PreferenceKind = Literal[
-    "positive",    # "I love X" / "I use X" / "I prefer X"
-    "avoidance",   # "I avoid Y" / "I can't eat Y" / "Y doesn't work for me"
-    "habitual",    # "Every morning I..." / "I usually..." / recurring behaviour
-    "difficult",   # "I struggle with Z" / "Z is hard for me"
-    "none",        # non-preference query
+    "positive",  # "I love X" / "I use X" / "I prefer X"
+    "avoidance",  # "I avoid Y" / "I can't eat Y" / "Y doesn't work for me"
+    "habitual",  # "Every morning I..." / "I usually..." / recurring behaviour
+    "difficult",  # "I struggle with Z" / "Z is hard for me"
+    "none",  # non-preference query
 ]
 
 PREFERENCE_KINDS: tuple[PreferenceKind, ...] = (
-    "positive", "avoidance", "habitual", "difficult", "none",
+    "positive",
+    "avoidance",
+    "habitual",
+    "difficult",
+    "none",
 )
 
 
@@ -67,14 +75,17 @@ PREFERENCE_KINDS: tuple[PreferenceKind, ...] = (
 # ---------------------------------------------------------------------------
 
 QueryClass = Literal[
-    "general",     # standard retrieval — BM25 + SPLADE + graph lift
-    "temporal",    # ordinal / recency / range — NCMS temporal parser fires
+    "general",  # standard retrieval — BM25 + SPLADE + graph lift
+    "temporal",  # ordinal / recency / range — NCMS temporal parser fires
     "preference",  # positive / avoidance / habitual / difficult — P2 intent_head
-    "noise",       # adversarial / off-topic — all systems should reject
+    "noise",  # adversarial / off-topic — all systems should reject
 ]
 
 QUERY_CLASSES: tuple[QueryClass, ...] = (
-    "general", "temporal", "preference", "noise",
+    "general",
+    "temporal",
+    "preference",
+    "noise",
 )
 
 
@@ -100,13 +111,20 @@ IntentShape = Literal[
 ]
 
 INTENT_SHAPES: tuple[IntentShape, ...] = (
-    "current_state", "origin",
-    "ordinal_first", "ordinal_last",
-    "sequence", "predecessor",
-    "interval", "range",
-    "transitive_cause", "causal_chain",
-    "concurrent", "before_named",
-    "retirement", "noise",
+    "current_state",
+    "origin",
+    "ordinal_first",
+    "ordinal_last",
+    "sequence",
+    "predecessor",
+    "interval",
+    "range",
+    "transitive_cause",
+    "causal_chain",
+    "concurrent",
+    "before_named",
+    "retirement",
+    "noise",
 )
 
 

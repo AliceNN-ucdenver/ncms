@@ -105,29 +105,37 @@ class BusAgentSidecar:
         finally:
             # Deregister on shutdown
             import contextlib
+
             with contextlib.suppress(Exception):
                 await self._deregister()
             await client.aclose()
 
     async def _register(self) -> None:
         """Register with the NCMS Hub."""
-        resp = await self._http.post(f"{self.hub_url}/api/v1/bus/register", json={
-            "agent_id": self.agent_id,
-            "domains": self.domains,
-            "subscribe_to": self.subscribe_to or self.domains,
-        })
+        resp = await self._http.post(
+            f"{self.hub_url}/api/v1/bus/register",
+            json={
+                "agent_id": self.agent_id,
+                "domains": self.domains,
+                "subscribe_to": self.subscribe_to or self.domains,
+            },
+        )
         resp.raise_for_status()
         data = resp.json()
         logger.info(
             "Registered agent %s for domains %s",
-            self.agent_id, data.get("domains"),
+            self.agent_id,
+            data.get("domains"),
         )
 
     async def _deregister(self) -> None:
         """Deregister from the NCMS Hub."""
-        await self._http.post(f"{self.hub_url}/api/v1/bus/deregister", json={
-            "agent_id": self.agent_id,
-        })
+        await self._http.post(
+            f"{self.hub_url}/api/v1/bus/deregister",
+            json={
+                "agent_id": self.agent_id,
+            },
+        )
         logger.info("Deregistered agent %s", self.agent_id)
 
     async def _consume_sse(self) -> None:
@@ -184,7 +192,9 @@ class BusAgentSidecar:
 
         logger.info(
             "Question from %s: %s (ask_id=%s)",
-            from_agent, question[:100], ask_id,
+            from_agent,
+            question[:100],
+            ask_id,
         )
 
         try:
@@ -217,12 +227,15 @@ class BusAgentSidecar:
             confidence = min(0.92, 0.6 + 0.05 * len(context_parts))
 
             # POST response back to Hub
-            resp = await self._http.post(f"{self.hub_url}/api/v1/bus/respond", json={
-                "ask_id": ask_id,
-                "from_agent": self.agent_id,
-                "content": answer,
-                "confidence": confidence,
-            })
+            resp = await self._http.post(
+                f"{self.hub_url}/api/v1/bus/respond",
+                json={
+                    "ask_id": ask_id,
+                    "from_agent": self.agent_id,
+                    "content": answer,
+                    "confidence": confidence,
+                },
+            )
             resp.raise_for_status()
             logger.info("Responded to ask %s (confidence=%.2f)", ask_id, confidence)
 
@@ -238,17 +251,22 @@ class BusAgentSidecar:
 
         logger.info(
             "Announcement from %s [%s]: %s",
-            from_agent, event, content[:100],
+            from_agent,
+            event,
+            content[:100],
         )
 
         try:
-            resp = await self._http.post(f"{self.hub_url}/api/v1/memories", json={
-                "content": f"[{event} from {from_agent}] {content}",
-                "type": "fact",
-                "domains": domains,
-                "source_agent": self.agent_id,
-                "importance": 7.0,
-            })
+            resp = await self._http.post(
+                f"{self.hub_url}/api/v1/memories",
+                json={
+                    "content": f"[{event} from {from_agent}] {content}",
+                    "type": "fact",
+                    "domains": domains,
+                    "source_agent": self.agent_id,
+                    "importance": 7.0,
+                },
+            )
             resp.raise_for_status()
             logger.info("Stored announcement from %s", from_agent)
         except Exception:
@@ -266,7 +284,9 @@ class BusAgentSidecar:
             if not question or not domains:
                 continue
             logger.info(
-                "[startup] Asking: %s (domains=%s)", question[:80], domains,
+                "[startup] Asking: %s (domains=%s)",
+                question[:80],
+                domains,
             )
             try:
                 resp = await self._http.post(
@@ -293,7 +313,7 @@ class BusAgentSidecar:
                         json={
                             "content": (
                                 f"[consultation] Q: {question}\n"
-                                f"A ({data.get('from_agent','?')}): "
+                                f"A ({data.get('from_agent', '?')}): "
                                 f"{answer}"
                             ),
                             "type": "fact",
@@ -306,7 +326,8 @@ class BusAgentSidecar:
                     logger.info("[startup] No answer for: %s", question[:80])
             except Exception:
                 logger.warning(
-                    "[startup] Failed to ask: %s", question[:80],
+                    "[startup] Failed to ask: %s",
+                    question[:80],
                     exc_info=True,
                 )
             # Pace between questions
@@ -391,7 +412,8 @@ def run_bus_agent(
     # Parse startup questions from JSON env var or CLI arg
     startup_questions: list[dict] = []
     sq_json = startup_questions_json or os.environ.get(
-        "NCMS_STARTUP_QUESTIONS", "",
+        "NCMS_STARTUP_QUESTIONS",
+        "",
     )
     if sq_json:
         try:
@@ -406,10 +428,8 @@ def run_bus_agent(
         subscribe_to=sub_list,
         llm_model=llm_model,
         llm_api_base=llm_api_base,
-        system_prompt=system_prompt or (
-            "You are a helpful agent. Answer questions "
-            "based on the provided context."
-        ),
+        system_prompt=system_prompt
+        or ("You are a helpful agent. Answer questions based on the provided context."),
         startup_questions=startup_questions,
     )
 
@@ -423,6 +443,8 @@ def run_bus_agent(
 
     logger.info(
         "Starting NCMS Bus Agent: agent_id=%s, domains=%s, hub=%s",
-        agent_id, domain_list, hub_url,
+        agent_id,
+        domain_list,
+        hub_url,
     )
     asyncio.run(sidecar.run())

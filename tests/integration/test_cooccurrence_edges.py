@@ -32,7 +32,6 @@ async def _create_service(**overrides) -> tuple[MemoryService, SQLiteStore, Netw
 
 
 class TestCooccurrenceEdges:
-
     @pytest.mark.asyncio
     async def test_creates_edges_between_cooccurring_entities(self):
         """Storing a memory with N entities should create N*(N-1) directed edges."""

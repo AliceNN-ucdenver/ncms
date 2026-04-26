@@ -64,19 +64,19 @@ async def _run(args: argparse.Namespace) -> None:
         # Keep only the sessions for the selected questions
         qids = {q.question_id for q in questions}
         sessions_by_question = {
-            qid: sessions
-            for qid, sessions in sessions_by_question.items()
-            if qid in qids
+            qid: sessions for qid, sessions in sessions_by_question.items() if qid in qids
         }
         logger.info(
             "Test mode: %d questions, %d session sets",
-            len(questions), len(sessions_by_question),
+            len(questions),
+            len(sessions_by_question),
         )
 
     # Build config (features-on uses production bundle)
     ncms_config = None
     if args.features_on:
         from ncms.config import NCMSConfig
+
         ncms_config = NCMSConfig(
             db_path=":memory:",
             actr_noise=0.0,
@@ -125,6 +125,7 @@ async def _run(args: argparse.Namespace) -> None:
     if args.tlg:
         if ncms_config is None:
             from ncms.config import NCMSConfig
+
             ncms_config = NCMSConfig(db_path=":memory:")
         ncms_config.temporal_enabled = True
         # Reconciliation must be on — TLG reads retires_entities off
@@ -224,9 +225,7 @@ def _format_markdown(results: dict, top_k: int) -> str:
             cat = key.split("_", 1)[1] if "_" in key else key
             count_key = f"num_{cat}"
             lines.append(
-                f"| {cat} "
-                f"| {overall.get(key, 0):.4f} "
-                f"| {int(overall.get(count_key, 0))} |"
+                f"| {cat} | {overall.get(key, 0):.4f} | {int(overall.get(count_key, 0))} |"
             )
         lines.append("")
 
@@ -320,7 +319,8 @@ def main() -> None:
         help="LLM API base URL for judge scoring (RAG mode)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable debug logging",
     )

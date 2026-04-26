@@ -43,17 +43,30 @@ TLGAxis = Literal["temporal", "causal", "ordinal", "modal", "state"]
 #: TLGQuery disambiguates.
 TLGRelation = Literal[
     # temporal
-    "state_at", "before_named", "after_named", "between",
-    "concurrent_with", "during_interval", "predecessor",
+    "state_at",
+    "before_named",
+    "after_named",
+    "between",
+    "concurrent_with",
+    "during_interval",
+    "predecessor",
     # causal
-    "cause_of", "effect_of", "chain_cause_of", "trigger_of",
+    "cause_of",
+    "effect_of",
+    "chain_cause_of",
+    "trigger_of",
     "contributing_factor",
     # ordinal
-    "first", "last", "nth",
+    "first",
+    "last",
+    "nth",
     # modal
-    "would_be_current_if", "could_have_been",
+    "would_be_current_if",
+    "could_have_been",
     # state
-    "current", "retired", "declared",
+    "current",
+    "retired",
+    "declared",
 ]
 
 
@@ -136,15 +149,15 @@ class _CueIndex:
     @property
     def has_temporal(self) -> bool:
         return bool(
-            self.temporal_before or self.temporal_after
-            or self.temporal_during or self.temporal_since
+            self.temporal_before
+            or self.temporal_after
+            or self.temporal_during
+            or self.temporal_since
         )
 
     @property
     def has_ordinal(self) -> bool:
-        return bool(
-            self.ordinal_first or self.ordinal_last or self.ordinal_nth
-        )
+        return bool(self.ordinal_first or self.ordinal_last or self.ordinal_nth)
 
 
 _CUE_TYPE_TO_ATTR: dict[str, str] = {
@@ -189,6 +202,228 @@ def _span_canonical(tokens: list[TaggedToken]) -> str:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _RuleCtx:
+    cues: object  # _CueIndex
+    referent: str | None
+    subject: str | None
+    scope: str | None
+    temporal_anchor: str | None
+
+
+def _rule_modal(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.modal_hypothetical:  # type: ignore[attr-defined]
+        return None
+    scenario = f"preserve_{c.referent}" if c.referent else "skip_most_recent_supersession"
+    return TLGQuery(
+        axis="modal",
+        relation="would_be_current_if",
+        referent=c.referent,
+        subject=c.subject,
+        scope=c.scope,
+        scenario=scenario,
+        confidence=0.85,
+        matched_rule="modal_counterfactual",
+    )
+
+
+def _rule_causal(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.has_causal:  # type: ignore[attr-defined]
+        return None
+    altlex = c.cues.causal_altlex  # type: ignore[attr-defined]
+    is_chain = any(len(span) >= 2 for span in altlex) or any(
+        "chain" in _span_canonical(span) for span in altlex
+    )
+    if is_chain:
+        return TLGQuery(
+            axis="causal",
+            relation="chain_cause_of",
+            referent=c.referent,
+            subject=c.subject,
+            depth=2,
+            confidence=0.82,
+            matched_rule="causal_chain",
+        )
+    return TLGQuery(
+        axis="causal",
+        relation="cause_of",
+        referent=c.referent,
+        subject=c.subject,
+        depth=1,
+        confidence=0.88,
+        matched_rule="causal_direct",
+    )
+
+
+def _rule_temporal_before(c: _RuleCtx) -> TLGQuery | None:
+    if not (c.cues.temporal_before and c.cues.referent):  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="temporal",
+        relation="before_named",
+        referent=c.referent,
+        subject=c.subject,
+        scope=c.scope,
+        temporal_anchor=c.temporal_anchor,
+        confidence=0.9,
+        matched_rule="temporal_before_named",
+    )
+
+
+def _rule_temporal_after(c: _RuleCtx) -> TLGQuery | None:
+    if not (c.cues.temporal_after and c.cues.referent):  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="temporal",
+        relation="after_named",
+        referent=c.referent,
+        subject=c.subject,
+        scope=c.scope,
+        temporal_anchor=c.temporal_anchor,
+        confidence=0.88,
+        matched_rule="temporal_after_named",
+    )
+
+
+def _rule_temporal_during(c: _RuleCtx) -> TLGQuery | None:
+    cues = c.cues
+    bare_anchor = (
+        cues.temporal_anchor  # type: ignore[attr-defined]
+        and not cues.has_ordinal  # type: ignore[attr-defined]
+        and not cues.temporal_since  # type: ignore[attr-defined]
+    )
+    if not (cues.temporal_during or bare_anchor):  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="temporal",
+        relation="during_interval",
+        subject=c.subject,
+        scope=c.scope,
+        temporal_anchor=c.temporal_anchor,
+        confidence=0.82,
+        matched_rule="temporal_during",
+    )
+
+
+def _rule_temporal_since(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.temporal_since:  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="temporal",
+        relation="state_at",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        temporal_anchor=c.temporal_anchor,
+        confidence=0.78,
+        matched_rule="temporal_since",
+    )
+
+
+def _rule_state_current(c: _RuleCtx) -> TLGQuery | None:
+    cues = c.cues
+    if not (cues.ask_current or (cues.ordinal_last and cues.scope)):  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="state",
+        relation="current",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        confidence=0.9,
+        matched_rule="state_current",
+    )
+
+
+def _rule_ordinal_first(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.ordinal_first:  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="ordinal",
+        relation="first",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        confidence=0.85,
+        matched_rule="ordinal_first",
+    )
+
+
+def _rule_ordinal_last(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.ordinal_last:  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="ordinal",
+        relation="last",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        confidence=0.85,
+        matched_rule="ordinal_last",
+    )
+
+
+def _rule_ordinal_nth(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.ordinal_nth:  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="ordinal",
+        relation="nth",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        scenario=_span_canonical(c.cues.ordinal_nth[0]),  # type: ignore[attr-defined]
+        confidence=0.75,
+        matched_rule="ordinal_nth",
+    )
+
+
+def _rule_ask_change(c: _RuleCtx) -> TLGQuery | None:
+    if not c.cues.ask_change:  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="state",
+        relation="retired" if c.cues.temporal_before else "declared",  # type: ignore[attr-defined]
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        confidence=0.7,
+        matched_rule="ask_change",
+    )
+
+
+def _rule_state_bare_referent(c: _RuleCtx) -> TLGQuery | None:
+    if not (c.cues.referent and c.cues.scope):  # type: ignore[attr-defined]
+        return None
+    return TLGQuery(
+        axis="state",
+        relation="state_at",
+        subject=c.subject,
+        scope=c.scope,
+        referent=c.referent,
+        confidence=0.6,
+        matched_rule="state_bare_referent",
+    )
+
+
+# Specificity-first ordering: modal trumps temporal, causal trumps
+# ordinal, explicit cues trump implicit.  First match wins.
+_RULES: tuple = (
+    _rule_modal,
+    _rule_causal,
+    _rule_temporal_before,
+    _rule_temporal_after,
+    _rule_temporal_during,
+    _rule_temporal_since,
+    _rule_state_current,
+    _rule_ordinal_first,
+    _rule_ordinal_last,
+    _rule_ordinal_nth,
+    _rule_ask_change,
+    _rule_state_bare_referent,
+)
+
+
 def synthesize(
     tagged: list[TaggedToken] | tuple[TaggedToken, ...],
 ) -> TLGQuery | None:
@@ -205,211 +440,20 @@ def synthesize(
     tagged_list = list(tagged)
     if not tagged_list:
         return None
-
     cues = _index_cues(tagged_list)
-
-    # Canonical referent / subject / scope extraction — used by many
-    # rules below.  First-occurrence wins for each.
-    referent_canon = (
-        _span_canonical(cues.referent[0]) if cues.referent else None
+    ctx = _RuleCtx(
+        cues=cues,
+        referent=_span_canonical(cues.referent[0]) if cues.referent else None,
+        subject=_span_canonical(cues.subject[0]) if cues.subject else None,
+        scope=_span_canonical(cues.scope[0]) if cues.scope else None,
+        temporal_anchor=(
+            _span_canonical(cues.temporal_anchor[0]) if cues.temporal_anchor else None
+        ),
     )
-    subject_canon = (
-        _span_canonical(cues.subject[0]) if cues.subject else None
-    )
-    scope_canon = (
-        _span_canonical(cues.scope[0]) if cues.scope else None
-    )
-    temporal_anchor_canon = (
-        _span_canonical(cues.temporal_anchor[0])
-        if cues.temporal_anchor else None
-    )
-
-    # ── Rule 1: MODAL_HYPOTHETICAL → counterfactual (highest specificity) ──
-    if cues.modal_hypothetical:
-        # scenario defaults to "skip_most_recent_supersession" when
-        # the referent is the thing being preserved; the dispatcher
-        # resolves the actual edge-skip at walk time.
-        scenario = (
-            f"preserve_{referent_canon}" if referent_canon
-            else "skip_most_recent_supersession"
-        )
-        return TLGQuery(
-            axis="modal",
-            relation="would_be_current_if",
-            referent=referent_canon,
-            subject=subject_canon,
-            scope=scope_canon,
-            scenario=scenario,
-            confidence=0.85,
-            matched_rule="modal_counterfactual",
-        )
-
-    # ── Rule 2: CAUSAL + REFERENT → cause_of / chain_cause_of ──────────────
-    if cues.has_causal:
-        # Depth: multi-word CAUSAL_ALTLEX spans ("the chain of
-        # factors", "what led to") suggest a chain, so prefer
-        # ``chain_cause_of`` with depth=2+ when the altlex span is
-        # ≥2 tokens.  Explicit single-word causals stay depth=1.
-        is_chain = any(
-            len(span) >= 2 for span in cues.causal_altlex
-        ) or any(
-            "chain" in _span_canonical(span)
-            for span in cues.causal_altlex
-        )
-        if is_chain:
-            return TLGQuery(
-                axis="causal",
-                relation="chain_cause_of",
-                referent=referent_canon,
-                subject=subject_canon,
-                depth=2,
-                confidence=0.82,
-                matched_rule="causal_chain",
-            )
-        return TLGQuery(
-            axis="causal",
-            relation="cause_of",
-            referent=referent_canon,
-            subject=subject_canon,
-            depth=1,
-            confidence=0.88,
-            matched_rule="causal_direct",
-        )
-
-    # ── Rule 3: TEMPORAL_BEFORE + REFERENT → before_named ─────────────────
-    if cues.temporal_before and cues.referent:
-        return TLGQuery(
-            axis="temporal",
-            relation="before_named",
-            referent=referent_canon,
-            subject=subject_canon,
-            scope=scope_canon,
-            temporal_anchor=temporal_anchor_canon,
-            confidence=0.9,
-            matched_rule="temporal_before_named",
-        )
-
-    # ── Rule 4: TEMPORAL_AFTER + REFERENT → after_named ───────────────────
-    if cues.temporal_after and cues.referent:
-        return TLGQuery(
-            axis="temporal",
-            relation="after_named",
-            referent=referent_canon,
-            subject=subject_canon,
-            scope=scope_canon,
-            temporal_anchor=temporal_anchor_canon,
-            confidence=0.88,
-            matched_rule="temporal_after_named",
-        )
-
-    # ── Rule 5: TEMPORAL_DURING + TEMPORAL_ANCHOR → during_interval ──────
-    if cues.temporal_during or (
-        cues.temporal_anchor and not cues.has_ordinal and not cues.temporal_since
-    ):
-        return TLGQuery(
-            axis="temporal",
-            relation="during_interval",
-            subject=subject_canon,
-            scope=scope_canon,
-            temporal_anchor=temporal_anchor_canon,
-            confidence=0.82,
-            matched_rule="temporal_during",
-        )
-
-    # ── Rule 5b: TEMPORAL_SINCE → state_at (current state with anchor) ───
-    # "Since Q2 we've used X" / "as of the last release, what's our Y" —
-    # semantically equivalent to "current state given a start anchor".
-    # If there's also a REFERENT or SCOPE, prefer that context.
-    if cues.temporal_since:
-        return TLGQuery(
-            axis="temporal",
-            relation="state_at",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            temporal_anchor=temporal_anchor_canon,
-            confidence=0.78,
-            matched_rule="temporal_since",
-        )
-
-    # ── Rule 6: ASK_CURRENT + SCOPE → current state ──────────────────────
-    if cues.ask_current or (cues.ordinal_last and cues.scope):
-        return TLGQuery(
-            axis="state",
-            relation="current",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            confidence=0.9,
-            matched_rule="state_current",
-        )
-
-    # ── Rule 7: ORDINAL_FIRST → first / origin ───────────────────────────
-    if cues.ordinal_first:
-        return TLGQuery(
-            axis="ordinal",
-            relation="first",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            confidence=0.85,
-            matched_rule="ordinal_first",
-        )
-
-    # ── Rule 8: ORDINAL_LAST without ASK_CURRENT → last ──────────────────
-    if cues.ordinal_last:
-        return TLGQuery(
-            axis="ordinal",
-            relation="last",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            confidence=0.85,
-            matched_rule="ordinal_last",
-        )
-
-    # ── Rule 9: ORDINAL_NTH → nth (depth=N) ──────────────────────────────
-    if cues.ordinal_nth:
-        # Depth is stored in scenario field for now — a future rule
-        # might parse "2nd"/"third" into a concrete depth int.
-        return TLGQuery(
-            axis="ordinal",
-            relation="nth",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            scenario=_span_canonical(cues.ordinal_nth[0]),
-            confidence=0.75,
-            matched_rule="ordinal_nth",
-        )
-
-    # ── Rule 10: ASK_CHANGE → generic state transition query ─────────────
-    if cues.ask_change:
-        return TLGQuery(
-            axis="state",
-            relation="retired" if cues.temporal_before else "declared",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            confidence=0.7,
-            matched_rule="ask_change",
-        )
-
-    # ── Rule 11: REFERENT + SCOPE alone → state_at (looking up state) ────
-    # A query like "What database was Postgres for auth-service?" —
-    # minimal cues, default to a state lookup.
-    if cues.referent and cues.scope:
-        return TLGQuery(
-            axis="state",
-            relation="state_at",
-            subject=subject_canon,
-            scope=scope_canon,
-            referent=referent_canon,
-            confidence=0.6,
-            matched_rule="state_bare_referent",
-        )
-
-    # Fallback — no rule matched.  Caller falls to LLM.
+    for rule in _RULES:
+        result = rule(ctx)
+        if result is not None:
+            return result
     return None
 
 

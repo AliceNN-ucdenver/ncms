@@ -21,10 +21,12 @@ Runs after ingest on softwaredev mini.  For each qid:
 Also report per-subject zone cardinality: for each induced subject,
 how many ENTITY_STATE nodes anchor it + edge count.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
+
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from collections import Counter
 from pathlib import Path
@@ -41,9 +43,7 @@ ROOT = Path("/Users/shawnmccarthy/ncms")
 async def main() -> None:
     build = ROOT / "benchmarks/mseb_softwaredev/build_mini"
     corpus = load_corpus(build / "corpus.jsonl")
-    queries = yaml.safe_load(
-        (ROOT / "benchmarks/mseb_softwaredev/gold_locked.yaml").read_text()
-    )
+    queries = yaml.safe_load((ROOT / "benchmarks/mseb_softwaredev/gold_locked.yaml").read_text())
     gold_by_qid = {g["qid"]: g for g in queries}
 
     backend = NcmsBackend(
@@ -72,13 +72,13 @@ async def main() -> None:
         for subject in subjects:
             try:
                 zones, node_index, edges = await _load_subject_zones(
-                    store, subject,
+                    store,
+                    subject,
                 )
             except Exception as exc:
                 print(f"  {subject:60s} ERROR: {exc!r}")
                 continue
-            print(f"  {subject:60s} {len(zones):6d} "
-                  f"{len(node_index):6d} {len(edges):6d}")
+            print(f"  {subject:60s} {len(zones):6d} {len(node_index):6d} {len(edges):6d}")
 
         # ── Per-query grammar trace ─────────────────────────────────
         print()
@@ -120,7 +120,8 @@ async def main() -> None:
             slm_shape = head.get("shape_intent")
 
             # Resolve subject + entity from the parser context
-            from ncms.domain.tlg import lookup_subject, lookup_entity
+            from ncms.domain.tlg import lookup_entity, lookup_subject
+
             resolved_subject = lookup_subject(qtext, ctx.vocabulary)
             resolved_entity = lookup_entity(qtext, ctx.vocabulary)
 
@@ -136,7 +137,7 @@ async def main() -> None:
             if trace.grammar_answer:
                 gmem = await store.get_memory(trace.grammar_answer)
                 if gmem is not None:
-                    for tag in (gmem.tags or []):
+                    for tag in gmem.tags or []:
                         if tag.startswith("mid:"):
                             grammar_mid = tag.split(":", 1)[1]
                             break
@@ -148,9 +149,7 @@ async def main() -> None:
             print(f"    gold subject: {gold_subject}")
             print(f"    gold_mid:     {gold_mid}")
             _si_conf = head.get("shape_intent_confidence")
-            _si_conf_str = (
-                f"{_si_conf:.3f}" if _si_conf is not None else "None"
-            )
+            _si_conf_str = f"{_si_conf:.3f}" if _si_conf is not None else "None"
             print(f"    SLM shape_intent: {slm_shape!r} (conf {_si_conf_str})")
             print(f"    Resolved subject (vocab): {resolved_subject!r}")
             print(f"    Resolved entity  (vocab): {resolved_entity!r}")
@@ -163,39 +162,38 @@ async def main() -> None:
 
             # Compare subject resolution to gold
             if resolved_subject != gold_subject and gold_subject:
-                print(f"    SUBJECT MISMATCH: resolved={resolved_subject!r} "
-                      f"vs gold={gold_subject!r}")
+                print(
+                    f"    SUBJECT MISMATCH: resolved={resolved_subject!r} vs gold={gold_subject!r}"
+                )
 
             # If resolved subject matches, but grammar answer doesn't,
             # inspect the zone
             if resolved_subject == gold_subject and not hit:
                 try:
                     zones, node_index, edges = await _load_subject_zones(
-                        store, gold_subject,
+                        store,
+                        gold_subject,
                     )
-                    print(f"    ZONE DEBUG: {len(zones)} zones, "
-                          f"{len(node_index)} nodes, {len(edges)} edges")
+                    print(
+                        f"    ZONE DEBUG: {len(zones)} zones, "
+                        f"{len(node_index)} nodes, {len(edges)} edges"
+                    )
                     for zi, zone in enumerate(zones[:3]):
                         tt = zone.terminal_mid
                         rt = zone.root_mid
                         term_node = node_index.get(tt)
                         root_node = node_index.get(rt)
-                        term_mid = (
-                            id_to_mid.get(term_node.memory_id, '?')
-                            if term_node else '-'
+                        term_mid = id_to_mid.get(term_node.memory_id, "?") if term_node else "-"
+                        root_mid = id_to_mid.get(root_node.memory_id, "?") if root_node else "-"
+                        print(
+                            f"      zone[{zi}]  terminal={term_mid}  "
+                            f"root={root_mid}  size={len(zone.chain)}"
                         )
-                        root_mid = (
-                            id_to_mid.get(root_node.memory_id, '?')
-                            if root_node else '-'
-                        )
-                        print(f"      zone[{zi}]  terminal={term_mid}  "
-                              f"root={root_mid}  size={len(zone.chain)}")
                 except Exception as exc:
                     print(f"    ZONE DEBUG error: {exc!r}")
 
         print()
-        print(f"  Confidence distribution across target queries: "
-              f"{dict(grammar_hit)}")
+        print(f"  Confidence distribution across target queries: {dict(grammar_hit)}")
 
     finally:
         await backend.shutdown()

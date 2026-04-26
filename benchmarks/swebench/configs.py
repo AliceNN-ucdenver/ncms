@@ -15,7 +15,7 @@ ACTR_SWEEP_WEIGHTS: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3, 0.4)
 TUNED_WEIGHTS = {
     "bm25": 0.6,
     "splade": 0.3,
-    "graph": 0.3,    # Restored: stripping caused -9.8% AR regression
+    "graph": 0.3,  # Restored: stripping caused -9.8% AR regression
     "actr": 0.0,
     "hierarchy": 0.0,
 }
@@ -25,8 +25,24 @@ INGEST_SEMAPHORE = 3
 
 # GLiNER labels for Django code entities
 DJANGO_LABELS = [
-    "class", "method", "function", "module", "field",
-    "model", "view", "middleware", "url_pattern", "form",
-    "template", "queryset", "manager", "migration", "signal",
-    "test_case", "exception", "setting", "command", "mixin",
+    "class",
+    "method",
+    "function",
+    "module",
+    "field",
+    "model",
+    "view",
+    "middleware",
+    "url_pattern",
+    "form",
+    "template",
+    "queryset",
+    "manager",
+    "migration",
+    "signal",
+    "test_case",
+    "exception",
+    "setting",
+    "command",
+    "mixin",
 ]

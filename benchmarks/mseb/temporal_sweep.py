@@ -38,12 +38,12 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -94,8 +94,13 @@ def build_subset(src: Path, out: Path) -> dict[str, int]:
 
 
 def run_sweep(
-    *, domain: str, adapter: str, build_dir: Path,
-    weights: list[float], log_dir: Path, out_dir: Path,
+    *,
+    domain: str,
+    adapter: str,
+    build_dir: Path,
+    weights: list[float],
+    log_dir: Path,
+    out_dir: Path,
 ) -> list[dict]:
     """Run ncms/tlg-on with each temporal weight.  Returns result rows."""
     ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -104,13 +109,23 @@ def run_sweep(
         cell_log = log_dir / f"sweep-{domain}-tw{w}-{ts}.log"
         logger.info("running temporal_weight=%.2f", w)
         cmd = [
-            "uv", "run", "python", "-m", "benchmarks.mseb.harness",
-            "--domain", domain,
-            "--build-dir", str(build_dir),
-            "--out-dir", str(out_dir),
-            "--backend", "ncms",
-            "--adapter-domain", adapter,
-            "--temporal-weight", str(w),
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "benchmarks.mseb.harness",
+            "--domain",
+            domain,
+            "--build-dir",
+            str(build_dir),
+            "--out-dir",
+            str(out_dir),
+            "--backend",
+            "ncms",
+            "--adapter-domain",
+            adapter,
+            "--temporal-weight",
+            str(w),
         ]
         with cell_log.open("w") as fh:
             subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, check=False)
@@ -122,14 +137,18 @@ def run_sweep(
             continue
         latest = candidates[-1]
         d = json.loads(latest.read_text())
-        rows.append({
-            "weight": w,
-            "overall": d["overall"],
-            "results_file": latest.name,
-        })
+        rows.append(
+            {
+                "weight": w,
+                "overall": d["overall"],
+                "results_file": latest.name,
+            }
+        )
         logger.info(
             "  overall r@1=%.3f r@5=%.3f mrr=%.3f",
-            d["overall"]["r@1"], d["overall"]["r@5"], d["overall"]["mrr"],
+            d["overall"]["r@1"],
+            d["overall"]["r@5"],
+            d["overall"]["mrr"],
         )
 
     # Pretty-print comparison
@@ -141,7 +160,10 @@ def run_sweep(
             print(f"{r['weight']:<8.2f}  ERROR: {r['error']}")
             continue
         o = r["overall"]
-        print(f"{r['weight']:<8.2f} {o['r@1']:<8.3f} {o['r@5']:<8.3f} {o['mrr']:<8.3f} {r['results_file']}")
+        print(
+            f"{r['weight']:<8.2f} {o['r@1']:<8.3f} {o['r@5']:<8.3f} "
+            f"{o['mrr']:<8.3f} {r['results_file']}"
+        )
     return rows
 
 
@@ -162,10 +184,8 @@ def main() -> None:
     sap.add_argument("--adapter", required=True)
     sap.add_argument("--build", type=Path, required=True)
     sap.add_argument("--weights", nargs="+", type=float, default=[0.2, 0.5, 0.8])
-    sap.add_argument("--log-dir", type=Path,
-                     default=Path("benchmarks/mseb/run-logs"))
-    sap.add_argument("--out-dir", type=Path,
-                     default=Path("benchmarks/results/mseb/temporal_sweep"))
+    sap.add_argument("--log-dir", type=Path, default=Path("benchmarks/mseb/run-logs"))
+    sap.add_argument("--out-dir", type=Path, default=Path("benchmarks/results/mseb/temporal_sweep"))
 
     args = ap.parse_args()
     if args.cmd == "build":
@@ -175,9 +195,12 @@ def main() -> None:
         args.log_dir.mkdir(parents=True, exist_ok=True)
         args.out_dir.mkdir(parents=True, exist_ok=True)
         rows = run_sweep(
-            domain=args.domain, adapter=args.adapter,
-            build_dir=args.build, weights=args.weights,
-            log_dir=args.log_dir, out_dir=args.out_dir,
+            domain=args.domain,
+            adapter=args.adapter,
+            build_dir=args.build,
+            weights=args.weights,
+            log_dir=args.log_dir,
+            out_dir=args.out_dir,
         )
         (args.out_dir / f"sweep-{args.domain}.json").write_text(
             json.dumps(rows, indent=2),

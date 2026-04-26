@@ -102,14 +102,16 @@ class TestEntityOverlap:
     def test_full_overlap(self) -> None:
         """Fragment entities fully contained in episode."""
         result = EpisodeService.compute_entity_overlap(
-            ["a", "b"], ["a", "b", "c", "d"],
+            ["a", "b"],
+            ["a", "b", "c", "d"],
         )
         assert result == 1.0  # |{a,b}| / min(2, 4) = 2/2
 
     def test_partial_overlap(self) -> None:
         """Some entities shared."""
         result = EpisodeService.compute_entity_overlap(
-            ["a", "b", "c"], ["a", "d", "e"],
+            ["a", "b", "c"],
+            ["a", "d", "e"],
         )
         assert abs(result - 1 / 3) < 0.01  # |{a}| / min(3, 3) = 1/3
 
@@ -131,7 +133,8 @@ class TestEntityOverlap:
     def test_asymmetric_favors_small_set(self) -> None:
         """Small fragment matching one entity in large episode → 1.0."""
         result = EpisodeService.compute_entity_overlap(
-            ["x"], ["x", "y", "z", "w", "v"],
+            ["x"],
+            ["x", "y", "z", "w", "v"],
         )
         assert result == 1.0
 
@@ -170,11 +173,15 @@ class TestAssignOrCreate:
     """Test the full assign_or_create pipeline with entity-based matching."""
 
     async def test_creates_episode_from_entity_cluster(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragment with >= min_entities and no matching episode → new episode."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service deployment to staging environment",
             ["auth-service", "staging"],
             domains=["api"],
@@ -191,11 +198,15 @@ class TestAssignOrCreate:
         assert meta.member_count == 1
 
     async def test_creates_episode_with_structured_anchor(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragment with JIRA ID + entities → structured episode."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Starting work on JIRA-100 auth refactor",
             ["auth-service", "JIRA-100"],
             domains=["api"],
@@ -209,25 +220,32 @@ class TestAssignOrCreate:
         assert meta.anchor_id == "JIRA-100"
 
     async def test_entity_overlap_joins_existing_episode(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragment sharing entities with episode → joins via entity overlap."""
         # Create first fragment → new episode
         mem1, node1, eids1 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service deployment started",
             ["auth-service", "deployment"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep1 = await svc.assign_or_create(node1, mem1, entity_ids=eids1)
         assert ep1 is not None
 
         # Second fragment shares entities → should join
         mem2, node2, eids2 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service health check passed after changes",
             ["auth-service", "health-check"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep2 = await svc.assign_or_create(node2, mem2, entity_ids=eids2)
 
@@ -235,11 +253,15 @@ class TestAssignOrCreate:
         assert ep2.id == ep1.id  # Joined same episode
 
     async def test_insufficient_entities_returns_none(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragment with < min_entities and no matching episode → None."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Quick note about something",
             ["something"],  # Only 1 entity < min_entities=2
         )
@@ -247,14 +269,19 @@ class TestAssignOrCreate:
         assert ep is None
 
     async def test_no_entities_returns_none(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragment with zero entities → None."""
         mem = Memory(content="A simple note", domains=["test"])
         await store.save_memory(mem)
         index.index_memory(mem)
         node = MemoryNode(
-            memory_id=mem.id, node_type=NodeType.ATOMIC, importance=5.0,
+            memory_id=mem.id,
+            node_type=NodeType.ATOMIC,
+            importance=5.0,
         )
         await store.save_memory_node(node)
 
@@ -262,12 +289,16 @@ class TestAssignOrCreate:
         assert ep is None
 
     async def test_best_matching_episode_wins(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """When multiple episodes match, highest score wins."""
         # Create two episodes with different entity clusters
         mem1, node1, eids1 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Frontend React components updated",
             ["frontend", "react"],
             domains=["frontend"],
@@ -276,7 +307,8 @@ class TestAssignOrCreate:
         assert ep_frontend is not None
 
         mem2, node2, eids2 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Backend PostgreSQL migration completed",
             ["backend", "postgresql"],
             domains=["backend"],
@@ -287,7 +319,8 @@ class TestAssignOrCreate:
 
         # Fragment about frontend+react → should join frontend episode
         mem3, node3, eids3 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "React component testing complete",
             ["frontend", "react"],
             domains=["frontend"],
@@ -297,11 +330,15 @@ class TestAssignOrCreate:
         assert ep3.id == ep_frontend.id
 
     async def test_different_entity_clusters_create_separate_episodes(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Fragments with different entities → separate episodes."""
         mem1, node1, eids1 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Payment gateway integration started",
             ["payment-gateway", "stripe"],
             domains=["payments"],
@@ -309,7 +346,8 @@ class TestAssignOrCreate:
         ep1 = await svc.assign_or_create(node1, mem1, entity_ids=eids1)
 
         mem2, node2, eids2 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "User analytics dashboard redesign",
             ["analytics", "dashboard"],
             domains=["frontend"],
@@ -328,11 +366,15 @@ class TestEpisodeProfile:
     """Test episode profile management."""
 
     async def test_profile_contains_entities(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Episode profile content includes member entity names."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service deployment started",
             ["auth-service", "deployment"],
             domains=["api"],
@@ -347,11 +389,15 @@ class TestEpisodeProfile:
         assert "deployment" in ep_memory.content
 
     async def test_profile_searchable_via_bm25(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Episode profile is BM25-searchable."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "PostgreSQL migration to version 15",
             ["postgresql", "migration"],
             domains=["database"],
@@ -365,25 +411,32 @@ class TestEpisodeProfile:
         assert ep.memory_id in memory_ids
 
     async def test_profile_enriched_on_member_join(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """New member's unique entities are added to episode profile."""
         # First fragment
         mem1, node1, eids1 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service deployment started",
             ["auth-service", "deployment"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep = await svc.assign_or_create(node1, mem1, entity_ids=eids1)
         assert ep is not None
 
         # Second fragment with a new entity
         mem2, node2, eids2 = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Auth service JWT validation updated",
             ["auth-service", "jwt"],
-            domains=["api"], source_agent="agent-alpha",
+            domains=["api"],
+            source_agent="agent-alpha",
         )
         ep2 = await svc.assign_or_create(node2, mem2, entity_ids=eids2)
         assert ep2 is not None
@@ -403,7 +456,9 @@ class TestEpisodeClosure:
     """Test episode closure (stale timeout + resolution markers)."""
 
     async def test_stale_episode_closure(
-        self, store: SQLiteStore, index: TantivyEngine,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
     ) -> None:
         """Episode with no recent members gets auto-closed."""
         short_config = NCMSConfig(
@@ -415,7 +470,8 @@ class TestEpisodeClosure:
         svc = EpisodeService(store=store, index=index, config=short_config)
 
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Database failover triggered",
             ["database", "failover"],
             domains=["db"],
@@ -431,11 +487,15 @@ class TestEpisodeClosure:
         assert refreshed.metadata["status"] == "closed"
 
     async def test_resolution_closure(
-        self, store: SQLiteStore, index: TantivyEngine, svc: EpisodeService,
+        self,
+        store: SQLiteStore,
+        index: TantivyEngine,
+        svc: EpisodeService,
     ) -> None:
         """Resolution marker in fragment closes the episode."""
         mem, node, eids = await _create_memory_with_entities(
-            store, index,
+            store,
+            index,
             "Investigating payment outage",
             ["payment-service", "outage"],
             domains=["payments"],
@@ -444,7 +504,8 @@ class TestEpisodeClosure:
         assert ep is not None
 
         closed = await svc.check_resolution_closure(
-            "The payment outage has been resolved", ep,
+            "The payment outage has been resolved",
+            ep,
         )
         assert closed is True
 
@@ -520,7 +581,9 @@ class TestBuildProfileContent:
 
     def test_entities_and_domains(self) -> None:
         result = EpisodeService._build_profile_content(
-            ["auth-service", "jwt"], ["api"], {},
+            ["auth-service", "jwt"],
+            ["api"],
+            {},
         )
         assert "auth-service" in result
         assert "jwt" in result
@@ -528,7 +591,9 @@ class TestBuildProfileContent:
 
     def test_with_anchor(self) -> None:
         result = EpisodeService._build_profile_content(
-            ["auth"], ["api"], {"anchor_id": "JIRA-100"},
+            ["auth"],
+            ["api"],
+            {"anchor_id": "JIRA-100"},
         )
         assert "JIRA-100" in result
 

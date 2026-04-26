@@ -65,7 +65,8 @@ class RemoteAskHandler:
         except asyncio.QueueFull:
             logger.warning(
                 "SSE queue full for agent %s, dropping ask %s",
-                self._agent_id, ask.ask_id,
+                self._agent_id,
+                ask.ask_id,
             )
             return None
 
@@ -79,7 +80,9 @@ class RemoteAskHandler:
         except TimeoutError:
             logger.debug(
                 "Remote ask %s to agent %s timed out after %dms",
-                ask.ask_id, self._agent_id, ask.ttl_ms,
+                ask.ask_id,
+                self._agent_id,
+                ask.ttl_ms,
             )
             return None  # Bus will try surrogate fallback
         finally:
@@ -121,6 +124,7 @@ class RemoteAskHandler:
         for ask_id, future in self._pending.items():
             if not future.done():
                 future.cancel()
-                logger.debug("Cancelled pending ask %s for disconnected agent %s",
-                             ask_id, self._agent_id)
+                logger.debug(
+                    "Cancelled pending ask %s for disconnected agent %s", ask_id, self._agent_id
+                )
         self._pending.clear()

@@ -57,11 +57,8 @@ from ncms.domain.tlg.aliases import expand_aliases
 from ncms.domain.tlg.markers import InducedEdgeMarkers
 from ncms.domain.tlg.vocabulary import (
     InducedVocabulary,
-    _stem,
-    lookup_entity,
     lookup_subject,
 )
-
 
 # ---------------------------------------------------------------------------
 # Parser inputs / outputs
@@ -197,7 +194,8 @@ def _word_like(token: str, query_lower: str) -> bool:
 
 
 def _prefer_issue_entity(
-    candidates: Iterable[str], ctx: ParserContext,
+    candidates: Iterable[str],
+    ctx: ParserContext,
 ) -> str | None:
     """Pick the issue-like entity first; fall back to first candidate."""
     for cand in candidates:
@@ -208,7 +206,10 @@ def _prefer_issue_entity(
 
 
 def _extract_event_names(
-    raw: str, ctx: ParserContext, *, max_entities: int = 2,
+    raw: str,
+    ctx: ParserContext,
+    *,
+    max_entities: int = 2,
 ) -> list[str]:
     """Find up to ``max_entities`` named entities in the query.
 
@@ -240,7 +241,8 @@ def _extract_event_names(
 
     entity_names = sorted(
         ctx.vocabulary.entity_lookup.keys(),
-        key=len, reverse=True,
+        key=len,
+        reverse=True,
     )
     for ent in entity_names:
         if ent in ctx.domain_nouns:
@@ -290,7 +292,8 @@ def _extract_event_name(raw: str, ctx: ParserContext) -> str | None:
 
 
 def _canonicalize_target(
-    raw: str | None, ctx: ParserContext,
+    raw: str | None,
+    ctx: ParserContext,
 ) -> str | None:
     """Map a raw entity surface form to the L1 canonical name."""
     if raw is None:
@@ -307,7 +310,8 @@ def _canonicalize_target(
 
 
 def analyze_query(
-    query: str, ctx: ParserContext,
+    query: str,
+    ctx: ParserContext,
 ) -> QueryStructure:
     """Extract subject + target entity + secondary entity from a query.
 

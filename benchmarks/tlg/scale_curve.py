@@ -108,23 +108,25 @@ async def _run_one_tier(n: int, query_count: int) -> dict:
 
         # Sample subjects for queries (pick every Nth so we don't
         # stress the first few entries).
-        sample_indices = [
-            (i * n) // query_count for i in range(query_count)
-        ]
+        sample_indices = [(i * n) // query_count for i in range(query_count)]
         queries: list[tuple[str, str]] = []
         for idx in sample_indices:
             subject = subjects[idx]
             entity = f"feature-{idx:06d}"
-            queries.append((
-                f"What is the current {entity} for {subject}?",
-                subject,
-            ))
+            queries.append(
+                (
+                    f"What is the current {entity} for {subject}?",
+                    subject,
+                )
+            )
 
         timings_ms: list[float] = []
         for query, _subject in queries:
             t0 = time.perf_counter()
             trace = await retrieve_lg(
-                query, store=store, vocabulary_cache=cache,
+                query,
+                store=store,
+                vocabulary_cache=cache,
             )
             timings_ms.append((time.perf_counter() - t0) * 1000)
             # Sanity check — query should resolve.
@@ -139,7 +141,8 @@ async def _run_one_tier(n: int, query_count: int) -> dict:
             "mean_ms": round(statistics.mean(timings_ms), 2),
             "p50_ms": round(timings_ms[len(timings_ms) // 2], 2),
             "p95_ms": round(
-                timings_ms[int(len(timings_ms) * 0.95)], 2,
+                timings_ms[int(len(timings_ms) * 0.95)],
+                2,
             ),
             "max_ms": round(max(timings_ms), 2),
             "n_queries": len(timings_ms),
@@ -154,8 +157,7 @@ def _format_report(results: list[dict]) -> str:
         "",
         f"Timestamp: {datetime.now(UTC).isoformat()}",
         "",
-        "Target: < 50 ms per dispatch at all corpus sizes "
-        "(p1-plan §4 Phase 4).",
+        "Target: < 50 ms per dispatch at all corpus sizes (p1-plan §4 Phase 4).",
         "",
         "| N (nodes) | seed ms | mean ms | p50 ms | p95 ms | max ms | <50ms |",
         "|----------:|--------:|--------:|-------:|-------:|-------:|:-----:|",
@@ -180,8 +182,7 @@ async def _main(sizes: list[int], query_count: int, output_dir: Path) -> None:
         print(f"[scale] N={n}...", flush=True)
         row = await _run_one_tier(n, query_count)
         print(
-            f"    seed={row['seed_ms']}ms  "
-            f"mean={row['mean_ms']}ms  p95={row['p95_ms']}ms",
+            f"    seed={row['seed_ms']}ms  mean={row['mean_ms']}ms  p95={row['p95_ms']}ms",
             flush=True,
         )
         results.append(row)
@@ -207,16 +208,21 @@ def main() -> None:
         description="TLG dispatch latency vs corpus size",
     )
     parser.add_argument(
-        "--sizes", nargs="+", type=int,
+        "--sizes",
+        nargs="+",
+        type=int,
         default=[100, 1_000, 10_000, 100_000],
         help="Corpus sizes to measure (nodes).",
     )
     parser.add_argument(
-        "--queries", type=int, default=20,
+        "--queries",
+        type=int,
+        default=20,
         help="Number of queries to fire per tier.",
     )
     parser.add_argument(
-        "--output-dir", type=Path,
+        "--output-dir",
+        type=Path,
         default=Path("benchmarks/results/tlg"),
         help="Directory to write scale_<timestamp>.{md,json}.",
     )

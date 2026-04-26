@@ -33,31 +33,29 @@ from typing import Literal
 class TemporalIntent(Enum):
     """Temporal-reasoning shape of a query."""
 
-    NONE = "none"                     # no temporal signal → default retrieval
+    NONE = "none"  # no temporal signal → default retrieval
     ORDINAL_SINGLE = "ordinal_single"  # "first/last X" — one subject
     ORDINAL_COMPARE = "ordinal_compare"  # "which came first, A or B"
-    ORDINAL_ORDER = "ordinal_order"    # "in what order did X, Y, Z happen"
-    RANGE = "range"                   # "during X", "in June", "last week"
+    ORDINAL_ORDER = "ordinal_order"  # "in what order did X, Y, Z happen"
+    RANGE = "range"  # "during X", "in June", "last week"
     RELATIVE_ANCHOR = "relative_anchor"  # "N units ago", "since X"
-    ARITHMETIC = "arithmetic"          # "how many days between"
+    ARITHMETIC = "arithmetic"  # "how many days between"
 
 
 # Token patterns that indicate arithmetic over dates.  Classifier
 # fast-fails to ARITHMETIC on these — retrieval can't score the answer
 # string ("7 days"), so no filter is meaningful.
 _ARITHMETIC_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bhow\s+many\s+(?:days?|weeks?|months?|years?|hours?)",
-               re.IGNORECASE),
-    re.compile(r"\bhow\s+long\s+(?:ago|since|before|after|has|had)",
-               re.IGNORECASE),
-    re.compile(r"\b(?:days?|weeks?|months?|years?)\s+(?:between|since)",
-               re.IGNORECASE),
+    re.compile(r"\bhow\s+many\s+(?:days?|weeks?|months?|years?|hours?)", re.IGNORECASE),
+    re.compile(r"\bhow\s+long\s+(?:ago|since|before|after|has|had)", re.IGNORECASE),
+    re.compile(r"\b(?:days?|weeks?|months?|years?)\s+(?:between|since)", re.IGNORECASE),
     re.compile(r"\bduration\s+(?:between|of)", re.IGNORECASE),
 ]
 
 # Tokens that hint at ordinal-compare vs ordinal-order structure.
 _COMPARE_MARKERS = re.compile(
-    r"\b(?:which|or|either)\b", re.IGNORECASE,
+    r"\b(?:which|or|either)\b",
+    re.IGNORECASE,
 )
 _ORDER_MARKERS = re.compile(
     r"\b(?:order\s+of|order\s+from|in\s+what\s+order|chronolog)",
@@ -176,19 +174,21 @@ ARITHMETIC_ANCHOR_COUNTS: dict[str, int] = {
 
 # Unit detection — ordered longest-first so "months" doesn't lose to "month".
 _UNIT_PATTERNS: list[tuple[re.Pattern[str], ArithmeticUnit]] = [
-    (re.compile(r"\bhours?\b", re.IGNORECASE),  "hours"),
-    (re.compile(r"\bdays?\b", re.IGNORECASE),   "days"),
-    (re.compile(r"\bweeks?\b", re.IGNORECASE),  "weeks"),
+    (re.compile(r"\bhours?\b", re.IGNORECASE), "hours"),
+    (re.compile(r"\bdays?\b", re.IGNORECASE), "days"),
+    (re.compile(r"\bweeks?\b", re.IGNORECASE), "weeks"),
     (re.compile(r"\bmonths?\b", re.IGNORECASE), "months"),
-    (re.compile(r"\byears?\b", re.IGNORECASE),  "years"),
+    (re.compile(r"\byears?\b", re.IGNORECASE), "years"),
 ]
 
 # Operation detection — regexes ordered by specificity.
 _BETWEEN_RE = re.compile(
-    r"\bbetween\b", re.IGNORECASE,
+    r"\bbetween\b",
+    re.IGNORECASE,
 )
 _SINCE_RE = re.compile(
-    r"\b(?:since|after|from)\b", re.IGNORECASE,
+    r"\b(?:since|after|from)\b",
+    re.IGNORECASE,
 )
 _AGE_OF_RE = re.compile(
     r"\bhow\s+long\s+ago\b|\bhow\s+many\s+\w+\s+ago\b",

@@ -50,9 +50,7 @@ async def detect_contradictions(
         return []
 
     try:
-        existing_text = "\n".join(
-            f"- [{m.id}]: {m.content[:2000]}" for m in existing_memories
-        )
+        existing_text = "\n".join(f"- [{m.id}]: {m.content[:2000]}" for m in existing_memories)
 
         prompt = CONTRADICTION_PROMPT.format(
             new_content=new_memory.content[:8000],
@@ -85,7 +83,5 @@ async def detect_contradictions(
         return results
 
     except Exception:
-        logger.warning(
-            "Contradiction detection failed, returning empty list", exc_info=True
-        )
+        logger.warning("Contradiction detection failed, returning empty list", exc_info=True)
         return []

@@ -75,9 +75,7 @@ async def _seed_state(
 
 
 class TestRefinesChain:
-    async def test_current_walks_refines_chain(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_current_walks_refines_chain(self, store: SQLiteStore) -> None:
         """A zone with a refines chain: current is the chain terminal,
         zone_context is the earlier chain links."""
         # Seed three nodes in a refines chain.  We create the REFINES
@@ -110,12 +108,20 @@ class TestRefinesChain:
         # NCMS REFINES stores source=new, target=existing.
         # zones._load_subject_zones inverts this to old→new for
         # the zone walker.
-        await store.save_graph_edge(GraphEdge(
-            source_id=b.id, target_id=a.id, edge_type=EdgeType.REFINES,
-        ))
-        await store.save_graph_edge(GraphEdge(
-            source_id=c.id, target_id=b.id, edge_type=EdgeType.REFINES,
-        ))
+        await store.save_graph_edge(
+            GraphEdge(
+                source_id=b.id,
+                target_id=a.id,
+                edge_type=EdgeType.REFINES,
+            )
+        )
+        await store.save_graph_edge(
+            GraphEdge(
+                source_id=c.id,
+                target_id=b.id,
+                edge_type=EdgeType.REFINES,
+            )
+        )
 
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -191,9 +197,7 @@ class TestMultiZoneSupersession:
         assert current_trace.confidence == Confidence.HIGH
         assert current_trace.grammar_answer == v3.id
 
-    async def test_still_handles_multi_hop_retirement(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_still_handles_multi_hop_retirement(self, store: SQLiteStore) -> None:
         """After two supersessions, 'still using session cookies?' must
         still resolve the retirement via the zone-scoped extractor."""
         config = NCMSConfig(

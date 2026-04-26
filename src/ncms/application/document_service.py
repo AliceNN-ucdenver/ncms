@@ -73,7 +73,9 @@ class DocumentService:
         await self._store.save_project(project)
         logger.info(
             "[doc-svc] Project created: %s — %s (%s)",
-            project.id, topic[:60], source_type,
+            project.id,
+            topic[:60],
+            source_type,
         )
         return project
 
@@ -81,12 +83,16 @@ class DocumentService:
         return await self._store.get_project(project_id)
 
     async def list_projects(
-        self, status: str | None = None, limit: int = 50,
+        self,
+        status: str | None = None,
+        limit: int = 50,
     ) -> list[Project]:
         return await self._store.list_projects(status=status, limit=limit)
 
     async def update_project_phase(
-        self, project_id: str, phase: str,
+        self,
+        project_id: str,
+        phase: str,
     ) -> None:
         """Update the current pipeline phase for a project."""
         project = await self._store.get_project(project_id)
@@ -96,7 +102,9 @@ class DocumentService:
             await self._store.update_project(project)
 
     async def update_project_status(
-        self, project_id: str, status: str,
+        self,
+        project_id: str,
+        status: str,
     ) -> None:
         """Update the project status (active, completed, failed, archived)."""
         project = await self._store.get_project(project_id)
@@ -111,7 +119,8 @@ class DocumentService:
         if not scores:
             return None
         avg = sum(s.score for s in scores if s.score is not None) / max(
-            len([s for s in scores if s.score is not None]), 1,
+            len([s for s in scores if s.score is not None]),
+            1,
         )
         project = await self._store.get_project(project_id)
         if project:
@@ -149,7 +158,8 @@ class DocumentService:
 
                 doc_domains = [d for d in [from_agent, "software"] if d]
                 cached = await load_cached_labels(
-                    self._memory_svc._store, doc_domains,
+                    self._memory_svc._store,
+                    doc_domains,
                 )
                 labels = resolve_labels(doc_domains, cached_labels=cached)
 
@@ -160,11 +170,14 @@ class DocumentService:
                 )
 
                 entities = await asyncio.to_thread(
-                    extract_with_label_budget, content, labels,
+                    extract_with_label_budget,
+                    content,
+                    labels,
                 )
                 logger.info(
                     "[doc-svc] GLiNER extracted %d entities for %s",
-                    len(entities), title[:40],
+                    len(entities),
+                    title[:40],
                 )
             except Exception as e:
                 logger.warning("[doc-svc] Entity extraction failed: %s", e)
@@ -196,20 +209,27 @@ class DocumentService:
 
         # Auto-create supersedes link for version chains
         if parent_doc_id:
-            await self._store.save_document_link(DocumentLink(
-                source_doc_id=doc.id,
-                target_doc_id=parent_doc_id,
-                link_type=DocLinkType.SUPERSEDES,
-            ))
+            await self._store.save_document_link(
+                DocumentLink(
+                    source_doc_id=doc.id,
+                    target_doc_id=parent_doc_id,
+                    link_type=DocLinkType.SUPERSEDES,
+                )
+            )
             logger.info(
                 "[doc-svc] Version chain: %s (v%d) supersedes %s",
-                doc.id, version, parent_doc_id,
+                doc.id,
+                version,
+                parent_doc_id,
             )
 
         logger.info(
             "[doc-svc] Document published: %s (%s, %d bytes, %d entities, hash=%s)",
-            doc.id, doc_type or "untyped", doc.size_bytes,
-            len(entities), content_hash[:12],
+            doc.id,
+            doc_type or "untyped",
+            doc.size_bytes,
+            len(entities),
+            content_hash[:12],
         )
         return doc
 
@@ -223,7 +243,9 @@ class DocumentService:
         limit: int = 50,
     ) -> list[Document]:
         return await self._store.list_documents(
-            project_id=project_id, doc_type=doc_type, limit=limit,
+            project_id=project_id,
+            doc_type=doc_type,
+            limit=limit,
         )
 
     async def get_children_documents(
@@ -233,7 +255,8 @@ class DocumentService:
     ) -> list[Document]:
         """Return all child documents (sections) for a given parent document."""
         return await self._store.get_children_documents(
-            parent_doc_id=parent_doc_id, limit=limit,
+            parent_doc_id=parent_doc_id,
+            limit=limit,
         )
 
     async def search_documents(
@@ -244,7 +267,10 @@ class DocumentService:
         limit: int = 50,
     ) -> list[Document]:
         return await self._store.search_documents(
-            entity=entity, doc_type=doc_type, min_score=min_score, limit=limit,
+            entity=entity,
+            doc_type=doc_type,
+            min_score=min_score,
+            limit=limit,
         )
 
     # ── Document Links ───────────────────────────────────────────────────
@@ -266,7 +292,9 @@ class DocumentService:
         await self._store.save_document_link(link)
         logger.info(
             "[doc-svc] Link: %s → %s → %s",
-            source_doc_id[:8], link_type, target_doc_id[:8],
+            source_doc_id[:8],
+            link_type,
+            target_doc_id[:8],
         )
         return link
 
@@ -309,7 +337,9 @@ class DocumentService:
         # Create document link: review → document
         if review_doc_id:
             await self.create_link(
-                review_doc_id, document_id, DocLinkType.REVIEWS,
+                review_doc_id,
+                document_id,
+                DocLinkType.REVIEWS,
                 metadata={"score": score, "reviewer": reviewer_agent, "round": review_round},
             )
 
@@ -318,7 +348,10 @@ class DocumentService:
             avg = await self.update_project_quality(project_id)
             logger.info(
                 "[doc-svc] Review: %s scored %s%% by %s (round %d, project avg: %s%%)",
-                document_id[:8], score, reviewer_agent, review_round,
+                document_id[:8],
+                score,
+                reviewer_agent,
+                review_round,
                 round(avg, 1) if avg else "N/A",
             )
 
@@ -330,7 +363,8 @@ class DocumentService:
         project_id: str | None = None,
     ) -> list[ReviewScore]:
         return await self._store.get_review_scores(
-            document_id=document_id, project_id=project_id,
+            document_id=document_id,
+            project_id=project_id,
         )
 
     @staticmethod
@@ -346,7 +380,9 @@ class DocumentService:
         if severity_match:
             result["severity"] = severity_match.group(1)
         covered_match = re.search(
-            r"COVERED:\s*(.+?)(?=\nMISSING:|\nCHANGES:|\Z)", response_text, re.DOTALL,
+            r"COVERED:\s*(.+?)(?=\nMISSING:|\nCHANGES:|\Z)",
+            response_text,
+            re.DOTALL,
         )
         if covered_match:
             result["covered"] = covered_match.group(1).strip()
@@ -373,6 +409,7 @@ class DocumentService:
         event_subtype = ""
         if detail.lstrip().startswith("{"):
             import contextlib
+
             with contextlib.suppress(ValueError, TypeError):
                 event_subtype = _json.loads(detail).get("type", "")
 
@@ -392,32 +429,51 @@ class DocumentService:
     # ── Audit Records ────────────────────────────────────────────────────
 
     async def record_approval(
-        self, project_id: str | None, document_id: str,
-        decision: str, approver: str, comment: str | None = None,
+        self,
+        project_id: str | None,
+        document_id: str,
+        decision: str,
+        approver: str,
+        comment: str | None = None,
         policies_active: dict | None = None,
     ) -> ApprovalDecision:
         approval = ApprovalDecision(
-            project_id=project_id, document_id=document_id,
-            decision=decision, approver=approver, comment=comment,
+            project_id=project_id,
+            document_id=document_id,
+            decision=decision,
+            approver=approver,
+            comment=comment,
             policies_active=policies_active or {},
         )
         await self._store.save_approval(approval)
         logger.info(
             "[doc-svc] Approval: %s %s by %s for %s",
-            decision, document_id[:8], approver, project_id or "?",
+            decision,
+            document_id[:8],
+            approver,
+            project_id or "?",
         )
         return approval
 
     async def record_guardrail_violation(
-        self, document_id: str | None, project_id: str | None,
-        policy_type: str, rule: str, message: str,
-        escalation: str, overridden: bool = False,
+        self,
+        document_id: str | None,
+        project_id: str | None,
+        policy_type: str,
+        rule: str,
+        message: str,
+        escalation: str,
+        overridden: bool = False,
         override_reason: str | None = None,
     ) -> GuardrailViolation:
         violation = GuardrailViolation(
-            document_id=document_id, project_id=project_id,
-            policy_type=policy_type, rule=rule, message=message,
-            escalation=escalation, overridden=overridden,
+            document_id=document_id,
+            project_id=project_id,
+            policy_type=policy_type,
+            rule=rule,
+            message=message,
+            escalation=escalation,
+            overridden=overridden,
             override_reason=override_reason,
         )
         await self._store.save_guardrail_violation(violation)
@@ -426,7 +482,10 @@ class DocumentService:
     # ── Guardrail Approval Gates ─────────────────────────────────────────
 
     async def create_approval_request(
-        self, project_id: str | None, agent: str, node: str,
+        self,
+        project_id: str | None,
+        agent: str,
+        node: str,
         violations: list[dict[str, str]],
         context: dict[str, Any] | None = None,
     ) -> PendingApproval:
@@ -435,13 +494,19 @@ class DocumentService:
         Returns the PendingApproval with its ID for polling.
         """
         approval = PendingApproval(
-            project_id=project_id, agent=agent, node=node,
-            violations=violations, context=context or {},
+            project_id=project_id,
+            agent=agent,
+            node=node,
+            violations=violations,
+            context=context or {},
         )
         await self._store.create_pending_approval(approval)
         logger.info(
             "[doc-svc] Approval request created: %s for %s/%s (%d violations)",
-            approval.id, agent, node, len(violations),
+            approval.id,
+            agent,
+            node,
+            len(violations),
         )
         return approval
 
@@ -450,13 +515,18 @@ class DocumentService:
         return await self._store.get_pending_approval(approval_id)
 
     async def list_pending_approvals(
-        self, status: str | None = None, project_id: str | None = None,
+        self,
+        status: str | None = None,
+        project_id: str | None = None,
     ) -> list[PendingApproval]:
         """List approval requests, optionally filtered by status or project."""
         return await self._store.list_pending_approvals(status=status, project_id=project_id)
 
     async def decide_approval(
-        self, approval_id: str, decision: str, decided_by: str,
+        self,
+        approval_id: str,
+        decision: str,
+        decided_by: str,
         comment: str | None = None,
     ) -> PendingApproval | None:
         """Record a human approval/denial decision.
@@ -490,78 +560,112 @@ class DocumentService:
                     await self._store.update_project(project)
                     logger.info(
                         "[doc-svc] Project %s denied by %s",
-                        approval.project_id, decided_by,
+                        approval.project_id,
+                        decided_by,
                     )
             except Exception:
                 logger.warning("[doc-svc] Failed to update project status on denial")
 
         logger.info(
             "[doc-svc] Approval %s decided: %s by %s",
-            approval_id, decision, decided_by,
+            approval_id,
+            decision,
+            decided_by,
         )
         return approval
 
     async def record_grounding(
-        self, document_id: str, memory_id: str,
+        self,
+        document_id: str,
+        memory_id: str,
         retrieval_score: float | None = None,
         entity_query: str | None = None,
         domain: str | None = None,
         review_score_id: str | None = None,
     ) -> GroundingLogEntry:
         entry = GroundingLogEntry(
-            document_id=document_id, memory_id=memory_id,
-            retrieval_score=retrieval_score, entity_query=entity_query,
-            domain=domain, review_score_id=review_score_id,
+            document_id=document_id,
+            memory_id=memory_id,
+            retrieval_score=retrieval_score,
+            entity_query=entity_query,
+            domain=domain,
+            review_score_id=review_score_id,
         )
         await self._store.save_grounding_entry(entry)
         return entry
 
     async def record_llm_call(
-        self, project_id: str | None, agent: str, node: str,
-        prompt_size: int | None = None, response_size: int | None = None,
-        reasoning_size: int = 0, model: str | None = None,
-        thinking_enabled: bool = False, duration_ms: int | None = None,
-        trace_id: str | None = None, prompt_hash: str | None = None,
+        self,
+        project_id: str | None,
+        agent: str,
+        node: str,
+        prompt_size: int | None = None,
+        response_size: int | None = None,
+        reasoning_size: int = 0,
+        model: str | None = None,
+        thinking_enabled: bool = False,
+        duration_ms: int | None = None,
+        trace_id: str | None = None,
+        prompt_hash: str | None = None,
     ) -> LLMCallRecord:
         record = LLMCallRecord(
-            project_id=project_id, agent=agent, node=node,
-            prompt_hash=prompt_hash, prompt_size=prompt_size,
-            response_size=response_size, reasoning_size=reasoning_size,
-            model=model, thinking_enabled=thinking_enabled,
-            duration_ms=duration_ms, trace_id=trace_id,
+            project_id=project_id,
+            agent=agent,
+            node=node,
+            prompt_hash=prompt_hash,
+            prompt_size=prompt_size,
+            response_size=response_size,
+            reasoning_size=reasoning_size,
+            model=model,
+            thinking_enabled=thinking_enabled,
+            duration_ms=duration_ms,
+            trace_id=trace_id,
         )
         await self._store.save_llm_call(record)
         return record
 
     async def record_config_snapshot(
-        self, project_id: str | None, agent: str,
-        config_hash: str | None = None, prompt_version: str | None = None,
-        model_name: str | None = None, thinking_enabled: bool = False,
+        self,
+        project_id: str | None,
+        agent: str,
+        config_hash: str | None = None,
+        prompt_version: str | None = None,
+        model_name: str | None = None,
+        thinking_enabled: bool = False,
         max_tokens: int | None = None,
     ) -> AgentConfigSnapshot:
         snapshot = AgentConfigSnapshot(
-            project_id=project_id, agent=agent,
-            config_hash=config_hash, prompt_version=prompt_version,
-            model_name=model_name, thinking_enabled=thinking_enabled,
+            project_id=project_id,
+            agent=agent,
+            config_hash=config_hash,
+            prompt_version=prompt_version,
+            model_name=model_name,
+            thinking_enabled=thinking_enabled,
             max_tokens=max_tokens,
         )
         await self._store.save_config_snapshot(snapshot)
         return snapshot
 
     async def record_bus_conversation(
-        self, project_id: str | None, ask_id: str,
-        from_agent: str, to_agent: str | None = None,
+        self,
+        project_id: str | None,
+        ask_id: str,
+        from_agent: str,
+        to_agent: str | None = None,
         question_preview: str | None = None,
         answer_preview: str | None = None,
         confidence: float | None = None,
         duration_ms: int | None = None,
     ) -> BusConversation:
         convo = BusConversation(
-            project_id=project_id, ask_id=ask_id,
-            from_agent=from_agent, to_agent=to_agent,
+            project_id=project_id,
+            ask_id=ask_id,
+            from_agent=from_agent,
+            to_agent=to_agent,
             question_preview=question_preview,
             answer_preview=answer_preview,
-            confidence=confidence, duration_ms=duration_ms,
+            confidence=confidence,
+            duration_ms=duration_ms,
         )
         await self._store.save_bus_conversation(convo)
         return convo
@@ -626,7 +730,7 @@ class DocumentService:
                     "event_subtype": e.event_subtype,
                     "timestamp": (
                         e.timestamp.isoformat()
-                        if hasattr(e.timestamp, 'isoformat')
+                        if hasattr(e.timestamp, "isoformat")
                         else e.timestamp
                     ),
                 }
@@ -698,8 +802,10 @@ class DocumentService:
         rows = await cursor.fetchall()
         return [
             {
-                "timestamp": r[0], "type": r[1],
-                "agent": r[2] or "", "detail": r[3] or "",
+                "timestamp": r[0],
+                "type": r[1],
+                "agent": r[2] or "",
+                "detail": r[3] or "",
                 "extra": r[4] or "",
             }
             for r in rows
@@ -709,8 +815,10 @@ class DocumentService:
         """Verify hash chain integrity for all audit tables in a project."""
         results = {}
         audit_tables = [
-            "pipeline_events", "approval_decisions",
-            "guardrail_violations", "llm_calls",
+            "pipeline_events",
+            "approval_decisions",
+            "guardrail_violations",
+            "llm_calls",
             "bus_conversations",
         ]
         for table in audit_tables:
@@ -729,6 +837,7 @@ class DocumentService:
         if not doc:
             return {"verified": False, "error": "document not found"}
         import hashlib
+
         computed = hashlib.sha256(doc.content.encode()).hexdigest()
         stored = doc.content_hash
         return {
@@ -769,8 +878,10 @@ class DocumentService:
             )
             violations = [
                 {
-                    "policy_type": r[0], "rule": r[1],
-                    "message": r[2], "escalation": r[3],
+                    "policy_type": r[0],
+                    "rule": r[1],
+                    "message": r[2],
+                    "escalation": r[3],
                     "timestamp": r[4],
                 }
                 for r in await cursor.fetchall()
@@ -785,20 +896,32 @@ class DocumentService:
                 (doc.project_id, doc.from_agent),
             )
             llm_calls = [
-                {"agent": r[0], "node": r[1], "prompt_size": r[2], "response_size": r[3],
-                 "duration_ms": r[4], "model": r[5], "timestamp": r[6]}
+                {
+                    "agent": r[0],
+                    "node": r[1],
+                    "prompt_size": r[2],
+                    "response_size": r[3],
+                    "duration_ms": r[4],
+                    "model": r[5],
+                    "timestamp": r[6],
+                }
                 for r in await cursor.fetchall()
             ]
 
         # Content integrity
         import hashlib
+
         computed_hash = hashlib.sha256(doc.content.encode()).hexdigest()
 
         return {
             "document": {
-                "id": doc.id, "title": doc.title, "doc_type": doc.doc_type,
-                "from_agent": doc.from_agent, "version": doc.version,
-                "size_bytes": doc.size_bytes, "content_hash": doc.content_hash,
+                "id": doc.id,
+                "title": doc.title,
+                "doc_type": doc.doc_type,
+                "from_agent": doc.from_agent,
+                "version": doc.version,
+                "size_bytes": doc.size_bytes,
+                "content_hash": doc.content_hash,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
             },
             "lineage": lineage,
@@ -875,23 +998,28 @@ class DocumentService:
             "breakdown": {
                 "review_average": {
                     "score": round(review_avg, 1),
-                    "weight": 0.40, "count": len(score_values),
+                    "weight": 0.40,
+                    "count": len(score_values),
                 },
                 "violations": {
                     "score": round(violation_score, 1),
-                    "weight": 0.20, "count": len(violations),
+                    "weight": 0.20,
+                    "count": len(violations),
                 },
                 "grounding": {
                     "score": round(grounding_score, 1),
-                    "weight": 0.15, "citations": grounding_count,
+                    "weight": 0.15,
+                    "citations": grounding_count,
                 },
                 "approval_gate": {
                     "score": round(approval_score, 1),
-                    "weight": 0.15, "denied": denied,
+                    "weight": 0.15,
+                    "denied": denied,
                 },
                 "completeness": {
                     "score": round(completeness, 1),
-                    "weight": 0.10, "types": list(present_types),
+                    "weight": 0.10,
+                    "types": list(present_types),
                 },
             },
         }
@@ -953,16 +1081,18 @@ class DocumentService:
         md.append(f"**Quality Score:** {project.quality_score or 'N/A'}%")
         md.append(f"**Created:** {project.created_at}")
 
-        md.extend(self._render_compliance_section(compliance))
-        md.extend(self._render_integrity_section(integrity))
-        md.extend(self._render_document_inventory(docs))
-        md.extend(self._render_traceability_section(all_links))
-        md.extend(self._render_review_history(scores))
-        md.extend(self._render_guardrail_findings(violations))
-        md.extend(self._render_agent_configs(configs))
-        md.extend(self._render_llm_call_log(llm_calls))
-        md.extend(self._render_research_methodology(timeline, docs))
-        md.extend(self._render_audit_timeline(timeline))
+        from ncms.application import audit_report as _ar
+
+        md.extend(_ar.render_compliance_section(compliance))
+        md.extend(_ar.render_integrity_section(integrity))
+        md.extend(_ar.render_document_inventory(docs))
+        md.extend(_ar.render_traceability_section(all_links))
+        md.extend(_ar.render_review_history(scores))
+        md.extend(_ar.render_guardrail_findings(violations))
+        md.extend(_ar.render_agent_configs(configs))
+        md.extend(_ar.render_llm_call_log(llm_calls))
+        md.extend(_ar.render_research_methodology(timeline, docs))
+        md.extend(_ar.render_audit_timeline(timeline))
 
         report_content = "\n".join(md)
         report_hash = _hashlib.sha256(report_content.encode()).hexdigest()
@@ -970,191 +1100,3 @@ class DocumentService:
         md.append(f"*Generated by NCMS Document Intelligence at {now}*")
 
         return "\n".join(md)
-
-    # ── Audit report section renderers ────────────────────────────────
-
-    @staticmethod
-    def _render_compliance_section(compliance: dict) -> list[str]:
-        md = ["\n---\n\n## Compliance Score"]
-        md.append(f"\n**Composite:** {compliance['composite_score']}%\n")
-        md.append("| Signal | Score | Weight |")
-        md.append("|--------|-------|--------|")
-        for key, val in compliance["breakdown"].items():
-            md.append(f"| {key} | {val['score']}% | {val['weight']*100:.0f}% |")
-        return md
-
-    @staticmethod
-    def _render_integrity_section(integrity: dict) -> list[str]:
-        verified_str = "Yes" if integrity["verified"] else "NO \u2014 CHAIN BROKEN"
-        md = ["\n---\n\n## Integrity Verification"]
-        md.append(f"\n**Hash Chain Verified:** {verified_str}")
-        md.append(f"**Records Checked:** {integrity['records_checked']}")
-        for table, result in integrity["tables"].items():
-            status = "OK" if result["verified"] else f"BROKEN at row {result['break_at']}"
-            md.append(f"- {table}: {status} ({result['records_checked']} records)")
-        return md
-
-    @staticmethod
-    def _render_document_inventory(docs: list) -> list[str]:
-        md = ["\n---\n\n## Document Inventory"]
-        md.append("\n| Doc Type | Title | Agent | Version | Size | Content Hash |")
-        md.append("|----------|-------|-------|---------|------|-------------|")
-        for d in docs:
-            h = d.content_hash[:12] if d.content_hash else "N/A"
-            md.append(
-                f"| {d.doc_type} | {d.title[:50]} | {d.from_agent}"
-                f" | v{d.version} | {d.size_bytes:,} bytes | `{h}` |"
-            )
-        return md
-
-    @staticmethod
-    def _render_traceability_section(all_links: list) -> list[str]:
-        md = ["\n---\n\n## Traceability Chain"]
-        if all_links:
-            md.append("\n| Source | Target | Link Type |")
-            md.append("|--------|--------|-----------|")
-            for link in all_links:
-                md.append(
-                    f"| {link.source_doc_id[:12]}"
-                    f" | {link.target_doc_id[:12]}"
-                    f" | {link.link_type} |"
-                )
-        else:
-            md.append("\nNo document links found.")
-        return md
-
-    @staticmethod
-    def _render_review_history(scores: list) -> list[str]:
-        md = ["\n---\n\n## Review History"]
-        if scores:
-            md.append("\n| Reviewer | Round | Score | Severity |")
-            md.append("|----------|-------|-------|----------|")
-            for s in scores:
-                md.append(
-                    f"| {s.reviewer_agent} | {s.review_round}"
-                    f" | {s.score}% | {s.severity or 'N/A'} |"
-                )
-        else:
-            md.append("\nNo review scores recorded.")
-        return md
-
-    @staticmethod
-    def _render_guardrail_findings(violations: list) -> list[str]:
-        md = ["\n---\n\n## Guardrail Findings"]
-        if violations:
-            md.append("\n| Escalation | Policy | Rule | Message | Time |")
-            md.append("|-----------|--------|------|---------|------|")
-            for v in violations:
-                md.append(f"| {v[3]} | {v[0]} | {v[1]} | {(v[2] or '')[:60]} | {v[4]} |")
-        else:
-            md.append("\nNo guardrail violations.")
-        return md
-
-    @staticmethod
-    def _render_agent_configs(configs: list) -> list[str]:
-        md = ["\n---\n\n## Agent Configurations at Pipeline Start"]
-        if configs:
-            md.append("\n| Agent | Model | Thinking | Max Tokens | Time |")
-            md.append("|-------|-------|----------|-----------|------|")
-            for c in configs:
-                thinking = "ON" if c[2] else "OFF"
-                md.append(
-                    f"| {c[0]} | {(c[1] or '?')[:30]}"
-                    f" | {thinking} | {c[3] or '?'} | {c[4]} |"
-                )
-        else:
-            md.append("\nNo config snapshots recorded.")
-        return md
-
-    @staticmethod
-    def _render_llm_call_log(llm_calls: list) -> list[str]:
-        md = ["\n---\n\n## LLM Call Log"]
-        if llm_calls:
-            md.append("\n| Agent | Node | Prompt | Response | Duration | Model |")
-            md.append("|-------|------|--------|----------|----------|-------|")
-            for c in llm_calls:
-                md.append(
-                    f"| {c[0]} | {c[1]} | {c[2]:,} chars"
-                    f" | {c[3]:,} chars | {c[4]:,}ms"
-                    f" | {(c[5] or '?')[:25]} |"
-                )
-        else:
-            md.append("\nNo LLM calls recorded.")
-        return md
-
-    @staticmethod
-    def _render_research_methodology(timeline: list, docs: list) -> list[str]:
-        research_events = [e for e in timeline if e["type"] == "research" and e["extra"]]
-        research_doc_meta = DocumentService._extract_research_doc_meta(docs)
-
-        if not research_events and not research_doc_meta:
-            return []
-
-        md = ["\n---\n\n## Research Methodology"]
-        for evt in research_events:
-            md.extend(DocumentService._render_research_event(evt))
-
-        if research_doc_meta:
-            md.extend(DocumentService._render_embedded_methodology(research_doc_meta))
-        return md
-
-    @staticmethod
-    def _extract_research_doc_meta(docs: list) -> dict | None:
-        import json as _json
-
-        for d in docs:
-            if d.doc_type == "research" and d.metadata:
-                _m = d.metadata if isinstance(d.metadata, dict) else _json.loads(d.metadata or "{}")
-                if "research_methodology" in _m:
-                    return _m["research_methodology"]
-        return None
-
-    @staticmethod
-    def _render_research_event(evt: dict) -> list[str]:
-        import json as _json
-
-        md: list[str] = []
-        try:
-            data = _json.loads(evt["extra"])
-            if data.get("type") == "research_plan":
-                md.append(f"\n### Query Plan ({evt['timestamp']})")
-                for engine in ("web", "arxiv", "patent", "community"):
-                    queries = data.get(engine, [])
-                    if queries:
-                        md.append(f"\n**{engine.title()}** ({len(queries)} queries):")
-                        for q in queries:
-                            md.append(f"- {q}")
-            elif data.get("type") == "research_results":
-                engine = data.get("engine", "?")
-                count = data.get("result_count", 0)
-                top = data.get("top_results", [])
-                ts = evt["timestamp"]
-                md.append(f"\n### {engine.title()} Results: {count} items ({ts})")
-                for t in top[:3]:
-                    md.append(f"- {t.get('title', '?')}")
-        except (_json.JSONDecodeError, KeyError):
-            pass
-        return md
-
-    @staticmethod
-    def _render_embedded_methodology(research_doc_meta: dict) -> list[str]:
-        md = ["\n### Embedded Methodology (from research document)"]
-        plan = research_doc_meta.get("query_plan", {})
-        summary = research_doc_meta.get("results_summary", {})
-        for engine in ("web", "arxiv", "patent", "community"):
-            queries = plan.get(engine, [])
-            count = summary.get(engine, 0)
-            if isinstance(count, dict):
-                count = count.get("count", 0)
-            md.append(f"- **{engine.title()}**: {len(queries)} queries, {count} results")
-        return md
-
-    @staticmethod
-    def _render_audit_timeline(timeline: list) -> list[str]:
-        md = ["\n---\n\n## Audit Timeline (last 50 events)"]
-        md.append("\n| Time | Type | Agent | Detail |")
-        md.append("|------|------|-------|--------|")
-        for evt in timeline[-50:]:
-            detail = (evt["detail"] or "")[:80]
-            md.append(f"| {evt['timestamp']} | {evt['type']} | {evt['agent']} | {detail} |")
-        return md

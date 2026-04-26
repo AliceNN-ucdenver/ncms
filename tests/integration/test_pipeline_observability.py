@@ -28,7 +28,10 @@ async def pipeline_env():
     graph = NetworkXGraph()
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
         event_log=log,
     )
 
@@ -39,10 +42,7 @@ async def pipeline_env():
 
 def _pipeline_events(log: EventLog, pipeline_type: str) -> list:
     """Extract pipeline events of a specific type from the event log."""
-    return [
-        e for e in log.recent(200)
-        if e.type.startswith(f"pipeline.{pipeline_type}.")
-    ]
+    return [e for e in log.recent(200) if e.type.startswith(f"pipeline.{pipeline_type}.")]
 
 
 def _stages(events: list) -> list[str]:
@@ -145,10 +145,7 @@ class TestSearchPipelineObservability:
         await svc.search("Flask API")
 
         all_events = log.recent(200)
-        search_events = [
-            e for e in all_events
-            if e.type.startswith("pipeline.search.")
-        ]
+        search_events = [e for e in all_events if e.type.startswith("pipeline.search.")]
         stages = _stages(search_events)
 
         assert "start" in stages
@@ -169,10 +166,7 @@ class TestSearchPipelineObservability:
 
         await svc.search("web framework")
 
-        search_events = [
-            e for e in log.recent(200)
-            if e.type.startswith("pipeline.search.")
-        ]
+        search_events = [e for e in log.recent(200) if e.type.startswith("pipeline.search.")]
         bm25 = [e for e in search_events if e.data["stage"] == "bm25"]
         assert len(bm25) == 1
         assert bm25[0].data["candidate_count"] >= 1
@@ -184,10 +178,7 @@ class TestSearchPipelineObservability:
 
         await svc.search("JWT auth")
 
-        search_events = [
-            e for e in log.recent(200)
-            if e.type.startswith("pipeline.search.")
-        ]
+        search_events = [e for e in log.recent(200) if e.type.startswith("pipeline.search.")]
         actr = [e for e in search_events if e.data["stage"] == "actr_scoring"]
         assert len(actr) == 1
         data = actr[0].data
@@ -204,10 +195,7 @@ class TestSearchPipelineObservability:
 
         await svc.search("PostgreSQL")
 
-        search_pipeline = [
-            e for e in log.recent(200)
-            if e.type.startswith("pipeline.search.")
-        ]
+        search_pipeline = [e for e in log.recent(200) if e.type.startswith("pipeline.search.")]
         memory_searched = [e for e in log.recent(200) if e.type == "memory.searched"]
 
         assert len(search_pipeline) >= 4  # start + bm25 + entity + actr + complete
@@ -236,14 +224,10 @@ class TestPipelineCorrelation:
         await svc.search("Redis")
 
         store_ids = {
-            e.data["pipeline_id"]
-            for e in log.recent(200)
-            if e.type.startswith("pipeline.store.")
+            e.data["pipeline_id"] for e in log.recent(200) if e.type.startswith("pipeline.store.")
         }
         search_ids = {
-            e.data["pipeline_id"]
-            for e in log.recent(200)
-            if e.type.startswith("pipeline.search.")
+            e.data["pipeline_id"] for e in log.recent(200) if e.type.startswith("pipeline.search.")
         }
 
         # Store and search should use completely different pipeline_ids

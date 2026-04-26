@@ -77,7 +77,10 @@ async def _handle_event(
         from ncms.application.admission_service import AdmissionService
 
         admission = AdmissionService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
         )
 
     reconciliation = None
@@ -91,13 +94,21 @@ async def _handle_event(
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
-            store=store, index=index, config=config, splade=splade,
+            store=store,
+            index=index,
+            config=config,
+            splade=splade,
         )
 
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
     )
     await GraphService(store=store, graph=graph).rebuild_from_store()
 

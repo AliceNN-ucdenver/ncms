@@ -25,7 +25,6 @@ from ncms.application.adapters.sdg.catalog.primitives import CatalogEntry
 from ncms.application.adapters.sdg.v9 import sanity_check
 from ncms.application.adapters.sdg.v9.archetypes import ArchetypeSpec, RoleSpec
 
-
 # ---------------------------------------------------------------------------
 # Test fixtures
 # ---------------------------------------------------------------------------
@@ -39,9 +38,7 @@ def _minimal_spec(tmp_path: Path) -> DomainSpec:
         intent="positive",
         admission="persist",
         state_change="declaration",
-        role_spans=(
-            RoleSpec(role="primary", slot="medication", count=1),
-        ),
+        role_spans=(RoleSpec(role="primary", slot="medication", count=1),),
         target_min_chars=20,
         target_max_chars=120,
         description="test archetype",
@@ -116,6 +113,7 @@ def _row(**overrides) -> dict:
     the loader reads ``role_spans=[]``.
     """
     import copy
+
     r = copy.deepcopy(_VALID_ROW)
     for k, v in overrides.items():
         if v is None and k in ("admission", "state_change", "topic"):
@@ -159,21 +157,21 @@ class TestSanityCheckHappyPath:
 
 
 class TestLabelInvariants:
-    def test_I2_admission_none_detected(self, tmp_path):
+    def test_i2_admission_none_detected(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(admission=None)])
         report = sanity_check(path, spec)
         assert report.failure_counts["I2_admission_none"] == 1
 
-    def test_I3_state_change_none_detected(self, tmp_path):
+    def test_i3_state_change_none_detected(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(state_change=None)])
         report = sanity_check(path, spec)
         assert report.failure_counts["I3_state_change_none"] == 1
 
-    def test_I4_topic_none_detected(self, tmp_path):
+    def test_i4_topic_none_detected(self, tmp_path):
         """Regression guard for the B'.4 bug where every row carried
         topic=None.  Most important single invariant — training cannot
         teach the topic head without labels."""
@@ -183,7 +181,7 @@ class TestLabelInvariants:
         report = sanity_check(path, spec)
         assert report.failure_counts["I4_topic_none"] == 1
 
-    def test_I4_topic_unknown_detected(self, tmp_path):
+    def test_i4_topic_unknown_detected(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(topic="not_in_vocab")])
@@ -197,69 +195,112 @@ class TestLabelInvariants:
 
 
 class TestRoleSpanInvariants:
-    def test_R1_role_spans_empty(self, tmp_path):
+    def test_r1_role_spans_empty(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(role_spans=[])])
         report = sanity_check(path, spec)
         assert report.failure_counts["R1_role_spans_empty"] == 1
 
-    def test_R2_role_span_mismatch_wrong_count(self, tmp_path):
+    def test_r2_role_span_mismatch_wrong_count(self, tmp_path):
         """Archetype asks for 1 primary medication, row has 2."""
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         span = {
-            "char_start": 0, "char_end": 9, "surface": "metformin",
-            "canonical": "metformin", "slot": "medication",
-            "role": "primary", "source": "sdg-v9",
+            "char_start": 0,
+            "char_end": 9,
+            "surface": "metformin",
+            "canonical": "metformin",
+            "slot": "medication",
+            "role": "primary",
+            "source": "sdg-v9",
         }
         _write_rows(path, [_row(role_spans=[span, dict(span, char_start=10, char_end=22)])])
         report = sanity_check(path, spec)
         assert report.failure_counts["R2_role_span_mismatch"] == 1
 
-    def test_R2_role_span_mismatch_wrong_role(self, tmp_path):
+    def test_r2_role_span_mismatch_wrong_role(self, tmp_path):
         """Archetype asks for primary, row has alternative."""
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
-        _write_rows(path, [_row(role_spans=[{
-            "char_start": 8, "char_end": 17, "surface": "metformin",
-            "canonical": "metformin", "slot": "medication",
-            "role": "alternative", "source": "sdg-v9",
-        }])])
+        _write_rows(
+            path,
+            [
+                _row(
+                    role_spans=[
+                        {
+                            "char_start": 8,
+                            "char_end": 17,
+                            "surface": "metformin",
+                            "canonical": "metformin",
+                            "slot": "medication",
+                            "role": "alternative",
+                            "source": "sdg-v9",
+                        }
+                    ]
+                )
+            ],
+        )
         report = sanity_check(path, spec)
         assert report.failure_counts["R2_role_span_mismatch"] == 1
 
-    def test_R2_not_relevant_spans_ignored(self, tmp_path):
+    def test_r2_not_relevant_spans_ignored(self, tmp_path):
         """not_relevant spans don't count toward the archetype target."""
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
-        _write_rows(path, [_row(role_spans=[
-            {
-                "char_start": 8, "char_end": 17, "surface": "metformin",
-                "canonical": "metformin", "slot": "medication",
-                "role": "primary", "source": "sdg-v9",
-            },
-            {
-                "char_start": 20, "char_end": 29, "surface": "lisinopril",
-                "canonical": "lisinopril", "slot": "medication",
-                "role": "not_relevant", "source": "sdg-v9",
-            },
-        ])])
+        _write_rows(
+            path,
+            [
+                _row(
+                    role_spans=[
+                        {
+                            "char_start": 8,
+                            "char_end": 17,
+                            "surface": "metformin",
+                            "canonical": "metformin",
+                            "slot": "medication",
+                            "role": "primary",
+                            "source": "sdg-v9",
+                        },
+                        {
+                            "char_start": 20,
+                            "char_end": 29,
+                            "surface": "lisinopril",
+                            "canonical": "lisinopril",
+                            "slot": "medication",
+                            "role": "not_relevant",
+                            "source": "sdg-v9",
+                        },
+                    ]
+                )
+            ],
+        )
         report = sanity_check(path, spec)
         assert "R2_role_span_mismatch" not in report.failure_counts
 
-    def test_R3_surface_not_in_text(self, tmp_path):
+    def test_r3_surface_not_in_text(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
-        _write_rows(path, [_row(
-            text="Patient reports moderate back pain this morning.",
-            role_spans=[{
-                "char_start": 0, "char_end": 9, "surface": "metformin",
-                "canonical": "metformin", "slot": "medication",
-                "role": "primary", "source": "sdg-v9",
-            }],
-            slots={"medication": "metformin"},
-        )])
+        _write_rows(
+            path,
+            [
+                _row(
+                    text="Patient reports moderate back pain this morning.",
+                    role_spans=[
+                        {
+                            "char_start": 0,
+                            "char_end": 9,
+                            "surface": "metformin",
+                            "canonical": "metformin",
+                            "slot": "medication",
+                            "role": "primary",
+                            "source": "sdg-v9",
+                        }
+                    ],
+                    slots={"medication": "metformin"},
+                )
+            ],
+        )
         report = sanity_check(path, spec)
         assert report.failure_counts["R3_surface_missing_from_text"] == 1
 
@@ -270,28 +311,28 @@ class TestRoleSpanInvariants:
 
 
 class TestTextInvariants:
-    def test_T1_empty_text(self, tmp_path):
+    def test_t1_empty_text(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(text="   ")])
         report = sanity_check(path, spec)
         assert report.failure_counts["T1_text_empty"] == 1
 
-    def test_T2_placeholder_leak(self, tmp_path):
+    def test_t2_placeholder_leak(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(text="Started metformin for {condition}.")])
         report = sanity_check(path, spec)
         assert report.failure_counts["T2_placeholder_leak"] == 1
 
-    def test_T3_too_short(self, tmp_path):
+    def test_t3_too_short(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(text="metformin.")])  # 10 chars < 20
         report = sanity_check(path, spec)
         assert report.failure_counts["T3_too_short"] == 1
 
-    def test_T3_too_long(self, tmp_path):
+    def test_t3_too_long(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
         _write_rows(path, [_row(text="Started metformin. " * 20)])
@@ -305,12 +346,17 @@ class TestTextInvariants:
 
 
 class TestUnknownArchetype:
-    def test_P0_unknown_archetype_flagged(self, tmp_path):
+    def test_p0_unknown_archetype_flagged(self, tmp_path):
         spec = _minimal_spec(tmp_path)
         path = tmp_path / "c.jsonl"
-        _write_rows(path, [_row(
-            source="sdg-v9 archetype=definitely_not_a_real_arch seed=1",
-        )])
+        _write_rows(
+            path,
+            [
+                _row(
+                    source="sdg-v9 archetype=definitely_not_a_real_arch seed=1",
+                )
+            ],
+        )
         report = sanity_check(path, spec)
         assert report.failure_counts["P0_unknown_archetype"] == 1
 

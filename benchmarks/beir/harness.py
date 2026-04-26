@@ -78,7 +78,11 @@ async def ingest_corpus(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
     )
     await svc.start_index_pool()
 
@@ -88,7 +92,8 @@ async def ingest_corpus(
     sem = asyncio.Semaphore(3)  # Max 3 concurrent store_memory calls
 
     async def _ingest_one(
-        doc_id: str, doc: dict[str, str],
+        doc_id: str,
+        doc: dict[str, str],
     ) -> tuple[str, str] | None:
         title = doc.get("title", "")
         text = doc.get("text", "")
@@ -129,17 +134,23 @@ async def ingest_corpus(
         eta = (total - completed) / rate if rate > 0 else 0
         logger.info(
             "  Ingested %d/%d docs (%.1f docs/sec, ETA %.0fs)",
-            completed, total, rate, eta,
+            completed,
+            total,
+            rate,
+            eta,
         )
 
     elapsed = time.perf_counter() - t0
     logger.info(
         "Ingestion complete: %d docs in %.1fs (%.1f docs/sec)",
-        len(doc_to_mem), elapsed, len(doc_to_mem) / elapsed if elapsed > 0 else 0,
+        len(doc_to_mem),
+        elapsed,
+        len(doc_to_mem) / elapsed if elapsed > 0 else 0,
     )
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     return store, index, graph, splade, config, doc_to_mem, mem_to_doc
@@ -192,7 +203,11 @@ async def run_config_queries(
     splade = splade_engine if ablation_config.use_splade else None
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
     )
 
     rankings: dict[str, list[str]] = {}
@@ -222,14 +237,19 @@ async def run_config_queries(
             elapsed = now - t0
             rate = (i + 1) / elapsed if elapsed > 0 else 0
             logger.info(
-                "    Queried %d/%d (%.1f q/sec)", i + 1, total, rate,
+                "    Queried %d/%d (%.1f q/sec)",
+                i + 1,
+                total,
+                rate,
             )
             last_log = now
 
     elapsed = time.perf_counter() - t0
     logger.info(
         "  Queries complete: %d queries in %.1fs (%.1f q/sec)",
-        total, elapsed, total / elapsed if elapsed > 0 else 0,
+        total,
+        elapsed,
+        total / elapsed if elapsed > 0 else 0,
     )
 
     return rankings
@@ -268,8 +288,8 @@ async def evaluate_dataset(
 
     # Ingest corpus
     logger.info("Ingesting corpus...")
-    store, index, graph, splade, _config, doc_to_mem, mem_to_doc = (
-        await ingest_corpus(corpus, dataset_name)
+    store, index, graph, splade, _config, doc_to_mem, mem_to_doc = await ingest_corpus(
+        corpus, dataset_name
     )
 
     # Only query queries that have relevance judgments (saves ~70% for SciFact)

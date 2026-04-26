@@ -28,11 +28,13 @@ class TestPageRank:
         graph.add_entity(Entity(id="hub", name="Hub", type="concept"))
         for i in range(3):
             graph.add_entity(Entity(id=f"leaf-{i}", name=f"Leaf{i}", type="concept"))
-            graph.add_relationship(Relationship(
-                source_entity_id=f"leaf-{i}",
-                target_entity_id="hub",
-                type="depends_on",
-            ))
+            graph.add_relationship(
+                Relationship(
+                    source_entity_id=f"leaf-{i}",
+                    target_entity_id="hub",
+                    type="depends_on",
+                )
+            )
 
         result = graph.pagerank()
         # Hub should have higher centrality than leaves

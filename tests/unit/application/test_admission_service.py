@@ -81,9 +81,7 @@ class TestTemporalSalience:
 
     async def test_informal_date_high(self, admission: AdmissionService):
         """Informal date → high temporal salience."""
-        features = await admission.compute_features(
-            "API v2 release scheduled for March 2026"
-        )
+        features = await admission.compute_features("API v2 release scheduled for March 2026")
         assert features.temporal_salience > 0.3
 
     async def test_temporal_markers(self, admission: AdmissionService):
@@ -116,9 +114,7 @@ class TestPersistence:
 
     async def test_default_medium(self, admission: AdmissionService):
         """Normal content → medium persistence."""
-        features = await admission.compute_features(
-            "The user service handles authentication"
-        )
+        features = await admission.compute_features("The user service handles authentication")
         assert 0.30 <= features.persistence <= 0.60
 
 
@@ -132,16 +128,12 @@ class TestStateChangeSignal:
 
     async def test_version_update(self, admission: AdmissionService):
         """Version reference → elevated state_change_signal."""
-        features = await admission.compute_features(
-            "Updated library from v2.1.0 to v3.0.0"
-        )
+        features = await admission.compute_features("Updated library from v2.1.0 to v3.0.0")
         assert features.state_change_signal > 0.2
 
     async def test_no_state_change_low(self, admission: AdmissionService):
         """No state change indicators → low signal."""
-        features = await admission.compute_features(
-            "This is a general description of the system"
-        )
+        features = await admission.compute_features("This is a general description of the system")
         assert features.state_change_signal < 0.15
 
 
@@ -153,9 +145,7 @@ class TestStateChangeSignal:
 class TestFullPipeline:
     async def test_evaluate_returns_tuple(self, admission: AdmissionService):
         """evaluate() returns (features, score, route) tuple."""
-        features, score, route = await admission.evaluate(
-            "Some content", domains=["test"]
-        )
+        features, score, route = await admission.evaluate("Some content", domains=["test"])
         assert isinstance(score, float)
         assert route in {"discard", "ephemeral_cache", "persist"}
         assert features.utility >= 0.0
@@ -163,9 +153,7 @@ class TestFullPipeline:
         assert features.persistence >= 0.0
         assert features.state_change_signal >= 0.0
 
-    async def test_high_quality_content_routes_to_persist(
-        self, admission: AdmissionService
-    ):
+    async def test_high_quality_content_routes_to_persist(self, admission: AdmissionService):
         """High-quality content should pass quality gate (persist).
 
         Scoring uses 4 active features: utility (0.30), persistence (0.25),
@@ -186,9 +174,7 @@ class TestFullPipeline:
         _, score, route = await admission.evaluate("hello world")
         assert route in {"discard", "ephemeral_cache"}
 
-    async def test_state_change_promotes_to_persist(
-        self, admission: AdmissionService
-    ):
+    async def test_state_change_promotes_to_persist(self, admission: AdmissionService):
         """State change signal >= 0.35 promotes to persist regardless of score."""
         _, score, route = await admission.evaluate(
             "Service status changed from healthy to degraded, is now critical"
@@ -197,9 +183,7 @@ class TestFullPipeline:
 
     async def test_all_features_populated(self, admission: AdmissionService):
         """All 4 features should be non-negative."""
-        features = await admission.compute_features(
-            "Content for testing all features"
-        )
+        features = await admission.compute_features("Content for testing all features")
         assert features.utility >= 0.0
         assert features.temporal_salience >= 0.0
         assert features.persistence >= 0.0

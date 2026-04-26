@@ -24,12 +24,16 @@ class TestSuggestEpisodeLinks:
     def _make_summaries(self) -> list[dict[str, str]]:
         return [
             {
-                "id": "ep-1", "topic": "API migration",
-                "entities": "api, users", "domains": "backend",
+                "id": "ep-1",
+                "topic": "API migration",
+                "entities": "api, users",
+                "domains": "backend",
             },
             {
-                "id": "ep-2", "topic": "Auth overhaul",
-                "entities": "auth, tokens", "domains": "security",
+                "id": "ep-2",
+                "topic": "Auth overhaul",
+                "entities": "auth, tokens",
+                "domains": "security",
             },
         ]
 

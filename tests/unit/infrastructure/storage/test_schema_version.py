@@ -36,9 +36,7 @@ class TestSchemaVersion:
         assert SCHEMA_VERSION == 13
 
     async def test_persisted_version_matches(self, store: SQLiteStore) -> None:
-        cursor = await store.db.execute(
-            "SELECT MAX(version) FROM schema_version"
-        )
+        cursor = await store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
         assert row is not None
         assert row[0] == 13
@@ -56,8 +54,7 @@ class TestGraphEdgesRetiresColumn:
 
     async def test_existing_indexes_preserved(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='index' AND tbl_name='graph_edges'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='graph_edges'"
         )
         names = {row[0] for row in await cursor.fetchall()}
         assert "idx_gedges_source" in names
@@ -66,9 +63,7 @@ class TestGraphEdgesRetiresColumn:
 
 
 class TestGrammarShapeCache:
-    async def test_table_exists_with_expected_columns(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_table_exists_with_expected_columns(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute("PRAGMA table_info(grammar_shape_cache)")
         cols = {row[1]: row for row in await cursor.fetchall()}
         assert set(cols.keys()) == {
@@ -87,19 +82,14 @@ class TestGrammarShapeCache:
 
     async def test_hit_count_index_exists(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='index' AND name='idx_gsc_hit_count'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_gsc_hit_count'"
         )
         assert await cursor.fetchone() is not None
 
 
 class TestGrammarTransitionMarkers:
-    async def test_table_exists_with_composite_pk(
-        self, store: SQLiteStore
-    ) -> None:
-        cursor = await store.db.execute(
-            "PRAGMA table_info(grammar_transition_markers)"
-        )
+    async def test_table_exists_with_composite_pk(self, store: SQLiteStore) -> None:
+        cursor = await store.db.execute("PRAGMA table_info(grammar_transition_markers)")
         cols = {row[1]: row for row in await cursor.fetchall()}
         assert set(cols.keys()) == {"transition_type", "marker_head", "count"}
         # Composite PK: both transition_type and marker_head participate
@@ -133,9 +123,7 @@ class TestGraphEdgeRetiresRoundTrip:
         assert loaded[0].retires_entities == ["entity-1", "entity-2", "entity-3"]
         assert loaded[0].edge_type == EdgeType.SUPERSEDES
 
-    async def test_filtering_by_type_preserves_retires(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_filtering_by_type_preserves_retires(self, store: SQLiteStore) -> None:
         supersedes = GraphEdge(
             source_id="src",
             target_id="tgt1",

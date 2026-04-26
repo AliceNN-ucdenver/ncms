@@ -68,4 +68,3 @@ class TestClassifyIntentWithLlm:
         result = await classify_intent_with_llm("test", model="test-model")
         assert result is not None
         assert result.confidence == 0.0
-

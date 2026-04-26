@@ -42,18 +42,36 @@ class TestGlinerExtractor:
             "PostgreSQL is great. We use PostgreSQL for everything. PostgreSQL rocks."
         )
         names_lower = [e["name"].lower() for e in results]
-        assert len(names_lower) == len(set(names_lower)), (
-            f"Duplicate entities found: {names_lower}"
-        )
+        assert len(names_lower) == len(set(names_lower)), f"Duplicate entities found: {names_lower}"
 
     def test_max_entities_cap(self):
         """Should never return more than MAX_ENTITIES."""
         techs = [
-            "PostgreSQL", "Redis", "Kafka", "Docker", "Kubernetes",
-            "React", "Angular", "Vue", "Django", "Flask",
-            "FastAPI", "Express", "MongoDB", "Elasticsearch", "Cassandra",
-            "RabbitMQ", "NATS", "Celery", "NGINX", "Apache",
-            "Terraform", "Ansible", "Jenkins", "GitLab", "Prometheus",
+            "PostgreSQL",
+            "Redis",
+            "Kafka",
+            "Docker",
+            "Kubernetes",
+            "React",
+            "Angular",
+            "Vue",
+            "Django",
+            "Flask",
+            "FastAPI",
+            "Express",
+            "MongoDB",
+            "Elasticsearch",
+            "Cassandra",
+            "RabbitMQ",
+            "NATS",
+            "Celery",
+            "NGINX",
+            "Apache",
+            "Terraform",
+            "Ansible",
+            "Jenkins",
+            "GitLab",
+            "Prometheus",
         ]
         text = "Our stack uses " + ", ".join(techs) + " for various purposes."
         results = extract_entities_gliner(text)

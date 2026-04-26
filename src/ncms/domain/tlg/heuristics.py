@@ -52,12 +52,12 @@ from typing import Literal
 #: by a specific subgrammar; the ``kind`` field is what
 #: ``rank_trajectories`` keys the per-intent weight lookup by.
 TrajectoryKind = Literal[
-    "refines_chain",      # G_tr,s linear refinement
-    "supersedes_chain",   # G_tr,s linear supersession
-    "retirement_arc",     # G_tr,s terminates in retires(M)
-    "causal_chain",       # G_tr,c chain of caused_by edges
-    "enables_arc",        # G_tr,c terminates in enables(M)
-    "mixed",              # G_tr,m composed causal + state-evolution
+    "refines_chain",  # G_tr,s linear refinement
+    "supersedes_chain",  # G_tr,s linear supersession
+    "retirement_arc",  # G_tr,s terminates in retires(M)
+    "causal_chain",  # G_tr,c chain of caused_by edges
+    "enables_arc",  # G_tr,c terminates in enables(M)
+    "mixed",  # G_tr,m composed causal + state-evolution
 ]
 
 
@@ -289,8 +289,10 @@ HEURISTIC_FUNCS = {
 
 
 def score_trajectory(
-    t: Trajectory, ctx: HeuristicContext,
-    *, heuristics: list[str] | None = None,
+    t: Trajectory,
+    ctx: HeuristicContext,
+    *,
+    heuristics: list[str] | None = None,
 ) -> Trajectory:
     """Compute the named heuristics on ``t`` and return a NEW
     :class:`Trajectory` with ``heuristic_scores`` populated.
@@ -311,6 +313,7 @@ def score_trajectory(
         new_scores[h_name] = float(fn(t, ctx))
     # Dataclass is frozen; make a copy with updated scores.
     from dataclasses import replace
+
     return replace(t, heuristic_scores=new_scores)
 
 
@@ -335,8 +338,7 @@ def rank_trajectories(
 
     def weighted_score(t: Trajectory) -> float:
         return sum(
-            weights.get(h_name, 0.0) * t.heuristic_scores.get(h_name, 0.0)
-            for h_name in weights
+            weights.get(h_name, 0.0) * t.heuristic_scores.get(h_name, 0.0) for h_name in weights
         )
 
     # Sort primarily by weighted score (desc), secondarily by the
@@ -378,85 +380,85 @@ DEFAULT_WEIGHTS: dict[str, dict[str, float]] = {
     # Causal axis
     "cause_of": {
         "h_explanatory": 0.5,
-        "h_parsimony":   0.3,
-        "h_robustness":  0.2,
+        "h_parsimony": 0.3,
+        "h_robustness": 0.2,
     },
     "chain_cause_of": {
         "h_explanatory": 0.6,
-        "h_parsimony":   0.4,
+        "h_parsimony": 0.4,
     },
     "contributing_factor": {
         "h_explanatory": 0.5,
-        "h_robustness":  0.5,
+        "h_robustness": 0.5,
     },
     "effect_of": {
         "h_explanatory": 0.6,
-        "h_parsimony":   0.4,
+        "h_parsimony": 0.4,
     },
     "trigger_of": {
-        "h_parsimony":   0.6,
-        "h_robustness":  0.4,
+        "h_parsimony": 0.6,
+        "h_robustness": 0.4,
     },
     # Temporal axis
     "before_named": {
-        "h_parsimony":   0.7,
-        "h_robustness":  0.3,
+        "h_parsimony": 0.7,
+        "h_robustness": 0.3,
         # NOTE: no h_recency — older = better for "before"
     },
     "after_named": {
-        "h_parsimony":   0.6,
-        "h_recency":     0.4,
+        "h_parsimony": 0.6,
+        "h_recency": 0.4,
     },
     "during_interval": {
-        "h_recency":     0.7,
-        "h_parsimony":   0.3,
+        "h_recency": 0.7,
+        "h_parsimony": 0.3,
     },
     "concurrent_with": {
-        "h_recency":     0.5,
-        "h_parsimony":   0.5,
+        "h_recency": 0.5,
+        "h_parsimony": 0.5,
     },
     "between": {
-        "h_parsimony":   0.6,
-        "h_robustness":  0.4,
+        "h_parsimony": 0.6,
+        "h_robustness": 0.4,
     },
     "state_at": {
-        "h_robustness":  0.6,
-        "h_recency":     0.4,
+        "h_robustness": 0.6,
+        "h_recency": 0.4,
     },
     # Ordinal axis
     "first": {
-        "h_parsimony":   0.8,
-        "h_robustness":  0.2,
+        "h_parsimony": 0.8,
+        "h_robustness": 0.2,
         # NOTE: no h_recency — first is OLDEST
     },
     "last": {
-        "h_recency":     0.7,
-        "h_parsimony":   0.3,
+        "h_recency": 0.7,
+        "h_parsimony": 0.3,
     },
     "nth": {
-        "h_parsimony":   1.0,
+        "h_parsimony": 1.0,
     },
     # Modal axis — counterfactual dominates
     "would_be_current_if": {
         "h_counterfactual_dist": 0.7,
-        "h_parsimony":           0.3,
+        "h_parsimony": 0.3,
     },
     "could_have_been": {
         "h_counterfactual_dist": 0.6,
-        "h_explanatory":         0.4,
+        "h_explanatory": 0.4,
     },
     # State axis
     "current": {
-        "h_recency":     0.8,
-        "h_robustness":  0.2,
+        "h_recency": 0.8,
+        "h_robustness": 0.2,
     },
     "retired": {
-        "h_parsimony":   0.6,
-        "h_robustness":  0.4,
+        "h_parsimony": 0.6,
+        "h_robustness": 0.4,
     },
     "declared": {
-        "h_parsimony":   0.6,
-        "h_robustness":  0.4,
+        "h_parsimony": 0.6,
+        "h_robustness": 0.4,
     },
 }
 
@@ -468,10 +470,13 @@ def weights_for_relation(relation: str) -> dict[str, float]:
     isn't in the registered defaults — ensures every walker has
     SOMETHING to rank with, even for relations we haven't tuned yet.
     """
-    return DEFAULT_WEIGHTS.get(relation, {
-        "h_explanatory": 0.5,
-        "h_parsimony":   0.5,
-    })
+    return DEFAULT_WEIGHTS.get(
+        relation,
+        {
+            "h_explanatory": 0.5,
+            "h_parsimony": 0.5,
+        },
+    )
 
 
 __all__ = [

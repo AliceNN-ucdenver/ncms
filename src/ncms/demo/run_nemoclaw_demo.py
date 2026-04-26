@@ -127,72 +127,42 @@ def _surrogate_label(mode: str) -> str:
 # ── Main Demo ─────────────────────────────────────────────────────────────
 
 
-async def run_nemoclaw_demo() -> None:
-    """Run the NemoClaw multi-agent demo end-to-end."""
-    console.print(Panel(
-        "[bold white]NeMo Cognitive Memory System x NemoClaw[/]\n"
-        "[dim]Multi-Agent Knowledge Bus | Surrogate Responses | Structured Recall[/]\n\n"
-        "This demo shows three domain agents (Code, Ops, Security) collaborating\n"
-        "through the NCMS Knowledge Bus with sleep/wake lifecycle,\n"
-        "surrogate responses, and structured recall with episode context.",
-        title="[bold cyan]NCMS NemoClaw Demo[/]",
-        border_style="cyan",
-        padding=(1, 2),
-    ))
+async def _build_demo_services():
+    """Build all NemoClaw-demo services + return the assembled bundle.
 
-    # ── System Initialization ─────────────────────────────────────────
-    header("System Initialization")
-
-    config = NCMSConfig(
-        db_path=":memory:",
-        actr_noise=0.0,  # Deterministic for demo
-    )
+    Pulled out of :func:`run_nemoclaw_demo` so the orchestrator's
+    complexity reflects the demo flow, not config / import plumbing.
+    """
+    config = NCMSConfig(db_path=":memory:", actr_noise=0.0)
+    # NemoClaw demo enables temporal + episodes inline so the Recall
+    # phase has rich data; not driven by env flags.
+    config.temporal_enabled = True
+    config.episode_create_min_entities = 1
 
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
-
     index = TantivyEngine()
     index.initialize()
-
     graph = NetworkXGraph()
     bus = AsyncKnowledgeBus(ask_timeout_ms=2000)
 
-    # SPLADE sparse neural retrieval (disabled by default)
     splade = None
     if config.splade_enabled:
         from ncms.infrastructure.indexing.splade_engine import SpladeEngine
 
-        splade = SpladeEngine(
-            model_name=config.splade_model,
-            cache_dir=config.model_cache_dir,
-        )
+        splade = SpladeEngine(model_name=config.splade_model, cache_dir=config.model_cache_dir)
 
-    # Admission scoring (Phase 1, disabled by default)
     admission = None
     if config.admission_enabled:
         from ncms.application.admission_service import AdmissionService
 
         admission = AdmissionService(store=store, index=index, graph=graph, config=config)
 
-    # Reconciliation service (Phase 2, disabled by default)
-    reconciliation = None
-    if config.temporal_enabled:
-        from ncms.application.reconciliation_service import ReconciliationService
-
-        reconciliation = ReconciliationService(store=store, config=config)
-
-    # Episode formation (Phase 3) - enable for richer demo
-    config.temporal_enabled = True
-    config.episode_create_min_entities = 1
-
     from ncms.application.episode_service import EpisodeService
+    from ncms.application.reconciliation_service import ReconciliationService
 
-    episode_svc = EpisodeService(
-        store=store, index=index, config=config, splade=splade,
-    )
-
-    # Intent classifier (Phase 4) - enable for richer demo
-    config.temporal_enabled = True
+    reconciliation = ReconciliationService(store=store, config=config)
+    episode_svc = EpisodeService(store=store, index=index, config=config, splade=splade)
 
     intent_classifier = None
     try:
@@ -202,27 +172,209 @@ async def run_nemoclaw_demo() -> None:
     except Exception:
         pass
 
-    # Cross-encoder reranker (Phase 10, disabled by default)
     reranker = None
     if config.reranker_enabled:
-        from ncms.infrastructure.reranking.cross_encoder_reranker import (
-            CrossEncoderReranker,
-        )
+        from ncms.infrastructure.reranking.cross_encoder_reranker import CrossEncoderReranker
 
         reranker = CrossEncoderReranker(
-            model_name=config.reranker_model,
-            cache_dir=config.model_cache_dir,
+            model_name=config.reranker_model, cache_dir=config.model_cache_dir
         )
 
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode_svc,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode_svc,
         intent_classifier=intent_classifier,
         reranker=reranker,
     )
     snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
     bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
+    return {
+        "config": config,
+        "store": store,
+        "index": index,
+        "graph": graph,
+        "memory_svc": memory_svc,
+        "snapshot_svc": snapshot_svc,
+        "bus_svc": bus_svc,
+        "splade": splade,
+    }
+
+
+async def _run_consolidation_phase(services: dict) -> None:
+    """Phase 6 — consolidation pass + results table."""
+    header("Phase 6: Consolidation Pass")
+    step("Running consolidation (decay + episode closure)...")
+    try:
+        from ncms.application.consolidation_service import ConsolidationService
+
+        consolidation_svc = ConsolidationService(
+            store=services["store"],
+            index=services["index"],
+            graph=services["graph"],
+            config=services["config"],
+            splade=services["splade"],
+        )
+        results = await consolidation_svc.run_consolidation_pass()
+        table = Table(title="Consolidation Results", box=box.ROUNDED)
+        table.add_column("Task", style="cyan")
+        table.add_column("Count", justify="right", style="bold")
+        for task_name, count in results.items():
+            table.add_row(task_name, str(count))
+        console.print(table)
+        result("Consolidation pass complete")
+    except Exception as e:
+        warn(f"Consolidation skipped: {e}")
+
+
+def _render_recall_results(recall_results: list) -> None:
+    """Render the recall table + entity-state / causal / episode follow-ups."""
+    if not recall_results:
+        warn("No recall results found")
+        return
+
+    table = Table(title="Recall Results", box=box.ROUNDED, show_lines=True)
+    table.add_column("Content", style="white", max_width=55)
+    table.add_column("Score", style="cyan", justify="right")
+    table.add_column("Path", style="yellow")
+    table.add_column("Episode", style="magenta")
+
+    for r in recall_results[:5]:
+        episode_info = ""
+        if r.context.episode:
+            ep = r.context.episode
+            episode_info = ep.episode_title[:30] if ep.episode_title else f"ep:{ep.episode_id[:8]}"
+        content_preview = r.memory.memory.content[:55]
+        if len(r.memory.memory.content) > 55:
+            content_preview += "..."
+        table.add_row(
+            content_preview,
+            f"{r.memory.total_activation:.3f}",
+            r.retrieval_path,
+            episode_info or "--",
+        )
+    console.print(table)
+
+    first = recall_results[0]
+    if first.context.entity_states:
+        step("Entity states found in recalled memories:")
+        for s in first.context.entity_states:
+            result(f"  {s.entity_name}.{s.state_key} = {s.state_value} (current={s.is_current})")
+    if first.context.causal_chain.supersedes or first.context.causal_chain.superseded_by:
+        step("Causal chain:")
+        for sup in first.context.causal_chain.supersedes:
+            result(f"  supersedes: {sup[:40]}")
+        for sup in first.context.causal_chain.superseded_by:
+            result(f"  superseded_by: {sup[:40]}")
+    for r in recall_results[:3]:
+        if r.context.episode and r.context.episode.sibling_ids:
+            step(
+                f"Episode '"
+                f"{r.context.episode.episode_title or r.context.episode.episode_id[:8]}"
+                f"' has {len(r.context.episode.sibling_ids)} sibling fragment(s)"
+            )
+            break
+
+
+async def _run_recall_phase(memory_svc) -> None:
+    """Phase 7 — structured recall + follow-up context tables."""
+    header("Phase 7: Structured Recall")
+    step("Ops Agent recalls: 'What happened with the user service API changes?'")
+    recall_results = await memory_svc.recall(
+        query="What happened with the user service API changes?",
+        domain=None,
+        limit=5,
+    )
+    _render_recall_results(recall_results)
+
+
+async def _process_security_inbox(bus_svc) -> None:
+    """Drain + report announcements queued for security-agent while sleeping."""
+    inbox = await bus_svc.drain_announcements("security-agent")
+    if inbox:
+        step(f"Security Agent processing {len(inbox)} announcement(s) from while sleeping:")
+        for ann in inbox:
+            result(f"  [{ann.event}] from {ann.from_agent}: {ann.knowledge.content[:80]}...")
+    else:
+        step("No pending announcements (already drained or none received while sleeping)")
+
+
+async def _final_security_exchange(bus_svc) -> None:
+    """Final live ask to the now-awake Security Agent + render result panel."""
+    step("Code Agent asks now-awake Security Agent: 'What is the JWT token policy?'")
+    ask = KnowledgeAsk(
+        question="What is the JWT token expiry policy for access and refresh tokens?",
+        domains=["auth", "security"],
+        from_agent="code-agent",
+    )
+    response = await bus_svc.ask_sync(ask, timeout_ms=5000)
+    if not response:
+        warn("No response from Security Agent")
+        return
+    console.print(
+        Panel(
+            f"[bold]From:[/] {response.from_agent}\n"
+            f"[bold]Mode:[/] [green]{response.source_mode.upper()}[/] (direct response)\n"
+            f"[bold]Confidence:[/] {response.confidence:.2f}\n"
+            f"[bold]Content:[/] {response.knowledge.content[:200]}",
+            title="[green]Live Response (Security Agent Back Online)[/]",
+            border_style="green",
+        )
+    )
+
+
+def _render_final_status(bus_svc) -> list:
+    """Render the agent-status table + return the agent list for the summary."""
+    agents = bus_svc.get_all_agents()
+    final_table = Table(title="Final Agent Status", box=box.ROUNDED)
+    final_table.add_column("Agent", style="cyan")
+    final_table.add_column("Status", style="green")
+    final_table.add_column("Domains", style="yellow")
+    for a in agents:
+        final_table.add_row(a.agent_id, a.status, ", ".join(a.domains))
+    console.print(final_table)
+    return agents
+
+
+async def _run_security_wake_phase(security_agent, bus_svc) -> list:
+    """Phase 8 — Security Agent wakes, drains inbox, answers a live ask."""
+    step("Security Agent waking up...")
+    await security_agent.wake()
+    result("Security Agent restored from snapshot, marked as live")
+    await _process_security_inbox(bus_svc)
+    await _final_security_exchange(bus_svc)
+    return _render_final_status(bus_svc)
+
+
+async def run_nemoclaw_demo() -> None:
+    """Run the NemoClaw multi-agent demo end-to-end."""
+    console.print(
+        Panel(
+            "[bold white]NeMo Cognitive Memory System x NemoClaw[/]\n"
+            "[dim]Multi-Agent Knowledge Bus | Surrogate Responses | Structured Recall[/]\n\n"
+            "This demo shows three domain agents (Code, Ops, Security) collaborating\n"
+            "through the NCMS Knowledge Bus with sleep/wake lifecycle,\n"
+            "surrogate responses, and structured recall with episode context.",
+            title="[bold cyan]NCMS NemoClaw Demo[/]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+
+    # ── System Initialization ─────────────────────────────────────────
+    header("System Initialization")
+
+    services = await _build_demo_services()
+    store = services["store"]
+    memory_svc = services["memory_svc"]
+    snapshot_svc = services["snapshot_svc"]
+    bus_svc = services["bus_svc"]
+    splade = services["splade"]
 
     step("SQLite (in-memory) initialized")
     step("Tantivy BM25 index created")
@@ -284,8 +436,10 @@ async def run_nemoclaw_demo() -> None:
     ]
     for content, domains in code_knowledge:
         await memory_svc.store_memory(
-            content=content, domains=domains,
-            source_agent="code-agent", importance=7.0,
+            content=content,
+            domains=domains,
+            source_agent="code-agent",
+            importance=7.0,
         )
         step(f"Code Agent stored [{domains[0]}]: {content[:60]}...")
 
@@ -309,8 +463,10 @@ async def run_nemoclaw_demo() -> None:
     ]
     for content, domains in ops_knowledge:
         await memory_svc.store_memory(
-            content=content, domains=domains,
-            source_agent="ops-agent", importance=7.0,
+            content=content,
+            domains=domains,
+            source_agent="ops-agent",
+            importance=7.0,
         )
         step(f"Ops Agent stored [{domains[0]}]: {content[:60]}...")
 
@@ -334,8 +490,10 @@ async def run_nemoclaw_demo() -> None:
     ]
     for content, domains in security_knowledge:
         await memory_svc.store_memory(
-            content=content, domains=domains,
-            source_agent="security-agent", importance=8.0,
+            content=content,
+            domains=domains,
+            source_agent="security-agent",
+            importance=8.0,
         )
         step(f"Security Agent stored [{domains[0]}]: {content[:60]}...")
 
@@ -374,14 +532,16 @@ async def run_nemoclaw_demo() -> None:
     )
     response1 = await bus_svc.ask_sync(ask1, timeout_ms=5000)
     if response1:
-        console.print(Panel(
-            f"[bold]From:[/] {response1.from_agent}\n"
-            f"[bold]Mode:[/] [green]{response1.source_mode.upper()}[/]\n"
-            f"[bold]Confidence:[/] {response1.confidence:.2f}\n"
-            f"[bold]Content:[/] {response1.knowledge.content[:200]}",
-            title="[green]Security Agent Response[/]",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"[bold]From:[/] {response1.from_agent}\n"
+                f"[bold]Mode:[/] [green]{response1.source_mode.upper()}[/]\n"
+                f"[bold]Confidence:[/] {response1.confidence:.2f}\n"
+                f"[bold]Content:[/] {response1.knowledge.content[:200]}",
+                title="[green]Security Agent Response[/]",
+                border_style="green",
+            )
+        )
     else:
         warn("No response received (Security Agent may not have matching knowledge)")
 
@@ -447,10 +607,7 @@ async def run_nemoclaw_demo() -> None:
         importance=9.0,
         structured={"entity": "user-api", "key": "response_format", "value": "v2"},
     )
-    result(
-        "Breaking change announced and stored with entity state: "
-        "user-api.response_format = v2"
-    )
+    result("Breaking change announced and stored with entity state: user-api.response_format = v2")
 
     # Ops agent receives and stores it
     await memory_svc.store_memory(
@@ -510,9 +667,7 @@ async def run_nemoclaw_demo() -> None:
     status_table.add_column("Domains", style="yellow")
     for a in agents:
         status_style = (
-            "green" if a.status == "online"
-            else "yellow" if a.status == "sleeping"
-            else "red"
+            "green" if a.status == "online" else "yellow" if a.status == "sleeping" else "red"
         )
         status_table.add_row(
             a.agent_id,
@@ -531,162 +686,35 @@ async def run_nemoclaw_demo() -> None:
     response2 = await bus_svc.ask_sync(ask2, timeout_ms=2000)
     if response2:
         mode_color = "yellow" if response2.source_mode == "warm" else "green"
-        console.print(Panel(
-            f"[bold]From:[/] {response2.from_agent}\n"
-            f"[bold]Mode:[/] [{mode_color}]{response2.source_mode.upper()}[/] "
-            f"({'surrogate from snapshot' if response2.source_mode == 'warm' else 'live'})\n"
-            f"[bold]Confidence:[/] {response2.confidence:.2f} "
-            f"[dim]({_surrogate_label(response2.source_mode)})[/]\n"
-            f"[bold]Staleness:[/] {response2.staleness_warning or 'Fresh'}\n"
-            f"[bold]Content:[/] {response2.knowledge.content[:200]}",
-            title=(
-                "[yellow]Surrogate Response (Warm Mode)[/]"
-                if response2.source_mode == "warm"
-                else "[green]Live Response[/]"
-            ),
-            border_style="yellow" if response2.source_mode == "warm" else "green",
-        ))
+        console.print(
+            Panel(
+                f"[bold]From:[/] {response2.from_agent}\n"
+                f"[bold]Mode:[/] [{mode_color}]{response2.source_mode.upper()}[/] "
+                f"({'surrogate from snapshot' if response2.source_mode == 'warm' else 'live'})\n"
+                f"[bold]Confidence:[/] {response2.confidence:.2f} "
+                f"[dim]({_surrogate_label(response2.source_mode)})[/]\n"
+                f"[bold]Staleness:[/] {response2.staleness_warning or 'Fresh'}\n"
+                f"[bold]Content:[/] {response2.knowledge.content[:200]}",
+                title=(
+                    "[yellow]Surrogate Response (Warm Mode)[/]"
+                    if response2.source_mode == "warm"
+                    else "[green]Live Response[/]"
+                ),
+                border_style="yellow" if response2.source_mode == "warm" else "green",
+            )
+        )
     else:
         warn("No response -- no surrogate match found in Security Agent's snapshot")
 
     # ── Phase 6: Consolidation ────────────────────────────────────────
-    header("Phase 6: Consolidation Pass")
-
-    step("Running consolidation (decay + episode closure)...")
-    try:
-        from ncms.application.consolidation_service import ConsolidationService
-
-        consolidation_svc = ConsolidationService(
-            store=store, index=index, graph=graph, config=config, splade=splade,
-        )
-        consolidation_results = await consolidation_svc.run_consolidation_pass()
-
-        consolidation_table = Table(title="Consolidation Results", box=box.ROUNDED)
-        consolidation_table.add_column("Task", style="cyan")
-        consolidation_table.add_column("Count", justify="right", style="bold")
-        for task_name, count in consolidation_results.items():
-            consolidation_table.add_row(task_name, str(count))
-        console.print(consolidation_table)
-
-        result("Consolidation pass complete")
-    except Exception as e:
-        warn(f"Consolidation skipped: {e}")
+    await _run_consolidation_phase(services)
 
     # ── Phase 7: Structured Recall ────────────────────────────────────
-    header("Phase 7: Structured Recall")
-
-    step("Ops Agent recalls: 'What happened with the user service API changes?'")
-    recall_results = await memory_svc.recall(
-        query="What happened with the user service API changes?",
-        domain=None,
-        limit=5,
-    )
-
-    if recall_results:
-        recall_table = Table(
-            title="Recall Results", box=box.ROUNDED, show_lines=True,
-        )
-        recall_table.add_column("Content", style="white", max_width=55)
-        recall_table.add_column("Score", style="cyan", justify="right")
-        recall_table.add_column("Path", style="yellow")
-        recall_table.add_column("Episode", style="magenta")
-
-        for r in recall_results[:5]:
-            episode_info = ""
-            if r.context.episode:
-                ep = r.context.episode
-                if ep.episode_title:
-                    episode_info = ep.episode_title[:30]
-                else:
-                    episode_info = f"ep:{ep.episode_id[:8]}"
-
-            content_preview = r.memory.memory.content[:55]
-            if len(r.memory.memory.content) > 55:
-                content_preview += "..."
-
-            recall_table.add_row(
-                content_preview,
-                f"{r.memory.total_activation:.3f}",
-                r.retrieval_path,
-                episode_info or "--",
-            )
-        console.print(recall_table)
-
-        # Show entity states from first result
-        first = recall_results[0]
-        if first.context.entity_states:
-            step("Entity states found in recalled memories:")
-            for s in first.context.entity_states:
-                result(
-                    f"  {s.entity_name}.{s.state_key} = {s.state_value} "
-                    f"(current={s.is_current})"
-                )
-
-        # Show causal chains
-        if first.context.causal_chain.supersedes or first.context.causal_chain.superseded_by:
-            step("Causal chain:")
-            for sup in first.context.causal_chain.supersedes:
-                result(f"  supersedes: {sup[:40]}")
-            for sup in first.context.causal_chain.superseded_by:
-                result(f"  superseded_by: {sup[:40]}")
-
-        # Show episode siblings if any
-        for r in recall_results[:3]:
-            if r.context.episode and r.context.episode.sibling_ids:
-                step(
-                    f"Episode '"
-                    f"{r.context.episode.episode_title or r.context.episode.episode_id[:8]}"
-                    f"' has {len(r.context.episode.sibling_ids)} sibling fragment(s)"
-                )
-                break
-    else:
-        warn("No recall results found")
+    await _run_recall_phase(memory_svc)
 
     # ── Phase 8: Security Agent Wakes ─────────────────────────────────
     header("Phase 8: Security Agent Wakes")
-
-    step("Security Agent waking up...")
-    await security_agent.wake()
-    result("Security Agent restored from snapshot, marked as live")
-
-    # Check inbox for announcements received while sleeping
-    inbox = await bus_svc.drain_announcements("security-agent")
-    if inbox:
-        step(f"Security Agent processing {len(inbox)} announcement(s) from while sleeping:")
-        for ann in inbox:
-            result(f"  [{ann.event}] from {ann.from_agent}: {ann.knowledge.content[:80]}...")
-    else:
-        step("No pending announcements (already drained or none received while sleeping)")
-
-    # Final live exchange to confirm Security Agent is back
-    step("Code Agent asks now-awake Security Agent: 'What is the JWT token policy?'")
-    ask3 = KnowledgeAsk(
-        question="What is the JWT token expiry policy for access and refresh tokens?",
-        domains=["auth", "security"],
-        from_agent="code-agent",
-    )
-    response3 = await bus_svc.ask_sync(ask3, timeout_ms=5000)
-    if response3:
-        console.print(Panel(
-            f"[bold]From:[/] {response3.from_agent}\n"
-            f"[bold]Mode:[/] [green]{response3.source_mode.upper()}[/] (direct response)\n"
-            f"[bold]Confidence:[/] {response3.confidence:.2f}\n"
-            f"[bold]Content:[/] {response3.knowledge.content[:200]}",
-            title="[green]Live Response (Security Agent Back Online)[/]",
-            border_style="green",
-        ))
-    else:
-        warn("No response from Security Agent")
-
-    # Final status
-    agents = bus_svc.get_all_agents()
-    final_table = Table(title="Final Agent Status", box=box.ROUNDED)
-    final_table.add_column("Agent", style="cyan")
-    final_table.add_column("Status", style="green")
-    final_table.add_column("Domains", style="yellow")
-    for a in agents:
-        final_table.add_row(a.agent_id, a.status, ", ".join(a.domains))
-    console.print(final_table)
+    agents = await _run_security_wake_phase(security_agent, bus_svc)
 
     # ── Summary ───────────────────────────────────────────────────────
     header("Demo Summary")
@@ -710,20 +738,23 @@ async def run_nemoclaw_demo() -> None:
     console.print(summary_table)
 
     console.print()
-    console.print(Panel(
-        "[bold]What you just saw:[/]\n\n"
-        "1. Three domain agents (Code, Ops, Security) registered with expertise\n"
-        "2. Each agent seeded domain knowledge (entities auto-extracted to graph)\n"
-        "3. Code Agent asked Security Agent about auth via Knowledge Bus\n"
-        "4. Breaking API change propagated to Ops and Security agents\n"
-        "5. Security Agent slept; Code Agent got a [yellow]surrogate response[/] from snapshot\n"
-        "6. Consolidation pass ran (decay + episode closure)\n"
-        "7. Structured [cyan]recall[/] returned memories with episode context + entity states\n"
-        "8. Security Agent woke up, drained inbox, and answered [green]live[/]\n\n"
-        "[dim]All running in-process with zero external dependencies.[/]",
-        title="[bold cyan]NCMS x NemoClaw - Multi-Agent Cognitive Memory[/]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            "[bold]What you just saw:[/]\n\n"
+            "1. Three domain agents (Code, Ops, Security) registered with expertise\n"
+            "2. Each agent seeded domain knowledge (entities auto-extracted to graph)\n"
+            "3. Code Agent asked Security Agent about auth via Knowledge Bus\n"
+            "4. Breaking API change propagated to Ops and Security agents\n"
+            "5. Security Agent slept; Code Agent got a [yellow]surrogate response[/] "
+            "from snapshot\n"
+            "6. Consolidation pass ran (decay + episode closure)\n"
+            "7. Structured [cyan]recall[/] returned memories with episode context + entity states\n"
+            "8. Security Agent woke up, drained inbox, and answered [green]live[/]\n\n"
+            "[dim]All running in-process with zero external dependencies.[/]",
+            title="[bold cyan]NCMS x NemoClaw - Multi-Agent Cognitive Memory[/]",
+            border_style="cyan",
+        )
+    )
 
     # Cleanup
     await code_agent.shutdown()

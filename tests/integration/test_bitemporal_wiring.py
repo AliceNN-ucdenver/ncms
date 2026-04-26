@@ -42,7 +42,10 @@ async def svc() -> MemoryService:
         scoring_weight_graph=0.0,
     )
     service = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     yield service
     await store.close()
@@ -52,7 +55,8 @@ class TestObservedAtPersistence:
     """observed_at survives the store -> load round-trip."""
 
     async def test_store_memory_persists_observed_at(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         past = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)
         memory = await svc.store_memory(
@@ -64,7 +68,8 @@ class TestObservedAtPersistence:
         assert reloaded.observed_at == past
 
     async def test_observed_at_defaults_to_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         memory = await svc.store_memory(content="no observed date")
         reloaded = await svc._store.get_memory(memory.id)
@@ -76,7 +81,8 @@ class TestL1NodePropagation:
     """The L1 atomic node carries observed_at from the Memory."""
 
     async def test_l1_node_gets_observed_at(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         past = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)
         memory = await svc.store_memory(
@@ -95,12 +101,13 @@ class TestSearchReferenceTime:
     """search(reference_time=...) changes how the parser resolves dates."""
 
     async def test_reference_time_shifts_temporal_range(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         """'yesterday' with reference_time in 2023 ranks the
         near-date memory above the far-date one."""
         ref_time = datetime(2023, 4, 11, 12, 0, tzinfo=UTC)
-        match_date = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)   # day before ref
+        match_date = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)  # day before ref
         distant_date = datetime(2026, 4, 11, 12, 0, tzinfo=UTC)
 
         # Near-duplicate content (distinguishable by one word so dedup
@@ -130,7 +137,8 @@ class TestTemporalScoringNonZero:
     """Sanity check: with wiring in place, temporal_score actually fires."""
 
     async def test_temporal_score_populated_for_temporal_query(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         ref_time = datetime(2023, 4, 11, 12, 0, tzinfo=UTC)
         obs = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)
@@ -151,7 +159,8 @@ class TestTemporalScoringNonZero:
         assert results[0].temporal_score > 0.0
 
     async def test_no_temporal_expression_leaves_score_zero(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         obs = datetime(2023, 4, 10, 12, 0, tzinfo=UTC)
         await svc.store_memory(
@@ -173,13 +182,15 @@ class TestBackwardCompatibility:
     """Existing callers that don't pass observed_at or reference_time work."""
 
     async def test_store_without_observed_at(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         memory = await svc.store_memory(content="plain memory")
         assert memory.observed_at is None
 
     async def test_search_without_reference_time(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         await svc.store_memory(content="plain memory")
         await svc.flush_indexing()
@@ -187,16 +198,21 @@ class TestBackwardCompatibility:
         # Should just work with default now=wall-clock
         assert results
 
-    @pytest.mark.parametrize("raw", [
-        "2023/04/10 (Mon) 23:07",
-        "2023/04/10",
-        "2023-04-10 12:00",
-        "2023-04-10",
-    ])
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "2023/04/10 (Mon) 23:07",
+            "2023/04/10",
+            "2023-04-10 12:00",
+            "2023-04-10",
+        ],
+    )
     def test_harness_date_parser_handles_known_formats(
-        self, raw: str,
+        self,
+        raw: str,
     ) -> None:
         from benchmarks.longmemeval.harness import _parse_lme_date
+
         dt = _parse_lme_date(raw)
         assert dt is not None
         assert dt.year == 2023
@@ -205,6 +221,7 @@ class TestBackwardCompatibility:
 
     def test_harness_date_parser_returns_none_on_junk(self) -> None:
         from benchmarks.longmemeval.harness import _parse_lme_date
+
         assert _parse_lme_date("") is None
         assert _parse_lme_date(None) is None
         assert _parse_lme_date("not a date") is None

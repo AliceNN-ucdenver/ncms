@@ -172,8 +172,10 @@ class TestRoleGroundingBonus:
     def test_primary_match_returns_bonus(self) -> None:
         spans = [
             {
-                "canonical": "postgresql", "role": "primary",
-                "surface": "Postgres", "slot": "database",
+                "canonical": "postgresql",
+                "role": "primary",
+                "surface": "Postgres",
+                "slot": "database",
             },
         ]
         bonus = role_grounding_bonus(
@@ -238,28 +240,40 @@ class TestRoleGroundingBonus:
 
     def test_empty_role_spans_returns_zero(self) -> None:
         """Heuristic-fallback memories have empty role_spans."""
-        assert role_grounding_bonus(
-            role_spans=[],
-            query_canonicals={"postgresql"},
-        ) == 0.0
-        assert role_grounding_bonus(
-            role_spans=None,
-            query_canonicals={"postgresql"},
-        ) == 0.0
+        assert (
+            role_grounding_bonus(
+                role_spans=[],
+                query_canonicals={"postgresql"},
+            )
+            == 0.0
+        )
+        assert (
+            role_grounding_bonus(
+                role_spans=None,
+                query_canonicals={"postgresql"},
+            )
+            == 0.0
+        )
 
     def test_empty_query_canonicals_returns_zero(self) -> None:
         """Queries with no extracted entities get no grounding signal."""
         spans = [
             {"canonical": "postgresql", "role": "primary"},
         ]
-        assert role_grounding_bonus(
-            role_spans=spans,
-            query_canonicals=set(),
-        ) == 0.0
-        assert role_grounding_bonus(
-            role_spans=spans,
-            query_canonicals=None,
-        ) == 0.0
+        assert (
+            role_grounding_bonus(
+                role_spans=spans,
+                query_canonicals=set(),
+            )
+            == 0.0
+        )
+        assert (
+            role_grounding_bonus(
+                role_spans=spans,
+                query_canonicals=None,
+            )
+            == 0.0
+        )
 
     def test_one_primary_among_many_wins(self) -> None:
         """A single primary match is enough; other spans don't matter."""

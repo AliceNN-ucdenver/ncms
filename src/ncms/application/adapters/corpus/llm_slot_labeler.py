@@ -146,53 +146,37 @@ _SLOT_DESCRIPTIONS: dict[Domain, dict[str, str]] = {
             "insulin, warfarin, prednisone, sertraline"
         ),
         "procedure": (
-            "medical procedures — arthroscopy, MRI, bypass surgery, "
-            "colonoscopy, stenting"
+            "medical procedures — arthroscopy, MRI, bypass surgery, colonoscopy, stenting"
         ),
         "symptom": (
-            "reported complaints — chest pain, fatigue, nausea, "
-            "headache, shortness of breath"
+            "reported complaints — chest pain, fatigue, nausea, headache, shortness of breath"
         ),
         "severity": (
-            "severity descriptors — mild, moderate, severe, acute, "
-            "chronic, worsening, stable"
+            "severity descriptors — mild, moderate, severe, acute, chronic, worsening, stable"
         ),
         "alternative": (
-            "treatment / diagnosis contrasted — 'X instead of Y' / "
-            "'ruled out in favor of Y'"
+            "treatment / diagnosis contrasted — 'X instead of Y' / 'ruled out in favor of Y'"
         ),
-        "frequency": (
-            "dosing / monitoring cadence — 'every 6 hours', "
-            "'twice daily', 'at bedtime'"
-        ),
+        "frequency": ("dosing / monitoring cadence — 'every 6 hours', 'twice daily', 'at bedtime'"),
     },
     "conversational": {
         "object": (
-            "the specific thing the utterance is about — food, "
-            "hobby, activity, topic, person"
+            "the specific thing the utterance is about — food, hobby, activity, topic, person"
         ),
-        "frequency": (
-            "timing / cadence — 'every morning', 'on weekends', "
-            "'nightly'"
-        ),
-        "alternative": (
-            "contrasting choice — 'X instead of Y', 'over Y', "
-            "'not Y'"
-        ),
+        "frequency": ("timing / cadence — 'every morning', 'on weekends', 'nightly'"),
+        "alternative": ("contrasting choice — 'X instead of Y', 'over Y', 'not Y'"),
     },
 }
 
 
 def _build_prompt(domain: Domain, content: str) -> str:
     slot_schema = _SLOT_DESCRIPTIONS[domain]
-    schema_lines = "\n".join(
-        f"  - {name}: {desc}" for name, desc in slot_schema.items()
-    )
+    schema_lines = "\n".join(f"  - {name}: {desc}" for name, desc in slot_schema.items())
     return f"""You are a structured-slot labeller for {domain} content.
 
 PRINCIPLES:
   - CONSERVATIVE labelling beats aggressive labelling.  When in doubt, OMIT.
-  - intent defaults to "none".  state_change defaults to "none".  Change ONLY with explicit evidence.
+  - intent defaults to "none".  state_change defaults to "none".  Change ONLY with evidence.
   - Slot values MUST literally appear in the content (verbatim, case-flexible).  Never invent.
 
 Slot schema for domain "{domain}":
@@ -247,10 +231,23 @@ _CLOSED_VOCAB_SLOTS: frozenset[str] = frozenset({"pattern", "frequency"})
 
 # Connective lowercase words allowed mid-phrase in proper-noun
 # products like "Ruby on Rails" / "Secret Server by Thycotic".
-_CONNECTIVES: frozenset[str] = frozenset({
-    "on", "of", "by", "the", "for", "in", "at", "to", "as", "and",
-    "with", "a", "an",
-})
+_CONNECTIVES: frozenset[str] = frozenset(
+    {
+        "on",
+        "of",
+        "by",
+        "the",
+        "for",
+        "in",
+        "at",
+        "to",
+        "as",
+        "and",
+        "with",
+        "a",
+        "an",
+    }
+)
 
 
 def _looks_like_proper_noun(s: str) -> bool:
@@ -315,7 +312,9 @@ def _looks_like_proper_noun(s: str) -> bool:
 
 
 def _validate_slots(
-    slots: dict[str, str], content: str, domain: Domain,
+    slots: dict[str, str],
+    content: str,
+    domain: Domain,
 ) -> dict[str, str]:
     """Reject hallucinations + enforce authoritative catalog slot.
 
@@ -341,6 +340,7 @@ def _validate_slots(
     from ncms.application.adapters.sdg.catalog import (
         lookup,
     )
+
     allowed = set(SLOT_TAXONOMY[domain])
     content_lower = content.lower()
     out: dict[str, str] = {}
@@ -353,9 +353,8 @@ def _validate_slots(
         if not v:
             continue
         # 2. Literal presence in content (with fuzzy fallback).
-        if v.lower() not in content_lower:
-            if not _fuzzy_present(v, content_lower):
-                continue
+        if v.lower() not in content_lower and not _fuzzy_present(v, content_lower):
+            continue
         # 3 + 4 + 5. Catalog normalisation.
         entry = lookup(v, domain=domain)
         if entry is not None:
@@ -392,20 +391,24 @@ def _fuzzy_present(value: str, content_lower: str) -> bool:
     'PostgreSQL' — match on the longer shared prefix of len ≥ 5."""
     val_lower = value.lower()
     for tok in re.findall(r"\w+", content_lower):
-        if len(tok) >= 5 and (
-            tok.startswith(val_lower) or val_lower.startswith(tok)
-        ):
+        if len(tok) >= 5 and (tok.startswith(val_lower) or val_lower.startswith(tok)):
             return True
     return False
 
 
-_ROLE_VALUES: frozenset[str] = frozenset({
-    "primary", "alternative", "casual", "not_relevant",
-})
+_ROLE_VALUES: frozenset[str] = frozenset(
+    {
+        "primary",
+        "alternative",
+        "casual",
+        "not_relevant",
+    }
+)
 
 
 def _build_role_prompt(
-    content: str, surfaces: list[str],
+    content: str,
+    surfaces: list[str],
 ) -> str:
     """Build the role-classification prompt for a single row.
 
@@ -413,9 +416,7 @@ def _build_role_prompt(
     surfaces, ask the LLM to assign one of four roles per surface.
     Returns a JSON dict ``{surface_lower: role, ...}``.
     """
-    numbered = "\n".join(
-        f"  {i + 1}. {s}" for i, s in enumerate(surfaces)
-    )
+    numbered = "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(surfaces))
     return f"""You are classifying the ROLE of each detected technical term \
 in a piece of software-development content.
 
@@ -460,7 +461,8 @@ role (no prose, no markdown fences):
 
 
 def _extract_surfaces_for_role_prompt(
-    content: str, domain: Domain,
+    content: str,
+    domain: Domain,
 ) -> tuple[str, ...]:
     """Gazetteer pass → deduped lowercase surface list.
 
@@ -502,9 +504,7 @@ async def _classify_roles(
     if not all_spans:
         return []
 
-    slot_values_lower = {
-        k: v.lower().strip() for k, v in slots.items() if v
-    }
+    slot_values_lower = {k: v.lower().strip() for k, v in slots.items() if v}
     alt_value = slot_values_lower.get("alternative")
 
     # First pass — deterministic from the validated slots dict.
@@ -529,13 +529,17 @@ async def _classify_roles(
         prompt = _build_role_prompt(content, novel_canonicals)
         try:
             result = await call_llm_json(
-                prompt=prompt, model=model, api_base=api_base,
-                max_tokens=400, temperature=0.0,
+                prompt=prompt,
+                model=model,
+                api_base=api_base,
+                max_tokens=400,
+                temperature=0.0,
             )
         except Exception as exc:
             logger.warning(
                 "Role-LLM call failed for content[:60]=%r: %s",
-                content[:60], exc,
+                content[:60],
+                exc,
             )
             result = None
         if isinstance(result, dict):
@@ -550,19 +554,18 @@ async def _classify_roles(
     out: list[RoleSpan] = []
     for span, pre in pre_labeled:
         span_t = span  # type: ignore[assignment]
-        if pre is not None:
-            role = pre
-        else:
-            role = llm_roles.get(span_t.canonical.lower(), "casual")
-        out.append(RoleSpan(
-            char_start=span_t.char_start,
-            char_end=span_t.char_end,
-            surface=span_t.surface,
-            canonical=span_t.canonical,
-            slot=span_t.slot,
-            role=role,  # type: ignore[arg-type]
-            source="llm_slot_labeler",
-        ))
+        role = pre if pre is not None else llm_roles.get(span_t.canonical.lower(), "casual")
+        out.append(
+            RoleSpan(
+                char_start=span_t.char_start,
+                char_end=span_t.char_end,
+                surface=span_t.surface,
+                canonical=span_t.canonical,
+                slot=span_t.slot,
+                role=role,  # type: ignore[arg-type]
+                source="llm_slot_labeler",
+            )
+        )
     return out
 
 
@@ -577,31 +580,43 @@ async def label_one(
     prompt = _build_prompt(domain, content)
     try:
         result = await call_llm_json(
-            prompt=prompt, model=model, api_base=api_base,
-            max_tokens=400, temperature=0.0,
+            prompt=prompt,
+            model=model,
+            api_base=api_base,
+            max_tokens=400,
+            temperature=0.0,
         )
     except Exception as exc:
-        logger.warning("LLM call failed for content[:60]=%r: %s",
-                       content[:60], exc)
+        logger.warning("LLM call failed for content[:60]=%r: %s", content[:60], exc)
         return None
     if not isinstance(result, dict):
         return None
     # Normalize + validate.
     intent = str(result.get("intent") or "none").lower()
     if intent not in (
-        "positive", "negative", "habitual", "difficulty", "choice", "none",
+        "positive",
+        "negative",
+        "habitual",
+        "difficulty",
+        "choice",
+        "none",
     ):
         intent = "none"
     state_change = str(result.get("state_change") or "none").lower()
     if state_change not in ("declaration", "retirement", "none"):
         state_change = "none"
     slots = _validate_slots(
-        result.get("slots") or {}, content, domain,
+        result.get("slots") or {},
+        content,
+        domain,
     )
     # v7: role-labeled spans (gazetteer + LLM for casual/not_relevant).
     role_spans = await _classify_roles(
-        content=content, domain=domain, slots=slots,
-        model=model, api_base=api_base,
+        content=content,
+        domain=domain,
+        slots=slots,
+        model=model,
+        api_base=api_base,
     )
     return {
         "intent": intent,
@@ -630,6 +645,7 @@ async def label_corpus(
     from SDG pools.
     """
     import json as _json
+
     rows: list[dict] = []
     with source.open() as f:
         for line in f:
@@ -646,8 +662,10 @@ async def label_corpus(
         if not text:
             continue
         labelled = await label_one(
-            content=text, domain=domain,
-            model=model, api_base=api_base,
+            content=text,
+            domain=domain,
+            model=model,
+            api_base=api_base,
         )
         if labelled is None:
             continue
@@ -667,15 +685,20 @@ async def label_corpus(
         if (i + 1) % 10 == 0:
             logger.info(
                 "[llm-slot-labeler] %s: labelled %d / %d",
-                domain, i + 1, len(rows),
+                domain,
+                i + 1,
+                len(rows),
             )
 
     # Write JSONL.
     from ncms.application.adapters.corpus.loader import dump_jsonl
+
     dump_jsonl(out, output)
     logger.info(
         "[llm-slot-labeler] %s: wrote %d GoldExample rows → %s",
-        domain, len(out), output,
+        domain,
+        len(out),
+        output,
     )
     return len(out)
 
@@ -692,11 +715,18 @@ def sync_label_corpus(
     topic: str | None,
 ) -> int:
     """Sync wrapper for the CLI."""
-    return asyncio.run(label_corpus(
-        source=source, domain=domain, output=output,
-        model=model, api_base=api_base, limit=limit,
-        text_field=text_field, topic=topic,
-    ))
+    return asyncio.run(
+        label_corpus(
+            source=source,
+            domain=domain,
+            output=output,
+            model=model,
+            api_base=api_base,
+            limit=limit,
+            text_field=text_field,
+            topic=topic,
+        )
+    )
 
 
 __all__ = ["label_corpus", "sync_label_corpus", "label_one"]

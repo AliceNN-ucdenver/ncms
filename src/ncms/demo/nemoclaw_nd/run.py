@@ -38,9 +38,7 @@ console = Console()
 # ── Governance-mesh knowledge files ─────────────────────────────────────
 
 _GOV_BASE = Path.home() / "Documents" / "governance-mesh"
-_APP_BASE = (
-    _GOV_BASE / "platforms" / "imdb-lite" / "bars" / "imdb-lite-application"
-)
+_APP_BASE = _GOV_BASE / "platforms" / "imdb-lite" / "bars" / "imdb-lite-application"
 
 KNOWLEDGE_FILES: list[tuple[str, list[str]]] = [
     # Architecture files
@@ -129,17 +127,19 @@ async def run_nemoclaw_nd_demo() -> None:
     """Run the NemoClaw Non-Deterministic multi-agent demo."""
     t0 = time.monotonic()
 
-    console.print(Panel(
-        "[bold white]NeMo Cognitive Memory System x NemoClaw ND[/]\n"
-        "[dim]Non-Deterministic Multi-Agent Design | LLM-Powered Reasoning[/]\n\n"
-        "Three LLM agents (Architect, Security, Builder) reason autonomously\n"
-        "over real governance-mesh knowledge files. The Builder drives a work\n"
-        "loop, consulting the other agents via the NCMS Knowledge Bus.\n\n"
-        "[dim]LLM Backend: DGX Spark (Nemotron) or configured endpoint[/]",
-        title="[bold cyan]NemoClaw Non-Deterministic Demo[/]",
-        border_style="cyan",
-        padding=(1, 2),
-    ))
+    console.print(
+        Panel(
+            "[bold white]NeMo Cognitive Memory System x NemoClaw ND[/]\n"
+            "[dim]Non-Deterministic Multi-Agent Design | LLM-Powered Reasoning[/]\n\n"
+            "Three LLM agents (Architect, Security, Builder) reason autonomously\n"
+            "over real governance-mesh knowledge files. The Builder drives a work\n"
+            "loop, consulting the other agents via the NCMS Knowledge Bus.\n\n"
+            "[dim]LLM Backend: DGX Spark (Nemotron) or configured endpoint[/]",
+            title="[bold cyan]NemoClaw Non-Deterministic Demo[/]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
 
     # ── Phase 0: Infrastructure Setup ──────────────────────────────────
     header("Phase 0: Infrastructure Setup")
@@ -189,7 +189,10 @@ async def run_nemoclaw_nd_demo() -> None:
     from ncms.application.episode_service import EpisodeService
 
     episode_svc = EpisodeService(
-        store=store, index=index, config=config, splade=splade,
+        store=store,
+        index=index,
+        config=config,
+        splade=splade,
     )
 
     # Intent classifier (Phase 4)
@@ -215,9 +218,14 @@ async def run_nemoclaw_nd_demo() -> None:
         )
 
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode_svc,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode_svc,
         intent_classifier=intent_classifier,
         reranker=reranker,
     )
@@ -255,7 +263,10 @@ async def run_nemoclaw_nd_demo() -> None:
             continue
 
         stats = await loader.load_file(
-            file_path, domains=domains, source_agent="knowledge-loader", importance=7.0,
+            file_path,
+            domains=domains,
+            source_agent="knowledge-loader",
+            importance=7.0,
         )
         total_files += stats.files_processed
         total_memories += stats.memories_created
@@ -322,37 +333,47 @@ async def run_nemoclaw_nd_demo() -> None:
         action = turn_record.get("action", "unknown")
         if action.startswith("ask_"):
             target = action[4:]
-            console.print(Panel(
-                f"[bold]Question:[/] {turn_record.get('question', '')[:200]}\n\n"
-                f"[bold]Answer:[/] {turn_record.get('answer', '')[:300]}\n"
-                f"[dim]Confidence: {turn_record.get('confidence', '?')}[/]",
-                title=f"[cyan]Turn {turn_num}: Ask {target.title()} Agent[/]",
-                border_style="cyan",
-            ))
+            console.print(
+                Panel(
+                    f"[bold]Question:[/] {turn_record.get('question', '')[:200]}\n\n"
+                    f"[bold]Answer:[/] {turn_record.get('answer', '')[:300]}\n"
+                    f"[dim]Confidence: {turn_record.get('confidence', '?')}[/]",
+                    title=f"[cyan]Turn {turn_num}: Ask {target.title()} Agent[/]",
+                    border_style="cyan",
+                )
+            )
         elif action == "decide":
-            console.print(Panel(
-                turn_record.get("detail", "")[:400],
-                title=f"[green]Turn {turn_num}: Design Decision[/]",
-                border_style="green",
-            ))
+            console.print(
+                Panel(
+                    turn_record.get("detail", "")[:400],
+                    title=f"[green]Turn {turn_num}: Design Decision[/]",
+                    border_style="green",
+                )
+            )
         elif action == "announce":
-            console.print(Panel(
-                turn_record.get("detail", "")[:400],
-                title=f"[yellow]Turn {turn_num}: Announcement[/]",
-                border_style="yellow",
-            ))
+            console.print(
+                Panel(
+                    turn_record.get("detail", "")[:400],
+                    title=f"[yellow]Turn {turn_num}: Announcement[/]",
+                    border_style="yellow",
+                )
+            )
         elif action == "done":
-            console.print(Panel(
-                turn_record.get("detail", "")[:400],
-                title=f"[bold green]Turn {turn_num}: Design Complete[/]",
-                border_style="green",
-            ))
+            console.print(
+                Panel(
+                    turn_record.get("detail", "")[:400],
+                    title=f"[bold green]Turn {turn_num}: Design Complete[/]",
+                    border_style="green",
+                )
+            )
         elif action == "error":
-            console.print(Panel(
-                turn_record.get("detail", "LLM call failed"),
-                title=f"[red]Turn {turn_num}: Error[/]",
-                border_style="red",
-            ))
+            console.print(
+                Panel(
+                    turn_record.get("detail", "LLM call failed"),
+                    title=f"[red]Turn {turn_num}: Error[/]",
+                    border_style="red",
+                )
+            )
 
     try:
         turns = await builder.work_loop(max_turns=8, on_turn=on_turn)
@@ -416,27 +437,27 @@ async def run_nemoclaw_nd_demo() -> None:
     summary_table.add_row("Builder Turns", str(len(turns)))
     summary_table.add_row(
         "Actions",
-        ", ".join(
-            f"{t.get('action', '?')}" for t in turns
-        ) if turns else "(none)",
+        ", ".join(f"{t.get('action', '?')}" for t in turns) if turns else "(none)",
     )
     summary_table.add_row("LLM Model", llm_model)
     summary_table.add_row("Elapsed Time", f"{elapsed:.1f}s")
     console.print(summary_table)
 
     console.print()
-    console.print(Panel(
-        "[bold]What you just saw:[/]\n\n"
-        "1. Real governance-mesh files loaded into NCMS cognitive memory\n"
-        "2. Three LLM agents registered with domain expertise\n"
-        "3. Builder Agent autonomously designed imdb-identity-service\n"
-        "4. Each turn: LLM chose to ask Architecture, ask Security, or decide\n"
-        "5. Agents answered via memory search + LLM synthesis (non-deterministic)\n"
-        "6. Final design announced through Knowledge Bus\n\n"
-        f"[dim]Total time: {elapsed:.1f}s | LLM: {llm_model}[/]",
-        title="[bold cyan]NemoClaw ND - Non-Deterministic Multi-Agent Design[/]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            "[bold]What you just saw:[/]\n\n"
+            "1. Real governance-mesh files loaded into NCMS cognitive memory\n"
+            "2. Three LLM agents registered with domain expertise\n"
+            "3. Builder Agent autonomously designed imdb-identity-service\n"
+            "4. Each turn: LLM chose to ask Architecture, ask Security, or decide\n"
+            "5. Agents answered via memory search + LLM synthesis (non-deterministic)\n"
+            "6. Final design announced through Knowledge Bus\n\n"
+            f"[dim]Total time: {elapsed:.1f}s | LLM: {llm_model}[/]",
+            title="[bold cyan]NemoClaw ND - Non-Deterministic Multi-Agent Design[/]",
+            border_style="cyan",
+        )
+    )
 
 
 if __name__ == "__main__":

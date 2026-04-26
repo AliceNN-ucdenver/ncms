@@ -15,9 +15,7 @@ class TestGlinerAlwaysUsed:
 
     def test_gliner_extracts_from_technical_text(self):
         """GLiNER should extract entities from technical content."""
-        results = extract_entities_gliner(
-            "PostgreSQL connection pooling with PgBouncer"
-        )
+        results = extract_entities_gliner("PostgreSQL connection pooling with PgBouncer")
         assert isinstance(results, list)
         assert len(results) >= 1
         names_lower = {e["name"].lower() for e in results}
@@ -64,7 +62,9 @@ class TestGlinerAlwaysUsed:
         """With keep_universal=True, domain labels merge with universals."""
         cached = {"biomedical": ["disease", "drug", "protein", "gene"]}
         labels = resolve_labels(
-            ["biomedical"], cached_labels=cached, keep_universal=True,
+            ["biomedical"],
+            cached_labels=cached,
+            keep_universal=True,
         )
         assert "disease" in labels
         assert "person" in labels  # Universal labels included in additive mode
@@ -76,9 +76,7 @@ class TestGlinerAlwaysUsed:
 
     def test_returns_correct_format(self):
         """Entities should be list[dict] with 'name' and 'type' keys."""
-        results = extract_entities_gliner(
-            "UserService calls GET /api/v2/users with JWT auth"
-        )
+        results = extract_entities_gliner("UserService calls GET /api/v2/users with JWT auth")
         assert isinstance(results, list)
         for entity in results:
             assert isinstance(entity, dict)

@@ -61,26 +61,49 @@ from ncms.domain.tlg.zones import CausalEdge
 
 #: CAUSAL_EXPLICIT surface phrases where "X cue Y" = "X caused by Y".
 #: These point RIGHT→LEFT in English (the cause comes after the cue).
-_EXPLICIT_RIGHT_CAUSES_LEFT: frozenset[str] = frozenset({
-    "because", "because of", "due to", "owing to",
-    "on account of", "given that", "since",
-})
+_EXPLICIT_RIGHT_CAUSES_LEFT: frozenset[str] = frozenset(
+    {
+        "because",
+        "because of",
+        "due to",
+        "owing to",
+        "on account of",
+        "given that",
+        "since",
+    }
+)
 
 #: CAUSAL_ALTLEX surface phrases where "X cue Y" = "X caused Y".
 #: These point LEFT→RIGHT (the effect comes after the cue).
-_ALTLEX_LEFT_CAUSES_RIGHT: frozenset[str] = frozenset({
-    "led to", "resulted in", "caused", "motivated",
-    "drove", "drove the decision", "one reason",
-    "the reason", "the motivation", "caused us to",
-    "made us", "triggered",
-})
+_ALTLEX_LEFT_CAUSES_RIGHT: frozenset[str] = frozenset(
+    {
+        "led to",
+        "resulted in",
+        "caused",
+        "motivated",
+        "drove",
+        "drove the decision",
+        "one reason",
+        "the reason",
+        "the motivation",
+        "caused us to",
+        "made us",
+        "triggered",
+    }
+)
 
 #: CAUSAL_ALTLEX surface phrases that denote ENABLES (not CAUSED_BY).
 #: These are necessary-but-not-sufficient conditions.
-_ALTLEX_ENABLES: frozenset[str] = frozenset({
-    "enabled", "allowed", "made possible", "permitted",
-    "the enabler", "made it possible",
-})
+_ALTLEX_ENABLES: frozenset[str] = frozenset(
+    {
+        "enabled",
+        "allowed",
+        "made possible",
+        "permitted",
+        "the enabler",
+        "made it possible",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -104,14 +127,14 @@ class ExtractedCausalPair:
     not here.  This keeps the domain function pure.
     """
 
-    effect_surface: str        # the LHS / effect canonical surface
-    cause_surface: str         # the RHS / cause canonical surface
-    edge_type: str             # "caused_by" or "enables"
-    cue_surface: str           # the matched cue phrase (for provenance)
-    cue_type: str              # "CAUSAL_EXPLICIT" or "CAUSAL_ALTLEX"
-    cue_char_start: int        # where the cue appeared in text
+    effect_surface: str  # the LHS / effect canonical surface
+    cause_surface: str  # the RHS / cause canonical surface
+    edge_type: str  # "caused_by" or "enables"
+    cue_surface: str  # the matched cue phrase (for provenance)
+    cue_type: str  # "CAUSAL_EXPLICIT" or "CAUSAL_ALTLEX"
+    cue_char_start: int  # where the cue appeared in text
     cue_char_end: int
-    confidence: float = 1.0    # uses min(cue_conf, LHS_conf, RHS_conf)
+    confidence: float = 1.0  # uses min(cue_conf, LHS_conf, RHS_conf)
 
 
 # ---------------------------------------------------------------------------
@@ -193,12 +216,9 @@ def extract_causal_pairs(
         enumerated.append((idx, cue_type, tokens))
 
     # Index spans by type for fast lookup.
-    referent_spans = [
-        (i, toks) for i, ct, toks in enumerated if ct == "REFERENT"
-    ]
+    referent_spans = [(i, toks) for i, ct, toks in enumerated if ct == "REFERENT"]
     cue_spans = [
-        (i, ct, toks) for i, ct, toks in enumerated
-        if ct in ("CAUSAL_EXPLICIT", "CAUSAL_ALTLEX")
+        (i, ct, toks) for i, ct, toks in enumerated if ct in ("CAUSAL_EXPLICIT", "CAUSAL_ALTLEX")
     ]
 
     if not cue_spans or len(referent_spans) < 2:
@@ -230,7 +250,10 @@ def extract_causal_pairs(
 
         # Direction + edge_type from the cue surface.
         edge_type, effect, cause = _resolve_direction(
-            cue_type, cue_surface, left_surface, right_surface,
+            cue_type,
+            cue_surface,
+            left_surface,
+            right_surface,
         )
         if edge_type is None:
             # Unknown cue surface (e.g. novel altlex we haven't
@@ -238,16 +261,18 @@ def extract_causal_pairs(
             # pollute the graph with wrong direction.
             continue
 
-        pairs.append(ExtractedCausalPair(
-            effect_surface=effect,
-            cause_surface=cause,
-            edge_type=edge_type,
-            cue_surface=cue_surface,
-            cue_type=cue_type,
-            cue_char_start=cue_start,
-            cue_char_end=cue_end,
-            confidence=conf,
-        ))
+        pairs.append(
+            ExtractedCausalPair(
+                effect_surface=effect,
+                cause_surface=cause,
+                edge_type=edge_type,
+                cue_surface=cue_surface,
+                cue_type=cue_type,
+                cue_char_start=cue_start,
+                cue_char_end=cue_end,
+                confidence=conf,
+            )
+        )
     return pairs
 
 
@@ -358,13 +383,15 @@ def pairs_to_causal_edges(
             # Self-loop — skip (shouldn't happen with catalog-
             # canonicalized surfaces, but guard defensively).
             continue
-        edges.append(CausalEdge(
-            src=effect_id,     # effect (CAUSED_BY points effect→cause)
-            dst=cause_id,
-            edge_type=p.edge_type,
-            cue_type=p.cue_type,
-            confidence=p.confidence,
-        ))
+        edges.append(
+            CausalEdge(
+                src=effect_id,  # effect (CAUSED_BY points effect→cause)
+                dst=cause_id,
+                edge_type=p.edge_type,
+                cue_type=p.cue_type,
+                confidence=p.confidence,
+            )
+        )
     return edges
 
 

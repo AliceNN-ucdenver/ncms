@@ -70,7 +70,9 @@ class HttpBusTransport:
         await self._inner.stop()
 
     async def register_provider(
-        self, agent_id: str, domains: list[str],
+        self,
+        agent_id: str,
+        domains: list[str],
     ) -> None:
         await self._inner.register_provider(agent_id, domains)
 
@@ -82,7 +84,9 @@ class HttpBusTransport:
         await self._inner.deregister_provider(agent_id)
 
     async def update_availability(
-        self, agent_id: str, status: str,
+        self,
+        agent_id: str,
+        status: str,
     ) -> None:
         await self._inner.update_availability(agent_id, status)
 
@@ -104,24 +108,29 @@ class HttpBusTransport:
         filter_policy: SubscriptionFilter | None = None,
     ) -> None:
         await self._inner.subscribe(
-            agent_id, domains, filter_policy=filter_policy,
+            agent_id,
+            domains,
+            filter_policy=filter_policy,
         )
 
     async def get_inbox(self, agent_id: str) -> list[KnowledgeResponse]:
         return await self._inner.get_inbox(agent_id)
 
     async def get_announcements(
-        self, agent_id: str,
+        self,
+        agent_id: str,
     ) -> list[KnowledgeAnnounce]:
         return await self._inner.get_announcements(agent_id)
 
     async def drain_inbox(
-        self, agent_id: str,
+        self,
+        agent_id: str,
     ) -> list[KnowledgeResponse]:
         return await self._inner.drain_inbox(agent_id)
 
     async def drain_announcements(
-        self, agent_id: str,
+        self,
+        agent_id: str,
     ) -> list[KnowledgeAnnounce]:
         return await self._inner.drain_announcements(agent_id)
 
@@ -137,9 +146,7 @@ class HttpBusTransport:
     def set_ask_handler(
         self,
         agent_id: str,
-        handler: Callable[
-            [KnowledgeAsk], Awaitable[KnowledgeResponse | None]
-        ],
+        handler: Callable[[KnowledgeAsk], Awaitable[KnowledgeResponse | None]],
     ) -> None:
         self._inner.set_ask_handler(agent_id, handler)
 
@@ -182,7 +189,9 @@ class HttpBusTransport:
 
         logger.info(
             "Remote agent %s registered (domains=%s, subscribe=%s)",
-            agent_id, domains, subscribe_to,
+            agent_id,
+            domains,
+            subscribe_to,
         )
 
     async def deregister_remote_agent(self, agent_id: str) -> None:
@@ -194,7 +203,10 @@ class HttpBusTransport:
         logger.info("Remote agent %s deregistered", agent_id)
 
     def resolve_response(
-        self, agent_id: str, ask_id: str, response: KnowledgeResponse,
+        self,
+        agent_id: str,
+        ask_id: str,
+        response: KnowledgeResponse,
     ) -> bool:
         """Resolve a pending ask Future from a remote agent's POST.
 
@@ -214,7 +226,8 @@ class HttpBusTransport:
     # ── SSE announcement fan-out ──────────────────────────────────────
 
     def _push_announcement(
-        self, announcement: KnowledgeAnnounce,
+        self,
+        announcement: KnowledgeAnnounce,
     ) -> list[str]:
         """Push announcement to matching remote agents' SSE streams."""
         announce_data = {
@@ -230,8 +243,7 @@ class HttpBusTransport:
                 continue  # Don't echo back to sender
             # Check domain subscription match
             if remote.subscribed_domains and not any(
-                d in remote.subscribed_domains or d == "*"
-                for d in announcement.domains
+                d in remote.subscribed_domains or d == "*" for d in announcement.domains
             ):
                 continue
             if remote.handler.push_announcement(announce_data):
@@ -241,7 +253,8 @@ class HttpBusTransport:
     # ── Starlette routes ──────────────────────────────────────────────
 
     def starlette_routes(
-        self, prefix: str = "/api/v1/bus",
+        self,
+        prefix: str = "/api/v1/bus",
     ) -> list[Route]:
         """Return Starlette routes for remote agent HTTP + SSE.
 
@@ -287,14 +300,18 @@ class HttpBusTransport:
             )
 
         await self.register_remote_agent(
-            agent_id, domains, subscribe_to=subscribe_to,
+            agent_id,
+            domains,
+            subscribe_to=subscribe_to,
         )
-        return JSONResponse({
-            "registered": True,
-            "agent_id": agent_id,
-            "domains": domains,
-            "subscribe_to": subscribe_to,
-        })
+        return JSONResponse(
+            {
+                "registered": True,
+                "agent_id": agent_id,
+                "domains": domains,
+                "subscribe_to": subscribe_to,
+            }
+        )
 
     async def _handle_deregister(self, request: Request) -> JSONResponse:
         """POST /bus/deregister — deregister a remote agent."""
@@ -302,16 +319,21 @@ class HttpBusTransport:
         agent_id = body.get("agent_id", "")
         if not agent_id:
             return JSONResponse(
-                {"error": "agent_id is required"}, status_code=400,
+                {"error": "agent_id is required"},
+                status_code=400,
             )
 
         await self.deregister_remote_agent(agent_id)
-        return JSONResponse({
-            "deregistered": True, "agent_id": agent_id,
-        })
+        return JSONResponse(
+            {
+                "deregistered": True,
+                "agent_id": agent_id,
+            }
+        )
 
     async def _handle_subscribe_sse(
-        self, request: Request,
+        self,
+        request: Request,
     ) -> StreamingResponse | JSONResponse:
         """GET /bus/subscribe?agent_id=X — SSE stream for a remote agent."""
         agent_id = request.query_params.get("agent_id", "")
@@ -335,7 +357,8 @@ class HttpBusTransport:
                 while True:
                     try:
                         event = await asyncio.wait_for(
-                            sse_queue.get(), timeout=30.0,
+                            sse_queue.get(),
+                            timeout=30.0,
                         )
                         event_type = event.get("type", "message")
                         payload = json.dumps(event, default=str)

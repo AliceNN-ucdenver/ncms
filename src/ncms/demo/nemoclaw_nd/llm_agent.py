@@ -94,7 +94,8 @@ class LLMAgent(KnowledgeAgent):
             confidence=confidence,
             knowledge=KnowledgePayload(type="fact", content=answer),
             provenance=KnowledgeProvenance(
-                source="memory-store", trust_level="authoritative",
+                source="memory-store",
+                trust_level="authoritative",
             ),
             source_mode="live",
         )
@@ -104,7 +105,8 @@ class LLMAgent(KnowledgeAgent):
     async def collect_working_knowledge(self) -> list[SnapshotEntry]:
         """Export recent domain memories for snapshot."""
         memories = await self._memory.list_memories(
-            domain=self.primary_domain, agent_id=self.agent_id,
+            domain=self.primary_domain,
+            agent_id=self.agent_id,
         )
         entries: list[SnapshotEntry] = []
         for m in memories[:20]:
@@ -144,10 +146,7 @@ class LLMAgent(KnowledgeAgent):
             # Disable thinking mode for reasoning models
             if self.llm_model.startswith("ollama"):
                 kwargs["think"] = False
-            elif any(
-                name in self.llm_model.lower()
-                for name in ("nemotron", "qwen")
-            ):
+            elif any(name in self.llm_model.lower() for name in ("nemotron", "qwen")):
                 kwargs["extra_body"] = {
                     "chat_template_kwargs": {"enable_thinking": False},
                 }

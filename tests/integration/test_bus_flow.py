@@ -187,12 +187,14 @@ class TestAnnouncements:
         await bus_service.subscribe("receiver", ["db"])
 
         for i in range(3):
-            await bus_service.announce(KnowledgeAnnounce(
-                from_agent="sender",
-                event="updated",
-                domains=["db"],
-                knowledge=KnowledgePayload(content=f"update {i}"),
-            ))
+            await bus_service.announce(
+                KnowledgeAnnounce(
+                    from_agent="sender",
+                    event="updated",
+                    domains=["db"],
+                    knowledge=KnowledgePayload(content=f"update {i}"),
+                )
+            )
 
         drained = await bus_service.drain_announcements("receiver")
         assert len(drained) == 3

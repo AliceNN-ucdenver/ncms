@@ -94,9 +94,7 @@ class TestKnowledgeLoaderFile:
             "REST endpoints versioned under /api/v2/.\n"
         )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write(content)
             f.flush()
             tmp_path = f.name
@@ -123,9 +121,7 @@ class TestKnowledgeLoaderFile:
             {"endpoint": "/auth", "method": "POST", "description": "Login with credentials"},
         ]
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(data, f)
             f.flush()
             tmp_path = f.name
@@ -149,9 +145,7 @@ class TestKnowledgeLoaderFile:
             "/users/{id},GET,Get user by ID\n"
         )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             f.flush()
             tmp_path = f.name
@@ -185,9 +179,7 @@ class TestKnowledgeLoaderFile:
             "</body></html>"
         )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".html", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
             f.write(html_content)
             f.flush()
             tmp_path = f.name
@@ -275,8 +267,6 @@ class TestKnowledgeLoaderChunking:
         assert stats.memories_created > 0
 
         # Now agents can search the seeded knowledge
-        results = await memory_service.search(
-            "database connection pooling", domain="architecture"
-        )
+        results = await memory_service.search("database connection pooling", domain="architecture")
         assert len(results) >= 1
         assert any("pgbouncer" in r.memory.content.lower() for r in results)

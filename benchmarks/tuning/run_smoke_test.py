@@ -43,7 +43,8 @@ async def run_smoke_test() -> dict:
     # Get git SHA
     try:
         sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
         results["git_sha"] = sha
     except Exception:
@@ -85,7 +86,8 @@ async def run_smoke_test() -> dict:
                 print(f"  Ollama available: {models}")
         except Exception as e2:
             results["tests"]["ollama_fallback"] = {
-                "status": "UNAVAILABLE", "error": str(e2),
+                "status": "UNAVAILABLE",
+                "error": str(e2),
             }
 
     # --- Setup services ---
@@ -115,13 +117,19 @@ async def run_smoke_test() -> dict:
     graph = NetworkXGraph()
 
     admission_svc = AdmissionService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     reconciliation_svc = ReconciliationService(store=store, config=config)
     episode_svc = EpisodeService(store=store, index=index, config=config)
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
         admission=admission_svc,
         reconciliation=reconciliation_svc,
         episode=episode_svc,
@@ -134,7 +142,8 @@ async def run_smoke_test() -> dict:
         ("Database migration to PostgreSQL 16 completed on 2026-01-15", "fact", ["database"]),
         (
             "Decided to use Redis for session caching instead of Memcached",
-            "architecture-decision", ["api"],
+            "architecture-decision",
+            ["api"],
         ),
     ]
 
@@ -142,18 +151,24 @@ async def run_smoke_test() -> dict:
     for content, mtype, domains in test_contents:
         t0 = time.perf_counter()
         mem = await svc.store_memory(
-            content=content, memory_type=mtype, domains=domains,
+            content=content,
+            memory_type=mtype,
+            domains=domains,
         )
         elapsed = time.perf_counter() - t0
         admission = (mem.structured or {}).get("admission", {})
-        store_results.append({
-            "content": content[:60],
-            "admission_score": admission.get("score"),
-            "route": admission.get("route"),
-            "elapsed_ms": round(elapsed * 1000, 1),
-        })
-        print(f"  Score={admission.get('score', '?'):.3f} route={admission.get('route', '?')} "
-              f"({elapsed*1000:.0f}ms) {content[:50]}...")
+        store_results.append(
+            {
+                "content": content[:60],
+                "admission_score": admission.get("score"),
+                "route": admission.get("route"),
+                "elapsed_ms": round(elapsed * 1000, 1),
+            }
+        )
+        print(
+            f"  Score={admission.get('score', '?'):.3f} route={admission.get('route', '?')} "
+            f"({elapsed * 1000:.0f}ms) {content[:50]}..."
+        )
 
     results["tests"]["store_pipeline"] = {
         "status": "PASS",
@@ -178,14 +193,17 @@ async def run_smoke_test() -> dict:
         "contradictions": contradictions,
         "elapsed_ms": round(elapsed * 1000, 1),
     }
-    print(f"  Score={admission.get('score', '?'):.3f} route={admission.get('route', '?')} "
-          f"contradictions={contradictions} ({elapsed*1000:.0f}ms)")
+    print(
+        f"  Score={admission.get('score', '?'):.3f} route={admission.get('route', '?')} "
+        f"contradictions={contradictions} ({elapsed * 1000:.0f}ms)"
+    )
 
     # --- Test 4: Search with intent override ---
     print("\n=== Test 4: Search with intent override ===")
     t0 = time.perf_counter()
     search_results = await svc.search(
-        "auth protocol", intent_override="current_state_lookup",
+        "auth protocol",
+        intent_override="current_state_lookup",
     )
     elapsed = time.perf_counter() - t0
     results["tests"]["intent_search"] = {
@@ -201,7 +219,7 @@ async def run_smoke_test() -> dict:
             for r in search_results[:3]
         ],
     }
-    print(f"  {len(search_results)} results ({elapsed*1000:.0f}ms)")
+    print(f"  {len(search_results)} results ({elapsed * 1000:.0f}ms)")
     for r in search_results[:3]:
         print(f"    score={r.total_activation:.3f} intent={r.intent} {r.memory.content[:50]}")
 
@@ -271,6 +289,7 @@ def _write_report(results: dict) -> None:
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     results = asyncio.run(run_smoke_test())
     # Exit with error if any critical test failed

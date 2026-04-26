@@ -104,7 +104,8 @@ def _match_in_window(
 
 
 def _find_verb_hits(
-    sent_low: str, retirement_verbs: frozenset[str],
+    sent_low: str,
+    retirement_verbs: frozenset[str],
 ) -> list[tuple[str, int, int]]:
     """Every ``(verb, start, end)`` occurrence in the sentence."""
     hits: list[tuple[str, int, int]] = []
@@ -134,7 +135,8 @@ def _directional_retired(
         return set()
     from_end = from_m.end()
     to_m = re.search(
-        r"\b(?:to|into|toward|towards)\b", sent_low[from_end:],
+        r"\b(?:to|into|toward|towards)\b",
+        sent_low[from_end:],
     )
     to_start = from_end + to_m.start() if to_m else len(sent_low)
     return _match_in_window(sent_low[from_end:to_start], candidates, domain)
@@ -156,8 +158,8 @@ def _pre_post_window_retired(
     """
     retired: set[str] = set()
     for _, vstart, vend in verb_hits:
-        pre = sent_low[max(0, vstart - 60):vstart]
-        post = sent_low[vend:vend + 80]
+        pre = sent_low[max(0, vstart - 60) : vstart]
+        post = sent_low[vend : vend + 80]
         retired |= _match_in_window(pre, candidates, domain)
         retired |= _match_in_window(post, candidates, domain)
     return retired
@@ -206,7 +208,8 @@ def _setdiff_retired(
     exclusions so topical nouns don't leak in.
     """
     return {
-        ent for ent in src_entities
+        ent
+        for ent in src_entities
         if ent not in dst_entities and not _is_excluded(ent.lower(), domain)
     }
 
@@ -222,9 +225,7 @@ def _drop_dst_new(
     mark ``arthroscopic surgery`` as retired — it's the NEW state, not
     the old one.
     """
-    dst_new = {e.lower() for e in dst_entities} - {
-        e.lower() for e in src_entities
-    }
+    dst_new = {e.lower() for e in dst_entities} - {e.lower() for e in src_entities}
     return {e for e in retired if e.lower() not in dst_new}
 
 
@@ -272,7 +273,10 @@ def extract_retired(
     retired: set[str] = set()
     for sentence in _sentences(dst_content):
         retired |= _retired_from_sentence(
-            sentence, retirement_verbs, candidates, domain_entities,
+            sentence,
+            retirement_verbs,
+            candidates,
+            domain_entities,
         )
     retired |= _setdiff_retired(src_entities, dst_entities, domain_entities)
     retired = _drop_dst_new(retired, src_entities, dst_entities)

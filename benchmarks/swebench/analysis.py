@@ -137,10 +137,26 @@ def analyze_entity_overlap_sample(
 
     # Django-tuned labels
     labels = [
-        "class", "method", "function", "module", "field",
-        "model", "view", "middleware", "url_pattern", "form",
-        "template", "queryset", "manager", "migration", "signal",
-        "test_case", "exception", "setting", "command", "mixin",
+        "class",
+        "method",
+        "function",
+        "module",
+        "field",
+        "model",
+        "view",
+        "middleware",
+        "url_pattern",
+        "form",
+        "template",
+        "queryset",
+        "manager",
+        "migration",
+        "signal",
+        "test_case",
+        "exception",
+        "setting",
+        "command",
+        "mixin",
     ]
 
     sample = instances[:sample_size]
@@ -240,8 +256,7 @@ def analyze_qrel_coverage(instances: list[SWEInstance]) -> dict:
             "total_test_queries": len(test),
             "coverage": len(ar_qrels) / max(len(test), 1),
             "avg_relevant_per_query": (
-                statistics.mean([len(v) for v in ar_qrels.values()])
-                if ar_qrels else 0
+                statistics.mean([len(v) for v in ar_qrels.values()]) if ar_qrels else 0
             ),
         },
         "ttl": {
@@ -251,15 +266,13 @@ def analyze_qrel_coverage(instances: list[SWEInstance]) -> dict:
         "cr": {
             "file_state_queries": len(cr_qrels),
             "avg_temporal_depth": (
-                statistics.mean([len(v) for v in cr_qrels.values()])
-                if cr_qrels else 0
+                statistics.mean([len(v) for v in cr_qrels.values()]) if cr_qrels else 0
             ),
         },
         "lru": {
             "holistic_queries": len(lru_queries),
             "avg_relevant_per_query": (
-                statistics.mean([len(v) for v in lru_qrels.values()])
-                if lru_qrels else 0
+                statistics.mean([len(v) for v in lru_qrels.values()]) if lru_qrels else 0
             ),
         },
     }
@@ -311,8 +324,10 @@ def generate_report(report: dict) -> str:
 
     # Overview
     lines.append(f"**Total Django issues**: {report['total_instances']}")
-    lines.append(f"**Date range**: {report['temporal']['date_range']['earliest']} to "
-                 f"{report['temporal']['date_range']['latest']}\n")
+    lines.append(
+        f"**Date range**: {report['temporal']['date_range']['earliest']} to "
+        f"{report['temporal']['date_range']['latest']}\n"
+    )
 
     # Subsystems
     lines.append("## Subsystem Distribution\n")
@@ -326,8 +341,9 @@ def generate_report(report: dict) -> str:
     fo = report["file_overlap"]
     lines.append("## File Overlap (AR Ground Truth Signal)\n")
     lines.append(f"- Total issue pairs: {fo['total_pairs']:,}")
-    lines.append(f"- Pairs with file overlap: {fo['pairs_with_overlap']:,} "
-                 f"({fo['overlap_fraction']:.1%})")
+    lines.append(
+        f"- Pairs with file overlap: {fo['pairs_with_overlap']:,} ({fo['overlap_fraction']:.1%})"
+    )
     lines.append(f"- Jaccard mean: {fo['jaccard_mean']:.4f}")
     lines.append(f"- Jaccard median: {fo['jaccard_median']:.4f}")
     lines.append(f"- Jaccard max: {fo['jaccard_max']:.4f}\n")
@@ -356,8 +372,10 @@ def generate_report(report: dict) -> str:
         lines.append(f"- Entities in 2+ issues: {eo['entities_in_2plus_issues']}")
         lines.append(f"- Entities in 5+ issues: {eo['entities_in_5plus_issues']}")
         epi = eo["entities_per_issue"]
-        lines.append(f"- Entities per issue: mean={epi['mean']:.1f}, "
-                     f"median={epi['median']:.0f}, max={epi['max']}")
+        lines.append(
+            f"- Entities per issue: mean={epi['mean']:.1f}, "
+            f"median={epi['median']:.0f}, max={epi['max']}"
+        )
         lines.append(f"- Pairwise overlap fraction: {po['overlap_fraction']:.3f}")
         lines.append(f"- Jaccard mean: {po['jaccard_mean']:.4f}")
         lines.append(f"- Jaccard max: {po['jaccard_max']:.4f}\n")
@@ -374,17 +392,25 @@ def generate_report(report: dict) -> str:
     lines.append("| Split | Queries | Coverage | Notes |")
     lines.append("|-------|---------|----------|-------|")
     ar = qc["ar"]
-    lines.append(f"| AR (Accurate Retrieval) | {ar['queries_with_judgments']} | "
-                 f"{ar['coverage']:.0%} | avg {ar['avg_relevant_per_query']:.1f} relevant/query |")
+    lines.append(
+        f"| AR (Accurate Retrieval) | {ar['queries_with_judgments']} | "
+        f"{ar['coverage']:.0%} | avg {ar['avg_relevant_per_query']:.1f} relevant/query |"
+    )
     ttl = qc["ttl"]
-    lines.append(f"| TTL (Test-Time Learning) | {ttl['total_labeled']} | 100% | "
-                 f"{len(ttl['subsystem_distribution'])} subsystems |")
+    lines.append(
+        f"| TTL (Test-Time Learning) | {ttl['total_labeled']} | 100% | "
+        f"{len(ttl['subsystem_distribution'])} subsystems |"
+    )
     cr = qc["cr"]
-    lines.append(f"| CR (Conflict Resolution) | {cr['file_state_queries']} | N/A | "
-                 f"avg depth {cr['avg_temporal_depth']:.1f} |")
+    lines.append(
+        f"| CR (Conflict Resolution) | {cr['file_state_queries']} | N/A | "
+        f"avg depth {cr['avg_temporal_depth']:.1f} |"
+    )
     lru = qc["lru"]
-    lines.append(f"| LRU (Long-Range Understanding) | {lru['holistic_queries']} | N/A | "
-                 f"avg {lru['avg_relevant_per_query']:.0f} relevant/query |")
+    lines.append(
+        f"| LRU (Long-Range Understanding) | {lru['holistic_queries']} | N/A | "
+        f"avg {lru['avg_relevant_per_query']:.0f} relevant/query |"
+    )
     lines.append("")
 
     # Comparison table
@@ -432,15 +458,20 @@ def generate_report(report: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="SWE-bench Django structural analysis")
     parser.add_argument(
-        "--sample-size", type=int, default=100,
+        "--sample-size",
+        type=int,
+        default=100,
         help="Number of issues for GLiNER entity extraction sample (default: 100)",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="benchmarks/results/swebench/analysis",
+        "--output-dir",
+        type=str,
+        default="benchmarks/results/swebench/analysis",
         help="Output directory for reports",
     )
     parser.add_argument(
-        "--skip-entities", action="store_true",
+        "--skip-entities",
+        action="store_true",
         help="Skip GLiNER entity extraction (faster, no GPU needed)",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -478,7 +509,8 @@ def main() -> None:
     if not args.skip_entities:
         logger.info("Analyzing entity overlap (GLiNER on %d issues)...", args.sample_size)
         report["entity_overlap"] = analyze_entity_overlap_sample(
-            instances, sample_size=args.sample_size,
+            instances,
+            sample_size=args.sample_size,
         )
     else:
         report["entity_overlap"] = {"error": "Skipped (--skip-entities)"}
@@ -511,12 +543,16 @@ def main() -> None:
     print(f"{'=' * 60}")
     print(f"  Issues: {len(instances)}")
     fo = report["file_overlap"]
-    print(f"  File overlap pairs: {fo['pairs_with_overlap']:,} / {fo['total_pairs']:,} "
-          f"({fo['overlap_fraction']:.1%})")
+    print(
+        f"  File overlap pairs: {fo['pairs_with_overlap']:,} / {fo['total_pairs']:,} "
+        f"({fo['overlap_fraction']:.1%})"
+    )
     if "error" not in report["entity_overlap"]:
         eo = report["entity_overlap"]
-        print(f"  Entity overlap: {eo['pairwise_overlap']['overlap_fraction']:.1%} "
-              f"(Jaccard mean: {eo['pairwise_overlap']['jaccard_mean']:.4f})")
+        print(
+            f"  Entity overlap: {eo['pairwise_overlap']['overlap_fraction']:.1%} "
+            f"(Jaccard mean: {eo['pairwise_overlap']['jaccard_mean']:.4f})"
+        )
     qc = report["qrel_coverage"]
     print(f"  AR queries: {qc['ar']['queries_with_judgments']}")
     print(f"  CR queries: {qc['cr']['file_state_queries']}")

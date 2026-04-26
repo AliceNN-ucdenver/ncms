@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 async def load_cached_labels(
-    store: MemoryStore, domains: list[str],
+    store: MemoryStore,
+    domains: list[str],
 ) -> dict:
     """Return cached entity labels for the given domains plus the
     ``_keep_universal`` flag.
@@ -44,7 +45,8 @@ async def load_cached_labels(
         except Exception:
             logger.debug(
                 "Invalid JSON for entity_labels:%s, ignoring",
-                domain, exc_info=True,
+                domain,
+                exc_info=True,
             )
 
     raw_ku = await store.get_consolidation_value("_keep_universal")

@@ -431,10 +431,7 @@ def role_grounding_bonus(
         if span.get("role") != "primary":
             continue
         canonical = span.get("canonical")
-        if (
-            isinstance(canonical, str)
-            and canonical.lower() in qcanon_lower
-        ):
+        if isinstance(canonical, str) and canonical.lower() in qcanon_lower:
             return primary_bonus
     return 0.0
 

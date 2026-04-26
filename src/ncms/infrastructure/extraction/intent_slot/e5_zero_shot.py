@@ -83,7 +83,8 @@ class E5ZeroShotExtractor:
             normalize_embeddings=True,
         )
         logger.info(
-            "[intent_slot] E5ZeroShot loaded: model=%s", model_name,
+            "[intent_slot] E5ZeroShot loaded: model=%s",
+            model_name,
         )
 
     def extract(self, text: str, *, domain: str) -> ExtractedLabel:
@@ -127,7 +128,10 @@ class E5ZeroShotExtractor:
     # ── Slots: regex anchors + whole-text fallback ──────────────
 
     def _extract_slots(
-        self, text: str, domain: str, intent: str,
+        self,
+        text: str,
+        domain: str,
+        intent: str,
     ) -> dict[str, str]:
         slots: dict[str, str] = {}
         if intent == "habitual":
@@ -152,10 +156,7 @@ class E5ZeroShotExtractor:
         primary = self._primary_slot(domain)
         if primary not in slots:
             stripped = text.strip().rstrip(".,!?")
-            slots[primary] = (
-                stripped.split(maxsplit=1)[-1] if " " in stripped
-                else stripped
-            )
+            slots[primary] = stripped.split(maxsplit=1)[-1] if " " in stripped else stripped
         return slots
 
     @staticmethod

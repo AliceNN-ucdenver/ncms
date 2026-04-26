@@ -97,8 +97,12 @@ class TestEventLog:
             grammar_composed=False,
             grammar_confidence=None,
             candidate_counts={
-                "bm25": 50, "splade": 50, "rrf_fused": 60,
-                "expanded": 75, "scored": 75, "returned": 5,
+                "bm25": 50,
+                "splade": 50,
+                "rrf_fused": 60,
+                "expanded": 75,
+                "scored": 75,
+                "returned": 5,
             },
             signal_coverage={
                 "intent_alignment": 0,
@@ -118,12 +122,18 @@ class TestEventLog:
                 "memory_id": "mem-top",
                 "content_preview": "Postgres is the database",
                 "node_types": ["atomic"],
-                "bm25_raw": 5.2, "splade_raw": 0.0,
-                "graph_raw": 1.5, "h_bonus": 0.0,
-                "ia_contrib": 0.0, "sc_contrib": 0.0,
-                "rg_contrib": 0.25, "temporal": 0.0,
-                "penalty": 0.0, "total": 6.7,
-                "is_superseded": False, "has_conflicts": False,
+                "bm25_raw": 5.2,
+                "splade_raw": 0.0,
+                "graph_raw": 1.5,
+                "h_bonus": 0.0,
+                "ia_contrib": 0.0,
+                "sc_contrib": 0.0,
+                "rg_contrib": 0.25,
+                "temporal": 0.0,
+                "penalty": 0.0,
+                "total": 6.7,
+                "is_superseded": False,
+                "has_conflicts": False,
             },
             result_count=5,
             total_ms=42.3,
@@ -168,13 +178,20 @@ class TestEventLog:
         log = EventLog()
         long_q = "x" * 500
         log.query_diagnostic(
-            query=long_q, intent=None, intent_confidence=None,
-            query_entities=[], resolved_entity_ids=[],
-            temporal_ref=None, grammar_composed=False,
+            query=long_q,
+            intent=None,
+            intent_confidence=None,
+            query_entities=[],
+            resolved_entity_ids=[],
+            temporal_ref=None,
+            grammar_composed=False,
             grammar_confidence=None,
-            candidate_counts={}, signal_coverage={},
-            htmg_subject_stats={}, top_breakdown=None,
-            result_count=0, total_ms=1.0,
+            candidate_counts={},
+            signal_coverage={},
+            htmg_subject_stats={},
+            top_breakdown=None,
+            result_count=0,
+            total_ms=1.0,
         )
         evt = log.recent(1)[0]
         assert len(evt.data["query"]) == 200
@@ -184,13 +201,20 @@ class TestEventLog:
         log = EventLog()
         many = [f"e-{i}" for i in range(50)]
         log.query_diagnostic(
-            query="q", intent=None, intent_confidence=None,
-            query_entities=many, resolved_entity_ids=many,
-            temporal_ref=None, grammar_composed=False,
+            query="q",
+            intent=None,
+            intent_confidence=None,
+            query_entities=many,
+            resolved_entity_ids=many,
+            temporal_ref=None,
+            grammar_composed=False,
             grammar_confidence=None,
-            candidate_counts={}, signal_coverage={},
-            htmg_subject_stats={}, top_breakdown=None,
-            result_count=0, total_ms=1.0,
+            candidate_counts={},
+            signal_coverage={},
+            htmg_subject_stats={},
+            top_breakdown=None,
+            result_count=0,
+            total_ms=1.0,
         )
         evt = log.recent(1)[0]
         assert len(evt.data["query_entities"]) == 20
@@ -207,11 +231,21 @@ class TestEventLog:
         log.bus_ask("ask-1", "frontend", "q", ["api"], ["api-agent"])
         log.bus_response("ask-1", "api-agent", "live", 0.85)
         log.bus_announce(
-            "ann-1", "db-agent", "evt", ["db"], "info", ["api-agent"],
+            "ann-1",
+            "db-agent",
+            "evt",
+            ["db"],
+            "info",
+            ["api-agent"],
         )
         log.bus_surrogate("ask-2", "api-agent", 0.65, 3600.0)
         log.memory_stored(
-            "mem-1", "Hello", "fact", ["api"], 3, "api-agent",
+            "mem-1",
+            "Hello",
+            "fact",
+            ["api"],
+            3,
+            "api-agent",
         )
         log.memory_searched("q", 5, 0.92, "frontend")
 
@@ -422,7 +456,10 @@ class TestEventLogMemoryIntegration:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
             event_log=log,
         )
 
@@ -453,7 +490,10 @@ class TestEventLogMemoryIntegration:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
             event_log=log,
         )
 
@@ -480,8 +520,13 @@ class TestEventLogMemoryIntegration:
     async def test_bus_announce_includes_content_text(self):
         log = EventLog()
         log.bus_announce(
-            "ann-1", "db-agent", "breaking-change", ["db"], "critical",
-            ["api-agent"], content="ALTER TABLE users ADD COLUMN role",
+            "ann-1",
+            "db-agent",
+            "breaking-change",
+            ["db"],
+            "critical",
+            ["api-agent"],
+            content="ALTER TABLE users ADD COLUMN role",
         )
 
         event = log.recent(1)[0]

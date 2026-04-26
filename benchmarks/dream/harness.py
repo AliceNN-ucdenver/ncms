@@ -21,12 +21,12 @@ from typing import Any
 
 import networkx as nx
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -158,8 +158,13 @@ async def ingest_with_phases(
 
     # Wire into MemoryService
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission, reconciliation=reconciliation,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
         episode=episode,
     )
     await svc.start_index_pool()
@@ -207,7 +212,10 @@ async def ingest_with_phases(
             eta = (total - i - 1) / rate if rate > 0 else 0
             logger.info(
                 "  Ingested %d/%d docs (%.1f docs/sec, ETA %.0fs)",
-                i + 1, total, rate, eta,
+                i + 1,
+                total,
+                rate,
+                eta,
             )
             last_log = now
 
@@ -215,23 +223,33 @@ async def ingest_with_phases(
     if skipped_ephemeral > 0:
         logger.warning(
             "Skipped %d/%d docs (ephemeral/discarded by admission)",
-            skipped_ephemeral, total,
+            skipped_ephemeral,
+            total,
         )
     logger.info(
         "Ingestion complete: %d docs indexed in %.1fs (%.1f docs/sec, %d skipped)",
-        len(doc_to_mem), elapsed,
+        len(doc_to_mem),
+        elapsed,
         len(doc_to_mem) / elapsed if elapsed > 0 else 0,
         skipped_ephemeral,
     )
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     state = DreamState(
-        store=store, index=index, graph=graph, splade=splade,
-        config=config, doc_to_mem=doc_to_mem, mem_to_doc=mem_to_doc,
-        domain=domain, llm_model=llm_model, llm_api_base=llm_api_base,
+        store=store,
+        index=index,
+        graph=graph,
+        splade=splade,
+        config=config,
+        doc_to_mem=doc_to_mem,
+        mem_to_doc=mem_to_doc,
+        domain=domain,
+        llm_model=llm_model,
+        llm_api_base=llm_api_base,
         docs_ingested=len(doc_to_mem),
         ingestion_seconds=elapsed,
     )
@@ -288,8 +306,11 @@ async def inject_access_history(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
     )
 
     total_accesses = 0
@@ -305,12 +326,14 @@ async def inject_access_history(
 
         logger.debug(
             "Access injection pass %d: %d cumulative accesses",
-            pass_num + 1, total_accesses,
+            pass_num + 1,
+            total_accesses,
         )
 
     logger.info(
         "Injected %d access records across %d queries (3 passes)",
-        total_accesses, len(queries),
+        total_accesses,
+        len(queries),
     )
     return total_accesses
 
@@ -355,8 +378,11 @@ async def run_consolidation_stage(
     )
 
     consolidation_svc = ConsolidationService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=config,
+        splade=state.splade,
     )
 
     all_metrics: dict[str, int] = {}
@@ -403,16 +429,22 @@ async def measure_retrieval(
         # Create a new config with the overridden ACT-R weight
         config = NCMSConfig(
             **{
-                **{k: v for k, v in state.config.model_dump().items()
-                   if k != "scoring_weight_actr" and k != "actr_threshold"},
+                **{
+                    k: v
+                    for k, v in state.config.model_dump().items()
+                    if k != "scoring_weight_actr" and k != "actr_threshold"
+                },
                 "scoring_weight_actr": actr_weight_override,
                 "actr_threshold": -2.0 if actr_weight_override > 0 else -999.0,
             }
         )
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=config,
+        splade=state.splade,
     )
 
     # Build rankings and capture raw scored results
@@ -481,7 +513,10 @@ async def actr_crossover_sweep(
     for actr_w in ACTR_CROSSOVER_WEIGHTS:
         t0 = time.perf_counter()
         retrieval = await measure_retrieval(
-            state, queries, qrels, actr_weight_override=actr_w,
+            state,
+            queries,
+            qrels,
+            actr_weight_override=actr_w,
         )
         elapsed = time.perf_counter() - t0
         key = f"actr_{actr_w:.1f}"
@@ -494,7 +529,10 @@ async def actr_crossover_sweep(
         }
         logger.info(
             "    ACT-R=%.1f → nDCG@10=%.4f  MRR@10=%.4f  (%.1fs)",
-            actr_w, results[key]["nDCG@10"], results[key]["MRR@10"], elapsed,
+            actr_w,
+            results[key]["nDCG@10"],
+            results[key]["MRR@10"],
+            elapsed,
         )
 
     # Find best ACT-R weight
@@ -502,7 +540,9 @@ async def actr_crossover_sweep(
     best_w = float(best_key.split("_")[1])
     best_ndcg = results[best_key]["nDCG@10"]
     logger.info(
-        "    Best ACT-R weight: %.1f (nDCG@10=%.4f)", best_w, best_ndcg,
+        "    Best ACT-R weight: %.1f (nDCG@10=%.4f)",
+        best_w,
+        best_ndcg,
     )
 
     return results
@@ -559,9 +599,15 @@ async def capture_diagnostics(
         }
     else:
         diag["actr"] = {
-            "mean": 0.0, "median": 0.0, "std": 0.0, "min": 0.0, "max": 0.0,
-            "count_above_threshold": 0, "count_below_threshold": 0,
-            "total_with_access": 0, "total_memories": len(all_memories),
+            "mean": 0.0,
+            "median": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "count_above_threshold": 0,
+            "count_below_threshold": 0,
+            "total_with_access": 0,
+            "total_memories": len(all_memories),
         }
 
     # ── Graph topology ───────────────────────────────────────────────
@@ -572,9 +618,7 @@ async def capture_diagnostics(
     g = state.graph._graph  # noqa: SLF001 — benchmark code, acceptable
     g_nodes = g.number_of_nodes()
     density = nx.density(g) if g_nodes > 0 else 0.0
-    n_components = (
-        nx.number_weakly_connected_components(g) if g_nodes > 0 else 0
-    )
+    n_components = nx.number_weakly_connected_components(g) if g_nodes > 0 else 0
 
     # PageRank statistics
     pr = state.graph.pagerank()
@@ -621,13 +665,15 @@ async def capture_diagnostics(
             "mean": round(statistics.mean(unique_strengths), 4),
             "max": round(max(unique_strengths), 4),
             "std": (
-                round(statistics.stdev(unique_strengths), 4)
-                if len(unique_strengths) > 1 else 0.0
+                round(statistics.stdev(unique_strengths), 4) if len(unique_strengths) > 1 else 0.0
             ),
         }
     else:
         diag["associations"] = {
-            "pair_count": 0, "mean": 0.0, "max": 0.0, "std": 0.0,
+            "pair_count": 0,
+            "mean": 0.0,
+            "max": 0.0,
+            "std": 0.0,
         }
 
     # ── Importance distribution ──────────────────────────────────────
@@ -636,22 +682,24 @@ async def capture_diagnostics(
         diag["importance"] = {
             "mean": round(statistics.mean(importances), 4),
             "median": round(statistics.median(importances), 4),
-            "std": (
-                round(statistics.stdev(importances), 4)
-                if len(importances) > 1 else 0.0
-            ),
+            "std": (round(statistics.stdev(importances), 4) if len(importances) > 1 else 0.0),
             "count_above_baseline": sum(1 for imp in importances if imp > 5.0),
         }
     else:
         diag["importance"] = {
-            "mean": 0.0, "median": 0.0, "std": 0.0, "count_above_baseline": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "std": 0.0,
+            "count_above_baseline": 0,
         }
 
     # ── Abstract memory breakdown ────────────────────────────────────
     abstract_counts: dict[str, int] = {}
     for atype in (
-        "episode_summary", "state_trajectory",
-        "recurring_pattern", "strategic_insight",
+        "episode_summary",
+        "state_trajectory",
+        "recurring_pattern",
+        "strategic_insight",
     ):
         nodes = await state.store.get_abstract_nodes_by_type(atype)
         abstract_counts[atype] = len(nodes)
@@ -693,12 +741,8 @@ async def capture_diagnostics(
     total_queries = len(retrieval_result.per_query_results)
 
     for qid, scored_list in retrieval_result.per_query_results.items():
-        has_insight_top10 = any(
-            s.memory.type == "insight" for s in scored_list[:10]
-        )
-        has_insight_top100 = any(
-            s.memory.type == "insight" for s in scored_list[:100]
-        )
+        has_insight_top10 = any(s.memory.type == "insight" for s in scored_list[:10])
+        has_insight_top100 = any(s.memory.type == "insight" for s in scored_list[:100])
         if has_insight_top10:
             insight_in_top10 += 1
         if has_insight_top100:
@@ -729,10 +773,7 @@ async def capture_diagnostics(
             all_spreading.append(s.spreading)
 
     diag["spreading"] = {
-        "mean": (
-            round(statistics.mean(all_spreading), 6)
-            if all_spreading else 0.0
-        ),
+        "mean": (round(statistics.mean(all_spreading), 6) if all_spreading else 0.0),
         "nonzero_count": sum(1 for s in all_spreading if s > 0.0),
         "total_scored": len(all_spreading),
     }
@@ -824,7 +865,10 @@ async def run_dream_experiment(
         # Capture diagnostics
         logger.info("  Capturing diagnostics...")
         diagnostics = await capture_diagnostics(
-            state, retrieval_result, qrels, baseline_per_query,
+            state,
+            retrieval_result,
+            qrels,
+            baseline_per_query,
         )
 
         elapsed = time.perf_counter() - t0
@@ -836,10 +880,7 @@ async def run_dream_experiment(
             baseline_per_query = retrieval_result.per_query_ndcg
             delta_pct = 0.0
         else:
-            delta_pct = (
-                ((ndcg - baseline_ndcg) / baseline_ndcg * 100)
-                if baseline_ndcg > 0 else 0.0
-            )
+            delta_pct = ((ndcg - baseline_ndcg) / baseline_ndcg * 100) if baseline_ndcg > 0 else 0.0
 
         stage_results[stage.name] = {
             "display_name": stage.display_name,
@@ -854,8 +895,7 @@ async def run_dream_experiment(
         }
 
         logger.info(
-            "  nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f"
-            "  delta=%.2f%%  insights=%d  (%.1fs)",
+            "  nDCG@10=%.4f  MRR@10=%.4f  Recall@100=%.4f  delta=%.2f%%  insights=%d  (%.1fs)",
             ndcg,
             retrieval_metrics.get("MRR@10", 0),
             retrieval_metrics.get("Recall@100", 0),
@@ -868,8 +908,7 @@ async def run_dream_experiment(
         graph_diag = diagnostics.get("graph", {})
         assoc_diag = diagnostics.get("associations", {})
         logger.info(
-            "  Diagnostics: ACT-R mean=%.3f  entities=%d  edges=%d"
-            "  assoc_pairs=%d  abstracts=%d",
+            "  Diagnostics: ACT-R mean=%.3f  entities=%d  edges=%d  assoc_pairs=%d  abstracts=%d",
             actr_diag.get("mean", 0),
             graph_diag.get("entity_count", 0),
             graph_diag.get("relationship_count", 0),

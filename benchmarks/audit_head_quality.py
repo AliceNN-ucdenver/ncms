@@ -38,6 +38,7 @@ For each head we print:
 Domain-parameterised: run with --domain softwaredev (default) or
 any other if we've dumped a trace for it.
 """
+
 from __future__ import annotations
 
 import json
@@ -93,6 +94,7 @@ def slot_in_content(slot_value: str, content: str) -> bool:
 
 # ── Head audits ────────────────────────────────────────────────────────
 
+
 def audit_admission(records: list[dict]) -> None:
     print("── admission head ──")
     vals = Counter()
@@ -105,17 +107,21 @@ def audit_admission(records: list[dict]) -> None:
     print(f"  decisions: {dict(vals)}")
     if confs:
         confs.sort()
-        print(f"  confidence  min={confs[0]:.3f}  "
-              f"median={confs[len(confs)//2]:.3f}  "
-              f"max={confs[-1]:.3f}")
+        print(
+            f"  confidence  min={confs[0]:.3f}  "
+            f"median={confs[len(confs) // 2]:.3f}  "
+            f"max={confs[-1]:.3f}"
+        )
 
     # Gold curated → "persist" for every memory.  Anything else is a
     # false negative.
     misses = [r for r in records if r["slm"].get("admission") != "persist"]
     print(f"  gold-curated misses (non-persist): {len(misses)}")
     for m in misses[:5]:
-        print(f"    mid={m['mid']}  decision="
-              f"{m['slm']['admission']!r} conf={m['slm']['admission_conf']}")
+        print(
+            f"    mid={m['mid']}  decision="
+            f"{m['slm']['admission']!r} conf={m['slm']['admission_conf']}"
+        )
         print(f"      content[:120]: {m['content_head'][:120]!r}")
 
 
@@ -135,16 +141,18 @@ def audit_state_change(records: list[dict]) -> None:
     print(f"  SLM decisions: {dict(vals)}")
     if confs:
         confs.sort()
-        print(f"  confidence  min={confs[0]:.3f}  "
-              f"median={confs[len(confs)//2]:.3f}  "
-              f"max={confs[-1]:.3f}")
-    print(f"  SLM vs heuristic-oracle agreement matrix:")
+        print(
+            f"  confidence  min={confs[0]:.3f}  "
+            f"median={confs[len(confs) // 2]:.3f}  "
+            f"max={confs[-1]:.3f}"
+        )
+    print("  SLM vs heuristic-oracle agreement matrix:")
     for (s, o), n in sorted(agreements.items()):
         agree = "✓" if s == o else "✗"
         print(f"    slm={s!r:15}  oracle={o!r:15}  n={n:4d}  {agree}")
 
     # Spotlight: content clearly declaration but SLM says none
-    print(f"\n  cases where heuristic=declaration but SLM=none:")
+    print("\n  cases where heuristic=declaration but SLM=none:")
     seen = 0
     for r in records:
         slm_v = r["slm"].get("state_change") or "none"
@@ -168,24 +176,54 @@ def audit_topic(records: list[dict]) -> None:
     print(f"  topic distribution: {dict(vals)}")
     if confs:
         confs.sort()
-        print(f"  confidence (non-None only)  "
-              f"min={confs[0]:.3f}  "
-              f"median={confs[len(confs)//2]:.3f}  "
-              f"max={confs[-1]:.3f}")
+        print(
+            f"  confidence (non-None only)  "
+            f"min={confs[0]:.3f}  "
+            f"median={confs[len(confs) // 2]:.3f}  "
+            f"max={confs[-1]:.3f}"
+        )
 
     # Subject-slug hints vs topic head output
     #   infra ADRs      (docker/swarm/postgres/mysql/secrets/cloud)    → infra
     #   framework       (django/flask/sveltekit/rails)                 → framework
     #   language        (python/rust/go-programming)                   → language_runtime
     #   tooling         (timestamp-format/env-var/api-json)            → tooling
-    infra_hints = ("docker", "swarm", "postgres", "mysql", "secrets",
-                   "cloud", "gcp", "kafka", "redis", "rabbit", "database")
-    framework_hints = ("django", "flask", "svelte", "rails", "angular",
-                       "react", "vue", "next", "tailwind", "bulma", "css-framework")
-    lang_hints = ("python-programming", "rust-programming", "go-programming",
-                  "typescript", "javascript-language", "language")
-    testing_hints = ("playwright", "cypress", "selenium", "testing",
-                     "e2e", "vitest", "jest")
+    infra_hints = (
+        "docker",
+        "swarm",
+        "postgres",
+        "mysql",
+        "secrets",
+        "cloud",
+        "gcp",
+        "kafka",
+        "redis",
+        "rabbit",
+        "database",
+    )
+    framework_hints = (
+        "django",
+        "flask",
+        "svelte",
+        "rails",
+        "angular",
+        "react",
+        "vue",
+        "next",
+        "tailwind",
+        "bulma",
+        "css-framework",
+    )
+    lang_hints = (
+        "python-programming",
+        "rust-programming",
+        "go-programming",
+        "typescript",
+        "javascript-language",
+        "language",
+    )
+    testing_hints = ("playwright", "cypress", "selenium", "testing", "e2e", "vitest", "jest")
+
     def hint_domain(mid: str) -> str:
         m = mid.lower()
         if any(h in m for h in testing_hints):
@@ -197,12 +235,13 @@ def audit_topic(records: list[dict]) -> None:
         if any(h in m for h in infra_hints):
             return "infra"
         return "(other)"
+
     agreements = Counter()
     for r in records:
         slm_topic = r["slm"].get("topic") or "(none)"
         slug_hint = hint_domain(r["mid"])
         agreements[(slm_topic, slug_hint)] += 1
-    print(f"  SLM topic vs slug-hint agreement matrix:")
+    print("  SLM topic vs slug-hint agreement matrix:")
     for (s, h), n in sorted(agreements.items()):
         print(f"    slm={s!r:20}  slug_hint={h!r:20}  n={n:4d}")
 
@@ -219,15 +258,16 @@ def audit_intent(records: list[dict]) -> None:
     print(f"  intent distribution: {dict(vals)}")
     if confs:
         confs.sort()
-        print(f"  confidence  min={confs[0]:.3f}  "
-              f"median={confs[len(confs)//2]:.3f}  "
-              f"max={confs[-1]:.3f}")
+        print(
+            f"  confidence  min={confs[0]:.3f}  "
+            f"median={confs[len(confs) // 2]:.3f}  "
+            f"max={confs[-1]:.3f}"
+        )
     # Ingest content should be mostly intent='none'
     non_none = [r for r in records if r["slm"].get("intent") != "none"]
     print(f"  ingest-time intent != 'none' (rare expected): {len(non_none)}")
     for m in non_none[:5]:
-        print(f"    mid={m['mid']}  intent="
-              f"{m['slm']['intent']!r} conf={m['slm']['intent_conf']}")
+        print(f"    mid={m['mid']}  intent={m['slm']['intent']!r} conf={m['slm']['intent_conf']}")
         print(f"      content[:120]: {m['content_head'][:120]!r}")
 
 
@@ -245,17 +285,21 @@ def audit_slots(records: list[dict]) -> None:
             if not slot_in_content(surface, r["content_head"]):
                 hallucinated += 1
                 if len(examples) < 8:
-                    examples.append({
-                        "mid": r["mid"],
-                        "label": label,
-                        "surface": surface,
-                        "content_preview": r["content_head"][:120],
-                    })
+                    examples.append(
+                        {
+                            "mid": r["mid"],
+                            "label": label,
+                            "surface": surface,
+                            "content_preview": r["content_head"][:120],
+                        }
+                    )
     print(f"  total slots extracted: {total_slots}")
     print(f"  slot-type distribution: {dict(slot_types)}")
-    print(f"  surface NOT found in content (hallucination count): "
-          f"{hallucinated} / {total_slots}  "
-          f"({(hallucinated/total_slots*100 if total_slots else 0):.1f}%)")
+    print(
+        f"  surface NOT found in content (hallucination count): "
+        f"{hallucinated} / {total_slots}  "
+        f"({(hallucinated / total_slots * 100 if total_slots else 0):.1f}%)"
+    )
     for ex in examples[:5]:
         print(f"    mid={ex['mid']}  slot={ex['label']}:{ex['surface']!r}")
         print(f"      content[:120]: {ex['content_preview']!r}")
@@ -299,20 +343,19 @@ def audit_shape_intent(predictions_path: Path, gold_path: Path) -> None:
             low_conf += 1
     total = sum(per_shape.values())
     print(f"  queries total: {total}")
-    print(f"  high-conf (≥0.7) correct: {hi_conf_correct}  "
-          f"({(hi_conf_correct/total*100):.1f}%)")
-    print(f"  high-conf (≥0.7) wrong:   {hi_conf_wrong}  "
-          f"({(hi_conf_wrong/total*100):.1f}%)")
-    print(f"  low-conf / abstain:        {low_conf}  "
-          f"({(low_conf/total*100):.1f}%)")
-    print(f"  per-shape recall (SLM gets gold shape at high conf):")
+    print(
+        f"  high-conf (≥0.7) correct: {hi_conf_correct}  ({(hi_conf_correct / total * 100):.1f}%)"
+    )
+    print(f"  high-conf (≥0.7) wrong:   {hi_conf_wrong}  ({(hi_conf_wrong / total * 100):.1f}%)")
+    print(f"  low-conf / abstain:        {low_conf}  ({(low_conf / total * 100):.1f}%)")
+    print("  per-shape recall (SLM gets gold shape at high conf):")
     for shape in sorted(per_shape):
         n = per_shape[shape]
         got = cm.get((shape, shape), 0)
-        print(f"    {shape:20}  {got:4d}/{n:4d}  ({(got/n*100):.1f}%)")
+        print(f"    {shape:20}  {got:4d}/{n:4d}  ({(got / n * 100):.1f}%)")
 
     # Confusion: most common wrong predictions
-    print(f"\n  Top confusion pairs (gold → SLM, wrong predictions):")
+    print("\n  Top confusion pairs (gold → SLM, wrong predictions):")
     wrong = [(k, v) for k, v in cm.items() if k[0] != k[1]]
     wrong.sort(key=lambda x: -x[1])
     for (gold_s, slm_s), n in wrong[:8]:
@@ -321,11 +364,10 @@ def audit_shape_intent(predictions_path: Path, gold_path: Path) -> None:
 
 # ── Main ───────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     domain = sys.argv[1] if len(sys.argv) > 1 else "softwaredev"
-    ingest_jsonl = (
-        ROOT / f"benchmarks/results/audit/softwaredev_ingest_trace.jsonl"
-    )
+    ingest_jsonl = ROOT / "benchmarks/results/audit/softwaredev_ingest_trace.jsonl"
     preds_jsonl = sorted(
         (ROOT / "benchmarks/results/mseb/main12").glob(
             f"main_{domain}_ncms_temporal-on_*.predictions.jsonl"
@@ -333,9 +375,8 @@ def main() -> None:
     )[-1]
     gold_yaml = ROOT / f"benchmarks/mseb_{domain}/gold_locked.yaml"
 
-    records = [json.loads(l) for l in ingest_jsonl.open()]
-    print(f"domain: {domain}  ingest records: {len(records)}  "
-          f"predictions: {preds_jsonl.name}")
+    records = [json.loads(line) for line in ingest_jsonl.open()]
+    print(f"domain: {domain}  ingest records: {len(records)}  predictions: {preds_jsonl.name}")
     print()
 
     audit_admission(records)

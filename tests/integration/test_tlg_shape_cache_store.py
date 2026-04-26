@@ -23,12 +23,14 @@ async def store() -> SQLiteStore:
 
 
 def _vocab():
-    return induce_vocabulary([
-        SubjectMemory(
-            subject="auth",
-            entities=frozenset({"OAuth", "session cookies", "authentication"}),
-        ),
-    ])
+    return induce_vocabulary(
+        [
+            SubjectMemory(
+                subject="auth",
+                entities=frozenset({"OAuth", "session cookies", "authentication"}),
+            ),
+        ]
+    )
 
 
 class TestShapeCacheStore:
@@ -38,7 +40,8 @@ class TestShapeCacheStore:
         assert cache.size() == 0
 
     async def test_learn_persists_to_store(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         cache = ShapeCacheStore()
         v = _vocab()
@@ -52,7 +55,8 @@ class TestShapeCacheStore:
         assert intent == "sequence"
 
     async def test_abstain_not_persisted(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         cache = ShapeCacheStore()
         v = _vocab()
@@ -63,7 +67,8 @@ class TestShapeCacheStore:
         assert snapshot == {}
 
     async def test_repeat_learn_idempotent(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         cache = ShapeCacheStore()
         v = _vocab()
@@ -77,7 +82,8 @@ class TestShapeCacheStore:
         assert sole["hit_count"] == 2
 
     async def test_conflict_does_not_overwrite_intent(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         cache = ShapeCacheStore()
         v = _vocab()
@@ -85,7 +91,10 @@ class TestShapeCacheStore:
         # Attempting to reassign the same skeleton to a different
         # intent should be a no-op — productions remain authoritative.
         await cache.learn(
-            store, "What came after OAuth?", "predecessor", v,
+            store,
+            "What came after OAuth?",
+            "predecessor",
+            v,
         )
         snapshot = await store.load_shape_cache()
         sole = next(iter(snapshot.values()))

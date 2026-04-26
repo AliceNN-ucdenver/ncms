@@ -9,6 +9,7 @@ format with the AUDITED shape_intent (post-remap).
 * ``remap:<X>`` → emit with X as shape_intent
 * ``drop`` → skip (rare)
 """
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,7 @@ from pathlib import Path
 import yaml
 
 AUDIT_JSONL = Path("/tmp/convo_gold_audit.jsonl")
-GOLD_YAML = Path(
-    "/Users/shawnmccarthy/ncms/benchmarks/mseb_convo/gold_locked.yaml"
-)
+GOLD_YAML = Path("/Users/shawnmccarthy/ncms/benchmarks/mseb_convo/gold_locked.yaml")
 OUT_PATH = Path(
     "/Users/shawnmccarthy/ncms/experiments/intent_slot_distillation/"
     "corpus/gold_shape_intent_conversational.jsonl"
@@ -59,22 +58,21 @@ def main() -> None:
         shape = _NOISE_REMAP.get(shape, shape)
 
         gold_row = gold_by_qid[qid]
-        out_rows.append({
-            "text": gold_row["text"],
-            "domain": "conversational",
-            "intent": "none",
-            "slots": {},
-            "topic": None,
-            "admission": "persist",
-            "state_change": "none",
-            "shape_intent": shape,
-            "split": "gold",
-            "source": f"mseb-gold-v2-audited {qid}",
-            "note": (
-                f"audit_verdict={verdict}; "
-                f"audit_reason={verdict_rec['reason']}"
-            ),
-        })
+        out_rows.append(
+            {
+                "text": gold_row["text"],
+                "domain": "conversational",
+                "intent": "none",
+                "slots": {},
+                "topic": None,
+                "admission": "persist",
+                "state_change": "none",
+                "shape_intent": shape,
+                "split": "gold",
+                "source": f"mseb-gold-v2-audited {qid}",
+                "note": (f"audit_verdict={verdict}; audit_reason={verdict_rec['reason']}"),
+            }
+        )
         stats[shape] = stats.get(shape, 0) + 1
 
     OUT_PATH.write_text(

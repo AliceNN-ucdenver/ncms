@@ -41,9 +41,7 @@ class Confidence(StrEnum):
 #: The set of confidence levels that justify prepending the grammar
 #: answer onto the BM25 ranking.  Membership in this set is the
 #: composition-invariant predicate referenced by Proposition 1.
-CONFIDENT_LEVELS: frozenset[Confidence] = frozenset(
-    {Confidence.HIGH, Confidence.MEDIUM}
-)
+CONFIDENT_LEVELS: frozenset[Confidence] = frozenset({Confidence.HIGH, Confidence.MEDIUM})
 
 
 def is_confident(level: Confidence | str | None) -> bool:

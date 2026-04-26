@@ -34,23 +34,28 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
     # -----------------------------------------------------------------
     "current_state": [
         {
-            "text_template": "What final confirmed diagnosis did the workup establish for: {title}?",
+            "text_template": (
+                "What final confirmed diagnosis did the workup establish for: {title}?"
+            ),
             "gold_kind": "retirement",
             "gold_source_filter": ["final diagnosis"],
         },
         {
-            "text_template": "What was the corrected diagnosis after full investigation in: {title}?",
+            "text_template": (
+                "What was the corrected diagnosis after full investigation in: {title}?"
+            ),
             "gold_kind": "retirement",
             "gold_source_filter": ["discussion"],
         },
     ],
-
     # -----------------------------------------------------------------
     # origin — how the patient first presented
     # -----------------------------------------------------------------
     "origin": [
         {
-            "text_template": "How did the patient first present with signs consistent with: {title}?",
+            "text_template": (
+                "How did the patient first present with signs consistent with: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "presentation", "history"],
         },
@@ -60,7 +65,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_source_filter": ["case presentation", "case report", "presentation", "history"],
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_first — earliest recorded observation
     # -----------------------------------------------------------------
@@ -71,7 +75,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_last — final outcome / follow-up
     # -----------------------------------------------------------------
@@ -87,103 +90,117 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_source_filter": ["conclusion"],
         },
     ],
-
     # -----------------------------------------------------------------
     # sequence — the diagnostic sequence
     # -----------------------------------------------------------------
     "sequence": [
         {
-            "text_template": "What initial presentation started the diagnostic workup for: {title}?",
+            "text_template": (
+                "What initial presentation started the diagnostic workup for: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
-
     # -----------------------------------------------------------------
     # predecessor — earlier working diagnosis (before the final)
     # -----------------------------------------------------------------
     "predecessor": [
         {
-            "text_template": "What working diagnosis was considered before the final one in: {title}?",
+            "text_template": (
+                "What working diagnosis was considered before the final one in: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["initial diagnosis", "differential diagnosis"],
         },
         {
-            "text_template": "What diagnosis was initially suspected based on presentation in: {title}?",
+            "text_template": (
+                "What diagnosis was initially suspected based on presentation in: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
-
     # -----------------------------------------------------------------
     # transitive_cause — which new investigation revised the diagnosis
     # -----------------------------------------------------------------
     "transitive_cause": [
         {
-            "text_template": "What laboratory or imaging finding drove the diagnostic revision in: {title}?",
+            "text_template": (
+                "What laboratory or imaging finding drove the diagnostic revision in: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["investigations", "workup"],
         },
         {
-            "text_template": "What new test result prompted reconsidering the diagnosis in: {title}?",
+            "text_template": (
+                "What new test result prompted reconsidering the diagnosis in: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["investigations", "workup"],
         },
     ],
-
     # -----------------------------------------------------------------
     # causal_chain — retrospective reasoning
     # -----------------------------------------------------------------
     "causal_chain": [
         {
-            "text_template": "What retrospective reasoning explains the diagnostic trajectory in: {title}?",
+            "text_template": (
+                "What retrospective reasoning explains the diagnostic trajectory in: {title}?"
+            ),
             "gold_kind": "causal_link",
             "gold_source_filter": ["discussion"],
         },
         {
-            "text_template": "What mechanism did the authors discuss to explain the findings in: {title}?",
+            "text_template": (
+                "What mechanism did the authors discuss to explain the findings in: {title}?"
+            ),
             "gold_kind": "causal_link",
             "gold_source_filter": ["discussion"],
         },
     ],
-
     # -----------------------------------------------------------------
     # concurrent — treatment alongside the workup
     # -----------------------------------------------------------------
     "concurrent": [
         {
-            "text_template": "What therapy was administered concurrently with diagnostic workup in: {title}?",
+            "text_template": (
+                "What therapy was administered concurrently with diagnostic workup in: {title}?"
+            ),
             "gold_kind": "causal_link",
             "gold_source_filter": ["management", "treatment", "course"],
         },
     ],
-
     # -----------------------------------------------------------------
     # before_named — state prior to treatment
     # -----------------------------------------------------------------
     "before_named": [
         {
-            "text_template": "What was the patient's clinical state before treatment was initiated in: {title}?",
+            "text_template": (
+                "What was the patient's clinical state before treatment was initiated in: {title}?"
+            ),
             "gold_kind": "declaration",
             "gold_source_filter": ["case presentation", "case report", "history"],
         },
     ],
-
     # -----------------------------------------------------------------
     # retirement — the diagnosis that retired the earlier hypothesis
     # -----------------------------------------------------------------
     "retirement": [
         {
-            "text_template": "Which established diagnosis retired the initial working hypothesis in: {title}?",
+            "text_template": (
+                "Which established diagnosis retired the initial working hypothesis in: {title}?"
+            ),
             "gold_kind": "retirement",
             "gold_source_filter": ["final diagnosis"],
         },
         {
-            "text_template": "What confirmed diagnosis corrected the earlier misdiagnosis in: {title}?",
+            "text_template": (
+                "What confirmed diagnosis corrected the earlier misdiagnosis in: {title}?"
+            ),
             "gold_kind": "retirement",
         },
     ],
-
     # -----------------------------------------------------------------
     # noise — off-topic clinical queries
     # -----------------------------------------------------------------

@@ -51,12 +51,14 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_returns_insight_dict(self):
         """Valid JSON response should be parsed into an insight dict."""
-        result_json = json.dumps({
-            "insight": "These memories reveal a dependency pattern between auth and DB.",
-            "pattern_type": "dependency",
-            "confidence": 0.85,
-            "key_entities": ["auth-service", "postgres"],
-        })
+        result_json = json.dumps(
+            {
+                "insight": "These memories reveal a dependency pattern between auth and DB.",
+                "pattern_type": "dependency",
+                "confidence": 0.85,
+                "key_entities": ["auth-service", "postgres"],
+            }
+        )
 
         with patch(
             _PATCH_TARGET,
@@ -74,12 +76,14 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_with_api_base(self):
         """api_base should be passed to litellm when provided."""
-        result_json = json.dumps({
-            "insight": "Test insight",
-            "pattern_type": "architecture",
-            "confidence": 0.7,
-            "key_entities": [],
-        })
+        result_json = json.dumps(
+            {
+                "insight": "Test insight",
+                "pattern_type": "architecture",
+                "confidence": 0.7,
+                "key_entities": [],
+            }
+        )
 
         with patch(
             _PATCH_TARGET,
@@ -100,12 +104,14 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_without_api_base(self):
         """api_base should not be in kwargs when not provided."""
-        result_json = json.dumps({
-            "insight": "Test insight",
-            "pattern_type": "workflow",
-            "confidence": 0.6,
-            "key_entities": [],
-        })
+        result_json = json.dumps(
+            {
+                "insight": "Test insight",
+                "pattern_type": "workflow",
+                "confidence": 0.6,
+                "key_entities": [],
+            }
+        )
 
         with patch(
             _PATCH_TARGET,
@@ -144,10 +150,12 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_missing_insight_field_returns_none(self):
         """JSON without 'insight' key should return None."""
-        result_json = json.dumps({
-            "pattern_type": "dependency",
-            "confidence": 0.5,
-        })
+        result_json = json.dumps(
+            {
+                "pattern_type": "dependency",
+                "confidence": 0.5,
+            }
+        )
 
         with patch(
             _PATCH_TARGET,
@@ -161,12 +169,14 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_code_fenced_response(self):
         """Handles ```json wrapping around the response."""
-        inner_json = json.dumps({
-            "insight": "A pattern from code-fenced response",
-            "pattern_type": "impact",
-            "confidence": 0.9,
-            "key_entities": ["service-a"],
-        })
+        inner_json = json.dumps(
+            {
+                "insight": "A pattern from code-fenced response",
+                "pattern_type": "impact",
+                "confidence": 0.9,
+                "key_entities": ["service-a"],
+            }
+        )
         fenced = f"```json\n{inner_json}\n```"
 
         with patch(
@@ -192,12 +202,14 @@ class TestSynthesizeInsight:
     @pytest.mark.asyncio
     async def test_synthesize_normalizes_fields(self):
         """Fields should be normalized to correct types."""
-        result_json = json.dumps({
-            "insight": 42,  # Not a string — should be cast
-            "pattern_type": "architecture",
-            "confidence": "0.75",  # String — should be cast to float
-            "key_entities": ["e1"],
-        })
+        result_json = json.dumps(
+            {
+                "insight": 42,  # Not a string — should be cast
+                "pattern_type": "architecture",
+                "confidence": "0.75",  # String — should be cast to float
+                "key_entities": ["e1"],
+            }
+        )
 
         with patch(
             _PATCH_TARGET,
@@ -221,12 +233,14 @@ class TestSynthesizeInsight:
             domains={"test"},
         )
 
-        result_json = json.dumps({
-            "insight": "Test",
-            "pattern_type": "dependency",
-            "confidence": 0.5,
-            "key_entities": [],
-        })
+        result_json = json.dumps(
+            {
+                "insight": "Test",
+                "pattern_type": "dependency",
+                "confidence": 0.5,
+                "key_entities": [],
+            }
+        )
 
         with patch(
             _PATCH_TARGET,

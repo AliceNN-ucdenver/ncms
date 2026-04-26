@@ -42,7 +42,10 @@ async def dream_pipeline():
 
     mem_svc = MemoryService(store=store, index=index, graph=graph, config=config)
     consol_svc = ConsolidationService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
 
     yield store, mem_svc, consol_svc, config
@@ -73,11 +76,13 @@ class TestDreamPipelineEndToEnd:
         now = datetime.now(UTC)
         for mem in memories:
             for i in range(3):
-                await store.log_access(AccessRecord(
-                    memory_id=mem.id,
-                    accessing_agent="test",
-                    accessed_at=now - timedelta(hours=i * 12),
-                ))
+                await store.log_access(
+                    AccessRecord(
+                        memory_id=mem.id,
+                        accessing_agent="test",
+                        accessed_at=now - timedelta(hours=i * 12),
+                    )
+                )
 
         # ── 2. Run searches to generate search log entries ────────────
         for query in [
@@ -124,11 +129,13 @@ class TestDreamPipelineEndToEnd:
             )
             # Ensure enough accesses
             for i in range(3):
-                await store.log_access(AccessRecord(
-                    memory_id=mem.id,
-                    accessing_agent="test",
-                    accessed_at=datetime.now(UTC) - timedelta(hours=i),
-                ))
+                await store.log_access(
+                    AccessRecord(
+                        memory_id=mem.id,
+                        accessing_agent="test",
+                        accessed_at=datetime.now(UTC) - timedelta(hours=i),
+                    )
+                )
 
         # Run searches to populate search log
         for _ in range(3):
@@ -154,11 +161,13 @@ class TestDreamPipelineEndToEnd:
         ]:
             mem = await mem_svc.store_memory(content=content, domains=["test"])
             for i in range(3):
-                await store.log_access(AccessRecord(
-                    memory_id=mem.id,
-                    accessing_agent="test",
-                    accessed_at=datetime.now(UTC) - timedelta(hours=i),
-                ))
+                await store.log_access(
+                    AccessRecord(
+                        memory_id=mem.id,
+                        accessing_agent="test",
+                        accessed_at=datetime.now(UTC) - timedelta(hours=i),
+                    )
+                )
 
         results = await consol_svc.run_consolidation_pass()
 

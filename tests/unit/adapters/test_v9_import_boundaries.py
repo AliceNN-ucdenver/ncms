@@ -38,14 +38,14 @@ def _run_subprocess(snippet: str) -> str:
     """
     result = subprocess.run(
         [sys.executable, "-c", snippet],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
         cwd=str(_REPO),
         timeout=30,
     )
     if result.returncode != 0:
         raise AssertionError(
-            f"subprocess failed: returncode={result.returncode}\n"
-            f"stderr: {result.stderr}",
+            f"subprocess failed: returncode={result.returncode}\nstderr: {result.stderr}",
         )
     return result.stdout.strip()
 
@@ -137,11 +137,13 @@ def test_disabled_via_env_flag(domains_present):
     regression."""
     out = subprocess.run(
         [
-            sys.executable, "-c",
+            sys.executable,
+            "-c",
             "from ncms.application.adapters.schemas import get_domain_manifest\n"
             "print(get_domain_manifest('clinical').sdg_jsonl)\n",
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
         cwd=str(_REPO),
         env={**__import__("os").environ, "NCMS_V9_DOMAIN_LOADER": "0"},
         timeout=30,

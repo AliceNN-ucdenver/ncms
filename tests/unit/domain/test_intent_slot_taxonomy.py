@@ -100,14 +100,22 @@ class TestSlmStateChangeDecision:
         assert result is None
 
     def test_empty_dict_returns_none(self) -> None:
-        assert slm_state_change_decision(
-            {}, threshold=self.THRESHOLD,
-        ) is None
+        assert (
+            slm_state_change_decision(
+                {},
+                threshold=self.THRESHOLD,
+            )
+            is None
+        )
 
     def test_none_input_returns_none(self) -> None:
-        assert slm_state_change_decision(
-            None, threshold=self.THRESHOLD,
-        ) is None
+        assert (
+            slm_state_change_decision(
+                None,
+                threshold=self.THRESHOLD,
+            )
+            is None
+        )
 
     def test_missing_state_change_returns_none(self) -> None:
         """Method matches but no state_change field → fall through."""

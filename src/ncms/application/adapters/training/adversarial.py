@@ -48,6 +48,7 @@ from pathlib import Path
 
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -78,10 +79,17 @@ from ncms.application.adapters.schemas import (
 _DOMAIN_PRIMARY_SLOTS: dict[Domain, tuple[str, ...]] = {
     "conversational": ("object",),
     "software_dev": (
-        "library", "language", "pattern", "tool", "object",
+        "library",
+        "language",
+        "pattern",
+        "tool",
+        "object",
     ),
     "clinical": (
-        "medication", "procedure", "symptom", "object",
+        "medication",
+        "procedure",
+        "symptom",
+        "object",
     ),
 }
 
@@ -109,9 +117,18 @@ def _primary(seed: GoldExample) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 
 _QUOTED_SPEAKERS = (
-    "My manager", "The professor", "My doctor", "A colleague",
-    "The waiter", "My friend", "My neighbour", "Someone on Twitter",
-    "A random stranger", "My roommate", "The CEO", "An intern",
+    "My manager",
+    "The professor",
+    "My doctor",
+    "A colleague",
+    "The waiter",
+    "My friend",
+    "My neighbour",
+    "Someone on Twitter",
+    "A random stranger",
+    "My roommate",
+    "The CEO",
+    "An intern",
 )
 
 _QUOTED_FRAMES = (
@@ -129,11 +146,13 @@ _QUOTED_FRAMES = (
 
 
 def _quoted_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample:
     speaker = rng.choice(_QUOTED_SPEAKERS)
     frame = rng.choice(_QUOTED_FRAMES).format(
-        speaker=speaker, original=seed.text.rstrip(".!?"),
+        speaker=speaker,
+        original=seed.text.rstrip(".!?"),
     )
     return GoldExample(
         text=frame + ".",
@@ -168,7 +187,8 @@ _NEG_POS_FRAMES = (
 
 
 def _neg_pos_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
@@ -176,7 +196,8 @@ def _neg_pos_variant(
     slot_name, obj = primary
     verbs = ["love", "like", "enjoy", "prefer"]
     text = rng.choice(_NEG_POS_FRAMES).format(
-        verb=rng.choice(verbs), object=obj,
+        verb=rng.choice(verbs),
+        object=obj,
     )
     return GoldExample(
         text=text + ".",
@@ -211,7 +232,8 @@ _PAST_FLIP_FRAMES = (
 
 
 def _past_flip_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
@@ -251,7 +273,8 @@ _THIRD_FIRST_FRAMES = (
 
 
 def _third_first_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
@@ -288,7 +311,8 @@ _DBL_NEG_FRAMES = (
 
 
 def _double_neg_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
@@ -339,7 +363,8 @@ _DISFLUENCY_FRAMES = (
 
 
 def _sarcasm_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
@@ -361,14 +386,16 @@ def _sarcasm_variant(
 
 
 def _disfluency_variant(
-    rng: random.Random, seed: GoldExample,
+    rng: random.Random,
+    seed: GoldExample,
 ) -> GoldExample | None:
     primary = _primary(seed)
     if primary is None:
         return None
     slot_name, obj = primary
     text = rng.choice(_DISFLUENCY_FRAMES).format(
-        object=obj, verb=rng.choice(["like", "love", "enjoy"]),
+        object=obj,
+        verb=rng.choice(["like", "love", "enjoy"]),
     )
     return GoldExample(
         text=text + ".",
@@ -389,16 +416,35 @@ def _disfluency_variant(
 # ---------------------------------------------------------------------------
 
 _MINIMAL_TEXTS = (
-    "ok", "sure", "yeah", "maybe", "idk",
-    "whatever", "fine", "no comment", "n/a",
-    "k", "kk", "lol", "+1", "same", "done",
-    "ttyl", "brb", "ok thx", "noted", "cool",
-    "agreed", "yep", "nope",
+    "ok",
+    "sure",
+    "yeah",
+    "maybe",
+    "idk",
+    "whatever",
+    "fine",
+    "no comment",
+    "n/a",
+    "k",
+    "kk",
+    "lol",
+    "+1",
+    "same",
+    "done",
+    "ttyl",
+    "brb",
+    "ok thx",
+    "noted",
+    "cool",
+    "agreed",
+    "yep",
+    "nope",
 )
 
 
 def _minimal_variant(
-    rng: random.Random, domain: Domain,
+    rng: random.Random,
+    domain: Domain,
 ) -> GoldExample:
     return GoldExample(
         text=rng.choice(_MINIMAL_TEXTS) + ".",
@@ -463,7 +509,9 @@ def generate_adversarial(
 
 
 def _load_seeds(
-    domain: Domain, splits: list[str], corpus_dir: Path,
+    domain: Domain,
+    splits: list[str],
+    corpus_dir: Path,
 ) -> list[GoldExample]:
     """Pull seeds from the requested splits, filtered to ``domain``.
 
@@ -478,10 +526,7 @@ def _load_seeds(
         if split == "adversarial":
             # Don't recurse into the held-out set.
             continue
-        out.extend(
-            ex for ex in load_all(corpus_dir, split=split)
-            if ex.domain == domain
-        )
+        out.extend(ex for ex in load_all(corpus_dir, split=split) if ex.domain == domain)
     return [ex for ex in out if _primary(ex) is not None]
 
 
@@ -493,19 +538,25 @@ def main() -> None:
     parser.add_argument("--target", type=int, default=200)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
-        "--seed-splits", default="gold,sdg",
+        "--seed-splits",
+        default="gold,sdg",
         help="Comma-separated seed splits (default: gold,sdg).",
     )
     parser.add_argument(
-        "--corpus-dir", type=Path,
+        "--corpus-dir",
+        type=Path,
         default=Path(__file__).parent.parent / "corpus",
     )
     parser.add_argument(
-        "--output", type=Path, required=True,
+        "--output",
+        type=Path,
+        required=True,
         help="JSONL output path (split will be set to 'adversarial').",
     )
     parser.add_argument(
-        "--minimal-fraction", type=float, default=0.05,
+        "--minimal-fraction",
+        type=float,
+        default=0.05,
     )
     args = parser.parse_args()
 
@@ -516,8 +567,7 @@ def main() -> None:
     )
     if not seeds:
         parser.error(
-            f"no seeds found for domain={args.domain!r} splits="
-            f"{args.seed_splits!r}",
+            f"no seeds found for domain={args.domain!r} splits={args.seed_splits!r}",
         )
     examples = generate_adversarial(
         seeds,

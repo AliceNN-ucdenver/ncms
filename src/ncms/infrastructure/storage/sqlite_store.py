@@ -14,19 +14,24 @@ import aiosqlite
 
 from ncms.domain.models import (
     AccessRecord,
-    EdgeType,
     Entity,
     EphemeralEntry,
     GraphEdge,
     KnowledgeSnapshot,
     Memory,
     MemoryNode,
-    NodeType,
     Relationship,
     SearchLogEntry,
-    SnapshotEntry,
 )
 from ncms.infrastructure.storage.migrations import run_migrations
+from ncms.infrastructure.storage.row_mappers import (
+    row_to_entity,
+    row_to_ephemeral,
+    row_to_graph_edge,
+    row_to_memory,
+    row_to_relationship,
+    row_to_snapshot,
+)
 
 
 def _now_iso() -> str:
@@ -91,8 +96,7 @@ class SQLiteStore:
                 memory.content_hash,
                 memory.created_at.isoformat(),
                 memory.updated_at.isoformat(),
-                memory.observed_at.isoformat()
-                if memory.observed_at else None,
+                memory.observed_at.isoformat() if memory.observed_at else None,
                 memory.source_agent,
                 memory.project,
                 json.dumps(memory.domains),
@@ -117,14 +121,14 @@ class SQLiteStore:
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_memory(row)
+        return row_to_memory(row)
 
     async def get_memory(self, memory_id: str) -> Memory | None:
         cursor = await self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,))
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_memory(row)
+        return row_to_memory(row)
 
     async def get_memories_batch(self, memory_ids: list[str]) -> dict[str, Memory]:
         """Load multiple memories in a single query."""
@@ -136,7 +140,7 @@ class SQLiteStore:
             memory_ids,
         )
         rows = await cursor.fetchall()
-        return {row["id"]: self._row_to_memory(row) for row in rows}
+        return {row["id"]: row_to_memory(row) for row in rows}
 
     async def update_memory(self, memory: Memory) -> None:
         await self.save_memory(memory)
@@ -150,9 +154,7 @@ class SQLiteStore:
             (memory_id, memory_id),
         )
         # Delete HTMG nodes (FK to memories)
-        await self.db.execute(
-            "DELETE FROM memory_nodes WHERE memory_id = ?", (memory_id,)
-        )
+        await self.db.execute("DELETE FROM memory_nodes WHERE memory_id = ?", (memory_id,))
         await self.db.execute("DELETE FROM memory_entities WHERE memory_id = ?", (memory_id,))
         await self.db.execute("DELETE FROM access_log WHERE memory_id = ?", (memory_id,))
         await self.db.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
@@ -187,7 +189,7 @@ class SQLiteStore:
 
         cursor = await self.db.execute(query, params)
         rows = await cursor.fetchall()
-        return [self._row_to_memory(r) for r in rows]
+        return [row_to_memory(r) for r in rows]
 
     async def count_memories(self) -> int:
         cursor = await self.db.execute("SELECT COUNT(*) FROM memories")
@@ -241,7 +243,8 @@ class SQLiteStore:
         return ages
 
     async def get_access_times_batch(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, list[float]]:
         """Return ages in seconds for multiple memories in a single query."""
         if not memory_ids:
@@ -287,7 +290,7 @@ class SQLiteStore:
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_entity(row)
+        return row_to_entity(row)
 
     async def find_entity_by_name(self, name: str) -> Entity | None:
         cursor = await self.db.execute(
@@ -296,17 +299,15 @@ class SQLiteStore:
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_entity(row)
+        return row_to_entity(row)
 
     async def list_entities(self, entity_type: str | None = None) -> list[Entity]:
         if entity_type:
-            cursor = await self.db.execute(
-                "SELECT * FROM entities WHERE type = ?", (entity_type,)
-            )
+            cursor = await self.db.execute("SELECT * FROM entities WHERE type = ?", (entity_type,))
         else:
             cursor = await self.db.execute("SELECT * FROM entities")
         rows = await cursor.fetchall()
-        return [self._row_to_entity(r) for r in rows]
+        return [row_to_entity(r) for r in rows]
 
     # ── Relationship CRUD ────────────────────────────────────────────────
 
@@ -336,7 +337,7 @@ class SQLiteStore:
             (entity_id, entity_id),
         )
         rows = await cursor.fetchall()
-        return [self._row_to_relationship(r) for r in rows]
+        return [row_to_relationship(r) for r in rows]
 
     # ── Memory-Entity Links ──────────────────────────────────────────────
 
@@ -372,7 +373,8 @@ class SQLiteStore:
         return [row[0] for row in rows if row[0]]
 
     async def find_memory_ids_by_entity(
-        self, entity_identifier: str,
+        self,
+        entity_identifier: str,
     ) -> list[str]:
         """Return memory IDs linked to the given entity.
 
@@ -421,11 +423,11 @@ class SQLiteStore:
         await self.db.commit()
 
     async def get_content_range(
-        self, memory_id: str,
+        self,
+        memory_id: str,
     ) -> tuple[str, str] | None:
         cursor = await self.db.execute(
-            "SELECT range_start, range_end FROM memory_content_ranges "
-            "WHERE memory_id = ?",
+            "SELECT range_start, range_end FROM memory_content_ranges WHERE memory_id = ?",
             (memory_id,),
         )
         row = await cursor.fetchone()
@@ -434,7 +436,8 @@ class SQLiteStore:
         return (row[0], row[1])
 
     async def get_content_ranges_batch(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, tuple[str, str]]:
         if not memory_ids:
             return {}
@@ -479,7 +482,7 @@ class SQLiteStore:
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_snapshot(row)
+        return row_to_snapshot(row)
 
     async def delete_snapshot(self, agent_id: str) -> None:
         await self.db.execute("DELETE FROM snapshots WHERE agent_id = ?", (agent_id,))
@@ -494,7 +497,7 @@ class SQLiteStore:
             (f'%"{domain}"%',),
         )
         rows = await cursor.fetchall()
-        return [self._row_to_snapshot(row) for row in rows]
+        return [row_to_snapshot(row) for row in rows]
 
     # ── Consolidation State ──────────────────────────────────────────────
 
@@ -514,115 +517,57 @@ class SQLiteStore:
         await self.db.commit()
 
     async def delete_consolidation_value(self, key: str) -> None:
-        await self.db.execute(
-            "DELETE FROM consolidation_state WHERE key = ?", (key,)
-        )
+        await self.db.execute("DELETE FROM consolidation_state WHERE key = ?", (key,))
         await self.db.commit()
 
     # ── Memory Nodes (Phase 1 — HTMG) ──────────────────────────────────
 
     async def save_memory_node(self, node: MemoryNode) -> None:
-        await self.db.execute(
-            """INSERT OR REPLACE INTO memory_nodes
-               (id, memory_id, node_type, parent_id, importance, is_current,
-                valid_from, valid_to, observed_at, ingested_at, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                node.id,
-                node.memory_id,
-                node.node_type.value,
-                node.parent_id,
-                node.importance,
-                1 if node.is_current else 0,
-                node.valid_from.isoformat() if node.valid_from else None,
-                node.valid_to.isoformat() if node.valid_to else None,
-                node.observed_at.isoformat() if node.observed_at else None,
-                node.ingested_at.isoformat(),
-                json.dumps(node.metadata),
-                node.created_at.isoformat(),
-            ),
-        )
-        await self.db.commit()
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        await _mn.save_memory_node(self.db, node)
 
     async def get_memory_node(self, node_id: str) -> MemoryNode | None:
-        cursor = await self.db.execute(
-            "SELECT * FROM memory_nodes WHERE id = ?", (node_id,)
-        )
-        row = await cursor.fetchone()
-        if not row:
-            return None
-        return self._row_to_memory_node(row)
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_memory_node(self.db, node_id)
 
     async def get_memory_nodes_by_type(self, node_type: str) -> list[MemoryNode]:
-        cursor = await self.db.execute(
-            "SELECT * FROM memory_nodes WHERE node_type = ? ORDER BY created_at DESC",
-            (node_type,),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_memory_nodes_by_type(self.db, node_type)
 
     async def get_memory_nodes_for_memory(self, memory_id: str) -> list[MemoryNode]:
-        cursor = await self.db.execute(
-            "SELECT * FROM memory_nodes WHERE memory_id = ? ORDER BY created_at DESC",
-            (memory_id,),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_memory_nodes_for_memory(self.db, memory_id)
 
     async def get_memory_nodes_for_memories(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, list[MemoryNode]]:
-        """Batch-load memory nodes for multiple memory IDs in a single query.
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
 
-        Returns a dict mapping memory_id → list[MemoryNode].
-        Memory IDs with no nodes are omitted from the result.
-        """
-        if not memory_ids:
-            return {}
-        placeholders = ",".join("?" for _ in memory_ids)
-        cursor = await self.db.execute(
-            f"SELECT * FROM memory_nodes WHERE memory_id IN ({placeholders})"  # noqa: S608
-            " ORDER BY memory_id, created_at DESC",
-            tuple(memory_ids),
-        )
-        rows = await cursor.fetchall()
-        result: dict[str, list[MemoryNode]] = {}
-        for row in rows:
-            node = self._row_to_memory_node(row)
-            result.setdefault(node.memory_id, []).append(node)
-        return result
+        return await _mn.get_memory_nodes_for_memories(self.db, memory_ids)
 
     # ── Entity State Queries (Phase 2A) ──────────────────────────────────
 
     async def get_current_entity_states(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> list[MemoryNode]:
-        """Find current entity state nodes for a given entity_id + state_key."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND is_current = 1
-                 AND json_extract(metadata, '$.entity_id') = ?
-                 AND json_extract(metadata, '$.state_key') = ?
-               ORDER BY created_at DESC""",
-            (NodeType.ENTITY_STATE.value, entity_id, state_key),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_current_entity_states(self.db, entity_id, state_key)
 
     async def get_entity_states_by_entity(
-        self, entity_id: str,
+        self,
+        entity_id: str,
     ) -> list[MemoryNode]:
-        """Find all entity state nodes (current and superseded) for an entity."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.entity_id') = ?
-               ORDER BY created_at DESC""",
-            (NodeType.ENTITY_STATE.value, entity_id),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_entity_states_by_entity(self.db, entity_id)
 
     async def update_memory_node(self, node: MemoryNode) -> None:
         """Update an existing memory node (INSERT OR REPLACE)."""
@@ -631,215 +576,88 @@ class SQLiteStore:
     # ── Temporal Queries (Phase 2B) ──────────────────────────────────────
 
     async def get_current_state(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> MemoryNode | None:
-        """Get the single current state for an entity+key (most recent if multiple)."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND is_current = 1
-                 AND json_extract(metadata, '$.entity_id') = ?
-                 AND json_extract(metadata, '$.state_key') = ?
-               ORDER BY created_at DESC
-               LIMIT 1""",
-            (NodeType.ENTITY_STATE.value, entity_id, state_key),
-        )
-        row = await cursor.fetchone()
-        return self._row_to_memory_node(row) if row else None
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_current_state(self.db, entity_id, state_key)
 
     async def get_state_at_time(
-        self, entity_id: str, state_key: str, timestamp: str,
+        self,
+        entity_id: str,
+        state_key: str,
+        timestamp: str,
     ) -> MemoryNode | None:
-        """Get the entity state that was valid at a specific point in time.
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
 
-        Finds the node where valid_from <= timestamp and
-        (valid_to IS NULL OR valid_to > timestamp).
-        Falls back to the most recent created_at <= timestamp if no
-        valid_from is set.
-        """
-        # Prefer nodes with explicit valid_from
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.entity_id') = ?
-                 AND json_extract(metadata, '$.state_key') = ?
-                 AND valid_from IS NOT NULL
-                 AND valid_from <= ?
-                 AND (valid_to IS NULL OR valid_to > ?)
-               ORDER BY valid_from DESC
-               LIMIT 1""",
-            (
-                NodeType.ENTITY_STATE.value,
-                entity_id, state_key,
-                timestamp, timestamp,
-            ),
-        )
-        row = await cursor.fetchone()
-        if row:
-            return self._row_to_memory_node(row)
+        return await _mn.get_state_at_time(self.db, entity_id, state_key, timestamp)
 
-        # Fallback: use created_at
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.entity_id') = ?
-                 AND json_extract(metadata, '$.state_key') = ?
-                 AND created_at <= ?
-               ORDER BY created_at DESC
-               LIMIT 1""",
-            (NodeType.ENTITY_STATE.value, entity_id, state_key, timestamp),
-        )
-        row = await cursor.fetchone()
-        return self._row_to_memory_node(row) if row else None
+    async def get_state_changes_since(self, timestamp: str) -> list[MemoryNode]:
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
 
-    async def get_state_changes_since(
-        self, timestamp: str,
-    ) -> list[MemoryNode]:
-        """Get all entity state changes since a given timestamp."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND created_at > ?
-               ORDER BY created_at ASC""",
-            (NodeType.ENTITY_STATE.value, timestamp),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        return await _mn.get_state_changes_since(self.db, timestamp)
 
     async def get_state_history(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> list[MemoryNode]:
-        """Get full history of an entity+key (current + superseded, chronological)."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.entity_id') = ?
-                 AND json_extract(metadata, '$.state_key') = ?
-               ORDER BY created_at ASC""",
-            (NodeType.ENTITY_STATE.value, entity_id, state_key),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_state_history(self.db, entity_id, state_key)
 
     # ── Episode Queries (Phase 3) ─────────────────────────────────────
 
     async def get_open_episodes(self) -> list[MemoryNode]:
-        """Get all open episode nodes."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.status') = ?
-               ORDER BY created_at DESC""",
-            (NodeType.EPISODE.value, "open"),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_open_episodes(self.db)
 
     async def get_episode_members(self, episode_id: str) -> list[MemoryNode]:
-        """Get all fragment nodes belonging to an episode via parent_id."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE parent_id = ?
-               ORDER BY created_at ASC""",
-            (episode_id,),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_episode_members(self.db, episode_id)
 
     async def get_episode_members_batch(
-        self, episode_ids: list[str],
+        self,
+        episode_ids: list[str],
     ) -> dict[str, list[MemoryNode]]:
-        """Get fragment nodes for multiple episodes in a single query."""
-        if not episode_ids:
-            return {}
-        placeholders = ",".join("?" for _ in episode_ids)
-        cursor = await self.db.execute(
-            f"SELECT * FROM memory_nodes WHERE parent_id IN ({placeholders}) "  # noqa: S608
-            "ORDER BY created_at ASC",
-            episode_ids,
-        )
-        rows = await cursor.fetchall()
-        result: dict[str, list[MemoryNode]] = {eid: [] for eid in episode_ids}
-        for row in rows:
-            node = self._row_to_memory_node(row)
-            if node.parent_id and node.parent_id in result:
-                result[node.parent_id].append(node)
-        return result
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_episode_members_batch(self.db, episode_ids)
 
     async def get_episode_member_entities_batch(
-        self, episode_ids: list[str],
+        self,
+        episode_ids: list[str],
     ) -> dict[str, list[str]]:
-        """Get entity IDs for all members of multiple episodes in a single query.
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
 
-        Returns {episode_id: [entity_id, ...]} with deduplication per episode.
-        """
-        if not episode_ids:
-            return {}
-        # Step 1: get all member memory_ids grouped by episode
-        placeholders = ",".join("?" for _ in episode_ids)
-        cursor = await self.db.execute(
-            f"SELECT mn.parent_id, me.entity_id "  # noqa: S608
-            f"FROM memory_nodes mn "
-            f"JOIN memory_entities me ON mn.memory_id = me.memory_id "
-            f"WHERE mn.parent_id IN ({placeholders})",
-            episode_ids,
-        )
-        rows = await cursor.fetchall()
-        result: dict[str, list[str]] = {eid: [] for eid in episode_ids}
-        seen: dict[str, set[str]] = {eid: set() for eid in episode_ids}
-        for row in rows:
-            ep_id, entity_id = row[0], row[1]
-            if ep_id in result and entity_id not in seen[ep_id]:
-                result[ep_id].append(entity_id)
-                seen[ep_id].add(entity_id)
-        return result
+        return await _mn.get_episode_member_entities_batch(self.db, episode_ids)
 
     # ── Phase 5: Consolidation Queries ─────────────────────────────────
 
     async def get_closed_unsummarized_episodes(self) -> list[MemoryNode]:
-        """Get closed episodes that have not been summarized yet."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.status') = ?
-                 AND json_extract(metadata, '$.summarized') IS NULL
-               ORDER BY created_at DESC""",
-            (NodeType.EPISODE.value, "closed"),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_closed_unsummarized_episodes(self.db)
 
     async def get_entities_with_state_count(
-        self, min_count: int,
+        self,
+        min_count: int,
     ) -> list[tuple[str, int]]:
-        """Get entity IDs with at least min_count state transitions."""
-        cursor = await self.db.execute(
-            """SELECT json_extract(metadata, '$.entity_id') AS eid,
-                      COUNT(*) AS cnt
-               FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.entity_id') IS NOT NULL
-               GROUP BY eid
-               HAVING cnt >= ?
-               ORDER BY cnt DESC""",
-            (NodeType.ENTITY_STATE.value, min_count),
-        )
-        rows = await cursor.fetchall()
-        return [(row[0], row[1]) for row in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_entities_with_state_count(self.db, min_count)
 
     async def get_abstract_nodes_by_type(
-        self, abstract_type: str,
+        self,
+        abstract_type: str,
     ) -> list[MemoryNode]:
-        """Get abstract memory nodes filtered by abstract_type metadata."""
-        cursor = await self.db.execute(
-            """SELECT * FROM memory_nodes
-               WHERE node_type = ?
-                 AND json_extract(metadata, '$.abstract_type') = ?
-               ORDER BY created_at DESC""",
-            (NodeType.ABSTRACT.value, abstract_type),
-        )
-        rows = await cursor.fetchall()
-        return [self._row_to_memory_node(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_abstract_nodes_by_type(self.db, abstract_type)
 
     # ── Graph Edges (Phase 1 — HTMG) ────────────────────────────────────
 
@@ -878,10 +696,11 @@ class SQLiteStore:
                 (source_id,),
             )
         rows = await cursor.fetchall()
-        return [self._row_to_graph_edge(r) for r in rows]
+        return [row_to_graph_edge(r) for r in rows]
 
     async def list_graph_edges_by_type(
-        self, edge_types: list[str],
+        self,
+        edge_types: list[str],
     ) -> list[GraphEdge]:
         """All edges of the given types, ordered newest-first.
 
@@ -900,12 +719,13 @@ class SQLiteStore:
             tuple(edge_types),
         )
         rows = await cursor.fetchall()
-        return [self._row_to_graph_edge(r) for r in rows]
+        return [row_to_graph_edge(r) for r in rows]
 
     # ── TLG Grammar Transition Markers (schema v12) ──────────────────────
 
     async def save_transition_markers(
-        self, markers: dict[str, frozenset[str]],
+        self,
+        markers: dict[str, frozenset[str]],
     ) -> None:
         """Replace the entire ``grammar_transition_markers`` table.
 
@@ -962,6 +782,7 @@ class SQLiteStore:
         the authority for intent assignment).
         """
         import json
+
         await self.db.execute(
             """INSERT INTO grammar_shape_cache
                (skeleton, intent, slot_names, hit_count, last_used)
@@ -982,9 +803,9 @@ class SQLiteStore:
     async def load_shape_cache(self) -> dict[str, dict]:
         """Return the full persisted shape cache in snapshot form."""
         import json
+
         cursor = await self.db.execute(
-            "SELECT skeleton, intent, slot_names, hit_count, last_used "
-            "FROM grammar_shape_cache",
+            "SELECT skeleton, intent, slot_names, hit_count, last_used FROM grammar_shape_cache",
         )
         rows = await cursor.fetchall()
         out: dict[str, dict] = {}
@@ -1020,13 +841,11 @@ class SQLiteStore:
         await self.db.commit()
 
     async def get_ephemeral(self, entry_id: str) -> EphemeralEntry | None:
-        cursor = await self.db.execute(
-            "SELECT * FROM ephemeral_cache WHERE id = ?", (entry_id,)
-        )
+        cursor = await self.db.execute("SELECT * FROM ephemeral_cache WHERE id = ?", (entry_id,))
         row = await cursor.fetchone()
         if not row:
             return None
-        return self._row_to_ephemeral(row)
+        return row_to_ephemeral(row)
 
     async def expire_ephemeral(self) -> int:
         """Delete expired ephemeral entries. Returns count deleted."""
@@ -1037,258 +856,59 @@ class SQLiteStore:
         count_row = await cursor.fetchone()
         count = count_row[0] if count_row else 0
         if count > 0:
-            await self.db.execute(
-                "DELETE FROM ephemeral_cache WHERE expires_at <= ?", (now,)
-            )
+            await self.db.execute("DELETE FROM ephemeral_cache WHERE expires_at <= ?", (now,))
             await self.db.commit()
         return count
 
     # ── Search Log (Phase 8 — Dream Cycles) ────────────────────────────
 
     async def log_search(self, entry: SearchLogEntry) -> None:
-        """Log a search query and its returned memory IDs."""
-        await self.db.execute(
-            """INSERT INTO search_log (query, query_entities, returned_ids, timestamp, agent_id)
-               VALUES (?, ?, ?, ?, ?)""",
-            (
-                entry.query,
-                json.dumps(entry.query_entities),
-                json.dumps(entry.returned_ids),
-                entry.timestamp.isoformat(),
-                entry.agent_id,
-            ),
-        )
-        await self.db.commit()
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
+
+        await _sl.log_search(self.db, entry)
 
     async def get_recent_searches(
-        self, limit: int = 100, since: str | None = None,
+        self,
+        limit: int = 100,
+        since: str | None = None,
     ) -> list[SearchLogEntry]:
-        """Get recent search log entries, optionally filtered by timestamp."""
-        if since:
-            cursor = await self.db.execute(
-                """SELECT * FROM search_log
-                   WHERE timestamp > ?
-                   ORDER BY timestamp DESC LIMIT ?""",
-                (since, limit),
-            )
-        else:
-            cursor = await self.db.execute(
-                "SELECT * FROM search_log ORDER BY timestamp DESC LIMIT ?",
-                (limit,),
-            )
-        rows = await cursor.fetchall()
-        return [self._row_to_search_log(r) for r in rows]
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
+
+        return await _sl.get_recent_searches(self.db, limit=limit, since=since)
 
     async def get_search_access_pairs(
-        self, since: str | None = None,
+        self,
+        since: str | None = None,
     ) -> list[tuple[str, list[str]]]:
-        """Get (query, returned_ids) pairs for PMI computation."""
-        if since:
-            cursor = await self.db.execute(
-                """SELECT query, returned_ids FROM search_log
-                   WHERE timestamp > ?
-                   ORDER BY timestamp ASC""",
-                (since,),
-            )
-        else:
-            cursor = await self.db.execute(
-                "SELECT query, returned_ids FROM search_log ORDER BY timestamp ASC"
-            )
-        rows = await cursor.fetchall()
-        return [(row[0], json.loads(row[1])) for row in rows]
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
+
+        return await _sl.get_search_access_pairs(self.db, since=since)
 
     # ── Association Strengths (Phase 8 — Dream Cycles) ───────────────
 
     async def save_association_strength(
-        self, entity_id_1: str, entity_id_2: str, strength: float,
+        self,
+        entity_id_1: str,
+        entity_id_2: str,
+        strength: float,
     ) -> None:
-        """UPSERT association strength with canonical ordering (min/max)."""
-        # Canonical ordering ensures (A, B) and (B, A) map to same row
-        e1, e2 = min(entity_id_1, entity_id_2), max(entity_id_1, entity_id_2)
-        await self.db.execute(
-            """INSERT OR REPLACE INTO association_strengths
-               (entity_id_1, entity_id_2, strength, updated_at)
-               VALUES (?, ?, ?, ?)""",
-            (e1, e2, strength, _now_iso()),
-        )
-        await self.db.commit()
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
+
+        await _sl.save_association_strength(self.db, entity_id_1, entity_id_2, strength)
 
     async def get_association_strengths(self) -> dict[tuple[str, str], float]:
-        """Load all association strengths into a dict with both direction lookups."""
-        cursor = await self.db.execute(
-            "SELECT entity_id_1, entity_id_2, strength FROM association_strengths"
-        )
-        rows = await cursor.fetchall()
-        result: dict[tuple[str, str], float] = {}
-        for row in rows:
-            e1, e2, strength = row[0], row[1], row[2]
-            # Store both directions for O(1) lookup in spreading_activation
-            result[(e1, e2)] = strength
-            result[(e2, e1)] = strength
-        return result
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
+
+        return await _sl.get_association_strengths(self.db)
 
     async def get_strong_associations(
-        self, min_strength: float = 0.3, limit: int = 50_000,
+        self,
+        min_strength: float = 0.3,
+        limit: int = 50_000,
     ) -> list[tuple[str, str, float]]:
-        """Load associations above min_strength, ordered by strength descending."""
-        cursor = await self.db.execute(
-            "SELECT entity_id_1, entity_id_2, strength FROM association_strengths "
-            "WHERE strength >= ? ORDER BY strength DESC LIMIT ?",
-            (min_strength, limit),
-        )
-        return [(r[0], r[1], r[2]) for r in await cursor.fetchall()]
+        from ncms.infrastructure.storage import sqlite_search_log as _sl
 
-    # ── Row Converters ───────────────────────────────────────────────────
-
-    @staticmethod
-    def _row_to_memory(row: aiosqlite.Row) -> Memory:
-        # aiosqlite.Row.__contains__ doesn't work on string keys; use
-        # row.keys() explicitly.
-        keys = set(row.keys())
-        observed_raw = row["observed_at"] if "observed_at" in keys else None
-        content_hash = row["content_hash"] if "content_hash" in keys else None
-        return Memory(
-            id=row["id"],
-            content=row["content"],
-            structured=json.loads(row["structured"]) if row["structured"] else None,
-            type=row["type"],
-            importance=row["importance"],
-            content_hash=content_hash,
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-            observed_at=(
-                datetime.fromisoformat(observed_raw)
-                if observed_raw else None
-            ),
-            source_agent=row["source_agent"],
-            project=row["project"],
-            domains=json.loads(row["domains"]),
-            tags=json.loads(row["tags"]),
-        )
-
-    @staticmethod
-    def _row_to_entity(row: aiosqlite.Row) -> Entity:
-        return Entity(
-            id=row["id"],
-            name=row["name"],
-            type=row["type"],
-            attributes=json.loads(row["attributes"]) if row["attributes"] else {},
-            created_at=datetime.fromisoformat(row["created_at"]),
-            updated_at=datetime.fromisoformat(row["updated_at"]),
-        )
-
-    @staticmethod
-    def _row_to_relationship(row: aiosqlite.Row) -> Relationship:
-        return Relationship(
-            id=row["id"],
-            source_entity_id=row["source_entity_id"],
-            target_entity_id=row["target_entity_id"],
-            type=row["type"],
-            valid_at=datetime.fromisoformat(row["valid_at"]) if row["valid_at"] else None,
-            invalid_at=datetime.fromisoformat(row["invalid_at"]) if row["invalid_at"] else None,
-            source_memory_id=row["source_memory_id"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
-
-    @staticmethod
-    def _row_to_snapshot(row: aiosqlite.Row) -> KnowledgeSnapshot:
-        raw_entries = json.loads(row["entries"])
-        entries = []
-        for e in raw_entries:
-            # Handle nested KnowledgePayload
-            if isinstance(e.get("knowledge"), dict):
-                entries.append(SnapshotEntry(**e))
-            else:
-                entries.append(SnapshotEntry(**e))
-
-        return KnowledgeSnapshot(
-            snapshot_id=row["snapshot_id"],
-            agent_id=row["agent_id"],
-            timestamp=datetime.fromisoformat(row["timestamp"]),
-            domains=json.loads(row["domains"]),
-            entries=entries,
-            is_incremental=bool(row["is_incremental"]),
-            supersedes=row["supersedes"],
-            ttl_hours=row["ttl_hours"],
-        )
-
-    @staticmethod
-    def _row_to_memory_node(row: aiosqlite.Row) -> MemoryNode:
-        # Graceful fallback for pre-V3 rows (observed_at/ingested_at may be missing)
-        row_keys = row.keys() if hasattr(row, "keys") else []
-        observed_at_raw = row["observed_at"] if "observed_at" in row_keys else None
-        ingested_at_raw = row["ingested_at"] if "ingested_at" in row_keys else None
-
-        return MemoryNode(
-            id=row["id"],
-            memory_id=row["memory_id"],
-            node_type=NodeType(row["node_type"]),
-            parent_id=row["parent_id"],
-            importance=row["importance"],
-            is_current=bool(row["is_current"]),
-            valid_from=(
-                datetime.fromisoformat(row["valid_from"]) if row["valid_from"] else None
-            ),
-            valid_to=(
-                datetime.fromisoformat(row["valid_to"]) if row["valid_to"] else None
-            ),
-            observed_at=(
-                datetime.fromisoformat(observed_at_raw) if observed_at_raw else None
-            ),
-            ingested_at=(
-                datetime.fromisoformat(ingested_at_raw)
-                if ingested_at_raw
-                else datetime.fromisoformat(row["created_at"])
-            ),
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
-
-    @staticmethod
-    def _row_to_graph_edge(row: aiosqlite.Row) -> GraphEdge:
-        # Schema v12: retires_entities column stores a JSON array.
-        # Tolerate the column being absent (old rows, tests that only
-        # read a subset) — defaults to an empty list.
-        retires_raw: str | None = None
-        try:
-            retires_raw = row["retires_entities"]
-        except (IndexError, KeyError):
-            retires_raw = None
-        retires_entities = json.loads(retires_raw) if retires_raw else []
-        return GraphEdge(
-            id=row["id"],
-            source_id=row["source_id"],
-            target_id=row["target_id"],
-            edge_type=EdgeType(row["edge_type"]),
-            weight=row["weight"],
-            metadata=json.loads(row["metadata"]) if row["metadata"] else {},
-            retires_entities=retires_entities,
-            created_at=datetime.fromisoformat(row["created_at"]),
-        )
-
-    @staticmethod
-    def _row_to_ephemeral(row: aiosqlite.Row) -> EphemeralEntry:
-        return EphemeralEntry(
-            id=row["id"],
-            content=row["content"],
-            source_agent=row["source_agent"],
-            domains=json.loads(row["domains"]),
-            admission_score=row["admission_score"],
-            ttl_seconds=row["ttl_seconds"],
-            created_at=datetime.fromisoformat(row["created_at"]),
-            expires_at=datetime.fromisoformat(row["expires_at"]),
-        )
-
-    @staticmethod
-    def _row_to_search_log(row: aiosqlite.Row) -> SearchLogEntry:
-        return SearchLogEntry(
-            id=row["id"],
-            query=row["query"],
-            query_entities=json.loads(row["query_entities"]),
-            returned_ids=json.loads(row["returned_ids"]),
-            timestamp=datetime.fromisoformat(row["timestamp"]),
-            agent_id=row["agent_id"],
-        )
+        return await _sl.get_strong_associations(self.db, min_strength=min_strength, limit=limit)
 
     # ── Intent-Slot integration (Schema v13, P2) ────────────────────
 
@@ -1304,7 +924,8 @@ class SQLiteStore:
         ``slots`` dict → deletes all rows and returns.
         """
         await self.db.execute(
-            "DELETE FROM memory_slots WHERE memory_id = ?", (memory_id,),
+            "DELETE FROM memory_slots WHERE memory_id = ?",
+            (memory_id,),
         )
         if not slots:
             await self.db.commit()
@@ -1323,12 +944,12 @@ class SQLiteStore:
         await self.db.commit()
 
     async def get_memory_slots(
-        self, memory_id: str,
+        self,
+        memory_id: str,
     ) -> dict[str, str]:
         """Return ``{slot_name: slot_value}`` for a given memory."""
         cursor = await self.db.execute(
-            "SELECT slot_name, slot_value FROM memory_slots "
-            "WHERE memory_id = ?",
+            "SELECT slot_name, slot_value FROM memory_slots WHERE memory_id = ?",
             (memory_id,),
         )
         rows = await cursor.fetchall()
@@ -1362,15 +983,23 @@ class SQLiteStore:
                 promoted_at, active)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                adapter_id, domain, version, adapter_path, encoder,
-                corpus_hash, 1 if gate_passed else 0, gate_metrics_json,
-                promoted_at, 1 if active else 0,
+                adapter_id,
+                domain,
+                version,
+                adapter_path,
+                encoder,
+                corpus_hash,
+                1 if gate_passed else 0,
+                gate_metrics_json,
+                promoted_at,
+                1 if active else 0,
             ),
         )
         await self.db.commit()
 
     async def set_active_intent_slot_adapter(
-        self, adapter_id: str,
+        self,
+        adapter_id: str,
     ) -> None:
         """Flip the ``active`` bit to 1 for exactly one adapter.
 
@@ -1397,7 +1026,8 @@ class SQLiteStore:
         await self.db.commit()
 
     async def get_active_intent_slot_adapter(
-        self, domain: str | None = None,
+        self,
+        domain: str | None = None,
     ) -> dict[str, object] | None:
         """Return the currently-active adapter row, optionally scoped.
 
@@ -1407,14 +1037,12 @@ class SQLiteStore:
         """
         if domain is not None:
             cursor = await self.db.execute(
-                "SELECT * FROM intent_slot_adapters "
-                "WHERE domain = ? AND active = 1 LIMIT 1",
+                "SELECT * FROM intent_slot_adapters WHERE domain = ? AND active = 1 LIMIT 1",
                 (domain,),
             )
         else:
             cursor = await self.db.execute(
-                "SELECT * FROM intent_slot_adapters "
-                "WHERE active = 1 LIMIT 1",
+                "SELECT * FROM intent_slot_adapters WHERE active = 1 LIMIT 1",
             )
         row = await cursor.fetchone()
         if not row:
@@ -1422,25 +1050,25 @@ class SQLiteStore:
         return dict(row)
 
     async def list_intent_slot_adapters(
-        self, domain: str | None = None,
+        self,
+        domain: str | None = None,
     ) -> list[dict[str, object]]:
         """List all registered adapters, newest first."""
         if domain is not None:
             cursor = await self.db.execute(
-                "SELECT * FROM intent_slot_adapters WHERE domain = ? "
-                "ORDER BY promoted_at DESC",
+                "SELECT * FROM intent_slot_adapters WHERE domain = ? ORDER BY promoted_at DESC",
                 (domain,),
             )
         else:
             cursor = await self.db.execute(
-                "SELECT * FROM intent_slot_adapters "
-                "ORDER BY promoted_at DESC",
+                "SELECT * FROM intent_slot_adapters ORDER BY promoted_at DESC",
             )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
     async def list_topics_seen(
-        self, domain: str | None = None,
+        self,
+        domain: str | None = None,
     ) -> list[dict[str, object]]:
         """Enumerate topics that have actually been persisted.
 

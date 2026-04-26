@@ -52,104 +52,50 @@ def warn(msg: str) -> None:
     console.print(f"  [yellow]{msg}[/]")
 
 
-async def run_demo() -> None:
-    console.print(
-        Panel(
-            "[bold white]NeMo Cognitive Memory System[/]\n"
-            "[dim]Vector-Free Retrieval | Embedded Knowledge Bus | Agent Snapshots[/]\n\n"
-            "This demo shows three collaborative agents sharing knowledge\n"
-            "through the NCMS Knowledge Bus, including sleep/wake cycles\n"
-            "with surrogate responses and breaking change propagation.",
-            title="[bold cyan]NCMS Demo[/]",
-            border_style="cyan",
-            padding=(1, 2),
-        )
-    )
+async def _build_optional_services(config, store, index, graph, splade):
+    """Build the optional services gated by feature flags.
 
-    # ── Initialize System ────────────────────────────────────────────
-    header("System Initialization")
-
-    config = NCMSConfig(
-        db_path=":memory:",
-        actr_noise=0.0,  # Deterministic for demo
-    )
-
-    store = SQLiteStore(db_path=":memory:")
-    await store.initialize()
-
-    index = TantivyEngine()
-    index.initialize()
-
-    graph = NetworkXGraph()
-    bus = AsyncKnowledgeBus(ask_timeout_ms=2000)
-
-    # SPLADE sparse neural retrieval (disabled by default)
-    splade = None
-    if config.splade_enabled:
-        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
-
-        splade = SpladeEngine(
-            model_name=config.splade_model,
-            cache_dir=config.model_cache_dir,
-        )
-
-    # Admission scoring (Phase 1, disabled by default)
+    Returns ``(admission, reconciliation, episode, intent_classifier, reranker)``.
+    Each is ``None`` when its config flag is off — keeps ``run_demo``
+    free of one-import-per-flag noise.
+    """
     admission = None
     if config.admission_enabled:
         from ncms.application.admission_service import AdmissionService
 
         admission = AdmissionService(store=store, index=index, graph=graph, config=config)
 
-    # Reconciliation service (Phase 2, disabled by default)
     reconciliation = None
-    if config.temporal_enabled:
-        from ncms.application.reconciliation_service import ReconciliationService
-
-        reconciliation = ReconciliationService(store=store, config=config)
-
-    # Episode formation (Phase 3, disabled by default)
     episode = None
-    if config.temporal_enabled:
-        from ncms.application.episode_service import EpisodeService
-
-        episode = EpisodeService(
-            store=store, index=index, config=config, splade=splade,
-        )
-
-    # Intent classifier (Phase 4, disabled by default)
     intent_classifier = None
     if config.temporal_enabled:
-        from ncms.infrastructure.indexing.exemplar_intent_index import (
-            ExemplarIntentIndex,
-        )
+        from ncms.application.episode_service import EpisodeService
+        from ncms.application.reconciliation_service import ReconciliationService
+        from ncms.infrastructure.indexing.exemplar_intent_index import ExemplarIntentIndex
 
+        reconciliation = ReconciliationService(store=store, config=config)
+        episode = EpisodeService(store=store, index=index, config=config, splade=splade)
         intent_classifier = ExemplarIntentIndex()
 
-    # Cross-encoder reranker (Phase 10, disabled by default)
     reranker = None
     if config.reranker_enabled:
-        from ncms.infrastructure.reranking.cross_encoder_reranker import (
-            CrossEncoderReranker,
-        )
+        from ncms.infrastructure.reranking.cross_encoder_reranker import CrossEncoderReranker
 
         reranker = CrossEncoderReranker(
             model_name=config.reranker_model,
             cache_dir=config.model_cache_dir,
         )
 
-    memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode,
-        intent_classifier=intent_classifier,
-        reranker=reranker,
-    )
-    snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
-    bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
+    return admission, reconciliation, episode, intent_classifier, reranker
 
-    # Start background indexing if enabled (default: True)
-    await memory_svc.start_index_pool()
 
+def _log_enabled_subsystems(
+    memory_svc, splade, admission, reconciliation, episode, intent_classifier
+):
+    """Print one ``step`` line per enabled subsystem.
+
+    Pulled out of the orchestrator so its complexity comes from the
+    demo flow, not the conditional logging."""
     step("SQLite (in-memory) initialized")
     step("Tantivy BM25 index created")
     step("NetworkX knowledge graph ready")
@@ -167,6 +113,99 @@ async def run_demo() -> None:
     if intent_classifier:
         step("Intent classification enabled")
     result("All services online")
+
+
+async def _phase6_intent_search(memory_svc, config) -> None:
+    """Phase 6 — intent-aware search demo (gated by ``temporal_enabled``)."""
+    if not config.temporal_enabled:
+        header("Phase 6: Intent-Aware Search [dim](skipped — not enabled)[/]")
+        step("Set NCMS_TEMPORAL_ENABLED=true to enable")
+        return
+
+    header("Phase 6: Intent-Aware Search")
+
+    step("Searching with intent override: current_state_lookup")
+    for ir in await memory_svc.search(
+        "What is the current auth token format?",
+        intent_override="current_state_lookup",
+        limit=3,
+    ):
+        result(
+            f"  [{ir.intent}] {ir.memory.content[:60]}... "
+            f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
+        )
+
+    step("Searching with intent override: event_reconstruction")
+    for ir in await memory_svc.search(
+        "What happened with the users table schema change?",
+        intent_override="event_reconstruction",
+        limit=3,
+    ):
+        result(
+            f"  [{ir.intent}] {ir.memory.content[:60]}... "
+            f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
+        )
+
+
+async def run_demo() -> None:
+    console.print(
+        Panel(
+            "[bold white]NeMo Cognitive Memory System[/]\n"
+            "[dim]Vector-Free Retrieval | Embedded Knowledge Bus | Agent Snapshots[/]\n\n"
+            "This demo shows three collaborative agents sharing knowledge\n"
+            "through the NCMS Knowledge Bus, including sleep/wake cycles\n"
+            "with surrogate responses and breaking change propagation.",
+            title="[bold cyan]NCMS Demo[/]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+
+    # ── Initialize System ────────────────────────────────────────────
+    header("System Initialization")
+
+    config = NCMSConfig(db_path=":memory:", actr_noise=0.0)
+    store = SQLiteStore(db_path=":memory:")
+    await store.initialize()
+    index = TantivyEngine()
+    index.initialize()
+    graph = NetworkXGraph()
+    bus = AsyncKnowledgeBus(ask_timeout_ms=2000)
+
+    splade = None
+    if config.splade_enabled:
+        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+        splade = SpladeEngine(model_name=config.splade_model, cache_dir=config.model_cache_dir)
+
+    (
+        admission,
+        reconciliation,
+        episode,
+        intent_classifier,
+        reranker,
+    ) = await _build_optional_services(config, store, index, graph, splade)
+
+    memory_svc = MemoryService(
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
+        intent_classifier=intent_classifier,
+        reranker=reranker,
+    )
+    snapshot_svc = SnapshotService(store=store, max_entries=50, ttl_hours=168)
+    bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
+
+    # Start background indexing if enabled (default: True)
+    await memory_svc.start_index_pool()
+    _log_enabled_subsystems(
+        memory_svc, splade, admission, reconciliation, episode, intent_classifier
+    )
 
     # ── Create Agents ────────────────────────────────────────────────
     header("Agent Registration")
@@ -186,17 +225,20 @@ async def run_demo() -> None:
     agents_table.add_column("Subscriptions")
 
     agents_table.add_row(
-        "api-agent", "ONLINE",
+        "api-agent",
+        "ONLINE",
         "api, api:user-service, api:auth-service",
         "db, db:user-schema, config",
     )
     agents_table.add_row(
-        "frontend-agent", "ONLINE",
+        "frontend-agent",
+        "ONLINE",
         "frontend, ui:components, ui:pages",
         "api, api:user-service, api:auth-service",
     )
     agents_table.add_row(
-        "db-agent", "ONLINE",
+        "db-agent",
+        "ONLINE",
         "db, db:user-schema, db:auth-schema, db:migrations",
         "api, config",
     )
@@ -237,7 +279,7 @@ Deployment: Vercel with edge functions for SSR.
         project="acme-platform",
     )
     step(f"Downloaded architecture knowledge: {stats.memories_created} memories loaded")
-    result("\"I know kung fu.\" -- Neo")
+    result('"I know kung fu." -- Neo')
 
     # ── Phase 1: Store Initial Knowledge ─────────────────────────────
     header("Phase 1: Agents Store Domain Knowledge")
@@ -337,14 +379,16 @@ Deployment: Vercel with edge functions for SSR.
     )
 
     if response:
-        console.print(Panel(
-            f"[bold]From:[/] {response.from_agent}\n"
-            f"[bold]Confidence:[/] {response.confidence:.2f}\n"
-            f"[bold]Mode:[/] {response.source_mode}\n"
-            f"[bold]Content:[/] {response.knowledge.content[:200]}",
-            title="[green]Knowledge Response[/]",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"[bold]From:[/] {response.from_agent}\n"
+                f"[bold]Confidence:[/] {response.confidence:.2f}\n"
+                f"[bold]Mode:[/] {response.source_mode}\n"
+                f"[bold]Content:[/] {response.knowledge.content[:200]}",
+                title="[green]Knowledge Response[/]",
+                border_style="green",
+            )
+        )
     else:
         warn("No response received")
 
@@ -373,17 +417,19 @@ Deployment: Vercel with edge functions for SSR.
 
     if response2:
         mode_color = "yellow" if response2.source_mode == "warm" else "green"
-        console.print(Panel(
-            f"[bold]From:[/] {response2.from_agent}\n"
-            f"[bold]Mode:[/] [{mode_color}]{response2.source_mode.upper()}[/] "
-            f"(surrogate from snapshot)\n"
-            f"[bold]Confidence:[/] {response2.confidence:.2f} "
-            f"[dim](discounted for surrogate)[/]\n"
-            f"[bold]Staleness:[/] {response2.staleness_warning or 'Fresh'}\n"
-            f"[bold]Content:[/] {response2.knowledge.content[:200]}",
-            title="[yellow]Surrogate Response (Warm Mode)[/]",
-            border_style="yellow",
-        ))
+        console.print(
+            Panel(
+                f"[bold]From:[/] {response2.from_agent}\n"
+                f"[bold]Mode:[/] [{mode_color}]{response2.source_mode.upper()}[/] "
+                f"(surrogate from snapshot)\n"
+                f"[bold]Confidence:[/] {response2.confidence:.2f} "
+                f"[dim](discounted for surrogate)[/]\n"
+                f"[bold]Staleness:[/] {response2.staleness_warning or 'Fresh'}\n"
+                f"[bold]Content:[/] {response2.knowledge.content[:200]}",
+                title="[yellow]Surrogate Response (Warm Mode)[/]",
+                border_style="yellow",
+            )
+        )
     else:
         warn("No surrogate response available")
 
@@ -400,14 +446,16 @@ Deployment: Vercel with edge functions for SSR.
     )
 
     if response3:
-        console.print(Panel(
-            f"[bold]From:[/] {response3.from_agent}\n"
-            f"[bold]Mode:[/] [green]{response3.source_mode.upper()}[/] (direct response)\n"
-            f"[bold]Confidence:[/] {response3.confidence:.2f}\n"
-            f"[bold]Content:[/] {response3.knowledge.content[:200]}",
-            title="[green]Live Response[/]",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                f"[bold]From:[/] {response3.from_agent}\n"
+                f"[bold]Mode:[/] [green]{response3.source_mode.upper()}[/] (direct response)\n"
+                f"[bold]Confidence:[/] {response3.confidence:.2f}\n"
+                f"[bold]Content:[/] {response3.knowledge.content[:200]}",
+                title="[green]Live Response[/]",
+                border_style="green",
+            )
+        )
 
     # ── Phase 4: Breaking Change Announcement ────────────────────────
     header("Phase 4: Breaking Change Announcement")
@@ -478,9 +526,7 @@ Deployment: Vercel with edge functions for SSR.
 
     for i, sr in enumerate(search_results, 1):
         content_preview = (
-            sr.memory.content[:45] + "..."
-            if len(sr.memory.content) > 45
-            else sr.memory.content
+            sr.memory.content[:45] + "..." if len(sr.memory.content) > 45 else sr.memory.content
         )
         spread_style = "bold magenta" if sr.spreading > 0 else "dim"
         results_table.add_row(
@@ -497,35 +543,7 @@ Deployment: Vercel with edge functions for SSR.
     console.print(results_table)
 
     # ── Phase 6: Intent-Aware Search (if enabled) ─────────────────────
-    if config.temporal_enabled:
-        header("Phase 6: Intent-Aware Search")
-
-        step('Searching with intent override: current_state_lookup')
-        intent_results = await memory_svc.search(
-            "What is the current auth token format?",
-            intent_override="current_state_lookup",
-            limit=3,
-        )
-        for ir in intent_results:
-            result(
-                f"  [{ir.intent}] {ir.memory.content[:60]}... "
-                f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
-            )
-
-        step('Searching with intent override: event_reconstruction')
-        intent_results2 = await memory_svc.search(
-            "What happened with the users table schema change?",
-            intent_override="event_reconstruction",
-            limit=3,
-        )
-        for ir in intent_results2:
-            result(
-                f"  [{ir.intent}] {ir.memory.content[:60]}... "
-                f"(hierarchy_bonus={ir.hierarchy_bonus:.2f})"
-            )
-    else:
-        header("Phase 6: Intent-Aware Search [dim](skipped — not enabled)[/]")
-        step("Set NCMS_TEMPORAL_ENABLED=true to enable")
+    await _phase6_intent_search(memory_svc, config)
 
     # ── Summary ──────────────────────────────────────────────────────
     header("Demo Summary")
@@ -547,19 +565,21 @@ Deployment: Vercel with edge functions for SSR.
     console.print(summary_table)
 
     console.print()
-    console.print(Panel(
-        "[bold]What you just saw:[/]\n\n"
-        "1. Knowledge downloaded Matrix-style and auto-indexed with entity extraction\n"
-        "2. Three agents stored domain knowledge (entities auto-extracted to graph)\n"
-        "3. Frontend agent asked API agent via the Knowledge Bus\n"
-        "4. API agent slept; frontend got a [yellow]surrogate response[/] from snapshot\n"
-        "5. API agent woke up and answered [green]live[/] on the same question\n"
-        "6. Database agent announced a [red]breaking change[/] to subscribers\n"
-        "7. 3-tier search: [cyan]BM25 + Spreading Activation + ACT-R scoring[/]\n\n"
-        "[dim]All running in-process with zero external dependencies.[/]",
-        title="[bold cyan]NCMS - It Just Works[/]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            "[bold]What you just saw:[/]\n\n"
+            "1. Knowledge downloaded Matrix-style and auto-indexed with entity extraction\n"
+            "2. Three agents stored domain knowledge (entities auto-extracted to graph)\n"
+            "3. Frontend agent asked API agent via the Knowledge Bus\n"
+            "4. API agent slept; frontend got a [yellow]surrogate response[/] from snapshot\n"
+            "5. API agent woke up and answered [green]live[/] on the same question\n"
+            "6. Database agent announced a [red]breaking change[/] to subscribers\n"
+            "7. 3-tier search: [cyan]BM25 + Spreading Activation + ACT-R scoring[/]\n\n"
+            "[dim]All running in-process with zero external dependencies.[/]",
+            title="[bold cyan]NCMS - It Just Works[/]",
+            border_style="cyan",
+        )
+    )
 
     # Cleanup
     await memory_svc.stop_index_pool()

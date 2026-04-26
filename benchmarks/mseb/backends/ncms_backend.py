@@ -69,11 +69,7 @@ class NcmsBackend:
         splade = self.shared_splade if self.shared_splade is not None else SpladeEngine()
 
         intent_slot = self.shared_intent_slot
-        if (
-            self.feature_set.slm
-            and intent_slot is None
-            and self.adapter_domain is not None
-        ):
+        if self.feature_set.slm and intent_slot is None and self.adapter_domain is not None:
             from benchmarks.intent_slot_adapter import get_intent_slot_chain
 
             intent_slot = get_intent_slot_chain(
@@ -105,9 +101,8 @@ class NcmsBackend:
             "scoring_weight_actr": 0.0,
             "scoring_weight_splade": 0.3,
             "scoring_weight_graph": 0.3,
-            "scoring_weight_hierarchy": 0.5,   # tuned temporal-layer weight
+            "scoring_weight_hierarchy": 0.5,  # tuned temporal-layer weight
             "contradiction_detection_enabled": False,
-
             # -------- Master feature flag --------
             "temporal_enabled": True,
             "slm_populate_domains": True,
@@ -119,8 +114,12 @@ class NcmsBackend:
         config = NCMSConfig(**base_kwargs)
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
-            splade=splade, intent_slot=intent_slot,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
+            splade=splade,
+            intent_slot=intent_slot,
         )
         await svc.start_index_pool()
         self._svc = svc
@@ -136,15 +135,20 @@ class NcmsBackend:
             "admission=%s populate_domains=%s",
             config.temporal_enabled,
             "loaded" if intent_slot is not None else "off",
-            config.scoring_weight_bm25, config.scoring_weight_splade,
-            config.scoring_weight_graph, config.scoring_weight_actr,
-            config.scoring_weight_temporal, config.scoring_weight_hierarchy,
+            config.scoring_weight_bm25,
+            config.scoring_weight_splade,
+            config.scoring_weight_graph,
+            config.scoring_weight_actr,
+            config.scoring_weight_temporal,
+            config.scoring_weight_hierarchy,
             config.scoring_weight_recency,
-            config.admission_enabled, config.slm_populate_domains,
+            config.admission_enabled,
+            config.slm_populate_domains,
         )
         logger.info(
             "NCMS feature_set (harness flags): temporal=%s slm=%s head=%s",
-            self.feature_set.temporal, self.feature_set.slm,
+            self.feature_set.temporal,
+            self.feature_set.slm,
             self.feature_set.head,
         )
 
@@ -192,9 +196,9 @@ class NcmsBackend:
                     )
         else:
             logger.info(
-                "SLM adapter: (none wired — feature_set.slm=%s, "
-                "adapter_domain=%s)",
-                self.feature_set.slm, self.adapter_domain,
+                "SLM adapter: (none wired — feature_set.slm=%s, adapter_domain=%s)",
+                self.feature_set.slm,
+                self.adapter_domain,
             )
 
     # -------------------------------------------------------------------
@@ -202,7 +206,8 @@ class NcmsBackend:
     # -------------------------------------------------------------------
 
     async def ingest(
-        self, memories: list[CorpusMemory],
+        self,
+        memories: list[CorpusMemory],
     ) -> dict[str, str]:
         """Store every memory in (subject, observed_at) order.
 
@@ -266,15 +271,23 @@ class NcmsBackend:
     # -------------------------------------------------------------------
 
     async def search(
-        self, query: str, *, limit: int = 10,
+        self,
+        query: str,
+        *,
+        limit: int = 10,
     ) -> list[BackendRanking]:
         rankings, _ = await self.search_with_stages(
-            query, limit=limit, capture_stages=False,
+            query,
+            limit=limit,
+            capture_stages=False,
         )
         return rankings
 
     async def search_with_stages(
-        self, query: str, *, limit: int = 10,
+        self,
+        query: str,
+        *,
+        limit: int = 10,
         capture_stages: bool = True,
     ) -> tuple[list[BackendRanking], dict[str, list[str]]]:
         """Search with optional per-stage candidate capture.
@@ -301,7 +314,8 @@ class NcmsBackend:
         stages: dict[str, list[str]] = {} if capture_stages else None  # type: ignore[assignment]
         try:
             results = await svc.search(
-                query=query, limit=limit,
+                query=query,
+                limit=limit,
                 stage_candidates_out=stages,
             )
         except Exception as exc:  # pragma: no cover — surface to harness
@@ -329,11 +343,7 @@ class NcmsBackend:
         if stages:
             ncms_to_mseb = getattr(self, "_ncms_to_mseb", {})
             stages = {
-                stage: [
-                    ncms_to_mseb[nid]
-                    for nid in nids
-                    if nid in ncms_to_mseb
-                ]
+                stage: [ncms_to_mseb[nid] for nid in nids if nid in ncms_to_mseb]
                 for stage, nids in stages.items()
             }
         return rankings, (stages or {})
@@ -382,23 +392,21 @@ class NcmsBackend:
             if m is not None:
                 version = getattr(m, "version", None)
                 break
-        adapter_label = (
-            f"{adapter_name}/{version}" if version else adapter_name or "?"
-        )
+        adapter_label = f"{adapter_name}/{version}" if version else adapter_name or "?"
         return {
-            "adapter":            adapter_label,
-            "admission":          r.admission,
-            "admission_conf":     r.admission_confidence,
-            "state_change":       r.state_change,
-            "state_change_conf":  r.state_change_confidence,
-            "topic":              r.topic,
-            "topic_conf":         r.topic_confidence,
-            "intent":             r.intent,
-            "intent_conf":        r.intent_confidence,
-            "slots":              dict(r.slots),
-            "shape_intent":       r.shape_intent,
-            "shape_intent_conf":  r.shape_intent_confidence,
-            "slm_latency_ms":     r.latency_ms,
+            "adapter": adapter_label,
+            "admission": r.admission,
+            "admission_conf": r.admission_confidence,
+            "state_change": r.state_change,
+            "state_change_conf": r.state_change_confidence,
+            "topic": r.topic,
+            "topic_conf": r.topic_confidence,
+            "intent": r.intent,
+            "intent_conf": r.intent_confidence,
+            "slots": dict(r.slots),
+            "shape_intent": r.shape_intent,
+            "shape_intent_conf": r.shape_intent_confidence,
+            "slm_latency_ms": r.latency_ms,
         }
 
     # -------------------------------------------------------------------

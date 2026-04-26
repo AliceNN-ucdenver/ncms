@@ -61,10 +61,7 @@ class TestWalkCausalChain:
     @pytest.mark.asyncio
     async def test_max_depth_cap(self) -> None:
         # Build a 10-step chain and cap at depth 3.
-        edges = [
-            CausalEdge(src=f"m{i}", dst=f"m{i+1}", edge_type="caused_by")
-            for i in range(10)
-        ]
+        edges = [CausalEdge(src=f"m{i}", dst=f"m{i + 1}", edge_type="caused_by") for i in range(10)]
         path, _ = await _walk_causal_chain("m0", edges, max_depth=3)
         assert path == ["m0", "m1", "m2", "m3"]
 
@@ -73,10 +70,8 @@ class TestWalkCausalChain:
         # Two competing outgoing edges from x — the walker should
         # follow the higher-confidence one.
         edges = [
-            CausalEdge(src="x", dst="weak_cause", edge_type="caused_by",
-                       confidence=0.4),
-            CausalEdge(src="x", dst="strong_cause", edge_type="caused_by",
-                       confidence=0.9),
+            CausalEdge(src="x", dst="weak_cause", edge_type="caused_by", confidence=0.4),
+            CausalEdge(src="x", dst="strong_cause", edge_type="caused_by", confidence=0.9),
         ]
         path, _ = await _walk_causal_chain("x", edges)
         assert path == ["x", "strong_cause"]
@@ -124,7 +119,8 @@ class _FakeStore:
 
 
 async def _run_dispatch(
-    subject: str, entity: str,
+    subject: str,
+    entity: str,
     x_node_memory_id: str,
     node_index: dict,
     zone_edges: list,
@@ -141,13 +137,17 @@ async def _run_dispatch(
         confidence=Confidence.ABSTAIN,
     )
     ctx = _FakeCtx(causal_edges)
-    # Monkeypatch _find_event_node for this test so we don't need
-    # a full MemoryStore mock.
-    from ncms.application.tlg import dispatch as _dm
+    # Monkeypatch _find_event_node where the dispatcher actually
+    # resolves it — `walkers` module after the Phase F extraction
+    # (used to live in `dispatch`).  Patching the dispatch alias
+    # would no-op the override.
+    from ncms.application.tlg import walkers as _wm
+
     async def _fake_find(*args, **kwargs):
         return node_index.get(x_node_memory_id)
-    original = _dm._find_event_node
-    _dm._find_event_node = _fake_find
+
+    original = _wm._find_event_node
+    _wm._find_event_node = _fake_find
     try:
         await _dispatch_transitive_cause(
             store=_FakeStore(),
@@ -157,7 +157,7 @@ async def _run_dispatch(
             ctx=ctx,  # type: ignore[arg-type]
         )
     finally:
-        _dm._find_event_node = original
+        _wm._find_event_node = original
     return trace
 
 
@@ -167,13 +167,12 @@ class TestTransitiveCauseDispatcher:
         # Query: "what caused the rewrite in auth-service?"
         x_node = _FakeNode(id="n_rewrite", memory_id="m_rewrite")
         causal_edges = [
-            CausalEdge(src="m_rewrite", dst="m_outage", edge_type="caused_by",
-                       confidence=0.9),
-            CausalEdge(src="m_outage", dst="m_audit", edge_type="caused_by",
-                       confidence=0.85),
+            CausalEdge(src="m_rewrite", dst="m_outage", edge_type="caused_by", confidence=0.9),
+            CausalEdge(src="m_outage", dst="m_audit", edge_type="caused_by", confidence=0.85),
         ]
         trace = await _run_dispatch(
-            subject="auth-service", entity="rewrite",
+            subject="auth-service",
+            entity="rewrite",
             x_node_memory_id="n_rewrite",
             node_index={"n_rewrite": x_node},
             zone_edges=[],
@@ -193,7 +192,8 @@ class TestTransitiveCauseDispatcher:
             _FakeZoneEdge(src="m_origin", dst="n_rewrite"),
         ]
         trace = await _run_dispatch(
-            subject="auth-service", entity="rewrite",
+            subject="auth-service",
+            entity="rewrite",
             x_node_memory_id="n_rewrite",
             node_index={"n_rewrite": x_node},
             zone_edges=zone_edges,
@@ -207,7 +207,8 @@ class TestTransitiveCauseDispatcher:
     async def test_abstain_when_no_edges_at_all(self) -> None:
         x_node = _FakeNode(id="n_x", memory_id="m_x")
         trace = await _run_dispatch(
-            subject="auth-service", entity="x",
+            subject="auth-service",
+            entity="x",
             x_node_memory_id="n_x",
             node_index={"n_x": x_node},
             zone_edges=[],
@@ -221,14 +222,18 @@ class TestTransitiveCauseDispatcher:
             query="what caused the rewrite",
             intent=LGIntent(
                 kind="transitive_cause",
-                subject=None, entity="rewrite",
+                subject=None,
+                entity="rewrite",
             ),
             confidence=Confidence.ABSTAIN,
         )
         ctx = _FakeCtx([])
         await _dispatch_transitive_cause(
-            store=_FakeStore(), trace=trace,
-            node_index={}, zone_edges=[], ctx=ctx,  # type: ignore[arg-type]
+            store=_FakeStore(),
+            trace=trace,
+            node_index={},
+            zone_edges=[],
+            ctx=ctx,  # type: ignore[arg-type]
         )
         assert trace.confidence == Confidence.ABSTAIN
         assert "missing slots" in (trace.proof or "")

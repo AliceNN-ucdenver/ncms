@@ -125,16 +125,12 @@ class MaintenanceScheduler:
         for task_name, interval_attr, flag_attr, method_name in self._TASK_DEFS:
             # Check feature flag
             if flag_attr != "_always" and not getattr(self._config, flag_attr, False):
-                logger.debug(
-                    "Maintenance task '%s' skipped (%s=false)", task_name, flag_attr
-                )
+                logger.debug("Maintenance task '%s' skipped (%s=false)", task_name, flag_attr)
                 continue
 
             # episode_close needs episode_svc
             if task_name == "episode_close" and self._episode_svc is None:
-                logger.debug(
-                    "Maintenance task 'episode_close' skipped (no episode_svc)"
-                )
+                logger.debug("Maintenance task 'episode_close' skipped (no episode_svc)")
                 continue
 
             interval_minutes: int = getattr(self._config, interval_attr)
@@ -258,7 +254,8 @@ class MaintenanceScheduler:
 
         if lock.locked():
             logger.info(
-                "Maintenance task '%s' already running — skipping", task_name,
+                "Maintenance task '%s' already running — skipping",
+                task_name,
             )
             return {"status": "already_running", "task": task_name}
 
@@ -336,12 +333,12 @@ class MaintenanceScheduler:
         try:
             from ncms.infrastructure.observability.event_log import DashboardEvent
 
-            event_type = (
-                "maintenance.task_error" if error else "maintenance.task_complete"
+            event_type = "maintenance.task_error" if error else "maintenance.task_complete"
+            self._event_log.emit(
+                DashboardEvent(
+                    type=event_type,
+                    data=data,
+                )
             )
-            self._event_log.emit(DashboardEvent(
-                type=event_type,
-                data=data,
-            ))
         except Exception:
             pass  # event log is best-effort

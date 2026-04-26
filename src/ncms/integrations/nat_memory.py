@@ -175,7 +175,9 @@ class NCMSMemoryEditor:
 
         if use_recall:
             results = await self._memory_svc.recall(
-                query=query, domain=domain, limit=limit,
+                query=query,
+                domain=domain,
+                limit=limit,
             )
             return [
                 MemoryItem(
@@ -187,7 +189,9 @@ class NCMSMemoryEditor:
                         "episode": {
                             "id": r.context.episode.episode_id,
                             "title": r.context.episode.episode_title,
-                        } if r.context.episode else None,
+                        }
+                        if r.context.episode
+                        else None,
                         "entity_states": [
                             {
                                 "entity": s.entity_name,
@@ -195,7 +199,9 @@ class NCMSMemoryEditor:
                                 "value": s.state_value,
                             }
                             for s in r.context.entity_states
-                        ] if r.context.entity_states else [],
+                        ]
+                        if r.context.entity_states
+                        else [],
                     },
                     id=r.memory.memory.id,
                     score=r.memory.total_activation,
@@ -204,7 +210,9 @@ class NCMSMemoryEditor:
             ]
         else:
             results = await self._memory_svc.search(
-                query=query, domain=domain, limit=limit,
+                query=query,
+                domain=domain,
+                limit=limit,
             )
             return [
                 MemoryItem(

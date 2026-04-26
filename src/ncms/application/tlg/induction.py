@@ -66,7 +66,8 @@ _EDGE_TYPE_TO_TRANSITION: dict[str, str] = {
 
 
 async def _observation_from_edge(
-    store: object, edge: GraphEdge,
+    store: object,
+    edge: GraphEdge,
 ) -> EdgeObservation | None:
     """Build a single EdgeObservation, or None when data is missing.
 

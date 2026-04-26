@@ -23,7 +23,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import re
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -80,9 +79,7 @@ class IngestionPipeline:
         reconciliation: ReconciliationService | None = None,
         episode: EpisodeService | None = None,
         section_service: SectionService | None = None,
-        add_entity: (
-            Callable[..., Awaitable[Any]] | None
-        ) = None,
+        add_entity: (Callable[..., Awaitable[Any]] | None) = None,
         intent_slot: Any | None = None,
     ) -> None:
         self._store = store
@@ -138,14 +135,16 @@ class IngestionPipeline:
             conf = float(confidences.get(slot_name, 1.0))
             if conf < confidence_threshold:
                 continue
-            out.append({
-                "name": str(surface).strip(),
-                "type": str(slot_name),
-                "attributes": {
-                    "source": "slm_slot",
-                    "confidence": round(conf, 3),
-                },
-            })
+            out.append(
+                {
+                    "name": str(surface).strip(),
+                    "type": str(slot_name),
+                    "attributes": {
+                        "source": "slm_slot",
+                        "confidence": round(conf, 3),
+                    },
+                }
+            )
         return out
 
     # ── Entity State Extraction (shared with index_worker) ──────────────
@@ -158,248 +157,12 @@ class IngestionPipeline:
     ) -> dict:
         """Extract entity state metadata from content + SLM output.
 
-        Strategy chain — first match wins:
-
-        1. **SLM role-span path** (v7+ preferred) — when the SLM's
-           role_head emitted a primary-role span, use the canonical
-           form as ``state_value`` and the slot as ``state_key``.
-           Reconciliation gets a stable comparison key.
-        2. **Regex pattern chain** (cold-start fallback when SLM
-           absent) — six patterns in order: assignment / transition /
-           colon-transition / declaration / markdown-status /
-           yaml-status.
-        3. **First-line fallback** — when no pattern matches but
-           entities are present, attach the first assignment-like
-           line as the state value.
-
-        Returns ``{}`` when nothing matches (no entities, no patterns
-        — caller skips L2 creation).  Otherwise returns a dict suitable
-        for ``MemoryNode.metadata`` with ``entity_id``, ``state_key``,
-        ``state_value``, and optionally ``state_previous``,
-        ``state_alternative``, ``source``.
+        Thin pass-through to :mod:`ncms.application.ingestion.state_meta`.
+        See that module's docstring for the strategy chain.
         """
-        meta = IngestionPipeline._meta_from_role_spans(slm_label, entities)
-        if meta is not None:
-            return meta
-        for pattern_fn in IngestionPipeline._STATE_PATTERN_FNS:
-            meta = pattern_fn(content, entities)
-            if meta is not None:
-                return meta
-        return IngestionPipeline._meta_first_line_fallback(
-            content, entities,
-        )
+        from ncms.application.ingestion.state_meta import extract_entity_state_meta as _impl
 
-    @staticmethod
-    def _meta_from_role_spans(
-        slm_label: dict | None, entities: list[dict],
-    ) -> dict | None:
-        """Strategy 1 — v7+ SLM role-span path (preferred).
-
-        Subject-resolution: prefer a GLiNER entity that ISN'T the
-        primary or alternative canonical, so the state belongs to
-        something other than the value that changed.  Example:
-        "auth-service migrated from PostgreSQL to CockroachDB" →
-        GLiNER finds {auth-service, PostgreSQL, CockroachDB};
-        primary=CockroachDB, alt=PostgreSQL, so subject =
-        auth-service.
-        """
-        if not (slm_label and slm_label.get("role_spans")):
-            return None
-        role_spans = slm_label["role_spans"]
-        primary = next(
-            (r for r in role_spans if r.get("role") == "primary"),
-            None,
-        )
-        if not primary:
-            return None
-        alt = next(
-            (r for r in role_spans if r.get("role") == "alternative"),
-            None,
-        )
-        primary_canon = primary["canonical"].lower()
-        alt_canon = alt["canonical"].lower() if alt else None
-        subject_entity = None
-        for ent in entities:
-            name_l = ent["name"].lower()
-            if name_l == primary_canon:
-                continue
-            if alt_canon and name_l == alt_canon:
-                continue
-            subject_entity = ent["name"]
-            break
-        meta = {
-            "entity_id": subject_entity or primary["canonical"],
-            "state_key": primary["slot"],
-            "state_value": primary["canonical"],
-            "source": "slm_role_span",
-        }
-        if alt:
-            meta["state_previous"] = alt["canonical"]
-            meta["state_alternative"] = alt["canonical"]
-        return meta
-
-    # Compiled patterns — module-level for reuse across calls.
-    _RX_ASSIGN = re.compile(
-        r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s*=\s*(.+)$",
-        re.MULTILINE,
-    )
-    _RX_TRANSITION = re.compile(
-        r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-        r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
-        r"(?:\s+(?:due|for|after|because)\b.*)?$",
-        re.MULTILINE | re.IGNORECASE,
-    )
-    _RX_COLON_TRANSITION = re.compile(
-        r"^([a-zA-Z0-9_\-]+)\s*:\s*([a-zA-Z0-9_\-]+)\s+"
-        r"(?:changed|updated)\s+from\s+(.+?)\s+to\s+(.+?)"
-        r"(?:\s+(?:due|for|after|because|per)\b.*)?$",
-        re.MULTILINE | re.IGNORECASE,
-    )
-    _RX_DECLARATION = re.compile(
-        r"^([a-zA-Z0-9_\-]+)\s+([a-zA-Z0-9_\-]+)\s+"
-        r"(?:is|are|was|were|changed to|updated to|set to)\s+(.+)$",
-        re.MULTILINE | re.IGNORECASE,
-    )
-    _RX_MD_STATUS = re.compile(
-        r"^#\s+(.+?)$.*?^##?\s*[Ss]tatus\s*$\s*^(\w[\w\s]*)$",
-        re.MULTILINE | re.DOTALL,
-    )
-    _RX_YAML_STATUS = re.compile(
-        r"^\s*status\s*:\s*(\w[\w_\-]*)",
-        re.MULTILINE | re.IGNORECASE,
-    )
-
-    @staticmethod
-    def _meta_assign(content: str, _entities: list[dict]) -> dict | None:
-        """Pattern 1 — ``EntityName: key = value``."""
-        m = IngestionPipeline._RX_ASSIGN.search(content)
-        if not m:
-            return None
-        return {
-            "entity_id": m.group(1).strip(),
-            "state_key": m.group(2).strip(),
-            "state_value": m.group(3).strip(),
-        }
-
-    @staticmethod
-    def _meta_transition(
-        content: str, _entities: list[dict],
-    ) -> dict | None:
-        """Pattern 2 — ``Entity key changed/updated from X to Y``."""
-        m = IngestionPipeline._RX_TRANSITION.search(content)
-        if not m:
-            return None
-        return {
-            "entity_id": m.group(1).strip(),
-            "state_key": m.group(2).strip(),
-            "state_value": m.group(4).strip(),
-            "state_previous": m.group(3).strip(),
-        }
-
-    @staticmethod
-    def _meta_colon_transition(
-        content: str, _entities: list[dict],
-    ) -> dict | None:
-        """Pattern 3 — ``Entity: key changed/updated from X to Y``."""
-        m = IngestionPipeline._RX_COLON_TRANSITION.search(content)
-        if not m:
-            return None
-        return {
-            "entity_id": m.group(1).strip(),
-            "state_key": m.group(2).strip(),
-            "state_value": m.group(4).strip(),
-            "state_previous": m.group(3).strip(),
-        }
-
-    @staticmethod
-    def _meta_declaration(
-        content: str, _entities: list[dict],
-    ) -> dict | None:
-        """Pattern 4 — ``Entity key is/was/set to value``."""
-        m = IngestionPipeline._RX_DECLARATION.search(content)
-        if not m:
-            return None
-        return {
-            "entity_id": m.group(1).strip(),
-            "state_key": m.group(2).strip(),
-            "state_value": m.group(3).strip(),
-        }
-
-    @staticmethod
-    def _meta_md_status(
-        content: str, entities: list[dict],
-    ) -> dict | None:
-        """Pattern 5 — Markdown ``## Status\\n\\nvalue`` (ADRs)."""
-        m = IngestionPipeline._RX_MD_STATUS.search(content)
-        if not (m and entities):
-            return None
-        title_lower = m.group(1).strip().lower()
-        status_val = m.group(2).strip()
-        entity_id = entities[0]["name"]
-        for ent in entities:
-            if ent["name"].lower() in title_lower:
-                entity_id = ent["name"]
-                break
-        return {
-            "entity_id": entity_id,
-            "state_key": "status",
-            "state_value": status_val,
-        }
-
-    @staticmethod
-    def _meta_yaml_status(
-        content: str, entities: list[dict],
-    ) -> dict | None:
-        """Pattern 6 — YAML ``status: value``."""
-        m = IngestionPipeline._RX_YAML_STATUS.search(content)
-        if not (m and entities):
-            return None
-        return {
-            "entity_id": entities[0]["name"],
-            "state_key": "status",
-            "state_value": m.group(1).strip(),
-        }
-
-    @staticmethod
-    def _meta_first_line_fallback(
-        content: str, entities: list[dict],
-    ) -> dict:
-        """Final fallback — first entity + first assignment-like line.
-
-        Returns ``{}`` when no entities (caller skips L2 creation).
-        """
-        if not entities:
-            return {}
-        best_line = ""
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped and any(c in stripped for c in ("=", ":", "→")):
-                best_line = stripped[:200]
-                break
-        if not best_line:
-            best_line = (
-                content.splitlines()[0].strip()[:200] if content else ""
-            )
-        return {
-            "entity_id": entities[0]["name"],
-            "state_key": "state",
-            "state_value": best_line,
-        }
-
-    # Strategy chain consumed by ``extract_entity_state_meta`` —
-    # first match wins.  Defined as a class attribute (after the
-    # method definitions resolve) so the chain is allocated once
-    # per process, not per call.  Order matters: more-specific
-    # patterns (assign / transition) before less-specific (yaml /
-    # markdown).
-    _STATE_PATTERN_FNS: tuple = (
-        _meta_assign,
-        _meta_transition,
-        _meta_colon_transition,
-        _meta_declaration,
-        _meta_md_status,
-        _meta_yaml_status,
-    )
+        return _impl(content, entities, slm_label)
 
     # ── Stage 1: Pre-Admission Gates ────────────────────────────────────
 
@@ -431,7 +194,8 @@ class IngestionPipeline:
         if existing is not None:
             logger.info(
                 "Dedup: content hash %s already exists as memory %s",
-                content_hash[:12], existing.id,
+                content_hash[:12],
+                existing.id,
             )
             emit_stage(
                 "dedup_skip",
@@ -447,9 +211,10 @@ class IngestionPipeline:
         max_len = self._config.max_content_length
         if len(content) > max_len:
             logger.info(
-                "Content size: %d chars exceeds %d "
-                "(importance=%.1f) — %s",
-                len(content), max_len, importance,
+                "Content size: %d chars exceeds %d (importance=%.1f) — %s",
+                len(content),
+                max_len,
+                importance,
                 "will split via section extraction"
                 if self._config.content_classification_enabled
                 else "proceeding as atomic (classification disabled)",
@@ -461,9 +226,7 @@ class IngestionPipeline:
                     "content_length": len(content),
                     "max_content_length": max_len,
                     "importance": importance,
-                    "classification_enabled": (
-                        self._config.content_classification_enabled
-                    ),
+                    "classification_enabled": (self._config.content_classification_enabled),
                 },
             )
             if tags is None:
@@ -472,8 +235,14 @@ class IngestionPipeline:
 
         # Gate 3: Content classification (ATOMIC vs NAVIGABLE)
         navigable_memory = await self._maybe_ingest_navigable(
-            content, memory_type, importance, tags, structured,
-            source_agent, emit_stage, pipeline_start,
+            content,
+            memory_type,
+            importance,
+            tags,
+            structured,
+            source_agent,
+            emit_stage,
+            pipeline_start,
         )
         if navigable_memory is not None:
             return navigable_memory
@@ -491,10 +260,7 @@ class IngestionPipeline:
         emit_stage: Callable,
         pipeline_start: float,
     ) -> Memory | None:
-        if not (
-            self._config.content_classification_enabled
-            and self._section_svc is not None
-        ):
+        if not (self._config.content_classification_enabled and self._section_svc is not None):
             return None
         try:
             from ncms.domain.content_classifier import (
@@ -505,18 +271,14 @@ class IngestionPipeline:
 
             t0 = time.perf_counter()
             classification = classify_content(content, memory_type)
-            if (
-                classification.content_class == ContentClass.NAVIGABLE
-            ):
+            if classification.content_class == ContentClass.NAVIGABLE:
                 sections = extract_sections(content, classification)
                 if len(sections) >= 2:
                     emit_stage(
                         "content_classification",
                         (time.perf_counter() - t0) * 1000,
                         {
-                            "content_class": (
-                                classification.content_class.value
-                            ),
+                            "content_class": (classification.content_class.value),
                             "format_hint": classification.format_hint,
                             "section_count": len(sections),
                         },
@@ -536,9 +298,7 @@ class IngestionPipeline:
                 "content_classification",
                 (time.perf_counter() - t0) * 1000,
                 {
-                    "content_class": (
-                        classification.content_class.value
-                    ),
+                    "content_class": (classification.content_class.value),
                     "format_hint": classification.format_hint,
                     "section_count": 0,
                     "result": "atomic_passthrough",
@@ -592,15 +352,22 @@ class IngestionPipeline:
         t0 = time.perf_counter()
         try:
             features = await self._admission.compute_features(
-                content, domains=domains, source_agent=source_agent,
+                content,
+                domains=domains,
+                source_agent=source_agent,
             )
             score = score_admission(features)
             route, slm_route = self._resolve_admission_route(
-                intent_slot_label, features, score,
+                intent_slot_label,
+                features,
+                score,
             )
             feature_dict = _asdict(features)
             self._emit_admission_event(
-                t0=t0, score=score, route=route, slm_route=slm_route,
+                t0=t0,
+                score=score,
+                route=route,
+                slm_route=slm_route,
                 feature_dict=feature_dict,
                 source_agent=source_agent,
                 emit_stage=emit_stage,
@@ -612,32 +379,47 @@ class IngestionPipeline:
                     "Admission: features computed (state_change=%.2f) "
                     "but routing skipped for high-importance content "
                     "(%.1f)",
-                    features.state_change_signal, importance,
+                    features.state_change_signal,
+                    importance,
                 )
                 return self._build_persist_continuation(
-                    structured, score, "persist", feature_dict, features,
+                    structured,
+                    score,
+                    "persist",
+                    feature_dict,
+                    features,
                 )
 
             if route == "discard":
                 return self._handle_discard_route(
-                    content=content, memory_type=memory_type,
-                    domains=domains, tags=tags,
-                    source_agent=source_agent, project=project,
+                    content=content,
+                    memory_type=memory_type,
+                    domains=domains,
+                    tags=tags,
+                    source_agent=source_agent,
+                    project=project,
                     score=score,
                     emit_stage=emit_stage,
                     pipeline_start=pipeline_start,
                 )
             if route == "ephemeral_cache":
                 return await self._handle_ephemeral_route(
-                    content=content, memory_type=memory_type,
-                    domains=domains, tags=tags,
-                    source_agent=source_agent, project=project,
+                    content=content,
+                    memory_type=memory_type,
+                    domains=domains,
+                    tags=tags,
+                    source_agent=source_agent,
+                    project=project,
                     score=score,
                     emit_stage=emit_stage,
                     pipeline_start=pipeline_start,
                 )
             return self._build_persist_continuation(
-                structured, score, route, feature_dict, features,
+                structured,
+                score,
+                route,
+                feature_dict,
+                features,
             )
 
         except Exception:
@@ -646,7 +428,8 @@ class IngestionPipeline:
                 exc_info=True,
             )
             emit_stage(
-                "admission_error", (time.perf_counter() - t0) * 1000,
+                "admission_error",
+                (time.perf_counter() - t0) * 1000,
             )
             return None, None, structured
 
@@ -691,19 +474,21 @@ class IngestionPipeline:
         emit_stage: Callable,
     ) -> None:
         emit_stage(
-            "admission", (time.perf_counter() - t0) * 1000, {
-                "score": round(score, 3), "route": route,
-                "route_source": (
-                    "intent_slot" if slm_route is not None else "regex"
-                ),
-                "features": {
-                    k: round(v, 3) for k, v in feature_dict.items()
-                },
+            "admission",
+            (time.perf_counter() - t0) * 1000,
+            {
+                "score": round(score, 3),
+                "route": route,
+                "route_source": ("intent_slot" if slm_route is not None else "regex"),
+                "features": {k: round(v, 3) for k, v in feature_dict.items()},
             },
         )
         self._event_log.admission_scored(
-            memory_id=None, score=score, route=route,
-            features=feature_dict, agent_id=source_agent,
+            memory_id=None,
+            score=score,
+            route=route,
+            features=feature_dict,
+            agent_id=source_agent,
         )
 
     def _handle_discard_route(
@@ -721,7 +506,8 @@ class IngestionPipeline:
     ) -> Memory:
         """Admission-discard early exit.  Memory is NOT persisted."""
         logger.info(
-            "Admission: discarding content (score=%.3f)", score,
+            "Admission: discarding content (score=%.3f)",
+            score,
         )
         emit_stage(
             "complete",
@@ -732,9 +518,12 @@ class IngestionPipeline:
             },
         )
         return Memory(
-            content=content, type=cast(Any, memory_type),
-            domains=domains or [], tags=tags or [],
-            source_agent=source_agent, project=project,
+            content=content,
+            type=cast(Any, memory_type),
+            domains=domains or [],
+            tags=tags or [],
+            source_agent=source_agent,
+            project=project,
             structured={
                 "admission": {"score": score, "route": "discard"},
             },
@@ -764,15 +553,19 @@ class IngestionPipeline:
         ttl = self._config.admission_ephemeral_ttl_seconds
         now = datetime.now(UTC)
         entry = EphemeralEntry(
-            content=content, source_agent=source_agent,
-            domains=domains or [], admission_score=score,
-            ttl_seconds=ttl, created_at=now,
+            content=content,
+            source_agent=source_agent,
+            domains=domains or [],
+            admission_score=score,
+            ttl_seconds=ttl,
+            created_at=now,
             expires_at=now + timedelta(seconds=ttl),
         )
         await self._store.save_ephemeral(entry)
         logger.info(
             "Admission: ephemeral cache (score=%.3f, ttl=%ds)",
-            score, ttl,
+            score,
+            ttl,
         )
         emit_stage(
             "complete",
@@ -784,13 +577,19 @@ class IngestionPipeline:
             },
         )
         return Memory(
-            content=content, type=cast(Any, memory_type),
-            domains=domains or [], tags=tags or [],
-            source_agent=source_agent, project=project,
-            structured={"admission": {
-                "score": score, "route": "ephemeral_cache",
-                "ephemeral_id": entry.id,
-            }},
+            content=content,
+            type=cast(Any, memory_type),
+            domains=domains or [],
+            tags=tags or [],
+            source_agent=source_agent,
+            project=project,
+            structured={
+                "admission": {
+                    "score": score,
+                    "route": "ephemeral_cache",
+                    "ephemeral_id": entry.id,
+                }
+            },
         )
 
     @staticmethod
@@ -804,7 +603,8 @@ class IngestionPipeline:
         """Attach admission features to ``structured`` for the persist path."""
         result = dict(structured or {})
         result["admission"] = {
-            "score": round(score, 3), "route": route,
+            "score": round(score, 3),
+            "route": route,
             **{k: round(v, 3) for k, v in feature_dict.items()},
         }
         return route, features, result
@@ -852,7 +652,8 @@ class IngestionPipeline:
         try:
             label = await asyncio.to_thread(
                 self._intent_slot.extract,
-                content, domain=domain,
+                content,
+                domain=domain,
             )
         except Exception:
             logger.warning(
@@ -891,7 +692,8 @@ class IngestionPipeline:
         async def _do_bm25() -> float:
             t = time.perf_counter()
             await asyncio.to_thread(
-                self._index.index_memory, memory,
+                self._index.index_memory,
+                memory,
             )
             return (time.perf_counter() - t) * 1000
 
@@ -901,12 +703,14 @@ class IngestionPipeline:
             t = time.perf_counter()
             try:
                 await asyncio.to_thread(
-                    self._splade.index_memory, memory,
+                    self._splade.index_memory,
+                    memory,
                 )
             except Exception:
                 logger.warning(
                     "SPLADE indexing failed for %s, continuing",
-                    memory.id, exc_info=True,
+                    memory.id,
+                    exc_info=True,
                 )
             return (time.perf_counter() - t) * 1000
 
@@ -920,14 +724,17 @@ class IngestionPipeline:
             t = time.perf_counter()
             cached = await load_cached_labels(self._store, domains or [])
             gliner_labels = resolve_labels(
-                domains or [], cached_labels=cached,
+                domains or [],
+                cached_labels=cached,
             )
             # P1-temporal-experiment: additively merge temporal labels
             # for content-date extraction at ingest (§2.1 of the design).
             if self._config.temporal_range_filter_enabled:
                 gliner_labels = add_temporal_labels(gliner_labels)
             result = await asyncio.to_thread(
-                extract_with_label_budget, content, gliner_labels,
+                extract_with_label_budget,
+                content,
+                gliner_labels,
                 model_name=self._config.gliner_model,
                 threshold=self._config.gliner_threshold,
                 cache_dir=self._config.model_cache_dir,
@@ -941,15 +748,16 @@ class IngestionPipeline:
         logger.info(
             "[store] Starting parallel indexing: BM25 + SPLADE + GLiNER",
         )
-        bm25_ms, splade_ms, (auto_entities, extract_ms) = (
-            await asyncio.gather(
-                _do_bm25(), _do_splade(), _do_gliner(),
-            )
+        bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
+            _do_bm25(),
+            _do_splade(),
+            _do_gliner(),
         )
         logger.info(
-            "[store] Parallel indexing complete: "
-            "BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
-            bm25_ms, splade_ms, extract_ms,
+            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
+            bm25_ms,
+            splade_ms,
+            extract_ms,
         )
 
         emit_stage("bm25_index", bm25_ms, memory_id=memory.id)
@@ -961,25 +769,27 @@ class IngestionPipeline:
         # content range, and persist when non-empty.  The entity-
         # linking path below sees only entity-typed items.
         auto_entities = await self._persist_content_range(
-            memory, auto_entities, emit_stage,
+            memory,
+            auto_entities,
+            emit_stage,
         )
 
         # Merge manual + auto-extracted entities (dedup by name)
         manual = list(entities_manual or [])
         manual_names = {e["name"].lower() for e in manual}
-        all_entities = manual + [
-            e for e in auto_entities
-            if e["name"].lower() not in manual_names
-        ]
-        emit_stage("entity_extraction", extract_ms, {
-            "extractor": "gliner",
-            "auto_count": len(auto_entities),
-            "manual_count": len(manual),
-            "total_count": len(all_entities),
-            "entity_names": [
-                e["name"] for e in all_entities[:10]
-            ],
-        }, memory_id=memory.id)
+        all_entities = manual + [e for e in auto_entities if e["name"].lower() not in manual_names]
+        emit_stage(
+            "entity_extraction",
+            extract_ms,
+            {
+                "extractor": "gliner",
+                "auto_count": len(auto_entities),
+                "manual_count": len(manual),
+                "total_count": len(all_entities),
+                "entity_names": [e["name"] for e in all_entities[:10]],
+            },
+            memory_id=memory.id,
+        )
 
         # Link entities to memory in graph + store
         t0 = time.perf_counter()
@@ -994,14 +804,21 @@ class IngestionPipeline:
             linked_entity_ids.append(entity.id)
             await self._store.link_memory_entity(memory.id, entity.id)
             self._graph.link_memory_entity(memory.id, entity.id)
-        emit_stage("graph_linking", (time.perf_counter() - t0) * 1000, {
-            "entities_linked": len(all_entities),
-        }, memory_id=memory.id)
+        emit_stage(
+            "graph_linking",
+            (time.perf_counter() - t0) * 1000,
+            {
+                "entities_linked": len(all_entities),
+            },
+            memory_id=memory.id,
+        )
 
         # Co-occurrence edges
         if len(linked_entity_ids) > 1:
             self.build_cooccurrence_edges(
-                memory.id, linked_entity_ids, emit_stage,
+                memory.id,
+                linked_entity_ids,
+                emit_stage,
             )
 
         return all_entities, linked_entity_ids
@@ -1042,12 +859,14 @@ class IngestionPipeline:
         for item in auto_entities:
             label = str(item.get("type", "")).lower()
             if label in temporal_label_set:
-                spans.append(RawSpan(
-                    text=str(item.get("name", "")),
-                    label=label,
-                    char_start=int(item.get("char_start", 0) or 0),
-                    char_end=int(item.get("char_end", 0) or 0),
-                ))
+                spans.append(
+                    RawSpan(
+                        text=str(item.get("name", "")),
+                        label=label,
+                        char_start=int(item.get("char_start", 0) or 0),
+                        char_end=int(item.get("char_end", 0) or 0),
+                    )
+                )
             else:
                 entities_only.append(item)
 
@@ -1059,16 +878,22 @@ class IngestionPipeline:
         merged = merge_intervals(intervals)
 
         source, range_start, range_end = self._resolve_memory_range(
-            merged, memory,
+            merged,
+            memory,
         )
-        emit_stage("content_range_extracted", 0.0, {
-            "span_count": len(spans),
-            "resolved_intervals": len(intervals),
-            "spans": [s.text for s in spans[:10]],
-            "source": source,
-            "range_start": range_start,
-            "range_end": range_end,
-        }, memory_id=memory.id)
+        emit_stage(
+            "content_range_extracted",
+            0.0,
+            {
+                "span_count": len(spans),
+                "resolved_intervals": len(intervals),
+                "spans": [s.text for s in spans[:10]],
+                "source": source,
+                "range_start": range_start,
+                "range_end": range_end,
+            },
+            memory_id=memory.id,
+        )
         if range_start is not None and range_end is not None:
             await self._store.save_content_range(
                 memory_id=memory.id,
@@ -1094,14 +919,16 @@ class IngestionPipeline:
             return (
                 "gliner",
                 merged.start.isoformat(),  # type: ignore[attr-defined]
-                merged.end.isoformat(),    # type: ignore[attr-defined]
+                merged.end.isoformat(),  # type: ignore[attr-defined]
             )
         anchor = memory.observed_at or memory.created_at
         if anchor is None:
             return None, None, None
         # Day-wide interval anchored on the session timestamp.
         day_start = datetime(
-            anchor.year, anchor.month, anchor.day,
+            anchor.year,
+            anchor.month,
+            anchor.day,
             tzinfo=anchor.tzinfo or UTC,
         )
         day_end = day_start + timedelta(days=1)
@@ -1115,13 +942,11 @@ class IngestionPipeline:
     ) -> None:
         """Build co-occurrence edges between entities in the same memory."""
         t0 = time.perf_counter()
-        cooc_ids = linked_entity_ids[
-            :self._config.cooccurrence_max_entities
-        ]
+        cooc_ids = linked_entity_ids[: self._config.cooccurrence_max_entities]
         edges_new = 0
         edges_incremented = 0
         for i, a in enumerate(cooc_ids):
-            for b in cooc_ids[i + 1:]:
+            for b in cooc_ids[i + 1 :]:
                 existing_count = self._graph.get_edge_cooccurrence(a, b)
                 if existing_count > 0:
                     self._graph.increment_edge_cooccurrence(a, b)
@@ -1129,12 +954,16 @@ class IngestionPipeline:
                     edges_incremented += 1
                 else:
                     rel_ab = Relationship(
-                        source_entity_id=a, target_entity_id=b,
-                        type="co_occurs", source_memory_id=memory_id,
+                        source_entity_id=a,
+                        target_entity_id=b,
+                        type="co_occurs",
+                        source_memory_id=memory_id,
                     )
                     rel_ba = Relationship(
-                        source_entity_id=b, target_entity_id=a,
-                        type="co_occurs", source_memory_id=memory_id,
+                        source_entity_id=b,
+                        target_entity_id=a,
+                        type="co_occurs",
+                        source_memory_id=memory_id,
                     )
                     self._graph.add_relationship(rel_ab)
                     self._graph.add_relationship(rel_ba)
@@ -1147,8 +976,7 @@ class IngestionPipeline:
                 "edges_incremented": edges_incremented,
                 "entities_used": len(cooc_ids),
                 "entities_capped": (
-                    len(linked_entity_ids)
-                    > self._config.cooccurrence_max_entities
+                    len(linked_entity_ids) > self._config.cooccurrence_max_entities
                 ),
             },
             memory_id=memory_id,
@@ -1186,16 +1014,30 @@ class IngestionPipeline:
             observed_at=memory.observed_at,
         )
         await self._store.save_memory_node(l1_node)
-        emit_stage("memory_node", 0.0, {
-            "node_id": l1_node.id,
-            "node_type": "atomic",
-            "layer": "L1",
-        }, memory_id=memory.id)
+        emit_stage(
+            "memory_node",
+            0.0,
+            {
+                "node_id": l1_node.id,
+                "node_type": "atomic",
+                "layer": "L1",
+            },
+            memory_id=memory.id,
+        )
 
         # L2: Detect state change or declaration (or use caller subject)
-        l2_node = await self._detect_and_create_l2_node(
-            memory, content, all_entities, l1_node,
-            admission_features, emit_stage,
+        from ncms.application.ingestion.l2_detection import detect_and_create_l2_node
+
+        l2_node = await detect_and_create_l2_node(
+            store=self._store,
+            config=self._config,
+            extract_entity_state_meta_fn=self.extract_entity_state_meta,
+            memory=memory,
+            content=content,
+            all_entities=all_entities,
+            l1_node=l1_node,
+            admission_features=admission_features,
+            emit_stage=emit_stage,
             subject=subject,
         )
 
@@ -1207,13 +1049,18 @@ class IngestionPipeline:
             and l2_node.metadata.get("entity_id")
         ):
             await self._reconcile_entity_state(
-                l2_node, memory.id, emit_stage,
+                l2_node,
+                memory.id,
+                emit_stage,
             )
 
         # Episode formation (links to L1 atomic node)
         if self._episode is not None and self._config.temporal_enabled:
             await self._assign_episode(
-                l1_node, memory, content, linked_entity_ids,
+                l1_node,
+                memory,
+                content,
+                linked_entity_ids,
                 emit_stage,
             )
 
@@ -1221,277 +1068,18 @@ class IngestionPipeline:
         # No-op for v7.x adapters (cue_tags empty).  Gated on
         # temporal_enabled — same flag that governs reconciliation.
         if self._config.temporal_enabled:
-            await self._extract_and_persist_causal_edges(
-                memory, l1_node, l2_node, emit_stage,
+            from ncms.application.ingestion.causal_edges import (
+                extract_and_persist_causal_edges,
             )
 
-    async def _detect_and_create_l2_node(
-        self,
-        memory: Memory,
-        content: str,
-        all_entities: list[dict],
-        l1_node: MemoryNode,
-        admission_features: object | None,
-        emit_stage: Callable,
-        subject: str | None = None,
-    ) -> MemoryNode | None:
-        """Detect entity state change and create L2 ENTITY_STATE node.
-
-        Two strategies dispatched by the ``subject`` kwarg:
-
-        - **Caller-asserted subject** (Option D' Part 4) — when the
-          caller knows the entity-subject of this memory (MSEB
-          backend, ticket system, patient record), create the L2
-          node only when the SLM state_change head says declaration
-          / retirement with confidence.  Subject alone is NOT enough:
-          it asserts "this memory is ABOUT X" but L2 means "this
-          memory IS a state of X".
-        - **No subject** — SLM-first state-change detection via the
-          shared ``slm_state_change_decision`` helper, with regex
-          fallback only when the LoRA adapter didn't run.
-        """
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
-        if subject:
-            return await self._create_l2_with_subject(
-                memory=memory, content=content, l1_node=l1_node,
-                slm_label=slm_label, subject=subject,
+            await extract_and_persist_causal_edges(
+                store=self._store,
+                config=self._config,
+                memory=memory,
+                l1_node=l1_node,
+                l2_node=l2_node,
                 emit_stage=emit_stage,
             )
-        return await self._create_l2_via_state_detection(
-            memory=memory, content=content,
-            all_entities=all_entities, l1_node=l1_node,
-            admission_features=admission_features,
-            slm_label=slm_label, emit_stage=emit_stage,
-        )
-
-    async def _create_l2_with_subject(
-        self,
-        *,
-        memory: Memory,
-        content: str,
-        l1_node: MemoryNode,
-        slm_label: dict,
-        subject: str,
-        emit_stage: Callable,
-    ) -> MemoryNode | None:
-        """L2 path 1 — caller-asserted subject + SLM-confident state change.
-
-        Creates the L2 node ONLY when the SLM state_change head
-        emitted ``declaration`` or ``retirement`` above the confidence
-        floor.  Subject alone is insufficient (would create false-
-        positive L2s on multi-section ADRs / patient threads).
-        """
-        slm_state = slm_label.get("state_change")
-        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
-        slm_change_confident = (
-            slm_state in {"declaration", "retirement"}
-            and slm_state_conf >= self._config.slm_confidence_threshold
-        )
-        if not slm_change_confident:
-            return None
-
-        node_metadata = self._build_subject_l2_metadata(
-            content=content, slm_label=slm_label,
-            slm_state=slm_state, subject=subject,
-        )
-        return await self._save_l2_node(
-            memory=memory, l1_node=l1_node,
-            node_metadata=node_metadata,
-            emit_stage=emit_stage,
-            extra_event_fields={
-                "has_entity_state": True,
-                "source": "caller_subject_slm_state_change",
-            },
-        )
-
-    @staticmethod
-    def _build_subject_l2_metadata(
-        *,
-        content: str,
-        slm_label: dict,
-        slm_state: str,
-        subject: str,
-    ) -> dict:
-        """Build the L2 node metadata for the caller-subject path.
-
-        Prefers the v7+ role_head's canonical primary span (e.g.
-        ``database=postgresql``) over the raw content snippet, so
-        reconciliation has a stable comparison key.  Falls back to
-        ``state_key="status"`` + content snippet on pre-v7 adapters
-        or out-of-catalog content.
-        """
-        primary_span = None
-        alt_span = None
-        for r in slm_label.get("role_spans") or ():
-            role = r.get("role")
-            if role == "primary" and primary_span is None:
-                primary_span = r
-            elif role == "alternative" and alt_span is None:
-                alt_span = r
-        if primary_span:
-            meta = {
-                "entity_id": subject,
-                "state_key": primary_span["slot"],
-                "state_value": primary_span["canonical"],
-                "source": "caller_subject_slm_role_span",
-                "slm_state_change": slm_state,
-            }
-            if alt_span:
-                meta["state_previous"] = alt_span["canonical"]
-                meta["state_alternative"] = alt_span["canonical"]
-            return meta
-        # Fallback — pin state_key="status" because the SLM topic
-        # head can misclassify domain-specific content; reconciliation
-        # lookup needs a consistent key per subject.
-        snippet = content.strip()[:200] or "(empty)"
-        return {
-            "entity_id": subject,
-            "state_key": "status",
-            "state_value": snippet,
-            "source": "caller_subject_slm_state_change",
-            "slm_state_change": slm_state,
-        }
-
-    async def _create_l2_via_state_detection(
-        self,
-        *,
-        memory: Memory,
-        content: str,
-        all_entities: list[dict],
-        l1_node: MemoryNode,
-        admission_features: object | None,
-        slm_label: dict,
-        emit_stage: Callable,
-    ) -> MemoryNode | None:
-        """L2 path 2 — SLM-first state detection (cold-start regex fallback).
-
-        The Phase I.2 ``slm_state_change_decision`` helper is the
-        primary path: when the LoRA adapter ran confidently, its
-        verdict (incl. ``"none"``) is authoritative.  The regex
-        block fires only on cold-start deployments without an
-        adapter loaded.
-        """
-        if not self._state_change_detected(
-            slm_label=slm_label, content=content,
-            admission_features=admission_features,
-        ):
-            return None
-
-        # Pass the full SLM label dict through so role_spans drive
-        # extract_entity_state_meta to source canonical state_values.
-        node_metadata = self.extract_entity_state_meta(
-            content, all_entities, slm_label=slm_label,
-        )
-        if not node_metadata:
-            return None
-
-        # Validate detected entity exists in GLiNER set, EXCEPT
-        # when metadata came from the SLM role span (canonical form
-        # may not match GLiNER's mixed-case variant verbatim).
-        if node_metadata.get("source") != "slm_role_span":
-            entity_names_lower = {
-                e["name"].lower() for e in all_entities
-            }
-            detected = node_metadata.get("entity_id", "")
-            if detected.lower() not in entity_names_lower:
-                return None
-
-        return await self._save_l2_node(
-            memory=memory, l1_node=l1_node,
-            node_metadata=node_metadata,
-            emit_stage=emit_stage,
-            extra_event_fields={
-                "has_entity_state": bool(node_metadata.get("entity_id")),
-            },
-        )
-
-    def _state_change_detected(
-        self,
-        *,
-        slm_label: dict,
-        content: str,
-        admission_features: object | None,
-    ) -> bool:
-        """Decide whether the L2-creation path should run.
-
-        SLM-first via the shared decision helper; falls through to
-        regex only when the LoRA didn't run.  Returns True iff there's
-        a detected state-change event OR a state-declaration pattern.
-        """
-        from ncms.domain.intent_slot_taxonomy import (
-            slm_state_change_decision,
-        )
-
-        slm_decision = slm_state_change_decision(
-            slm_label,
-            threshold=self._config.slm_confidence_threshold,
-        )
-        if slm_decision is not None:
-            has_state_change, has_state_declaration = slm_decision
-            return has_state_change or has_state_declaration
-
-        # Cold-start regex/heuristic fallback.
-        has_state_change = (
-            admission_features is not None
-            and hasattr(admission_features, "state_change_signal")
-            and admission_features.state_change_signal >= 0.35
-        )
-        has_state_declaration = bool(
-            re.search(
-                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                content, re.MULTILINE,
-            )
-            or re.search(
-                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
-            )
-            or re.search(
-                r"^\s*status\s*:\s*\w+",
-                content, re.MULTILINE | re.IGNORECASE,
-            )
-        )
-        return has_state_change or has_state_declaration
-
-    async def _save_l2_node(
-        self,
-        *,
-        memory: Memory,
-        l1_node: MemoryNode,
-        node_metadata: dict,
-        emit_stage: Callable,
-        extra_event_fields: dict,
-    ) -> MemoryNode:
-        """Persist an L2 ENTITY_STATE node + DERIVED_FROM edge to L1.
-
-        Shared tail of both L2-creation strategies.  Emits the
-        ``memory_node`` pipeline event with the ``extra_event_fields``
-        merged in (each strategy carries its own provenance metadata).
-        """
-        from ncms.domain.models import EdgeType, GraphEdge, NodeType
-
-        l2_node = MemoryNode(
-            memory_id=memory.id,
-            node_type=NodeType.ENTITY_STATE,
-            importance=memory.importance,
-            metadata=node_metadata,
-        )
-        await self._store.save_memory_node(l2_node)
-        await self._store.save_graph_edge(GraphEdge(
-            source_id=l2_node.id,
-            target_id=l1_node.id,
-            edge_type=EdgeType.DERIVED_FROM,
-            metadata={"layer": "L2_from_L1"},
-        ))
-        event_fields = {
-            "node_id": l2_node.id,
-            "node_type": "entity_state",
-            "layer": "L2",
-            "derived_from": l1_node.id,
-        }
-        event_fields.update(extra_event_fields)
-        emit_stage(
-            "memory_node", 0.0, event_fields, memory_id=memory.id,
-        )
-        return l2_node
 
     # ── Stage 5: Reconciliation ─────────────────────────────────────────
 
@@ -1525,7 +1113,8 @@ class IngestionPipeline:
         except Exception:
             logger.warning(
                 "Reconciliation failed for node %s, continuing",
-                l2_node.id, exc_info=True,
+                l2_node.id,
+                exc_info=True,
             )
             emit_stage(
                 "reconciliation_error",
@@ -1557,9 +1146,7 @@ class IngestionPipeline:
                 (time.perf_counter() - t0) * 1000,
                 {
                     "node_id": l1_node.id,
-                    "episode_id": (
-                        episode_node.id if episode_node else None
-                    ),
+                    "episode_id": (episode_node.id if episode_node else None),
                     "action": "created" if episode_node else "none",
                 },
                 memory_id=memory.id,
@@ -1567,12 +1154,14 @@ class IngestionPipeline:
 
             if episode_node is not None:
                 await self._episode.check_resolution_closure(
-                    content, episode_node,
+                    content,
+                    episode_node,
                 )
         except Exception:
             logger.warning(
                 "Episode formation failed for node %s, continuing",
-                l1_node.id, exc_info=True,
+                l1_node.id,
+                exc_info=True,
             )
             emit_stage(
                 "episode_formation_error",
@@ -1581,209 +1170,6 @@ class IngestionPipeline:
             )
 
     # ── Stage 6.5: CTLG causal-edge extraction (v8+) ───────────────────
-
-    async def _extract_and_persist_causal_edges(
-        self,
-        memory: Memory,
-        l1_node: MemoryNode,
-        l2_node: MemoryNode | None,
-        emit_stage: Callable,
-    ) -> None:
-        """Extract CAUSED_BY / ENABLES edges from memory-voice cue tags.
-
-        Gated on ``cue_tags`` presence in
-        ``memory.structured["intent_slot"]``.  No-op on pre-CTLG
-        adapters (v9 ships ``cue: 0``).  When the dedicated CTLG
-        sibling adapter ships (see ``docs/research/ctlg-design.md``)
-        cue tags will populate, this method will turn them into
-        typed graph edges, and the dispatcher can walk causal chains
-        directly.
-
-        Best-effort: any lookup error is logged and swallowed; a
-        dropped pair doesn't break ingest.
-        """
-        tokens = self._parse_cue_tags(memory)
-        if not tokens:
-            return
-
-        t0 = time.perf_counter()
-        pairs = self._extract_causal_pairs_safe(tokens, memory)
-        if not pairs:
-            return
-
-        lookup = await self._build_causal_surface_lookup(
-            memory=memory, l2_node=l2_node, pairs=pairs,
-        )
-        emitted, total_edges = await self._persist_causal_edges(
-            pairs=pairs, lookup=lookup, memory=memory,
-        )
-        if emitted > 0:
-            emit_stage(
-                "ctlg_causal_edges",
-                (time.perf_counter() - t0) * 1000,
-                {
-                    "memory_id": memory.id,
-                    "n_pairs_extracted": len(pairs),
-                    "n_edges_persisted": emitted,
-                    "n_pairs_unresolved": len(pairs) - total_edges,
-                },
-                memory_id=memory.id,
-            )
-
-    @staticmethod
-    def _parse_cue_tags(memory: Memory) -> list:
-        """Deserialise ``intent_slot.cue_tags`` into TaggedToken dataclasses.
-
-        Returns ``[]`` when no cues present (pre-CTLG adapter or
-        empty cue head) or when every entry is malformed.
-        """
-        from ncms.domain.tlg.cue_taxonomy import TaggedToken
-
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
-        cue_tag_dicts = slm_label.get("cue_tags") or []
-        if not cue_tag_dicts:
-            return []
-        tokens: list[TaggedToken] = []
-        for t in cue_tag_dicts:
-            try:
-                tokens.append(TaggedToken(
-                    char_start=int(t["char_start"]),
-                    char_end=int(t["char_end"]),
-                    surface=str(t["surface"]),
-                    cue_label=t["cue_label"],
-                    confidence=float(t.get("confidence", 1.0)),
-                ))
-            except (KeyError, TypeError, ValueError):
-                continue
-        return tokens
-
-    def _extract_causal_pairs_safe(
-        self, tokens: list, memory: Memory,
-    ) -> list:
-        """Wrap the causal-extractor in a try/except.
-
-        Returns ``[]`` when the extractor raises; logs the error
-        but doesn't break ingest.
-        """
-        from ncms.domain.tlg.causal_extractor import extract_causal_pairs
-
-        try:
-            return extract_causal_pairs(
-                tokens,
-                min_confidence=getattr(
-                    self._config, "ctlg_causal_min_confidence", 0.6,
-                ),
-            )
-        except Exception:
-            logger.warning(
-                "[ctlg] causal extraction failed for memory %s",
-                memory.id, exc_info=True,
-            )
-            return []
-
-    async def _build_causal_surface_lookup(
-        self,
-        *,
-        memory: Memory,
-        l2_node: MemoryNode | None,
-        pairs: list,
-    ) -> dict[str, str]:
-        """Resolve cue surfaces → memory IDs.
-
-        Two-pass: (1) this memory's L2 node values + entity_id;
-        (2) entity-state nodes elsewhere in the graph for any
-        surface still unresolved.  Surfaces that don't resolve get
-        dropped from the resulting edge set (dangling-edge guard).
-        """
-        lookup: dict[str, str] = {}
-        if l2_node is not None:
-            sv = str(
-                l2_node.metadata.get("state_value", ""),
-            ).lower().strip()
-            eid = str(
-                l2_node.metadata.get("entity_id", ""),
-            ).lower().strip()
-            if sv:
-                lookup[sv] = memory.id
-            if eid and eid not in lookup:
-                lookup[eid] = memory.id
-
-        needed: set[str] = set()
-        for p in pairs:
-            for surf in (p.effect_surface, p.cause_surface):
-                surf_low = surf.lower()
-                if surf_low not in lookup:
-                    needed.add(surf_low)
-
-        if needed:
-            try:
-                l2_candidates = (
-                    await self._store.get_memory_nodes_by_type(
-                        "entity_state",
-                    )
-                )
-                for node in l2_candidates:
-                    sv = str(
-                        node.metadata.get("state_value", ""),
-                    ).lower().strip()
-                    eid = str(
-                        node.metadata.get("entity_id", ""),
-                    ).lower().strip()
-                    if sv and sv in needed and sv not in lookup:
-                        lookup[sv] = node.memory_id
-                    if eid and eid in needed and eid not in lookup:
-                        lookup[eid] = node.memory_id
-            except Exception:
-                logger.warning(
-                    "[ctlg] entity_state lookup failed — some pairs "
-                    "may be dropped", exc_info=True,
-                )
-        return lookup
-
-    async def _persist_causal_edges(
-        self,
-        *,
-        pairs: list,
-        lookup: dict[str, str],
-        memory: Memory,
-    ) -> tuple[int, int]:
-        """Persist resolved causal pairs as typed GraphEdges.
-
-        Returns ``(n_emitted, n_total_edges)`` — n_total_edges
-        is what the resolver produced (≤ len(pairs)); n_emitted
-        is what survived the per-edge save.  Direction convention:
-        causal edges go effect → cause (src=effect, dst=cause).
-        """
-        from ncms.domain.models import EdgeType, GraphEdge
-        from ncms.domain.tlg.causal_extractor import pairs_to_causal_edges
-
-        edges = pairs_to_causal_edges(
-            pairs, surface_to_memory_id=lookup,
-        )
-        emitted = 0
-        for edge in edges:
-            edge_type = (
-                EdgeType.CAUSED_BY if edge.edge_type == "caused_by"
-                else EdgeType.ENABLES
-            )
-            try:
-                await self._store.save_graph_edge(GraphEdge(
-                    source_id=edge.src,
-                    target_id=edge.dst,
-                    edge_type=edge_type,
-                    metadata={
-                        "cue_type": edge.cue_type,
-                        "source": "ctlg_cue_head",
-                        "confidence": round(edge.confidence, 3),
-                    },
-                ))
-                emitted += 1
-            except Exception:
-                logger.warning(
-                    "[ctlg] failed to persist causal edge %s -> %s",
-                    edge.src, edge.dst, exc_info=True,
-                )
-        return emitted, len(edges)
 
     # ── Stage 7: Deferred Contradiction Detection ──────────────────────
 
@@ -1813,30 +1199,21 @@ class IngestionPipeline:
                 memory.content,
                 limit=self._config.contradiction_candidate_limit + 1,
             )
-            candidate_ids = [
-                mid for mid, _ in candidates if mid != memory.id
-            ]
-            candidate_ids = candidate_ids[
-                :self._config.contradiction_candidate_limit
-            ]
+            candidate_ids = [mid for mid, _ in candidates if mid != memory.id]
+            candidate_ids = candidate_ids[: self._config.contradiction_candidate_limit]
 
             # Also pull in graph-related memories via shared entities
             for e_data in all_entities[:5]:
                 eid = self._graph.find_entity_by_name(e_data["name"])
                 if eid:
                     related = self._graph.get_related_memory_ids(
-                        [eid], depth=1,
+                        [eid],
+                        depth=1,
                     )
                     for rid in related:
-                        if (
-                            rid != memory.id
-                            and rid not in candidate_ids
-                        ):
+                        if rid != memory.id and rid not in candidate_ids:
                             candidate_ids.append(rid)
-                            if (
-                                len(candidate_ids)
-                                >= self._config.contradiction_candidate_limit
-                            ):
+                            if len(candidate_ids) >= self._config.contradiction_candidate_limit:
                                 break
 
             # Domain-scope: only check overlapping domains
@@ -1862,27 +1239,31 @@ class IngestionPipeline:
                 contradiction_count = len(contradictions)
                 if contradictions:
                     await self._apply_contradiction_annotations(
-                        memory, contradictions,
+                        memory,
+                        contradictions,
                     )
                     logger.info(
-                        "Deferred contradiction check: %d "
-                        "contradiction(s) for memory %s",
-                        len(contradictions), memory.id,
+                        "Deferred contradiction check: %d contradiction(s) for memory %s",
+                        len(contradictions),
+                        memory.id,
                     )
         except Exception:
             logger.warning(
                 "Deferred contradiction detection failed for memory %s",
-                memory.id, exc_info=True,
+                memory.id,
+                exc_info=True,
             )
         self._event_log.pipeline_stage(
-            pipeline_id=pipeline_id, pipeline_type="store",
+            pipeline_id=pipeline_id,
+            pipeline_type="store",
             stage="contradiction_deferred",
             duration_ms=(time.perf_counter() - t0) * 1000,
             data={
                 "candidates_checked": candidates_checked,
                 "contradictions_found": contradiction_count,
             },
-            agent_id=source_agent, memory_id=memory.id,
+            agent_id=source_agent,
+            memory_id=memory.id,
         )
 
     async def _apply_contradiction_annotations(
@@ -1905,14 +1286,17 @@ class IngestionPipeline:
             if existing:
                 ex_structured = dict(existing.structured or {})
                 ex_contradictions = ex_structured.get(
-                    "contradicted_by", [],
+                    "contradicted_by",
+                    [],
                 )
-                ex_contradictions.append({
-                    "newer_memory_id": memory.id,
-                    "contradiction_type": c["contradiction_type"],
-                    "explanation": c["explanation"],
-                    "severity": c["severity"],
-                })
+                ex_contradictions.append(
+                    {
+                        "newer_memory_id": memory.id,
+                        "contradiction_type": c["contradiction_type"],
+                        "explanation": c["explanation"],
+                        "severity": c["severity"],
+                    }
+                )
                 ex_structured["contradicted_by"] = ex_contradictions
                 existing.structured = ex_structured
                 await self._store.update_memory(existing)

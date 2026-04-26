@@ -45,16 +45,19 @@ async def service() -> MemoryService:
         temporal_range_filter_enabled=True,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     yield svc
     await store.close()
 
 
 class TestContentRangeExtraction:
-
     async def test_dated_memory_persists_range(
-        self, service: MemoryService,
+        self,
+        service: MemoryService,
     ) -> None:
         """Memory containing an absolute date gets a content range row."""
         mem = await service.store_memory(
@@ -73,7 +76,8 @@ class TestContentRangeExtraction:
         assert end > start
 
     async def test_non_temporal_memory_falls_back_to_metadata(
-        self, service: MemoryService,
+        self,
+        service: MemoryService,
     ) -> None:
         """Memory with no parseable content dates falls back to observed_at.
 
@@ -91,9 +95,7 @@ class TestContentRangeExtraction:
         await service.flush_indexing()
 
         got = await service._store.get_content_range(mem.id)
-        assert got is not None, (
-            "expected metadata fallback to persist a range"
-        )
+        assert got is not None, "expected metadata fallback to persist a range"
         start, end = got
         # Day-wide interval anchored on observed_at.
         assert start.startswith("2024-06-05")
@@ -108,7 +110,8 @@ class TestContentRangeExtraction:
         assert row[0] == "metadata"
 
     async def test_observed_at_anchors_relative_content(
-        self, service: MemoryService,
+        self,
+        service: MemoryService,
     ) -> None:
         """'Yesterday' in content resolves against memory's observed_at.
 
@@ -133,9 +136,7 @@ class TestContentRangeExtraction:
         start, _ = got
         # If extracted, start should be 2024-03-14 (yesterday relative
         # to 2024-03-15), NOT wall-clock yesterday.
-        assert start.startswith("2024-03-"), (
-            f"expected session-relative resolution, got {start}"
-        )
+        assert start.startswith("2024-03-"), f"expected session-relative resolution, got {start}"
 
     async def test_flag_off_persists_nothing(
         self,
@@ -153,7 +154,10 @@ class TestContentRangeExtraction:
             temporal_range_filter_enabled=False,  # OFF
         )
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
         )
         try:
             mem = await svc.store_memory(

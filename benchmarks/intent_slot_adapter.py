@@ -70,7 +70,8 @@ def get_intent_slot_chain(
         logger.warning(
             "[bench] no adapter found for domain=%s at root=%s; "
             "falling back to heuristic-only chain",
-            domain, root or _default_adapter_root(),
+            domain,
+            root or _default_adapter_root(),
         )
 
     return build_extractor_chain(

@@ -56,9 +56,14 @@ _STEMMER = snowballstemmer.stemmer("english")
 # Admissible transitions for zone walks
 # ---------------------------------------------------------------------------
 
-ADMISSIBLE_TRANSITIONS: frozenset[str] = frozenset({
-    "introduces", "refines", "supersedes", "retires",
-})
+ADMISSIBLE_TRANSITIONS: frozenset[str] = frozenset(
+    {
+        "introduces",
+        "refines",
+        "supersedes",
+        "retires",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +198,16 @@ def _walk_zone(
     while True:
         outs = out_edges.get(cur, [])
         next_refine = next(
-            (e for e in outs if e.transition == "refines"), None,
+            (e for e in outs if e.transition == "refines"),
+            None,
         )
         next_super = next(
-            (e for e in outs if e.transition == "supersedes"), None,
+            (e for e in outs if e.transition == "supersedes"),
+            None,
         )
         next_retire = next(
-            (e for e in outs if e.transition == "retires"), None,
+            (e for e in outs if e.transition == "retires"),
+            None,
         )
         if next_refine is not None:
             chain.append(next_refine.dst)
@@ -265,11 +273,7 @@ def compute_zones(
         zone = _walk_zone(root, zone_id, subject, out_edges, visited)
         zones.append(zone)
         zone_id += 1
-        if (
-            zone.ended_transition == "supersedes"
-            and zone.ended_by
-            and zone.ended_by not in visited
-        ):
+        if zone.ended_transition == "supersedes" and zone.ended_by and zone.ended_by not in visited:
             pending.append(zone.ended_by)
     return zones
 
@@ -297,9 +301,11 @@ def current_zone(
     if len(terminals) == 1:
         return terminals[0]
     if terminals:
+
         def _term_time(zone: Zone) -> datetime:
             mem = memory_index.get(zone.terminal_mid)
             return (mem.observed_at if mem else None) or datetime.min
+
         return max(terminals, key=_term_time)
     return None
 
@@ -313,9 +319,11 @@ def origin_memory(
     """
     if not zones:
         return None
+
     def _start_time(zone: Zone) -> datetime:
         mem = memory_index.get(zone.start_mid)
         return (mem.observed_at if mem else None) or datetime.min
+
     return min(zones, key=_start_time).start_mid
 
 
@@ -329,9 +337,7 @@ def _stem(word: str) -> str:
 
 
 def _stem_sequence(surface: str) -> str:
-    return " ".join(
-        _stem(w) for w in surface.lower().split() if w
-    )
+    return " ".join(_stem(w) for w in surface.lower().split() if w)
 
 
 def retirement_memory(
@@ -386,10 +392,7 @@ def retirement_memory(
                 if (
                     len(qs) >= 4
                     and len(retired_seq) >= 4
-                    and (
-                        retired_seq.startswith(qs)
-                        or qs.startswith(retired_seq)
-                    )
+                    and (retired_seq.startswith(qs) or qs.startswith(retired_seq))
                 ):
                     return edge.dst
     return None
@@ -410,10 +413,10 @@ class CausalEdge:
     cue provenance in ``metadata`` for explainability.
     """
 
-    src: str             # effect memory id
-    dst: str             # cause memory id
-    edge_type: str       # "caused_by" or "enables"
-    cue_type: str = ""   # "CAUSAL_EXPLICIT" / "CAUSAL_ALTLEX"
+    src: str  # effect memory id
+    dst: str  # cause memory id
+    edge_type: str  # "caused_by" or "enables"
+    cue_type: str = ""  # "CAUSAL_EXPLICIT" / "CAUSAL_ALTLEX"
     confidence: float = 1.0
 
 
@@ -453,7 +456,7 @@ def build_causal_zones(
     out_count: dict[str, int] = defaultdict(int)
     for e in edges_list:
         out_count[e.src] += 1  # src has outgoing edge
-        in_count[e.dst] += 1   # dst has incoming edge
+        in_count[e.dst] += 1  # dst has incoming edge
 
     visited: set[str] = set()
     zones: list[CausalZone] = []
@@ -479,27 +482,22 @@ def build_causal_zones(
         #     nothing is caused by it — it's a pure terminal effect.
         # (Recall: CAUSED_BY points effect→cause, so having an
         # outgoing caused_by means "I have a cause".)
-        roots = tuple(sorted(
-            m for m in component if out_count.get(m, 0) == 0
-        ))
-        leaves = tuple(sorted(
-            m for m in component if in_count.get(m, 0) == 0
-        ))
+        roots = tuple(sorted(m for m in component if out_count.get(m, 0) == 0))
+        leaves = tuple(sorted(m for m in component if in_count.get(m, 0) == 0))
         subjects: frozenset[str]
         if memory_subjects is not None:
-            subjects = frozenset(
-                s for m in component
-                if (s := memory_subjects.get(m)) is not None
-            )
+            subjects = frozenset(s for m in component if (s := memory_subjects.get(m)) is not None)
         else:
             subjects = frozenset()
 
-        zones.append(CausalZone(
-            zone_id=zone_counter,
-            member_ids=frozenset(component),
-            root_causes=roots,
-            leaf_effects=leaves,
-            subject_coverage=subjects,
-        ))
+        zones.append(
+            CausalZone(
+                zone_id=zone_counter,
+                member_ids=frozenset(component),
+                root_causes=roots,
+                leaf_effects=leaves,
+                subject_coverage=subjects,
+            )
+        )
         zone_counter += 1
     return zones

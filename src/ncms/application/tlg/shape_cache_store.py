@@ -43,7 +43,8 @@ class ShapeCacheStore:
             snapshot = await store.load_shape_cache()  # type: ignore[attr-defined]
         except Exception as exc:  # pragma: no cover — defensive guard
             logger.warning(
-                "TLG: could not warm shape cache from store: %s", exc,
+                "TLG: could not warm shape cache from store: %s",
+                exc,
             )
             return
         if snapshot:
@@ -51,7 +52,9 @@ class ShapeCacheStore:
         self._warmed = True
 
     def lookup(
-        self, query: str, vocabulary: InducedVocabulary,
+        self,
+        query: str,
+        vocabulary: InducedVocabulary,
     ) -> tuple[str, dict[str, str]] | None:
         return self._mem.lookup(query, vocabulary)
 
@@ -87,12 +90,14 @@ class ShapeCacheStore:
                 hit_count=cached.hit_count,
                 last_used=(
                     cached.last_used.isoformat()
-                    if cached.last_used else datetime.now(UTC).isoformat()
+                    if cached.last_used
+                    else datetime.now(UTC).isoformat()
                 ),
             )
         except Exception:  # pragma: no cover — defensive guard
             logger.debug(
-                "TLG: shape cache persistence failed for %s", skel,
+                "TLG: shape cache persistence failed for %s",
+                skel,
                 exc_info=True,
             )
 

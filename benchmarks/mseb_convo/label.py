@@ -60,33 +60,53 @@ DEFAULT_OUT = Path(__file__).parent / "raw_labeled"
 # ---------------------------------------------------------------------------
 
 PREFERENCE_PATTERNS: list[tuple[str, list[re.Pattern[str]]]] = [
-    ("avoidance", [
-        re.compile(r"(?i)\bI\s+(?:can(?:'|no)?t|cannot)\s+(?:eat|have|do|use|take|handle)\b"),
-        re.compile(r"(?i)\bI\s+(?:am\s+)?allergic\s+to\b"),
-        re.compile(r"(?i)\bI\s+(?:don'?t|do not)\s+(?:eat|drink|use|like)\b"),
-        re.compile(r"(?i)\bI\s+(?:avoid|stay\s+away\s+from)\b"),
-        re.compile(r"(?i)\bno\s+(?:gluten|dairy|sugar|meat|caffeine)\b"),
-    ]),
-    ("habitual", [
-        re.compile(r"(?i)\bevery\s+(?:morning|evening|night|day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"),
-        re.compile(r"(?i)\bI\s+(?:usually|always|typically|normally|tend\s+to)\b"),
-        re.compile(r"(?i)\bmy\s+(?:routine|habit|practice)\b"),
-        re.compile(r"(?i)\bI\s+(?:regularly|often)\b"),
-    ]),
-    ("difficult", [
-        re.compile(r"(?i)\bI\s+struggle\s+(?:with|to)\b"),
-        re.compile(r"(?i)\b(?:is|has\s+been)\s+(?:hard|difficult|challenging|tough)\s+for\s+me\b"),
-        re.compile(r"(?i)\bmy\s+(?:biggest|main)\s+(?:pain|challenge|struggle|issue|problem)\b"),
-        re.compile(r"(?i)\bI\s+(?:can'?t|have\s+trouble)\s+(?:focus|concentrate|sleep|understand)\b"),
-        re.compile(r"(?i)\bI\s+find\s+(?:it\s+)?(?:hard|difficult|challenging)\b"),
-    ]),
-    ("positive", [
-        re.compile(r"(?i)\bI\s+(?:love|adore|enjoy|prefer)\b"),
-        re.compile(r"(?i)\bmy\s+(?:favou?rite|go[- ]?to)\b"),
-        re.compile(r"(?i)\bI\s+use\s+[A-Z]"),  # "I use Premiere Pro"
-        re.compile(r"(?i)\bI\s+(?:am\s+a\s+fan\s+of|really\s+like)\b"),
-        re.compile(r"(?i)\bI'?ve\s+been\s+using\b"),
-    ]),
+    (
+        "avoidance",
+        [
+            re.compile(r"(?i)\bI\s+(?:can(?:'|no)?t|cannot)\s+(?:eat|have|do|use|take|handle)\b"),
+            re.compile(r"(?i)\bI\s+(?:am\s+)?allergic\s+to\b"),
+            re.compile(r"(?i)\bI\s+(?:don'?t|do not)\s+(?:eat|drink|use|like)\b"),
+            re.compile(r"(?i)\bI\s+(?:avoid|stay\s+away\s+from)\b"),
+            re.compile(r"(?i)\bno\s+(?:gluten|dairy|sugar|meat|caffeine)\b"),
+        ],
+    ),
+    (
+        "habitual",
+        [
+            re.compile(
+                r"(?i)\bevery\s+(?:morning|evening|night|day|week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
+            ),
+            re.compile(r"(?i)\bI\s+(?:usually|always|typically|normally|tend\s+to)\b"),
+            re.compile(r"(?i)\bmy\s+(?:routine|habit|practice)\b"),
+            re.compile(r"(?i)\bI\s+(?:regularly|often)\b"),
+        ],
+    ),
+    (
+        "difficult",
+        [
+            re.compile(r"(?i)\bI\s+struggle\s+(?:with|to)\b"),
+            re.compile(
+                r"(?i)\b(?:is|has\s+been)\s+(?:hard|difficult|challenging|tough)\s+for\s+me\b"
+            ),
+            re.compile(
+                r"(?i)\bmy\s+(?:biggest|main)\s+(?:pain|challenge|struggle|issue|problem)\b"
+            ),
+            re.compile(
+                r"(?i)\bI\s+(?:can'?t|have\s+trouble)\s+(?:focus|concentrate|sleep|understand)\b"
+            ),
+            re.compile(r"(?i)\bI\s+find\s+(?:it\s+)?(?:hard|difficult|challenging)\b"),
+        ],
+    ),
+    (
+        "positive",
+        [
+            re.compile(r"(?i)\bI\s+(?:love|adore|enjoy|prefer)\b"),
+            re.compile(r"(?i)\bmy\s+(?:favou?rite|go[- ]?to)\b"),
+            re.compile(r"(?i)\bI\s+use\s+[A-Z]"),  # "I use Premiere Pro"
+            re.compile(r"(?i)\bI\s+(?:am\s+a\s+fan\s+of|really\s+like)\b"),
+            re.compile(r"(?i)\bI'?ve\s+been\s+using\b"),
+        ],
+    ),
 ]
 
 
@@ -129,7 +149,10 @@ def classify_preference(text: str) -> str:
 
 
 def classify_kind(
-    text: str, *, is_first_turn_of_subject: bool, is_assistant: bool,
+    text: str,
+    *,
+    is_first_turn_of_subject: bool,
+    is_assistant: bool,
 ) -> str:
     """Return one of the 5 MemoryKind labels."""
     if is_assistant:
@@ -171,9 +194,7 @@ def label_row(row: dict, *, is_first_turn_of_subject: bool) -> dict:
         is_first_turn_of_subject=is_first_turn_of_subject,
         is_assistant=is_assistant,
     )
-    preference = (
-        "none" if is_assistant else classify_preference(content)
-    )
+    preference = "none" if is_assistant else classify_preference(content)
 
     message_id = row["message_id"]
     subject = message_id.split("::", 1)[0]  # "user-xxxx"
@@ -200,21 +221,35 @@ def label_row(row: dict, *, is_first_turn_of_subject: bool) -> dict:
 def label_file(raw_path: Path, out_path: Path) -> dict[str, int]:
     """Label one raw/user-<id>.jsonl → raw_labeled/user-<id>.jsonl."""
     raw_rows = [
-        json.loads(line) for line in
-        raw_path.read_text(encoding="utf-8").split(chr(10)) if line.strip()
+        json.loads(line)
+        for line in raw_path.read_text(encoding="utf-8").split(chr(10))
+        if line.strip()
     ]
     if not raw_rows:
         return {"total": 0}
 
     stats: dict[str, int] = {
         "total": 0,
-        **{f"kind_{k}": 0 for k in (
-            "declaration", "retirement", "causal_link",
-            "ordinal_anchor", "none",
-        )},
-        **{f"pref_{p}": 0 for p in (
-            "positive", "avoidance", "habitual", "difficult", "none",
-        )},
+        **{
+            f"kind_{k}": 0
+            for k in (
+                "declaration",
+                "retirement",
+                "causal_link",
+                "ordinal_anchor",
+                "none",
+            )
+        },
+        **{
+            f"pref_{p}": 0
+            for p in (
+                "positive",
+                "avoidance",
+                "habitual",
+                "difficult",
+                "none",
+            )
+        },
     }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,9 +280,12 @@ def label_all(raw_dir: Path, out_dir: Path) -> dict:
     )
     logger.info(
         "labeled %d files, %d turns — preferences: pos=%d avoid=%d habit=%d diff=%d",
-        file_count, totals.get("total", 0),
-        totals.get("pref_positive", 0), totals.get("pref_avoidance", 0),
-        totals.get("pref_habitual", 0), totals.get("pref_difficult", 0),
+        file_count,
+        totals.get("total", 0),
+        totals.get("pref_positive", 0),
+        totals.get("pref_avoidance", 0),
+        totals.get("pref_habitual", 0),
+        totals.get("pref_difficult", 0),
     )
     return summary
 
@@ -259,7 +297,7 @@ def main() -> None:
     )
     ap = argparse.ArgumentParser(
         description="MSEB-Convo labeler: raw turns → CorpusMemory JSONL "
-                    "with kind + preference labels",
+        "with kind + preference labels",
     )
     ap.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW)
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)

@@ -206,7 +206,8 @@ def create_a2a_routes(
                 from_agent=from_agent,
             )
             response = await bus_svc.ask_sync(
-                ask_obj, timeout_ms=params.get("timeout_ms", 5000),
+                ask_obj,
+                timeout_ms=params.get("timeout_ms", 5000),
             )
             if response is None:
                 return {"answered": False}

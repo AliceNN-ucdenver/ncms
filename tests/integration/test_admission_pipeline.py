@@ -51,8 +51,11 @@ class TestAdmissionDisabled:
             store=fresh_store, index=fresh_index, graph=fresh_graph, config=disabled_config
         )
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
-            config=disabled_config, admission=admission,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
+            config=disabled_config,
+            admission=admission,
         )
         mem = await svc.store_memory("Simple content", domains=["test"])
         assert mem.id
@@ -66,7 +69,9 @@ class TestAdmissionDisabled:
     ):
         """When admission is disabled, no admission metadata is attached."""
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=disabled_config,
         )
         mem = await svc.store_memory("Content without admission")
@@ -79,12 +84,17 @@ class TestAdmissionEnabled:
     ):
         """High-quality content should be stored + get a MemoryNode."""
         admission = AdmissionService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
         )
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
-            config=admission_config, admission=admission,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
+            config=admission_config,
+            admission=admission,
         )
         mem = await svc.store_memory(
             "Architectural decision: we chose PostgreSQL for the primary database "
@@ -112,12 +122,17 @@ class TestAdmissionEnabled:
     ):
         """Content that routes to 'discard' should not be in the memories table."""
         admission = AdmissionService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
         )
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
-            config=admission_config, admission=admission,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
+            config=admission_config,
+            admission=admission,
         )
         # Very short, generic, low-value content
         mem = await svc.store_memory("hi")
@@ -136,16 +151,23 @@ class TestAdmissionEnabled:
         """Content routed to 'ephemeral_cache' should be in ephemeral table."""
         # First, store enough content to make subsequent similar content redundant
         admission = AdmissionService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
         )
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
-            config=admission_config, admission=admission,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
+            config=admission_config,
+            admission=admission,
         )
         # Store some initial content (without admission to seed the index)
         svc_no_admission = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
         )
         await svc_no_admission.store_memory(
@@ -171,7 +193,9 @@ class TestAdmissionEnabled:
     ):
         """Without admission, L1 atomic MemoryNode is still created."""
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=disabled_config,
         )
         mem = await svc.store_memory(
@@ -189,7 +213,9 @@ class TestAdmissionEnabled:
         # Use a broken admission service (bad config that causes internal error)
         # We can test graceful degradation by passing admission=None
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
             # No admission service → feature flag on but no service → skips admission
         )
@@ -204,12 +230,17 @@ class TestAdmissionMetadata:
     ):
         """Admission features should be stored in memory.structured['admission']."""
         admission = AdmissionService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
             config=admission_config,
         )
         svc = MemoryService(
-            store=fresh_store, index=fresh_index, graph=fresh_graph,
-            config=admission_config, admission=admission,
+            store=fresh_store,
+            index=fresh_index,
+            graph=fresh_graph,
+            config=admission_config,
+            admission=admission,
         )
         mem = await svc.store_memory(
             "The API endpoint was updated to return 200 OK on success, "

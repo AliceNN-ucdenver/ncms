@@ -31,12 +31,12 @@ import asyncio
 import json
 import logging
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 # Load HF_TOKEN before any transformer imports.
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -74,7 +74,9 @@ async def run_forensic(
     candidates = [q for q in queries if diff_by_qid.get(q.qid) == difficulty]
     logger.info(
         "found %d queries with difficulty=%s (of %d total)",
-        len(candidates), difficulty, len(queries),
+        len(candidates),
+        difficulty,
+        len(queries),
     )
     if not candidates:
         logger.warning("no queries match difficulty filter; nothing to analyse")
@@ -83,7 +85,6 @@ async def run_forensic(
 
     # ----- Event log setup -----
     event_log = EventLog(max_events=10000)
-    events_per_query: dict[str, list[dict]] = defaultdict(list)
     current_qid: list[str | None] = [None]
 
     # Subscribe via the event_log's internal buffer; we read events
@@ -91,11 +92,13 @@ async def run_forensic(
     def drain_events() -> list[dict]:
         out: list[dict] = []
         for ev in list(event_log._events):  # type: ignore[attr-defined]
-            out.append({
-                "type": ev.type,
-                "data": ev.data,
-                "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
-            })
+            out.append(
+                {
+                    "type": ev.type,
+                    "data": ev.data,
+                    "timestamp": ev.timestamp.isoformat() if ev.timestamp else None,
+                }
+            )
         # Clear the buffer so each query's events are isolated.
         event_log._events.clear()  # type: ignore[attr-defined]
         return out
@@ -103,11 +106,13 @@ async def run_forensic(
     # ----- NCMS setup (full TLG-on config) -----
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
-    index = TantivyEngine(); index.initialize()
+    index = TantivyEngine()
+    index.initialize()
     graph = NetworkXGraph()
     splade = SpladeEngine()
     intent_slot = get_intent_slot_chain(
-        domain=adapter_domain, include_e5_fallback=False,
+        domain=adapter_domain,
+        include_e5_fallback=False,
     )
 
     config = NCMSConfig(
@@ -126,13 +131,19 @@ async def run_forensic(
     )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, intent_slot=intent_slot, event_log=event_log,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        intent_slot=intent_slot,
+        event_log=event_log,
     )
     await svc.start_index_pool()
 
     # ----- Ingest -----
     from datetime import UTC, datetime
+
     logger.info("ingesting %d memories …", len(corpus))
     for m in sorted(corpus, key=lambda x: (x.subject, x.observed_at, x.mid)):
         try:
@@ -142,7 +153,8 @@ async def run_forensic(
         except ValueError:
             observed_at = None
         await svc.store_memory(
-            content=m.content, memory_type="fact",
+            content=m.content,
+            memory_type="fact",
             source_agent=m.metadata.get("source_agent", "mseb"),
             domains=m.metadata.get("domains") or [],
             subject=m.subject,
@@ -179,12 +191,9 @@ async def run_forensic(
         )
 
         # Pick out the KEY events.
-        intent_events = [e for e in events
-                         if "intent" in e["type"].lower()]
-        miss_events = [e for e in events
-                       if e["type"].endswith(".intent_miss")]
-        scoring_events = [e for e in events
-                          if "scor" in e["type"].lower()]
+        intent_events = [e for e in events if "intent" in e["type"].lower()]
+        miss_events = [e for e in events if e["type"].endswith(".intent_miss")]
+        scoring_events = [e for e in events if "scor" in e["type"].lower()]
 
         trace = {
             "qid": q.qid,
@@ -203,10 +212,8 @@ async def run_forensic(
 
     # ----- Summarize -----
     n_intent_miss = sum(1 for t in traces if t["intent_miss_events"])
-    gold_rank_1 = sum(1 for t in traces
-                      if t["gold_rank_actual"] == 1)
-    gold_rank_top5 = sum(1 for t in traces
-                         if t["gold_rank_actual"] and t["gold_rank_actual"] <= 5)
+    gold_rank_1 = sum(1 for t in traces if t["gold_rank_actual"] == 1)
+    gold_rank_top5 = sum(1 for t in traces if t["gold_rank_actual"] and t["gold_rank_actual"] <= 5)
     summary = {
         "n_queries_analyzed": len(traces),
         "difficulty_filter": difficulty,
@@ -217,13 +224,21 @@ async def run_forensic(
     }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps({
-        "summary": summary, "traces": traces,
-    }, indent=2, default=str))
+    out_path.write_text(
+        json.dumps(
+            {
+                "summary": summary,
+                "traces": traces,
+            },
+            indent=2,
+            default=str,
+        )
+    )
     logger.info("wrote %d traces to %s", len(traces), out_path)
     print(json.dumps(summary, indent=2, sort_keys=True))
 
     import os
+
     os._exit(0)
 
 
@@ -236,19 +251,22 @@ def main() -> None:
     ap.add_argument("--build-dir", type=Path, required=True)
     ap.add_argument("--adapter-domain", required=True)
     ap.add_argument("--validation", type=Path, required=True)
-    ap.add_argument("--difficulty", default="tlg-needed",
-                    choices=["easy", "tlg-needed", "hard", "impossible"])
+    ap.add_argument(
+        "--difficulty", default="tlg-needed", choices=["easy", "tlg-needed", "hard", "impossible"]
+    )
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
-    asyncio.run(run_forensic(
-        build_dir=args.build_dir,
-        adapter_domain=args.adapter_domain,
-        validation_path=args.validation,
-        difficulty=args.difficulty,
-        n=args.n,
-        out_path=args.out,
-    ))
+    asyncio.run(
+        run_forensic(
+            build_dir=args.build_dir,
+            adapter_domain=args.adapter_domain,
+            validation_path=args.validation,
+            difficulty=args.difficulty,
+            n=args.n,
+            out_path=args.out,
+        )
+    )
 
 
 if __name__ == "__main__":

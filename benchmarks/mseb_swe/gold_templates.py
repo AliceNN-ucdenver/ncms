@@ -9,10 +9,10 @@ SWE memory types and their distinguishing features:
 
 | source            | distinguishing feature               | how we extract |
 |-------------------|--------------------------------------|----------------|
-| ``issue_body``    | prose bug description with code snippets | `{symbol}` (first backticked identifier) |
-| ``resolving_patch`` | `diff --git a/<path>` with non-test file | `{patch_file}` |
+| ``issue_body``    | prose bug description with code snippets | `{symbol}` (backticked id) |
+| ``resolving_patch`` | `diff --git a/<path>` non-test file  | `{patch_file}` |
 | ``test_patch``    | patch touching `tests/…` path         | `{test_file}` |
-| ``pr_discussion`` | conversational confirmation / debate  | prose cues ("discussion", "confirmed") |
+| ``pr_discussion`` | conversational confirmation / debate  | prose cues ("confirmed") |
 
 Templates declare ``requires_entities`` — if the subject chain
 doesn't expose that entity, the candidate is skipped rather than
@@ -50,7 +50,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # origin — gold = issue body.  Query explicitly asks for the
     # *report* / *description* (bug-report vocabulary), so query
@@ -70,7 +69,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_first — gold = issue body (chronologically first).
     # -----------------------------------------------------------------
@@ -82,7 +80,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_last — gold = test_patch (chronologically last in SWE).
     # Query mentions *testing* / *regression* vocabulary, which
@@ -102,7 +99,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["test_file"],
         },
     ],
-
     # -----------------------------------------------------------------
     # sequence — gold = issue body (start of the ingest sequence).
     # -----------------------------------------------------------------
@@ -114,7 +110,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # predecessor — gold = issue body (the pre-fix state).  Query
     # emphasises the pre-fix / buggy behaviour so it aligns with the
@@ -122,7 +117,9 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
     # -----------------------------------------------------------------
     "predecessor": [
         {
-            "text_template": "What buggy behaviour of {symbol} was described before the patch to {patch_file}?",
+            "text_template": (
+                "What buggy behaviour of {symbol} was described before the patch to {patch_file}?"
+            ),
             "gold_kind": "ordinal_anchor",
             "gold_source_filter": ["issue_body"],
             "requires_entities": ["symbol", "patch_file"],
@@ -134,20 +131,20 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # transitive_cause — gold = issue body (the root cause of
     # downstream patch + test_patch).
     # -----------------------------------------------------------------
     "transitive_cause": [
         {
-            "text_template": "What root cause made both the patch in {patch_file} and its test case necessary?",
+            "text_template": (
+                "What root cause made both the patch in {patch_file} and its test case necessary?"
+            ),
             "gold_kind": "ordinal_anchor",
             "gold_source_filter": ["issue_body"],
             "requires_entities": ["patch_file"],
         },
     ],
-
     # -----------------------------------------------------------------
     # causal_chain — gold = PR discussion (root-cause reasoning lives here).
     # -----------------------------------------------------------------
@@ -165,19 +162,19 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # concurrent — gold = PR discussion (happens alongside the patch).
     # -----------------------------------------------------------------
     "concurrent": [
         {
-            "text_template": "What review discussion happened concurrently with the patch to {patch_file}?",
+            "text_template": (
+                "What review discussion happened concurrently with the patch to {patch_file}?"
+            ),
             "gold_kind": "causal_link",
             "gold_source_filter": ["pr_discussion"],
             "requires_entities": ["patch_file"],
         },
     ],
-
     # -----------------------------------------------------------------
     # before_named — gold = issue body (state before test_patch was added).
     # -----------------------------------------------------------------
@@ -189,7 +186,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["test_file"],
         },
     ],
-
     # -----------------------------------------------------------------
     # retirement — gold = patch (retires buggy behaviour).  Query
     # refers to *code change* / *patch* vocabulary that lives in the
@@ -197,7 +193,9 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
     # -----------------------------------------------------------------
     "retirement": [
         {
-            "text_template": "Which code change in {patch_file} retired the buggy {symbol} behaviour?",
+            "text_template": (
+                "Which code change in {patch_file} retired the buggy {symbol} behaviour?"
+            ),
             "gold_kind": "retirement",
             "gold_source_filter": ["resolving_patch"],
             "requires_entities": ["symbol", "patch_file"],
@@ -209,7 +207,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "requires_entities": ["symbol"],
         },
     ],
-
     # -----------------------------------------------------------------
     # noise — adversarial off-topic queries.  Intentionally uses
     # vocabulary that should not match any SWE memory.

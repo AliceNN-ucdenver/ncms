@@ -83,20 +83,24 @@ class TestArchetypeSpec:
             _make_arch(n_gold=-5)
 
     def test_total_role_count_sums_counts(self):
-        a = _make_arch(role_spans=(
-            RoleSpec("primary", "framework", 1),
-            RoleSpec("alternative", "framework", 2),
-            RoleSpec("casual", "library", 3),
-        ))
+        a = _make_arch(
+            role_spans=(
+                RoleSpec("primary", "framework", 1),
+                RoleSpec("alternative", "framework", 2),
+                RoleSpec("casual", "library", 3),
+            )
+        )
         assert a.total_role_count == 6
 
     def test_role_spec_views(self):
-        a = _make_arch(role_spans=(
-            RoleSpec("primary", "framework", 1),
-            RoleSpec("alternative", "framework", 1),
-            RoleSpec("alternative", "library", 1),
-            RoleSpec("casual", "tool", 1),
-        ))
+        a = _make_arch(
+            role_spans=(
+                RoleSpec("primary", "framework", 1),
+                RoleSpec("alternative", "framework", 1),
+                RoleSpec("alternative", "library", 1),
+                RoleSpec("casual", "tool", 1),
+            )
+        )
         assert len(a.primary_role_specs) == 1
         assert len(a.alternative_role_specs) == 2
 
@@ -104,8 +108,11 @@ class TestArchetypeSpec:
 class TestCoverage:
     def test_empty_registry_returns_all_gaps(self):
         gaps = validate_archetype_coverage(
-            [], intent_floor=10, admission_floor=10,
-            state_change_floor=10, role_floor=10,
+            [],
+            intent_floor=10,
+            admission_floor=10,
+            state_change_floor=10,
+            role_floor=10,
         )
         # Every intent class + admission class + state_change class
         # + role class should be reported as a gap.
@@ -117,9 +124,10 @@ class TestCoverage:
         from ncms.application.adapters.schemas import (
             ADMISSION_DECISIONS,
             INTENT_CATEGORIES,
-            STATE_CHANGES,
             ROLE_LABELS,
+            STATE_CHANGES,
         )
+
         archs = []
         for i, intent in enumerate(INTENT_CATEGORIES):
             for j, admission in enumerate(ADMISSION_DECISIONS):
@@ -127,39 +135,48 @@ class TestCoverage:
                     # Rotate roles across archetypes so every role
                     # accumulates plenty of spans.
                     role = ROLE_LABELS[(i + j + k) % len(ROLE_LABELS)]
-                    archs.append(_make_arch(
-                        name=f"a{i}_{j}_{k}",
-                        intent=intent,
-                        admission=admission,
-                        state_change=state,
-                        role_spans=(RoleSpec(role, "framework", 1),),
-                        n_gold=50,
-                    ))
+                    archs.append(
+                        _make_arch(
+                            name=f"a{i}_{j}_{k}",
+                            intent=intent,
+                            admission=admission,
+                            state_change=state,
+                            role_spans=(RoleSpec(role, "framework", 1),),
+                            n_gold=50,
+                        )
+                    )
         gaps = validate_archetype_coverage(
-            archs, split="gold",
-            intent_floor=50, admission_floor=50,
-            state_change_floor=50, role_floor=50,
+            archs,
+            split="gold",
+            intent_floor=50,
+            admission_floor=50,
+            state_change_floor=50,
+            role_floor=50,
         )
         assert gaps == []
 
     def test_under_floor_reports_gap(self):
-        archs = [_make_arch(
-            intent="positive", admission="persist", state_change="none",
-            n_gold=20,  # < 50 floor
-            role_spans=(RoleSpec("primary", "framework", 1),),
-        )]
+        archs = [
+            _make_arch(
+                intent="positive",
+                admission="persist",
+                state_change="none",
+                n_gold=20,  # < 50 floor
+                role_spans=(RoleSpec("primary", "framework", 1),),
+            )
+        ]
         gaps = validate_archetype_coverage(
-            archs, split="gold",
-            intent_floor=50, admission_floor=50,
-            state_change_floor=50, role_floor=50,
+            archs,
+            split="gold",
+            intent_floor=50,
+            admission_floor=50,
+            state_change_floor=50,
+            role_floor=50,
         )
         # Should report intent=positive (only 20 rows), and every
         # other class of every head (zero rows).  Exactly one gap
         # for intent=positive at 20/50.
-        positive_gaps = [
-            g for g in gaps
-            if g.head == "intent" and g.cls == "positive"
-        ]
+        positive_gaps = [g for g in gaps if g.head == "intent" and g.cls == "positive"]
         assert len(positive_gaps) == 1
         assert positive_gaps[0].found == 20
         assert positive_gaps[0].floor == 50

@@ -125,10 +125,18 @@ class TestFullReconciliationPipeline:
     ) -> None:
         """Different values in different scopes → CONFLICTS (parallel truths)."""
         await _create_entity_state(
-            store, "api-gw", "status", "running", state_scope="us-east-1",
+            store,
+            "api-gw",
+            "status",
+            "running",
+            state_scope="us-east-1",
         )
         eu = await _create_entity_state(
-            store, "api-gw", "status", "degraded", state_scope="eu-west-1",
+            store,
+            "api-gw",
+            "status",
+            "degraded",
+            state_scope="eu-west-1",
         )
 
         results = await service.reconcile(eu)
@@ -175,7 +183,11 @@ class TestFullReconciliationPipeline:
         """Verify observed_at is stored and retrievable through temporal queries."""
         observed = datetime(2026, 3, 10, 14, 30, 0, tzinfo=UTC)
         node = await _create_entity_state(
-            store, "svc-X", "status", "deployed", observed_at=observed,
+            store,
+            "svc-X",
+            "status",
+            "deployed",
+            observed_at=observed,
         )
 
         fetched = await store.get_memory_node(node.id)

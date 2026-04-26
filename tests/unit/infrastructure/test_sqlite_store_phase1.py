@@ -111,9 +111,7 @@ class TestMemoryNodeCRUD:
 
     async def test_get_by_type(self, store: SQLiteStore, memory: Memory):
         for nt in [NodeType.ATOMIC, NodeType.ATOMIC, NodeType.EPISODE]:
-            await store.save_memory_node(
-                MemoryNode(memory_id=memory.id, node_type=nt)
-            )
+            await store.save_memory_node(MemoryNode(memory_id=memory.id, node_type=nt))
 
         atomics = await store.get_memory_nodes_by_type("atomic")
         episodes = await store.get_memory_nodes_by_type("episode")
@@ -121,9 +119,7 @@ class TestMemoryNodeCRUD:
         assert len(episodes) == 1
 
     async def test_get_for_memory(self, store: SQLiteStore, memory: Memory):
-        await store.save_memory_node(
-            MemoryNode(memory_id=memory.id, node_type=NodeType.ATOMIC)
-        )
+        await store.save_memory_node(MemoryNode(memory_id=memory.id, node_type=NodeType.ATOMIC))
         await store.save_memory_node(
             MemoryNode(memory_id=memory.id, node_type=NodeType.ENTITY_STATE)
         )
@@ -176,12 +172,12 @@ class TestGraphEdgeCRUD:
         await store.save_memory_node(n1)
         await store.save_memory_node(n2)
 
-        await store.save_graph_edge(GraphEdge(
-            source_id=n1.id, target_id=n2.id, edge_type=EdgeType.SUPPORTS
-        ))
-        await store.save_graph_edge(GraphEdge(
-            source_id=n1.id, target_id=n2.id, edge_type=EdgeType.REFINES
-        ))
+        await store.save_graph_edge(
+            GraphEdge(source_id=n1.id, target_id=n2.id, edge_type=EdgeType.SUPPORTS)
+        )
+        await store.save_graph_edge(
+            GraphEdge(source_id=n1.id, target_id=n2.id, edge_type=EdgeType.REFINES)
+        )
 
         supports = await store.get_graph_edges(n1.id, edge_type="supports")
         refines = await store.get_graph_edges(n1.id, edge_type="refines")
@@ -245,9 +241,7 @@ class TestEphemeralCacheCRUD:
         expired_entry = EphemeralEntry(
             content="old", expires_at=past, created_at=past - timedelta(hours=1)
         )
-        fresh_entry = EphemeralEntry(
-            content="new", expires_at=future
-        )
+        fresh_entry = EphemeralEntry(content="new", expires_at=future)
 
         await store.save_ephemeral(expired_entry)
         await store.save_ephemeral(fresh_entry)

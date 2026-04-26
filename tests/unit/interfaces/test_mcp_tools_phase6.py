@@ -200,9 +200,7 @@ class TestToolRegistration:
             "get_state_history",
             "list_episodes",
         ):
-            assert expected in tool_names, (
-                f"Phase 6 tool {expected!r} not registered"
-            )
+            assert expected in tool_names, f"Phase 6 tool {expected!r} not registered"
 
     async def test_consolidation_adds_consolidation_tools(self) -> None:
         """Passing consolidation_svc should register consolidation-specific tools."""
@@ -212,18 +210,22 @@ class TestToolRegistration:
 
         mcp_without = FastMCP(name="test-without")
         register_tools(
-            mcp_without, AsyncMock(), MagicMock(), MagicMock(),
+            mcp_without,
+            AsyncMock(),
+            MagicMock(),
+            MagicMock(),
         )
         without = {t.name for t in await mcp_without.list_tools()}
 
         mcp_with = FastMCP(name="test-with")
         register_tools(
-            mcp_with, AsyncMock(), MagicMock(), MagicMock(),
+            mcp_with,
+            AsyncMock(),
+            MagicMock(),
+            MagicMock(),
             consolidation_svc=AsyncMock(),
         )
         with_consol = {t.name for t in await mcp_with.list_tools()}
 
         # With consolidation must be a strict superset.
-        assert without < with_consol, (
-            "consolidation_svc did not add any new tools"
-        )
+        assert without < with_consol, "consolidation_svc did not add any new tools"

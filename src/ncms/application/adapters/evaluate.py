@@ -37,6 +37,7 @@ from pathlib import Path
 # pull in transformers/gliner/torch.  Noop outside a .env checkout.
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover — experiment may run outside repo
     pass
@@ -72,7 +73,9 @@ _DEFAULT_RESULTS_DIR = Path(__file__).parent / "results"
 
 
 def _macro_f1(
-    predictions: list[str], gold: list[str], labels: list[str],
+    predictions: list[str],
+    gold: list[str],
+    labels: list[str],
 ) -> tuple[float, dict[str, float]]:
     """Macro F1 across labels that have GOLD support.
 
@@ -89,24 +92,14 @@ def _macro_f1(
     per_label: dict[str, float] = {}
     supported: list[float] = []
     for label in labels:
-        tp = sum(
-            1 for p, g in zip(predictions, gold, strict=False)
-            if p == label and g == label
-        )
-        fp = sum(
-            1 for p, g in zip(predictions, gold, strict=False)
-            if p == label and g != label
-        )
-        fn = sum(
-            1 for p, g in zip(predictions, gold, strict=False)
-            if p != label and g == label
-        )
+        tp = sum(1 for p, g in zip(predictions, gold, strict=False) if p == label and g == label)
+        fp = sum(1 for p, g in zip(predictions, gold, strict=False) if p == label and g != label)
+        fn = sum(1 for p, g in zip(predictions, gold, strict=False) if p != label and g == label)
         gold_support = tp + fn  # number of gold occurrences of `label`
         pred_support = tp + fp
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
-        f1 = (2 * precision * recall / (precision + recall)
-              if (precision + recall) else 0.0)
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
         per_label[label] = f1
         # Only include in macro when there's at least one gold
         # instance (so the label is actually part of the task here)
@@ -143,8 +136,7 @@ def _slot_f1(
         fn += len(gold_set - pred_set)
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
-    return (2 * precision * recall / (precision + recall)
-            if (precision + recall) else 0.0)
+    return 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
 
 
 def _confidently_wrong_rate(
@@ -156,7 +148,8 @@ def _confidently_wrong_rate(
     if not predictions:
         return 0.0
     wrong_confident = sum(
-        1 for p, g in zip(predictions, gold_intents, strict=False)
+        1
+        for p, g in zip(predictions, gold_intents, strict=False)
         if p.intent_confidence >= threshold and p.intent != g
     )
     return wrong_confident / len(predictions)
@@ -167,12 +160,11 @@ def _confidently_wrong_rate(
 # ---------------------------------------------------------------------------
 
 
-def _evaluate_method_on_split(
+def _run_extractor_on_examples(
     extractor: IntentSlotExtractor,
     examples: list[GoldExample],
     domain: Domain,
-    split_label: str,
-) -> MethodResult:
+) -> tuple[list[ExtractedLabel], list[float]]:
     timings_ms: list[float] = []
     predictions: list[ExtractedLabel] = []
     for ex in examples:
@@ -182,54 +174,98 @@ def _evaluate_method_on_split(
         except Exception as exc:
             logger.warning(
                 "[evaluate] method=%s raised on %r: %s",
-                extractor.name, ex.text[:80], exc,
+                extractor.name,
+                ex.text[:80],
+                exc,
             )
             pred = ExtractedLabel(
-                intent="none", intent_confidence=0.0, method=extractor.name,
+                intent="none",
+                intent_confidence=0.0,
+                method=extractor.name,
             )
         timings_ms.append((time.perf_counter() - t0) * 1000)
         predictions.append(pred)
+    return predictions, timings_ms
 
-    pred_intents = [p.intent for p in predictions]
-    gold_intents = [ex.intent for ex in examples]
-    intent_macro, per_intent = _macro_f1(
-        pred_intents, gold_intents, list(INTENT_CATEGORIES),
-    )
 
-    pred_slots = [p.slots for p in predictions]
-    gold_slots = [ex.slots for ex in examples]
-    slot_f1 = _slot_f1(pred_slots, gold_slots)
-
-    joint_correct = sum(
-        1 for pred, ex in zip(predictions, examples, strict=False)
+def _joint_accuracy(
+    predictions: list[ExtractedLabel],
+    examples: list[GoldExample],
+) -> float:
+    if not examples:
+        return 0.0
+    correct = sum(
+        1
+        for pred, ex in zip(predictions, examples, strict=False)
         if pred.intent == ex.intent
         and {k: v.lower() for k, v in pred.slots.items() if v}
         == {k: v.lower() for k, v in ex.slots.items() if v}
     )
-    joint_acc = joint_correct / len(examples) if examples else 0.0
+    return correct / len(examples)
 
-    timings_sorted = sorted(timings_ms)
-    p50 = timings_sorted[len(timings_sorted) // 2] if timings_sorted else 0.0
-    p95_idx = max(0, int(len(timings_sorted) * 0.95) - 1)
-    p95 = timings_sorted[p95_idx] if timings_sorted else 0.0
 
-    # Multi-head scoring — only rows where both the prediction and the
-    # gold carry a label contribute.  Produces ``None`` for a head
-    # when either the gold has no labels for it (legacy corpus) or
-    # the method doesn't produce it (zero-shot baselines).
-    topic_f1, n_topic = _head_macro_f1(
+def _percentiles(timings_ms: list[float]) -> tuple[float, float]:
+    if not timings_ms:
+        return 0.0, 0.0
+    sorted_t = sorted(timings_ms)
+    p50 = sorted_t[len(sorted_t) // 2]
+    p95_idx = max(0, int(len(sorted_t) * 0.95) - 1)
+    return p50, sorted_t[p95_idx]
+
+
+def _evaluate_multi_head_scores(
+    predictions: list[ExtractedLabel],
+    examples: list[GoldExample],
+) -> tuple[
+    tuple[float | None, int],
+    tuple[float | None, int],
+    tuple[float | None, int],
+]:
+    """Return (topic, admission, state_change) macro-F1 + label counts."""
+    topic = _head_macro_f1(
         [p.topic for p in predictions],
         [ex.topic for ex in examples],
     )
-    admission_f1, n_admit = _head_macro_f1(
+    admission = _head_macro_f1(
         [p.admission for p in predictions],
         [ex.admission for ex in examples],
         label_vocab=list(ADMISSION_DECISIONS),
     )
-    state_f1, n_state = _head_macro_f1(
+    state = _head_macro_f1(
         [p.state_change for p in predictions],
         [ex.state_change for ex in examples],
         label_vocab=list(STATE_CHANGES),
+    )
+    return topic, admission, state
+
+
+def _evaluate_method_on_split(
+    extractor: IntentSlotExtractor,
+    examples: list[GoldExample],
+    domain: Domain,
+    split_label: str,
+) -> MethodResult:
+    predictions, timings_ms = _run_extractor_on_examples(extractor, examples, domain)
+    pred_intents = [p.intent for p in predictions]
+    gold_intents = [ex.intent for ex in examples]
+    intent_macro, per_intent = _macro_f1(
+        pred_intents,
+        gold_intents,
+        list(INTENT_CATEGORIES),
+    )
+    slot_f1 = _slot_f1(
+        [p.slots for p in predictions],
+        [ex.slots for ex in examples],
+    )
+    joint_acc = _joint_accuracy(predictions, examples)
+    p50, p95 = _percentiles(timings_ms)
+
+    # Multi-head scoring — only rows where both prediction + gold carry
+    # a label contribute.  Produces ``None`` for a head when either the
+    # gold has no labels (legacy corpus) or the method doesn't produce
+    # it (zero-shot baselines).
+    (topic_f1, n_topic), (admission_f1, n_admit), (state_f1, n_state) = _evaluate_multi_head_scores(
+        predictions, examples
     )
 
     return MethodResult(
@@ -243,21 +279,15 @@ def _evaluate_method_on_split(
         latency_p50_ms=round(p50, 2),
         latency_p95_ms=round(p95, 2),
         confidently_wrong_rate=round(
-            _confidently_wrong_rate(predictions, gold_intents), 4,
+            _confidently_wrong_rate(predictions, gold_intents),
+            4,
         ),
         per_intent_f1={
-            intent: round(per_intent.get(intent, 0.0), 4)
-            for intent in INTENT_CATEGORIES
+            intent: round(per_intent.get(intent, 0.0), 4) for intent in INTENT_CATEGORIES
         },
-        topic_f1_macro=(
-            round(topic_f1, 4) if topic_f1 is not None else None
-        ),
-        admission_f1_macro=(
-            round(admission_f1, 4) if admission_f1 is not None else None
-        ),
-        state_change_f1_macro=(
-            round(state_f1, 4) if state_f1 is not None else None
-        ),
+        topic_f1_macro=(round(topic_f1, 4) if topic_f1 is not None else None),
+        admission_f1_macro=(round(admission_f1, 4) if admission_f1 is not None else None),
+        state_change_f1_macro=(round(state_f1, 4) if state_f1 is not None else None),
         n_topic_labeled=n_topic,
         n_admission_labeled=n_admit,
         n_state_change_labeled=n_state,
@@ -282,8 +312,7 @@ def _head_macro_f1(
     to keep the denominator stable across runs.
     """
     pairs = [
-        (p, g) for p, g in zip(predictions, gold, strict=False)
-        if g is not None and p is not None
+        (p, g) for p, g in zip(predictions, gold, strict=False) if g is not None and p is not None
     ]
     if not pairs:
         return None, 0
@@ -308,29 +337,29 @@ def _build_method(
         from experiments.intent_slot_distillation.methods.e5_zero_shot import (
             E5ZeroShot,
         )
+
         return E5ZeroShot()
     if name == "gliner_plus_e5":
         from experiments.intent_slot_distillation.methods.gliner_plus_e5 import (
             GlinerPlusE5,
         )
+
         return GlinerPlusE5()
     if name == "joint_bert":
         if joint_checkpoint_dir is None:
-            raise ValueError(
-                "--joint-checkpoint-dir required for method=joint_bert"
-            )
+            raise ValueError("--joint-checkpoint-dir required for method=joint_bert")
         from experiments.intent_slot_distillation.methods.joint_bert import (
             JointBert,
         )
+
         return JointBert(joint_checkpoint_dir)
     if name == "joint_bert_lora":
         if adapter_dir is None:
-            raise ValueError(
-                "--adapter-dir required for method=joint_bert_lora"
-            )
+            raise ValueError("--adapter-dir required for method=joint_bert_lora")
         from ncms.application.adapters.methods.joint_bert_lora import (
             LoraJointBert,
         )
+
         return LoraJointBert(adapter_dir)
     raise ValueError(f"unknown method {name!r}")
 
@@ -341,7 +370,8 @@ def _build_method(
 
 
 def _write_report(
-    results: list[MethodResult], output_dir: Path,
+    results: list[MethodResult],
+    output_dir: Path,
 ) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -387,24 +417,28 @@ def _write_report(
         for r in results
     )
     if has_multi:
-        lines.extend([
-            "",
-            "## Multi-head (topic / admission / state_change)",
-            "",
-            (
-                "| Method | Domain | Split "
-                "| Topic F1 (N) | Admission F1 (N) | State-change F1 (N) |"
-            ),
-            (
-                "|:-------|:-------|:------"
-                "|-------------:|-----------------:|--------------------:|"
-            ),
-        ])
+        lines.extend(
+            [
+                "",
+                "## Multi-head (topic / admission / state_change)",
+                "",
+                (
+                    "| Method | Domain | Split "
+                    "| Topic F1 (N) | Admission F1 (N) | State-change F1 (N) |"
+                ),
+                (
+                    "|:-------|:-------|:------"
+                    "|-------------:|-----------------:|--------------------:|"
+                ),
+            ]
+        )
         for r in results:
+
             def _fmt(f1: float | None, n: int) -> str:
                 if f1 is None or n == 0:
                     return "—"
                 return f"{f1:.3f} ({n})"
+
             lines.append(
                 f"| {r.method} | {r.domain} | {r.split} "
                 f"| {_fmt(r.topic_f1_macro, r.n_topic_labeled)} "
@@ -422,7 +456,9 @@ def _write_report(
 
 
 def _load_examples_for_split(
-    domain: Domain, split: str, corpus_dir: Path,
+    domain: Domain,
+    split: str,
+    corpus_dir: Path,
 ) -> list[GoldExample]:
     """Return examples for ``domain`` filtered to ``split``.
 
@@ -446,10 +482,7 @@ def main() -> None:
     parser.add_argument(
         "--methods",
         default="e5_zero_shot",
-        help=(
-            "Comma-separated method names "
-            "(e5_zero_shot, gliner_plus_e5, joint_bert)."
-        ),
+        help=("Comma-separated method names (e5_zero_shot, gliner_plus_e5, joint_bert)."),
     )
     parser.add_argument(
         "--domain",
@@ -514,21 +547,27 @@ def main() -> None:
         for domain in domains:
             for split in splits:
                 examples = _load_examples_for_split(
-                    domain, split, args.corpus_dir,
+                    domain,
+                    split,
+                    args.corpus_dir,
                 )
                 if not examples:
                     logger.info(
                         "[evaluate] method=%s domain=%s split=%s: empty — skipping",
-                        method_name, domain, split,
+                        method_name,
+                        domain,
+                        split,
                     )
                     continue
                 print(
-                    f"[evaluate] {method_name} × {domain} × {split}: "
-                    f"{len(examples)} examples...",
+                    f"[evaluate] {method_name} × {domain} × {split}: {len(examples)} examples...",
                     flush=True,
                 )
                 result = _evaluate_method_on_split(
-                    extractor, examples, domain, split,
+                    extractor,
+                    examples,
+                    domain,
+                    split,
                 )
                 results.append(result)
                 print(

@@ -29,7 +29,6 @@ from ncms.domain.intent import (
 logger = logging.getLogger(__name__)
 
 
-
 class ExemplarIntentIndex:
     """BM25 exemplar index for intent classification.
 
@@ -62,14 +61,15 @@ class ExemplarIntentIndex:
         count = 0
         for intent, exemplars in INTENT_EXEMPLARS.items():
             for exemplar in exemplars:
-                writer.add_document(
-                    tantivy.Document(intent=intent.value, content=exemplar)
-                )
+                writer.add_document(tantivy.Document(intent=intent.value, content=exemplar))
                 count += 1
         writer.commit()
 
-        logger.info("Intent exemplar index built: %d documents across %d intents",
-                     count, len(INTENT_EXEMPLARS))
+        logger.info(
+            "Intent exemplar index built: %d documents across %d intents",
+            count,
+            len(INTENT_EXEMPLARS),
+        )
 
     def classify(self, query: str) -> IntentResult:
         """Classify a query into one of 7 intent classes via BM25 exemplar matching.

@@ -20,7 +20,6 @@ maps for systematic failure modes.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import random
 from pathlib import Path
@@ -36,7 +35,7 @@ from ncms.infrastructure.llm.caller import call_llm_json
 logger = logging.getLogger(__name__)
 
 
-_VERDICT_PROMPT = """You are a strict but FAIR data-quality judge for multi-head SLM training labels.
+_VERDICT_PROMPT = """You are a strict but FAIR data-quality judge for multi-head SLM labels.
 
 Domain: {domain}
 Allowed slot labels: {slot_labels}
@@ -124,12 +123,14 @@ async def _judge_one(
     )
     try:
         result = await call_llm_json(
-            prompt=prompt, model=model, api_base=api_base,
-            max_tokens=400, temperature=0.0,
+            prompt=prompt,
+            model=model,
+            api_base=api_base,
+            max_tokens=400,
+            temperature=0.0,
         )
     except Exception as exc:
-        logger.warning("judge failed on text[:60]=%r: %s",
-                       ex.text[:60], exc)
+        logger.warning("judge failed on text[:60]=%r: %s", ex.text[:60], exc)
         return None
     if not isinstance(result, dict):
         return None
@@ -183,19 +184,24 @@ async def judge_gold(
             # Normalize leading colon/brackets for histogramming.
             issue_hist[issue.strip()] = issue_hist.get(issue.strip(), 0) + 1
         if j["verdict"] != "correct":
-            failures.append({
-                "text": ex.text[:200],
-                "slots": ex.slots,
-                "state_change": ex.state_change,
-                "intent": ex.intent,
-                "verdict": j["verdict"],
-                "issues": j["issues"],
-                "corrections": j["corrections"],
-            })
+            failures.append(
+                {
+                    "text": ex.text[:200],
+                    "slots": ex.slots,
+                    "state_change": ex.state_change,
+                    "intent": ex.intent,
+                    "verdict": j["verdict"],
+                    "issues": j["issues"],
+                    "corrections": j["corrections"],
+                }
+            )
         if i % 10 == 0:
             logger.info(
                 "[judge-gold] %s: judged %d / %d (correct=%d)",
-                domain, i, len(sample), verdicts["correct"],
+                domain,
+                i,
+                len(sample),
+                verdicts["correct"],
             )
 
     total = sum(verdicts.values()) or 1
@@ -203,9 +209,12 @@ async def judge_gold(
         "n_sampled": len(sample),
         "verdicts": verdicts,
         "pct_correct": verdicts["correct"] / total * 100,
-        "issue_histogram": dict(sorted(
-            issue_hist.items(), key=lambda x: -x[1],
-        )),
+        "issue_histogram": dict(
+            sorted(
+                issue_hist.items(),
+                key=lambda x: -x[1],
+            )
+        ),
         "failures": failures,
     }
 

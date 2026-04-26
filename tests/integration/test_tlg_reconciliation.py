@@ -82,9 +82,7 @@ async def _seed_state(
 
 
 class TestTLGFlagOn:
-    async def test_structural_extraction_populates_retires(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_structural_extraction_populates_retires(self, store: SQLiteStore) -> None:
         config = NCMSConfig(
             db_path=":memory:",
             temporal_enabled=True,
@@ -121,14 +119,13 @@ class TestTLGFlagOn:
 
         # Reverse SUPERSEDED_BY edge carries the same set.
         superseded_by = await store.get_graph_edges(
-            supersedes[0].target_id, EdgeType.SUPERSEDED_BY,
+            supersedes[0].target_id,
+            EdgeType.SUPERSEDED_BY,
         )
         assert len(superseded_by) == 1
         assert superseded_by[0].retires_entities == supersedes[0].retires_entities
 
-    async def test_setdiff_safety_net_on_silent_drop(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_setdiff_safety_net_on_silent_drop(self, store: SQLiteStore) -> None:
         """No retirement verb in content, but old entity disappears.
 
         The extractor's set-diff tail must still catch the drop so
@@ -164,9 +161,7 @@ class TestTLGFlagOn:
         # legacy-config was in src entities, not in dst — set-diff fires.
         assert "legacy-config" in edges[0].retires_entities
 
-    async def test_missing_memory_does_not_raise(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_missing_memory_does_not_raise(self, store: SQLiteStore) -> None:
         """If a memory row is missing, extraction returns empty list
         rather than raising.  Reconciliation semantics are preserved.
         """

@@ -37,7 +37,8 @@ async def adr_service() -> MemoryService:
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        splade_enabled=False, scoring_weight_splade=0.0,
+        splade_enabled=False,
+        scoring_weight_splade=0.0,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_graph=0.0,
@@ -47,13 +48,15 @@ async def adr_service() -> MemoryService:
         temporal_range_filter_enabled=True,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
 
     adrs = [
         (
-            "ADR-001: Initial authentication design uses session cookies "
-            "for user authentication.",
+            "ADR-001: Initial authentication design uses session cookies for user authentication.",
             datetime(2023, 1, 15, tzinfo=UTC),
         ),
         (
@@ -93,7 +96,8 @@ class TestOrdinalSingle:
     """Single-subject ordinal: 'latest X' / 'first X' with one subject."""
 
     async def test_latest_on_authentication_surfaces_newest(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         results = await adr_service.search(
             query="What is the latest decision on authentication?",
@@ -103,16 +107,13 @@ class TestOrdinalSingle:
         # ADR-029 is newest (2026-01-08); the ordinal-single primitive
         # should sort subject-linked memories by observed_at desc.
         top_content = results[0].memory.content
-        assert "ADR-029" in top_content, (
-            "Expected ADR-029 at rank 1; got:\n  "
-            + "\n  ".join(
-                f"{i + 1}. {r.memory.content[:60]}"
-                for i, r in enumerate(results)
-            )
+        assert "ADR-029" in top_content, "Expected ADR-029 at rank 1; got:\n  " + "\n  ".join(
+            f"{i + 1}. {r.memory.content[:60]}" for i, r in enumerate(results)
         )
 
     async def test_original_authentication_surfaces_oldest(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         results = await adr_service.search(
             query="What was the original authentication design?",
@@ -127,7 +128,8 @@ class TestNoOrdinalNoOp:
     """Queries without ordinal intent don't get reordered by date."""
 
     async def test_plain_authentication_query_not_chronological(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         """Plain 'what authentication does the system use' should not
         force a date ordering — the temporal-intent classifier returns
@@ -137,19 +139,10 @@ class TestNoOrdinalNoOp:
             limit=5,
         )
         assert results
-        dates = [
-            r.memory.observed_at for r in results
-            if r.memory.observed_at is not None
-        ]
+        dates = [r.memory.observed_at for r in results if r.memory.observed_at is not None]
         if len(dates) >= 3:
-            monotonic_asc = all(
-                dates[i] <= dates[i + 1]
-                for i in range(len(dates) - 1)
-            )
-            monotonic_desc = all(
-                dates[i] >= dates[i + 1]
-                for i in range(len(dates) - 1)
-            )
+            monotonic_asc = all(dates[i] <= dates[i + 1] for i in range(len(dates) - 1))
+            monotonic_desc = all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
             assert not (monotonic_asc or monotonic_desc), (
                 "non-ordinal query should not be chronologically sorted"
             )
@@ -172,7 +165,10 @@ class TestFlagOff:
             temporal_range_filter_enabled=False,  # OFF
         )
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
         )
         try:
             # Seed two ADRs; query with ordinal intent.

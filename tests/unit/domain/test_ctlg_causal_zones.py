@@ -102,9 +102,13 @@ class TestSubjectCoverage:
         }
         zones = build_causal_zones(edges, subjects)
         assert len(zones) == 1
-        assert zones[0].subject_coverage == frozenset({
-            "payments", "compliance", "auth-service",
-        })
+        assert zones[0].subject_coverage == frozenset(
+            {
+                "payments",
+                "compliance",
+                "auth-service",
+            }
+        )
 
     def test_subject_coverage_empty_when_not_provided(self) -> None:
         edges = [_edge("a", "b")]
@@ -143,10 +147,8 @@ class TestEnablesIntegration:
         # treated as causal-dependent by the traversal, just with
         # different semantics (necessary vs sufficient).
         edges = [
-            CausalEdge(src="postgres_decision", dst="pgvector_available",
-                       edge_type="enables"),
-            CausalEdge(src="postgres_decision", dst="scale_pressure",
-                       edge_type="caused_by"),
+            CausalEdge(src="postgres_decision", dst="pgvector_available", edge_type="enables"),
+            CausalEdge(src="postgres_decision", dst="scale_pressure", edge_type="caused_by"),
         ]
         zones = build_causal_zones(edges)
         assert len(zones) == 1

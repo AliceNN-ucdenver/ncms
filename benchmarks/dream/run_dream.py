@@ -70,7 +70,8 @@ def parse_args() -> argparse.Namespace:
         help=f"LLM API base URL (default: {DEFAULT_LLM_API_BASE})",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -109,7 +110,8 @@ async def run_dream_study(
     logger.info("  End time : %s", datetime.now(UTC).isoformat())
     logger.info(
         "  Duration : %.1f seconds (%.1f minutes)",
-        total_elapsed, total_elapsed / 60,
+        total_elapsed,
+        total_elapsed / 60,
     )
     logger.info("  Datasets : %d evaluated", len(all_results))
     logger.info("=" * 70)
@@ -134,7 +136,9 @@ def _get_git_sha() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -153,17 +157,21 @@ def _setup_logging(output_dir: str, verbose: bool) -> Path:
 
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
 
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    console_handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    console_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-7s %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
 
     logging.basicConfig(level=level, handlers=[file_handler, console_handler])
 
@@ -205,6 +213,7 @@ def _log_run_header(
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 
     args = parse_args()
@@ -219,15 +228,22 @@ def main() -> None:
     # Set up durable logging
     log_file = _setup_logging(args.output_dir, args.verbose)
     _log_run_header(
-        dataset_names, args.output_dir, log_file,
-        args.llm_model, args.llm_api_base,
+        dataset_names,
+        args.output_dir,
+        log_file,
+        args.llm_model,
+        args.llm_api_base,
     )
 
     try:
-        asyncio.run(run_dream_study(
-            dataset_names, args.output_dir,
-            args.llm_model, args.llm_api_base,
-        ))
+        asyncio.run(
+            run_dream_study(
+                dataset_names,
+                args.output_dir,
+                args.llm_model,
+                args.llm_api_base,
+            )
+        )
     except KeyboardInterrupt:
         logger.warning("Run interrupted by user (Ctrl+C)")
         sys.exit(130)

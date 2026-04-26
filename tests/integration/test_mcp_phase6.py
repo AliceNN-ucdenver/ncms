@@ -27,7 +27,10 @@ async def services():
     index.initialize()
     graph = NetworkXGraph()
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     yield memory_svc, store, config
     await store.close()
@@ -45,7 +48,8 @@ class TestIntentOverrideSearch:
             domains=["api"],
         )
         results = await memory_svc.search(
-            "auth protocol", intent_override="current_state_lookup",
+            "auth protocol",
+            intent_override="current_state_lookup",
         )
         assert len(results) >= 1
         assert results[0].intent == "current_state_lookup"
@@ -64,7 +68,8 @@ class TestIntentOverrideSearch:
             memory_type="fact",
         )
         results = await memory_svc.search(
-            "REST conventions", intent_override="pattern_lookup",
+            "REST conventions",
+            intent_override="pattern_lookup",
         )
         assert len(results) >= 1
         # Intent should match override, not auto-classified

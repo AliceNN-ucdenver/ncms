@@ -35,102 +35,200 @@ from typing import Literal, cast
 CueLabel = Literal[
     "O",
     # Causal
-    "B-CAUSAL_EXPLICIT", "I-CAUSAL_EXPLICIT",
-    "B-CAUSAL_ALTLEX",   "I-CAUSAL_ALTLEX",
+    "B-CAUSAL_EXPLICIT",
+    "I-CAUSAL_EXPLICIT",
+    "B-CAUSAL_ALTLEX",
+    "I-CAUSAL_ALTLEX",
     # Temporal — relative markers
-    "B-TEMPORAL_BEFORE", "I-TEMPORAL_BEFORE",
-    "B-TEMPORAL_AFTER",  "I-TEMPORAL_AFTER",
-    "B-TEMPORAL_DURING", "I-TEMPORAL_DURING",
-    "B-TEMPORAL_SINCE",  "I-TEMPORAL_SINCE",
+    "B-TEMPORAL_BEFORE",
+    "I-TEMPORAL_BEFORE",
+    "B-TEMPORAL_AFTER",
+    "I-TEMPORAL_AFTER",
+    "B-TEMPORAL_DURING",
+    "I-TEMPORAL_DURING",
+    "B-TEMPORAL_SINCE",
+    "I-TEMPORAL_SINCE",
     # Temporal — concrete anchors (dates, quarters, named periods)
-    "B-TEMPORAL_ANCHOR", "I-TEMPORAL_ANCHOR",
+    "B-TEMPORAL_ANCHOR",
+    "I-TEMPORAL_ANCHOR",
     # Ordinal
-    "B-ORDINAL_FIRST",   "I-ORDINAL_FIRST",
-    "B-ORDINAL_LAST",    "I-ORDINAL_LAST",
-    "B-ORDINAL_NTH",     "I-ORDINAL_NTH",
+    "B-ORDINAL_FIRST",
+    "I-ORDINAL_FIRST",
+    "B-ORDINAL_LAST",
+    "I-ORDINAL_LAST",
+    "B-ORDINAL_NTH",
+    "I-ORDINAL_NTH",
     # Modal / counterfactual
-    "B-MODAL_HYPOTHETICAL", "I-MODAL_HYPOTHETICAL",
+    "B-MODAL_HYPOTHETICAL",
+    "I-MODAL_HYPOTHETICAL",
     # Query-specific markers
-    "B-ASK_CHANGE",  "I-ASK_CHANGE",
-    "B-ASK_CURRENT", "I-ASK_CURRENT",
+    "B-ASK_CHANGE",
+    "I-ASK_CHANGE",
+    "B-ASK_CURRENT",
+    "I-ASK_CURRENT",
     # Entity references
-    "B-REFERENT", "I-REFERENT",
-    "B-SUBJECT",  "I-SUBJECT",
-    "B-SCOPE",    "I-SCOPE",
+    "B-REFERENT",
+    "I-REFERENT",
+    "B-SUBJECT",
+    "I-SUBJECT",
+    "B-SCOPE",
+    "I-SCOPE",
 ]
 
 #: Frozen ordered tuple of all labels — feeds the adapter manifest's
 #: ``cue_labels`` field and the BIO→id lookup during training.
 CUE_LABELS: tuple[CueLabel, ...] = (
     "O",
-    "B-CAUSAL_EXPLICIT", "I-CAUSAL_EXPLICIT",
-    "B-CAUSAL_ALTLEX",   "I-CAUSAL_ALTLEX",
-    "B-TEMPORAL_BEFORE", "I-TEMPORAL_BEFORE",
-    "B-TEMPORAL_AFTER",  "I-TEMPORAL_AFTER",
-    "B-TEMPORAL_DURING", "I-TEMPORAL_DURING",
-    "B-TEMPORAL_SINCE",  "I-TEMPORAL_SINCE",
-    "B-TEMPORAL_ANCHOR", "I-TEMPORAL_ANCHOR",
-    "B-ORDINAL_FIRST",   "I-ORDINAL_FIRST",
-    "B-ORDINAL_LAST",    "I-ORDINAL_LAST",
-    "B-ORDINAL_NTH",     "I-ORDINAL_NTH",
-    "B-MODAL_HYPOTHETICAL", "I-MODAL_HYPOTHETICAL",
-    "B-ASK_CHANGE",  "I-ASK_CHANGE",
-    "B-ASK_CURRENT", "I-ASK_CURRENT",
-    "B-REFERENT", "I-REFERENT",
-    "B-SUBJECT",  "I-SUBJECT",
-    "B-SCOPE",    "I-SCOPE",
+    "B-CAUSAL_EXPLICIT",
+    "I-CAUSAL_EXPLICIT",
+    "B-CAUSAL_ALTLEX",
+    "I-CAUSAL_ALTLEX",
+    "B-TEMPORAL_BEFORE",
+    "I-TEMPORAL_BEFORE",
+    "B-TEMPORAL_AFTER",
+    "I-TEMPORAL_AFTER",
+    "B-TEMPORAL_DURING",
+    "I-TEMPORAL_DURING",
+    "B-TEMPORAL_SINCE",
+    "I-TEMPORAL_SINCE",
+    "B-TEMPORAL_ANCHOR",
+    "I-TEMPORAL_ANCHOR",
+    "B-ORDINAL_FIRST",
+    "I-ORDINAL_FIRST",
+    "B-ORDINAL_LAST",
+    "I-ORDINAL_LAST",
+    "B-ORDINAL_NTH",
+    "I-ORDINAL_NTH",
+    "B-MODAL_HYPOTHETICAL",
+    "I-MODAL_HYPOTHETICAL",
+    "B-ASK_CHANGE",
+    "I-ASK_CHANGE",
+    "B-ASK_CURRENT",
+    "I-ASK_CURRENT",
+    "B-REFERENT",
+    "I-REFERENT",
+    "B-SUBJECT",
+    "I-SUBJECT",
+    "B-SCOPE",
+    "I-SCOPE",
 )
 
 #: Lookup: label → row index in the head's logit tensor.  Stable
 #: across adapter versions that share a cue vocabulary.
-CUE_LABEL_TO_INDEX: dict[CueLabel, int] = {
-    label: idx for idx, label in enumerate(CUE_LABELS)
-}
+CUE_LABEL_TO_INDEX: dict[CueLabel, int] = {label: idx for idx, label in enumerate(CUE_LABELS)}
 
 
 #: Cue family name → set of BIO labels belonging to that family.
 #: Used by the compositional synthesizer to group a tagged sequence
 #: into family buckets before matching grammar productions.
 CueFamily = Literal[
-    "causal", "temporal", "temporal_anchor", "ordinal",
-    "modal", "ask", "referent", "subject", "scope",
+    "causal",
+    "temporal",
+    "temporal_anchor",
+    "ordinal",
+    "modal",
+    "ask",
+    "referent",
+    "subject",
+    "scope",
 ]
 
 CUE_FAMILIES: dict[CueFamily, frozenset[CueLabel]] = {
-    "causal": frozenset(cast("list[CueLabel]", [
-        "B-CAUSAL_EXPLICIT", "I-CAUSAL_EXPLICIT",
-        "B-CAUSAL_ALTLEX",   "I-CAUSAL_ALTLEX",
-    ])),
-    "temporal": frozenset(cast("list[CueLabel]", [
-        "B-TEMPORAL_BEFORE", "I-TEMPORAL_BEFORE",
-        "B-TEMPORAL_AFTER",  "I-TEMPORAL_AFTER",
-        "B-TEMPORAL_DURING", "I-TEMPORAL_DURING",
-        "B-TEMPORAL_SINCE",  "I-TEMPORAL_SINCE",
-    ])),
-    "temporal_anchor": frozenset(cast("list[CueLabel]", [
-        "B-TEMPORAL_ANCHOR", "I-TEMPORAL_ANCHOR",
-    ])),
-    "ordinal": frozenset(cast("list[CueLabel]", [
-        "B-ORDINAL_FIRST", "I-ORDINAL_FIRST",
-        "B-ORDINAL_LAST",  "I-ORDINAL_LAST",
-        "B-ORDINAL_NTH",   "I-ORDINAL_NTH",
-    ])),
-    "modal": frozenset(cast("list[CueLabel]", [
-        "B-MODAL_HYPOTHETICAL", "I-MODAL_HYPOTHETICAL",
-    ])),
-    "ask": frozenset(cast("list[CueLabel]", [
-        "B-ASK_CHANGE",  "I-ASK_CHANGE",
-        "B-ASK_CURRENT", "I-ASK_CURRENT",
-    ])),
-    "referent": frozenset(cast("list[CueLabel]", [
-        "B-REFERENT", "I-REFERENT",
-    ])),
-    "subject": frozenset(cast("list[CueLabel]", [
-        "B-SUBJECT", "I-SUBJECT",
-    ])),
-    "scope": frozenset(cast("list[CueLabel]", [
-        "B-SCOPE", "I-SCOPE",
-    ])),
+    "causal": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-CAUSAL_EXPLICIT",
+                "I-CAUSAL_EXPLICIT",
+                "B-CAUSAL_ALTLEX",
+                "I-CAUSAL_ALTLEX",
+            ],
+        )
+    ),
+    "temporal": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-TEMPORAL_BEFORE",
+                "I-TEMPORAL_BEFORE",
+                "B-TEMPORAL_AFTER",
+                "I-TEMPORAL_AFTER",
+                "B-TEMPORAL_DURING",
+                "I-TEMPORAL_DURING",
+                "B-TEMPORAL_SINCE",
+                "I-TEMPORAL_SINCE",
+            ],
+        )
+    ),
+    "temporal_anchor": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-TEMPORAL_ANCHOR",
+                "I-TEMPORAL_ANCHOR",
+            ],
+        )
+    ),
+    "ordinal": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-ORDINAL_FIRST",
+                "I-ORDINAL_FIRST",
+                "B-ORDINAL_LAST",
+                "I-ORDINAL_LAST",
+                "B-ORDINAL_NTH",
+                "I-ORDINAL_NTH",
+            ],
+        )
+    ),
+    "modal": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-MODAL_HYPOTHETICAL",
+                "I-MODAL_HYPOTHETICAL",
+            ],
+        )
+    ),
+    "ask": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-ASK_CHANGE",
+                "I-ASK_CHANGE",
+                "B-ASK_CURRENT",
+                "I-ASK_CURRENT",
+            ],
+        )
+    ),
+    "referent": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-REFERENT",
+                "I-REFERENT",
+            ],
+        )
+    ),
+    "subject": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-SUBJECT",
+                "I-SUBJECT",
+            ],
+        )
+    ),
+    "scope": frozenset(
+        cast(
+            "list[CueLabel]",
+            [
+                "B-SCOPE",
+                "I-SCOPE",
+            ],
+        )
+    ),
 }
 
 

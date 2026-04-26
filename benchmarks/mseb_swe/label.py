@@ -45,10 +45,10 @@ DEFAULT_OUT = Path(__file__).parent / "raw_labeled"
 
 # Deterministic source → MemoryKind map.
 SOURCE_TO_KIND: dict[str, str] = {
-    "issue_body":       "declaration",
-    "pr_discussion":    "causal_link",
-    "resolving_patch":  "retirement",
-    "test_patch":       "declaration",
+    "issue_body": "declaration",
+    "pr_discussion": "causal_link",
+    "resolving_patch": "retirement",
+    "test_patch": "declaration",
 }
 
 
@@ -114,12 +114,19 @@ def label_file(raw_path: Path, out_path: Path) -> dict[str, int]:
 
     Returns per-kind counts.
     """
-    stats = {"declaration": 0, "retirement": 0, "causal_link": 0,
-             "ordinal_anchor": 0, "none": 0, "total": 0}
+    stats = {
+        "declaration": 0,
+        "retirement": 0,
+        "causal_link": 0,
+        "ordinal_anchor": 0,
+        "none": 0,
+        "total": 0,
+    }
 
     raw_rows = [
-        json.loads(line) for line in
-        raw_path.read_text(encoding="utf-8").split(chr(10)) if line.strip()
+        json.loads(line)
+        for line in raw_path.read_text(encoding="utf-8").split(chr(10))
+        if line.strip()
     ]
     if not raw_rows:
         return stats

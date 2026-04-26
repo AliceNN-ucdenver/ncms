@@ -43,6 +43,7 @@ from pathlib import Path
 # deployments also honour this.
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover — allow running outside repo
     pass
@@ -55,8 +56,8 @@ logger = logging.getLogger("mseb_swe.mine")
 # adapters/swe_diff/DATASHEET.md for the train/test leakage rationale.
 DATASETS: dict[str, str] = {
     "swe_bench_verified": "princeton-nlp/SWE-bench_Verified",
-    "swe_gym":            "SWE-Gym/SWE-Gym",
-    "swe_gym_lite":       "SWE-Gym/SWE-Gym-Lite",
+    "swe_gym": "SWE-Gym/SWE-Gym",
+    "swe_gym_lite": "SWE-Gym/SWE-Gym-Lite",
 }
 DEFAULT_DATASET_KEY = "swe_bench_verified"
 DATASET = DATASETS[DEFAULT_DATASET_KEY]  # legacy alias
@@ -104,51 +105,59 @@ def _row_to_messages(row: dict) -> list[dict]:
 
     problem = (row.get("problem_statement") or "").strip()
     if problem:
-        messages.append({
-            "message_id": f"{iid}::problem_statement",
-            "text": problem,
-            "timestamp": created,
-            "source": "issue_body",
-            "repo": repo,
-            "base_commit": base_sha,
-        })
+        messages.append(
+            {
+                "message_id": f"{iid}::problem_statement",
+                "text": problem,
+                "timestamp": created,
+                "source": "issue_body",
+                "repo": repo,
+                "base_commit": base_sha,
+            }
+        )
 
     hints = (row.get("hints_text") or "").strip()
     if hints:
-        messages.append({
-            "message_id": f"{iid}::hints",
-            "text": hints,
-            "timestamp": created,
-            "source": "pr_discussion",
-            "repo": repo,
-            "base_commit": base_sha,
-        })
+        messages.append(
+            {
+                "message_id": f"{iid}::hints",
+                "text": hints,
+                "timestamp": created,
+                "source": "pr_discussion",
+                "repo": repo,
+                "base_commit": base_sha,
+            }
+        )
 
     # Patches are structural change records — treat each as its own
     # message.  The labeler often classifies these as `retirement`
     # (old behaviour replaced) or `causal_link` (patch cause → fix).
     patch = (row.get("patch") or "").strip()
     if patch:
-        messages.append({
-            "message_id": f"{iid}::patch",
-            "text": patch[:4000],   # cap ingest-sized; full patch in cache
-            "timestamp": created,
-            "source": "resolving_patch",
-            "repo": repo,
-            "base_commit": base_sha,
-            "patch_full_chars": len(patch),
-        })
+        messages.append(
+            {
+                "message_id": f"{iid}::patch",
+                "text": patch[:4000],  # cap ingest-sized; full patch in cache
+                "timestamp": created,
+                "source": "resolving_patch",
+                "repo": repo,
+                "base_commit": base_sha,
+                "patch_full_chars": len(patch),
+            }
+        )
 
     test_patch = (row.get("test_patch") or "").strip()
     if test_patch:
-        messages.append({
-            "message_id": f"{iid}::test_patch",
-            "text": test_patch[:4000],
-            "timestamp": created,
-            "source": "test_patch",
-            "repo": repo,
-            "base_commit": base_sha,
-        })
+        messages.append(
+            {
+                "message_id": f"{iid}::test_patch",
+                "text": test_patch[:4000],
+                "timestamp": created,
+                "source": "test_patch",
+                "repo": repo,
+                "base_commit": base_sha,
+            }
+        )
 
     return messages
 
@@ -197,7 +206,8 @@ def mine(
         if not messages:
             logger.warning(
                 "row %d (instance=%s) produced 0 messages — skipping",
-                i, row.get("instance_id"),
+                i,
+                row.get("instance_id"),
             )
             continue
 
@@ -220,7 +230,10 @@ def mine(
         if (i + 1) % 10 == 0 or (i + 1) == limit:
             logger.info(
                 "[%d/%d] issue=%s messages=%d",
-                i + 1, limit, iid, len(messages),
+                i + 1,
+                limit,
+                iid,
+                len(messages),
             )
 
     (out_dir / "_stats.json").write_text(
@@ -237,23 +250,29 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="MSEB-SWE miner: SWE-bench Verified → raw messages",
     )
-    parser.add_argument("--limit", type=int, default=50,
-                        help="Max issues to mine (default 50 for pilot)")
+    parser.add_argument(
+        "--limit", type=int, default=50, help="Max issues to mine (default 50 for pilot)"
+    )
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--split", default=None,
-                        help="HF dataset split.  Default 'test' for "
-                             "SWE-bench Verified, 'train' for SWE-Gym.")
+    parser.add_argument(
+        "--split",
+        default=None,
+        help="HF dataset split.  Default 'test' for SWE-bench Verified, 'train' for SWE-Gym.",
+    )
     parser.add_argument("--hf-cache-dir", type=Path, default=None)
     parser.add_argument(
-        "--dataset", default=DEFAULT_DATASET_KEY,
+        "--dataset",
+        default=DEFAULT_DATASET_KEY,
         choices=list(DATASETS) + list(DATASETS.values()),
         help="Which upstream dataset to pull from (default: SWE-bench Verified).",
     )
     parser.add_argument(
-        "--shuffle-seed", type=int, default=None,
+        "--shuffle-seed",
+        type=int,
+        default=None,
         help="Shuffle dataset rows before slicing to --limit.  Recommended "
-             "for SWE-Gym training mines (alphabetical ordering clumps "
-             "rows by repo).  Default None (preserve upstream order).",
+        "for SWE-Gym training mines (alphabetical ordering clumps "
+        "rows by repo).  Default None (preserve upstream order).",
     )
     args = parser.parse_args()
 
@@ -261,9 +280,7 @@ def main() -> None:
     dataset_name = DATASETS.get(args.dataset, args.dataset)
     # Default split depends on the dataset — SWE-bench uses 'test' for the
     # verified split; SWE-Gym ships as 'train' only.
-    split = args.split or (
-        "test" if dataset_name.endswith("SWE-bench_Verified") else "train"
-    )
+    split = args.split or ("test" if dataset_name.endswith("SWE-bench_Verified") else "train")
 
     stats = mine(
         limit=args.limit,

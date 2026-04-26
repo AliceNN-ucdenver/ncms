@@ -46,7 +46,9 @@ class TestSynthesizeEpisodeSummary:
 
     async def test_empty_members_returns_none(self) -> None:
         result = await synthesize_episode_summary(
-            episode_title="Test", member_contents=[], model="test-model",
+            episode_title="Test",
+            member_contents=[],
+            model="test-model",
         )
         assert result is None
         self.mock_llm.assert_not_called()
@@ -135,7 +137,10 @@ class TestSynthesizeStateTrajectory:
 
     async def test_empty_states_returns_none(self) -> None:
         result = await synthesize_state_trajectory(
-            entity_name="test", state_key="key", states=[], model="test-model",
+            entity_name="test",
+            state_key="key",
+            states=[],
+            model="test-model",
         )
         assert result is None
 
@@ -181,7 +186,9 @@ class TestSynthesizeRecurringPattern:
 
     async def test_empty_summaries_returns_none(self) -> None:
         result = await synthesize_recurring_pattern(
-            episode_summaries=[], shared_entities=[], model="test-model",
+            episode_summaries=[],
+            shared_entities=[],
+            model="test-model",
         )
         assert result is None
 

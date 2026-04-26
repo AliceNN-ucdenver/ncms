@@ -71,14 +71,10 @@ def test_domain_has_no_outward_imports(py_file: Path) -> None:
     """No ``domain/`` module may import from application/ or infrastructure/."""
     forbidden = ("ncms.application", "ncms.infrastructure")
     imports = _extract_imports(py_file)
-    violations = [
-        imp for imp in imports
-        if any(imp.startswith(f) for f in forbidden)
-    ]
+    violations = [imp for imp in imports if any(imp.startswith(f) for f in forbidden)]
     assert not violations, (
         f"domain module {py_file.relative_to(DOMAIN_ROOT)} imports "
-        f"outside the domain layer:\n  "
-        + "\n  ".join(sorted(violations))
+        f"outside the domain layer:\n  " + "\n  ".join(sorted(violations))
     )
 
 
@@ -93,8 +89,7 @@ def _pipeline_files(package: str) -> list[Path]:
 def test_pipeline_does_not_import_siblings(package: str) -> None:
     """A pipeline package must not import from another pipeline package."""
     sibling_prefixes = tuple(
-        f"ncms.application.{other}"
-        for other in PIPELINE_PACKAGES if other != package
+        f"ncms.application.{other}" for other in PIPELINE_PACKAGES if other != package
     )
     violations: list[str] = []
     for py_file in _pipeline_files(package):

@@ -278,9 +278,7 @@ def generate_candidates(
                 if any(not entities.get(k) for k in required):
                     continue
 
-                qid = (
-                    f"{domain}-{shape}-{shape_counts[shape]+1:03d}"
-                )
+                qid = f"{domain}-{shape}-{shape_counts[shape] + 1:03d}"
                 # Optional: pull the human-readable title from a
                 # different memory in the chain when the gold is
                 # code-heavy.
@@ -309,20 +307,23 @@ def generate_candidates(
                 # memory in the chain is frequently an acceptable
                 # alternate for origin/ordinal_first style queries).
                 alt_mids = [
-                    m["mid"] for m in chain
+                    m["mid"]
+                    for m in chain
                     if m["mid"] != gold["mid"]
                     and m.get("metadata", {}).get("kind") == gold.get("metadata", {}).get("kind")
                 ][:1]
-                candidates.append({
-                    "qid": qid,
-                    "shape": shape,
-                    "text": text,
-                    "subject": subject,
-                    "gold_mid": gold["mid"],
-                    "gold_alt": alt_mids,
-                    "preference": tpl.get("preference", "none"),
-                    "note": tpl.get("note", ""),
-                })
+                candidates.append(
+                    {
+                        "qid": qid,
+                        "shape": shape,
+                        "text": text,
+                        "subject": subject,
+                        "gold_mid": gold["mid"],
+                        "gold_alt": alt_mids,
+                        "preference": tpl.get("preference", "none"),
+                        "note": tpl.get("note", ""),
+                    }
+                )
                 shape_counts[shape] += 1
                 if shape_counts[shape] >= max_per_shape:
                     break  # inner shape_templates loop
@@ -336,25 +337,32 @@ def generate_candidates(
                 break
             for tpl in noise_templates:
                 text = tpl["text_template"].format(
-                    title="", first_sentence="", subject=subject, entity="",
+                    title="",
+                    first_sentence="",
+                    subject=subject,
+                    entity="",
                 )
-                candidates.append({
-                    "qid": f"{domain}-noise-{noise_count+1:03d}",
-                    "shape": "noise",
-                    "text": text,
-                    "subject": subject,
-                    "gold_mid": "",   # deliberately no gold
-                    "gold_alt": [],
-                    "preference": "none",
-                    "note": "adversarial / off-topic; all top-5 should miss",
-                })
+                candidates.append(
+                    {
+                        "qid": f"{domain}-noise-{noise_count + 1:03d}",
+                        "shape": "noise",
+                        "text": text,
+                        "subject": subject,
+                        "gold_mid": "",  # deliberately no gold
+                        "gold_alt": [],
+                        "preference": "none",
+                        "note": "adversarial / off-topic; all top-5 should miss",
+                    }
+                )
                 noise_count += 1
                 if noise_count >= max_noise:
                     break
 
     logger.info(
         "generated %d candidates across %d shapes (%s)",
-        len(candidates), len(shape_counts), dict(shape_counts),
+        len(candidates),
+        len(shape_counts),
+        dict(shape_counts),
     )
     return candidates
 
@@ -396,6 +404,7 @@ def dump_yaml(candidates: list[dict], path: Path, *, domain: str) -> None:
     )
     try:
         import yaml
+
         body = yaml.safe_dump(candidates, sort_keys=False, allow_unicode=True)
     except ImportError:  # pragma: no cover
         body = json.dumps(candidates, indent=2, ensure_ascii=False)
@@ -410,6 +419,7 @@ def dump_yaml(candidates: list[dict], path: Path, *, domain: str) -> None:
 def load_templates(domain: str) -> dict[str, list[dict[str, Any]]]:
     """Import ``benchmarks.mseb_<domain>.gold_templates`` and return its TEMPLATES."""
     import importlib
+
     module = importlib.import_module(f"benchmarks.mseb_{domain}.gold_templates")
     templates = getattr(module, "TEMPLATES", None)
     if templates is None:
@@ -432,8 +442,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="MSEB gold authoring: labeled corpus → gold.yaml candidates",
     )
-    ap.add_argument("--domain", required=True,
-                    choices=["swe", "clinical", "convo", "softwaredev"])
+    ap.add_argument("--domain", required=True, choices=["swe", "clinical", "convo", "softwaredev"])
     ap.add_argument("--labeled-dir", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--max-per-shape", type=int, default=30)
@@ -445,7 +454,8 @@ def main() -> None:
     memories = load_labeled_memories(args.labeled_dir)
     logger.info(
         "loaded %d labeled memories across %d subjects",
-        len(memories), len({m['subject'] for m in memories}),
+        len(memories),
+        len({m["subject"] for m in memories}),
     )
 
     candidates = generate_candidates(
@@ -457,11 +467,16 @@ def main() -> None:
         seed=args.seed,
     )
     dump_yaml(candidates, args.out, domain=args.domain)
-    print(json.dumps({
-        "domain": args.domain,
-        "candidates": len(candidates),
-        "out": str(args.out),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "domain": args.domain,
+                "candidates": len(candidates),
+                "out": str(args.out),
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

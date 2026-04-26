@@ -17,20 +17,53 @@ from datetime import UTC, datetime, timedelta
 
 # Word-to-number mapping for written numbers
 _WORD_NUMBERS: dict[str, int] = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-    "nineteen": 19, "twenty": 20, "thirty": 30,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
 }
 
 _MONTH_NAMES: dict[str, int] = {
-    "january": 1, "february": 2, "march": 3, "april": 4,
-    "may": 5, "june": 6, "july": 7, "august": 8,
-    "september": 9, "october": 10, "november": 11, "december": 12,
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4,
-    "jun": 6, "jul": 7, "aug": 8, "sep": 9,
-    "oct": 10, "nov": 11, "dec": 12,
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
 }
 
 
@@ -89,9 +122,7 @@ def _quarter_range(year: int, quarter: int) -> tuple[datetime, datetime]:
 _NUM_ALT = r"(?:\d+|" + "|".join(_WORD_NUMBERS) + r")"
 _MONTH_ALT = "|".join(_MONTH_NAMES)
 
-_RE_RECENCY = re.compile(
-    r"\b(latest|most\s+recent|current(?:ly)?|newest|up\s*to\s*date)\b"
-)
+_RE_RECENCY = re.compile(r"\b(latest|most\s+recent|current(?:ly)?|newest|up\s*to\s*date)\b")
 _RE_FIRST = re.compile(r"\b(first|initial|earliest|original)\b")
 _RE_YESTERDAY = re.compile(r"\byesterday\b")
 _RE_TODAY = re.compile(r"\btoday\b")
@@ -100,9 +131,7 @@ _RE_LAST_WEEK = re.compile(r"\blast\s+week\b")
 _RE_WEEKS_AGO = re.compile(rf"\b({_NUM_ALT})\s+weeks?\s+ago\b")
 _RE_LAST_MONTH = re.compile(r"\blast\s+month\b")
 _RE_MONTHS_AGO = re.compile(rf"\b({_NUM_ALT})\s+months?\s+ago\b")
-_RE_NAMED_MONTH = re.compile(
-    rf"\b(?:in|since|during|from)\s+({_MONTH_ALT})(?:\s+(\d{{4}}))?\b"
-)
+_RE_NAMED_MONTH = re.compile(rf"\b(?:in|since|during|from)\s+({_MONTH_ALT})(?:\s+(\d{{4}}))?\b")
 _RE_BARE_YEAR = re.compile(r"\b(?:in|during|from|since)\s+(\d{4})\b")
 _RE_QUARTER = re.compile(r"\bq([1-4])\s*(\d{4})?\b")
 _RE_THIS_QUARTER = re.compile(r"\bthis\s+quarter\b")
@@ -140,7 +169,10 @@ def _match_yesterday(q: str, now: datetime) -> TemporalReference | None:
     if _RE_YESTERDAY.search(q) is None:
         return None
     day_start = (now - timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
     )
     day_end = day_start.replace(hour=23, minute=59, second=59)
     return TemporalReference(range_start=day_start, range_end=day_end)
@@ -161,21 +193,30 @@ def _match_days_ago(q: str, now: datetime) -> TemporalReference | None:
     if n is None:
         return None
     day_start = (now - timedelta(days=n)).replace(
-        hour=0, minute=0, second=0, microsecond=0,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
     )
     day_end = day_start.replace(hour=23, minute=59, second=59)
     return TemporalReference(range_start=day_start, range_end=day_end)
 
 
 def _match_last_week(q: str, now: datetime) -> TemporalReference | None:
-    """"Last week" — the 7-day window ending on last Sunday."""
+    """ "Last week" — the 7-day window ending on last Sunday."""
     if _RE_LAST_WEEK.search(q) is None:
         return None
     end = (now - timedelta(days=now.weekday() + 1)).replace(
-        hour=23, minute=59, second=59, microsecond=0,
+        hour=23,
+        minute=59,
+        second=59,
+        microsecond=0,
     )
     start = (end - timedelta(days=6)).replace(
-        hour=0, minute=0, second=0, microsecond=0,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
     )
     return TemporalReference(range_start=start, range_end=end)
 
@@ -189,7 +230,10 @@ def _match_weeks_ago(q: str, now: datetime) -> TemporalReference | None:
         return None
     center = now - timedelta(weeks=n)
     start = (center - timedelta(days=center.weekday())).replace(
-        hour=0, minute=0, second=0, microsecond=0,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
     )
     end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59)
     return TemporalReference(range_start=start, range_end=end)
@@ -224,7 +268,8 @@ def _match_months_ago(q: str, now: datetime) -> TemporalReference | None:
 
 
 def _named_month_year(
-    match: re.Match[str], now: datetime,
+    match: re.Match[str],
+    now: datetime,
 ) -> int:
     """Resolve the year for a named-month match, preferring past.
 
@@ -237,15 +282,12 @@ def _named_month_year(
     if match.group(2):
         return int(match.group(2))
     month_num = _MONTH_NAMES[match.group(1)]
-    rolled_over = (
-        month_num > now.month
-        or (month_num == now.month and now.day < 15)
-    )
+    rolled_over = month_num > now.month or (month_num == now.month and now.day < 15)
     return now.year - 1 if rolled_over else now.year
 
 
 def _match_named_month(q: str, now: datetime) -> TemporalReference | None:
-    """"in March", "in January 2026", "since April"."""
+    """ "in March", "in January 2026", "since April"."""
     m = _RE_NAMED_MONTH.search(q)
     if m is None:
         return None
@@ -258,7 +300,7 @@ def _match_named_month(q: str, now: datetime) -> TemporalReference | None:
 
 
 def _match_bare_year(q: str, now: datetime) -> TemporalReference | None:
-    """"in 2024", "since 2024" — must run AFTER ``_match_named_month``
+    """ "in 2024", "since 2024" — must run AFTER ``_match_named_month``
     so "in March 2024" doesn't get shadowed."""
     m = _RE_BARE_YEAR.search(q)
     if m is None:
@@ -303,7 +345,7 @@ def _match_last_quarter(q: str, now: datetime) -> TemporalReference | None:
 
 
 def _match_last_n_days(q: str, now: datetime) -> TemporalReference | None:
-    """"last 7 days" / "past 14 days"."""
+    """ "last 7 days" / "past 14 days"."""
     m = _RE_LAST_N_DAYS.search(q)
     if m is None:
         return None
@@ -311,7 +353,10 @@ def _match_last_n_days(q: str, now: datetime) -> TemporalReference | None:
     if n is None:
         return None
     start = (now - timedelta(days=n)).replace(
-        hour=0, minute=0, second=0, microsecond=0,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
     )
     return TemporalReference(range_start=start, range_end=now)
 

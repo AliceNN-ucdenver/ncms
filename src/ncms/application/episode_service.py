@@ -59,24 +59,55 @@ _RELEASE_PATTERN = re.compile(
 )
 
 # Incident markers
-_INCIDENT_MARKERS: frozenset[str] = frozenset({
-    "incident", "outage", "downtime", "error spike", "rollback",
-    "rolled back", "p0", "p1", "sev1", "sev2", "postmortem",
-    "post-mortem", "root cause", "rca",
-})
+_INCIDENT_MARKERS: frozenset[str] = frozenset(
+    {
+        "incident",
+        "outage",
+        "downtime",
+        "error spike",
+        "rollback",
+        "rolled back",
+        "p0",
+        "p1",
+        "sev1",
+        "sev2",
+        "postmortem",
+        "post-mortem",
+        "root cause",
+        "rca",
+    }
+)
 
 # Migration markers
-_MIGRATION_MARKERS: frozenset[str] = frozenset({
-    "migration", "migrating", "migrated", "data migration",
-    "schema migration", "cutover", "blue-green", "canary deploy",
-})
+_MIGRATION_MARKERS: frozenset[str] = frozenset(
+    {
+        "migration",
+        "migrating",
+        "migrated",
+        "data migration",
+        "schema migration",
+        "cutover",
+        "blue-green",
+        "canary deploy",
+    }
+)
 
 # Resolution markers (for episode closure detection)
-_RESOLUTION_MARKERS: frozenset[str] = frozenset({
-    "resolved", "fixed", "completed", "closed", "done",
-    "merged", "shipped", "deployed successfully", "migration complete",
-    "incident resolved", "postmortem complete",
-})
+_RESOLUTION_MARKERS: frozenset[str] = frozenset(
+    {
+        "resolved",
+        "fixed",
+        "completed",
+        "closed",
+        "done",
+        "merged",
+        "shipped",
+        "deployed successfully",
+        "migration complete",
+        "incident resolved",
+        "postmortem complete",
+    }
+)
 
 
 @dataclass
@@ -134,10 +165,7 @@ class EpisodeService:
         # Issue/ticket/PR IDs (most specific)
         match = _ISSUE_ID_PATTERN.search(content)
         if match:
-            anchor_id = (
-                match.group(1) or match.group(2)
-                or match.group(3) or match.group(4)
-            )
+            anchor_id = match.group(1) or match.group(2) or match.group(3) or match.group(4)
             return ("issue_id", anchor_id)
 
         # Release/version markers
@@ -201,9 +229,7 @@ class EpisodeService:
         cfg = self._config
 
         # Build memory_id → episode_node_id map
-        ep_memory_map: dict[str, str] = {
-            ep.memory_id: ep.id for ep in open_episodes
-        }
+        ep_memory_map: dict[str, str] = {ep.memory_id: ep.id for ep in open_episodes}
 
         candidates: dict[str, _CandidateScores] = {}
 
@@ -274,7 +300,8 @@ class EpisodeService:
 
         # 3. Entity overlap coefficient
         entity_overlap = self.compute_entity_overlap(
-            fragment_entity_ids, episode_member_entities,
+            fragment_entity_ids,
+            episode_member_entities,
         )
 
         # 4. Domain overlap
@@ -285,7 +312,8 @@ class EpisodeService:
             shared_domains = set(frag_domains) & set(ep_domains)
             if shared_domains:
                 domain_overlap = len(shared_domains) / min(
-                    len(frag_domains), len(ep_domains),
+                    len(frag_domains),
+                    len(ep_domains),
                 )
 
         # 5. Temporal proximity — linear decay within window
@@ -299,11 +327,7 @@ class EpisodeService:
         # 6. Source agent match
         agent_match = 0.0
         ep_agent = episode_memory.source_agent if episode_memory else None
-        if (
-            fragment_memory.source_agent
-            and ep_agent
-            and fragment_memory.source_agent == ep_agent
-        ):
+        if fragment_memory.source_agent and ep_agent and fragment_memory.source_agent == ep_agent:
             agent_match = 1.0
 
         # 7. Structured anchor match (bonus)
@@ -312,7 +336,8 @@ class EpisodeService:
         if fragment_anchor is not None:
             ep_meta = EpisodeMeta.from_node(episode_node)
             if (
-                ep_meta and ep_meta.anchor_id
+                ep_meta
+                and ep_meta.anchor_id
                 and fragment_anchor[1]
                 and fragment_anchor[1] == ep_meta.anchor_id
             ):
@@ -331,9 +356,12 @@ class EpisodeService:
         else:
             # Redistribute SPLADE weight proportionally
             non_splade_total = (
-                cfg.episode_weight_bm25 + cfg.episode_weight_entity_overlap
-                + cfg.episode_weight_domain + cfg.episode_weight_temporal
-                + cfg.episode_weight_agent + cfg.episode_weight_anchor
+                cfg.episode_weight_bm25
+                + cfg.episode_weight_entity_overlap
+                + cfg.episode_weight_domain
+                + cfg.episode_weight_temporal
+                + cfg.episode_weight_agent
+                + cfg.episode_weight_anchor
             )
             scale = 1.0 / non_splade_total if non_splade_total > 0 else 1.0
             w_bm25 = cfg.episode_weight_bm25 * scale
@@ -370,7 +398,8 @@ class EpisodeService:
     # ── Episode Profile Cache ──────────────────────────────────────────
 
     async def _ensure_profile_cache(
-        self, open_episodes: list[MemoryNode],
+        self,
+        open_episodes: list[MemoryNode],
     ) -> None:
         """Batch-load profiles for all open episodes into the cache.
 
@@ -402,9 +431,7 @@ class EpisodeService:
                     members_map.get(eid, []),
                 )
 
-        memory_ids = [
-            ep.memory_id for ep in open_episodes if ep.memory_id
-        ]
+        memory_ids = [ep.memory_id for ep in open_episodes if ep.memory_id]
         try:
             memories_map = await self._store.get_memories_batch(memory_ids)  # type: ignore[attr-defined]
         except AttributeError:
@@ -422,7 +449,6 @@ class EpisodeService:
                 "member_entities": entities_map.get(ep.id, []),
                 "last_member_time": self._get_last_member_time(members),
             }
-
 
     def _invalidate_profile(self, episode_id: str) -> None:
         """Remove a single episode from the profile cache."""
@@ -461,7 +487,9 @@ class EpisodeService:
 
         # Generate candidates via BM25 + SPLADE + entity overlap
         candidates = await self._generate_candidates(
-            fragment_memory, entity_ids, open_episodes,
+            fragment_memory,
+            entity_ids,
+            open_episodes,
         )
 
         # Build episode lookup for scoring
@@ -501,13 +529,16 @@ class EpisodeService:
             entity_names = await self._resolve_entity_names(entity_ids)
 
             await self._assign_to_episode(
-                fragment_node, best_ep,
+                fragment_node,
+                best_ep,
                 match_score=best_score,
             )
 
             # Enrich episode profile with new member's entities
             await self._update_episode_profile(
-                best_ep, entity_names, fragment_memory.domains,
+                best_ep,
+                entity_names,
+                fragment_memory.domains,
             )
 
             return best_ep
@@ -519,8 +550,11 @@ class EpisodeService:
             and (best_ep is None or best_score < self._config.episode_match_threshold)
         ):
             llm_ep = await self._try_llm_episode_link(
-                fragment_node, fragment_memory, entity_ids,
-                open_episodes, ep_lookup,
+                fragment_node,
+                fragment_memory,
+                entity_ids,
+                open_episodes,
+                ep_lookup,
             )
             if llm_ep is not None:
                 return llm_ep
@@ -538,7 +572,8 @@ class EpisodeService:
                 anchor_id = self._make_topic_key(entity_names)
 
             return await self._create_episode(
-                fragment_node, fragment_memory,
+                fragment_node,
+                fragment_memory,
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
                 topic_entities=entity_names,
@@ -570,13 +605,14 @@ class EpisodeService:
         summaries: list[dict[str, str]] = []
         for ep in open_episodes[:5]:
             meta = EpisodeMeta.model_validate(ep.metadata or {})
-            summaries.append({
-                "id": ep.id,
-                "topic": meta.episode_title,
-                "entities": ", ".join(meta.topic_entities[:10]),
-                "domains": ", ".join(ep.metadata.get("domains", [])[:5])
-                if ep.metadata else "",
-            })
+            summaries.append(
+                {
+                    "id": ep.id,
+                    "topic": meta.episode_title,
+                    "entities": ", ".join(meta.topic_entities[:10]),
+                    "domains": ", ".join(ep.metadata.get("domains", [])[:5]) if ep.metadata else "",
+                }
+            )
 
         suggestions = await suggest_episode_links(
             fragment_content=fragment_memory.content,
@@ -604,20 +640,26 @@ class EpisodeService:
             ep_node = ep_lookup[ep_id]
             logger.info(
                 "LLM fallback linked fragment %s to episode %s (confidence=%.2f)",
-                fragment_node.id, ep_id, best_confidence,
+                fragment_node.id,
+                ep_id,
+                best_confidence,
             )
             await self._assign_to_episode(
-                fragment_node, ep_node,
+                fragment_node,
+                ep_node,
                 match_score=best_confidence,
             )
             await self._update_episode_profile(
-                ep_node, entity_names, fragment_memory.domains,
+                ep_node,
+                entity_names,
+                fragment_memory.domains,
             )
             return ep_node
 
         # Log miss for tuning
         logger.debug(
-            "Episode LLM fallback found no match for fragment %s", fragment_node.id,
+            "Episode LLM fallback found no match for fragment %s",
+            fragment_node.id,
         )
         return None
 
@@ -649,7 +691,8 @@ class EpisodeService:
 
         # Build searchable episode profile content
         profile = self._build_profile_content(
-            entities, fragment_memory.domains,
+            entities,
+            fragment_memory.domains,
             {"anchor_id": anchor_id},
         )
 
@@ -669,7 +712,8 @@ class EpisodeService:
                 self._index.index_memory(episode_memory)  # type: ignore[attr-defined]
             except Exception:
                 logger.debug(
-                    "Failed to index episode memory %s", episode_memory.id,
+                    "Failed to index episode memory %s",
+                    episode_memory.id,
                     exc_info=True,
                 )
 
@@ -679,7 +723,8 @@ class EpisodeService:
                 self._splade.index_memory(episode_memory)  # type: ignore[attr-defined]
             except Exception:
                 logger.debug(
-                    "Failed to SPLADE-index episode memory %s", episode_memory.id,
+                    "Failed to SPLADE-index episode memory %s",
+                    episode_memory.id,
                     exc_info=True,
                 )
 
@@ -703,7 +748,9 @@ class EpisodeService:
 
         # Assign the first fragment
         await self._assign_to_episode(
-            first_fragment, episode_node, increment=False,
+            first_fragment,
+            episode_node,
+            increment=False,
             match_score=0.0,
         )
 
@@ -772,7 +819,9 @@ class EpisodeService:
 
         logger.debug(
             "Assigned fragment %s to episode %s (score=%.3f)",
-            fragment_node.id, episode_node.id, match_score,
+            fragment_node.id,
+            episode_node.id,
+            match_score,
         )
 
     # ── Episode Profile Management ────────────────────────────────────────
@@ -881,7 +930,9 @@ class EpisodeService:
         return closed_ids
 
     async def check_resolution_closure(
-        self, fragment_content: str, episode_node: MemoryNode,
+        self,
+        fragment_content: str,
+        episode_node: MemoryNode,
     ) -> bool:
         """Check if fragment content contains resolution markers.
 
@@ -891,13 +942,16 @@ class EpisodeService:
         for marker in _RESOLUTION_MARKERS:
             if marker in content_lower:
                 await self._close_episode(
-                    episode_node, reason=f"resolution: {marker}",
+                    episode_node,
+                    reason=f"resolution: {marker}",
                 )
                 return True
         return False
 
     async def _close_episode(
-        self, episode_node: MemoryNode, reason: str,
+        self,
+        episode_node: MemoryNode,
+        reason: str,
     ) -> None:
         """Close an episode by updating its metadata."""
         ep_meta = dict(episode_node.metadata)
@@ -918,13 +972,16 @@ class EpisodeService:
         )
         logger.info(
             "Closed episode %s (reason=%s, members=%d)",
-            episode_node.id, reason, member_count,
+            episode_node.id,
+            reason,
+            member_count,
         )
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
     async def _collect_member_entities(
-        self, members: list[MemoryNode],
+        self,
+        members: list[MemoryNode],
     ) -> list[str]:
         """Collect all entity IDs linked to episode member memories."""
         all_entity_ids: list[str] = []

@@ -39,8 +39,7 @@ def register_resources(
         lines = ["# Registered Agents\n"]
         for agent in agents:
             lines.append(
-                f"- **{agent.agent_id}** [{agent.status}] "
-                f"domains: {', '.join(agent.domains)}"
+                f"- **{agent.agent_id}** [{agent.status}] domains: {', '.join(agent.domains)}"
             )
         if not agents:
             lines.append("No agents registered.")
@@ -139,13 +138,15 @@ def register_resources(
                 "Set `NCMS_ASYNC_INDEXING_ENABLED=true` to enable."
             )
 
-        return "\n".join([
-            "# Indexing Status\n",
-            f"- **Queue depth**: {stats['queue_depth']}/{stats['queue_capacity']}",
-            f"- **Workers**: {stats['workers_busy']}/{stats['workers']} busy",
-            f"- **Processed**: {stats['processed_total']}",
-            f"- **Failed**: {stats['failed_total']}",
-            f"- **Retried**: {stats['retried_total']}",
-            f"- **Avg processing time**: {stats['avg_process_ms']:.0f}ms",
-            f"- **Est. oldest pending age**: {stats['oldest_pending_age_ms']:.0f}ms",
-        ])
+        return "\n".join(
+            [
+                "# Indexing Status\n",
+                f"- **Queue depth**: {stats['queue_depth']}/{stats['queue_capacity']}",
+                f"- **Workers**: {stats['workers_busy']}/{stats['workers']} busy",
+                f"- **Processed**: {stats['processed_total']}",
+                f"- **Failed**: {stats['failed_total']}",
+                f"- **Retried**: {stats['retried_total']}",
+                f"- **Avg processing time**: {stats['avg_process_ms']:.0f}ms",
+                f"- **Est. oldest pending age**: {stats['oldest_pending_age_ms']:.0f}ms",
+            ]
+        )

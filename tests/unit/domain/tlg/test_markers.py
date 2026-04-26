@@ -83,12 +83,8 @@ class TestInduction:
         ]
         induced = induce_edge_markers(observations)
         # "resolved" is tied → must drop from both.
-        assert "resolved" not in induced.markers.get(
-            "supersedes", frozenset()
-        )
-        assert "resolved" not in induced.markers.get(
-            "refines", frozenset()
-        )
+        assert "resolved" not in induced.markers.get("supersedes", frozenset())
+        assert "resolved" not in induced.markers.get("refines", frozenset())
 
     def test_strictly_greater_count_wins_bucket(self) -> None:
         observations = [
@@ -131,36 +127,38 @@ class TestInduction:
 
 class TestMatchIntent:
     def _induced(self) -> InducedEdgeMarkers:
-        return induce_edge_markers([
-            EdgeObservation(
-                transition="supersedes",
-                dst_content="Retire legacy A.",
-            ),
-            EdgeObservation(
-                transition="supersedes",
-                dst_content="Retire legacy B.",
-            ),
-            EdgeObservation(
-                transition="refines",
-                dst_content="Add feature flag X.",
-            ),
-            EdgeObservation(
-                transition="refines",
-                dst_content="Add feature flag Y.",
-            ),
-        ])
+        return induce_edge_markers(
+            [
+                EdgeObservation(
+                    transition="supersedes",
+                    dst_content="Retire legacy A.",
+                ),
+                EdgeObservation(
+                    transition="supersedes",
+                    dst_content="Retire legacy B.",
+                ),
+                EdgeObservation(
+                    transition="refines",
+                    dst_content="Add feature flag X.",
+                ),
+                EdgeObservation(
+                    transition="refines",
+                    dst_content="Add feature flag Y.",
+                ),
+            ]
+        )
 
     def test_retire_query_routes_to_supersedes(self) -> None:
         induced = self._induced()
-        assert match_intent_from_markers(
-            "When did we retire that service?", induced
-        ) == "supersedes"
+        assert (
+            match_intent_from_markers("When did we retire that service?", induced) == "supersedes"
+        )
 
     def test_add_query_routes_to_refines(self) -> None:
         induced = self._induced()
-        assert match_intent_from_markers(
-            "What did we add to auth last quarter?", induced
-        ) == "refines"
+        assert (
+            match_intent_from_markers("What did we add to auth last quarter?", induced) == "refines"
+        )
 
     def test_unrelated_query_returns_none(self) -> None:
         induced = self._induced()
@@ -175,9 +173,9 @@ class TestMatchIntent:
                 "refines": frozenset({"replace"}),
             }
         )
-        assert match_intent_from_markers(
-            "We will replace the legacy gateway", induced
-        ) == "supersedes"
+        assert (
+            match_intent_from_markers("We will replace the legacy gateway", induced) == "supersedes"
+        )
 
 
 # ---------------------------------------------------------------------------

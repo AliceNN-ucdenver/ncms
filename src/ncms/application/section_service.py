@@ -124,7 +124,9 @@ class SectionService:
 
         logger.info(
             "[section-svc] Building document profile for '%s' (%d sections, format=%s)",
-            doc_title[:60], len(sections), classification.format_hint,
+            doc_title[:60],
+            len(sections),
+            classification.format_hint,
         )
 
         # ── Parent document: reuse existing or create new ───────────
@@ -157,7 +159,8 @@ class SectionService:
             )
             logger.info(
                 "[section-svc] Stored parent document %s in document store (%d bytes)",
-                parent_doc.id, parent_doc.size_bytes,
+                parent_doc.id,
+                parent_doc.size_bytes,
             )
 
         # ── Store each section as a child document ───────────────────
@@ -178,7 +181,8 @@ class SectionService:
 
         logger.info(
             "[section-svc] Stored %d child sections for parent %s",
-            len(sections), parent_doc.id,
+            len(sections),
+            parent_doc.id,
         )
 
         # ── Build rich document profile ──────────────────────────────
@@ -205,7 +209,8 @@ class SectionService:
             content=profile_text,
             memory_type="document_profile",
             importance=max(importance, 8.0),
-            tags=tags + [
+            tags=tags
+            + [
                 "document_profile",
                 f"format:{classification.format_hint}",
                 f"doc:{parent_doc.id}",
@@ -218,7 +223,9 @@ class SectionService:
 
         logger.info(
             "[section-svc] Document profile memory created: %s (doc_id=%s, %d sections)",
-            profile_memory.id, parent_doc.id, len(sections),
+            profile_memory.id,
+            parent_doc.id,
+            len(sections),
         )
 
         return profile_memory
@@ -267,7 +274,9 @@ class SectionService:
 
         logger.info(
             "[section-svc] Section index created (legacy): %s (%d sections, format=%s)",
-            parent.id, len(sections), classification.format_hint,
+            parent.id,
+            len(sections),
+            classification.format_hint,
         )
 
         # Store each section as a child memory
@@ -283,7 +292,8 @@ class SectionService:
                 content=section.text,
                 memory_type="document_section",
                 importance=importance,
-                tags=tags + [
+                tags=tags
+                + [
                     "document_section",
                     f"section:{section.index}",
                     f"parent:{parent.id}",
@@ -294,7 +304,9 @@ class SectionService:
             )
 
         logger.info(
-            "[section-svc] Stored %d sections for parent %s (legacy)", len(sections), parent.id,
+            "[section-svc] Stored %d sections for parent %s (legacy)",
+            len(sections),
+            parent.id,
         )
 
         return parent
@@ -333,7 +345,9 @@ class SectionService:
             )
         finally:
             object.__setattr__(
-                self._config, "content_classification_enabled", original,
+                self._config,
+                "content_classification_enabled",
+                original,
             )
 
 

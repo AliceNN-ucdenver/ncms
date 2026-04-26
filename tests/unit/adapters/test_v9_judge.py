@@ -31,7 +31,6 @@ from ncms.application.adapters.sdg.v9.judge import (
     sync_judge_corpus,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -45,9 +44,7 @@ def _archetype(name: str = "positive_medication_start") -> ArchetypeSpec:
         intent="positive",
         admission="persist",
         state_change="declaration",
-        role_spans=(
-            RoleSpec(role="primary", slot="medication", count=1),
-        ),
+        role_spans=(RoleSpec(role="primary", slot="medication", count=1),),
         description="Clinician starts a patient on a new medication.",
         example_utterances=("Started metformin 500mg BID.",),
     )
@@ -110,16 +107,26 @@ class TestRequiredEntitiesBlock:
         assert "no required entities" in block
 
     def test_role_spans_render_per_line(self):
-        ex = _make_row(role_spans=(
-            RoleSpan(
-                char_start=0, char_end=9, surface="metformin",
-                canonical="metformin", slot="medication", role="primary",
-            ),
-            RoleSpan(
-                char_start=10, char_end=20, surface="once daily",
-                canonical="once daily", slot="frequency", role="primary",
-            ),
-        ))
+        ex = _make_row(
+            role_spans=(
+                RoleSpan(
+                    char_start=0,
+                    char_end=9,
+                    surface="metformin",
+                    canonical="metformin",
+                    slot="medication",
+                    role="primary",
+                ),
+                RoleSpan(
+                    char_start=10,
+                    char_end=20,
+                    surface="once daily",
+                    canonical="once daily",
+                    slot="frequency",
+                    role="primary",
+                ),
+            )
+        )
         block = _required_entities_block(ex)
         assert "'metformin'" in block
         assert "role=primary" in block
@@ -128,17 +135,26 @@ class TestRequiredEntitiesBlock:
         assert "slot=frequency" in block
 
     def test_not_relevant_spans_excluded(self):
-        ex = _make_row(role_spans=(
-            RoleSpan(
-                char_start=0, char_end=9, surface="metformin",
-                canonical="metformin", slot="medication", role="primary",
-            ),
-            RoleSpan(
-                char_start=10, char_end=20, surface="lisinopril",
-                canonical="lisinopril", slot="medication",
-                role="not_relevant",
-            ),
-        ))
+        ex = _make_row(
+            role_spans=(
+                RoleSpan(
+                    char_start=0,
+                    char_end=9,
+                    surface="metformin",
+                    canonical="metformin",
+                    slot="medication",
+                    role="primary",
+                ),
+                RoleSpan(
+                    char_start=10,
+                    char_end=20,
+                    surface="lisinopril",
+                    canonical="lisinopril",
+                    slot="medication",
+                    role="not_relevant",
+                ),
+            )
+        )
         block = _required_entities_block(ex)
         assert "metformin" in block
         # not_relevant span is dropped from the required-entity list.
@@ -165,7 +181,9 @@ class TestSyncJudgeCorpus:
                 domain="clinical",
                 corpus_path=tmp_path / "nope.jsonl",
                 archetype_lookup=_archetype_lookup(_archetype()),
-                n_samples=5, model="mock", api_base=None,
+                n_samples=5,
+                model="mock",
+                api_base=None,
             )
 
     def test_all_faithful_aggregates_100_pct(self, tmp_path):
@@ -180,7 +198,9 @@ class TestSyncJudgeCorpus:
                 domain="clinical",
                 corpus_path=path,
                 archetype_lookup=_archetype_lookup(_archetype()),
-                n_samples=10, model="mock", api_base=None,
+                n_samples=10,
+                model="mock",
+                api_base=None,
             )
         assert result.n_sampled == 10
         assert result.verdicts["faithful"] == 10
@@ -191,9 +211,7 @@ class TestSyncJudgeCorpus:
 
     def test_mixed_verdicts_track_failed_checks(self, tmp_path):
         path = tmp_path / "c.jsonl"
-        rows = [
-            _make_row(archetype="a1") for _ in range(5)
-        ] + [
+        rows = [_make_row(archetype="a1") for _ in range(5)] + [
             _make_row(archetype="a2") for _ in range(5)
         ]
         _write_corpus(path, rows)
@@ -210,9 +228,12 @@ class TestSyncJudgeCorpus:
                 domain="clinical",
                 corpus_path=path,
                 archetype_lookup=_archetype_lookup(
-                    _archetype("a1"), _archetype("a2"),
+                    _archetype("a1"),
+                    _archetype("a2"),
                 ),
-                n_samples=10, model="mock", api_base=None,
+                n_samples=10,
+                model="mock",
+                api_base=None,
             )
         assert result.verdicts["faithful"] == 5
         assert result.verdicts["partial"] == 5
@@ -232,7 +253,9 @@ class TestSyncJudgeCorpus:
                 domain="clinical",
                 corpus_path=path,
                 archetype_lookup=_archetype_lookup(_archetype()),
-                n_samples=3, model="mock", api_base=None,
+                n_samples=3,
+                model="mock",
+                api_base=None,
             )
         assert result.verdicts["unfaithful"] == 3
         for bucket in result.per_archetype.values():
@@ -262,7 +285,9 @@ class TestFormatReport:
                 domain="clinical",
                 corpus_path=path,
                 archetype_lookup=_archetype_lookup(_archetype("arch_x")),
-                n_samples=4, model="mock", api_base=None,
+                n_samples=4,
+                model="mock",
+                api_base=None,
             )
         report = format_report(result)
         assert "domain=clinical" in report
@@ -271,5 +296,4 @@ class TestFormatReport:
         assert "per-archetype" in report
         assert "arch_x" in report
         # failed checks histogram surfaces top offenders.
-        assert "entity_presence" in report or "scenario_fidelity" in report \
-            or "coherence" in report
+        assert "entity_presence" in report or "scenario_fidelity" in report or "coherence" in report

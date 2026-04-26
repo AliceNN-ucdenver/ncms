@@ -56,7 +56,10 @@ def register_tools(
             List of scored memories with activation components.
         """
         results = await memory_svc.search(
-            query, domain=domain, limit=limit, intent_override=intent,
+            query,
+            domain=domain,
+            limit=limit,
+            intent_override=intent,
         )
         return [
             {
@@ -110,7 +113,9 @@ def register_tools(
             List of memories with full context graph.
         """
         results = await memory_svc.recall(
-            query, domain=domain, limit=limit,
+            query,
+            domain=domain,
+            limit=limit,
         )
         out = []
         for r in results:
@@ -398,8 +403,7 @@ def register_tools(
         result: dict[str, list[dict[str, str]]] = {}
         for domain, agent_ids in domain_map.items():
             result[domain] = [
-                {"agent_id": aid, "status": agent_status.get(aid, "unknown")}
-                for aid in agent_ids
+                {"agent_id": aid, "status": agent_status.get(aid, "unknown")} for aid in agent_ids
             ]
         return {"domains": result, "total": len(domain_map)}
 
@@ -466,11 +470,15 @@ def register_tools(
         p = Path(file_path)
         if p.is_dir():
             stats = await loader.bulk_load_directory(
-                p, domains=domains, project=project,
+                p,
+                domains=domains,
+                project=project,
             )
         else:
             stats = await loader.load_file(
-                file_path, domains=domains, project=project,
+                file_path,
+                domains=domains,
+                project=project,
             )
         return {
             "files_processed": stats.files_processed,
@@ -497,8 +505,7 @@ def register_tools(
         """
         if not memory_svc._config.temporal_enabled:
             return {
-                "error": "State reconciliation not enabled "
-                "(set NCMS_TEMPORAL_ENABLED=true)",
+                "error": "State reconciliation not enabled (set NCMS_TEMPORAL_ENABLED=true)",
             }
         node = await memory_svc.store.get_current_state(entity_id, state_key)
         if node is None:
@@ -521,8 +528,7 @@ def register_tools(
         """
         if not memory_svc._config.temporal_enabled:
             return {
-                "error": "State reconciliation not enabled "
-                "(set NCMS_TEMPORAL_ENABLED=true)",
+                "error": "State reconciliation not enabled (set NCMS_TEMPORAL_ENABLED=true)",
             }
         nodes = await memory_svc.store.get_state_history(entity_id, state_key)
         return {
@@ -546,8 +552,7 @@ def register_tools(
         """
         if not memory_svc._config.temporal_enabled:
             return {
-                "error": "Episode formation not enabled "
-                "(set NCMS_TEMPORAL_ENABLED=true)",
+                "error": "Episode formation not enabled (set NCMS_TEMPORAL_ENABLED=true)",
             }
         from ncms.domain.models import NodeType
 
@@ -564,15 +569,17 @@ def register_tools(
         result = []
         for ep in episodes:
             members = await memory_svc.store.get_episode_members(ep.id)
-            result.append({
-                "episode_id": ep.id,
-                "memory_id": ep.memory_id,
-                "status": ep.metadata.get("status", "unknown"),
-                "title": ep.metadata.get("episode_title", ""),
-                "member_count": len(members),
-                "created_at": ep.created_at.isoformat() if ep.created_at else None,
-                "closed_at": ep.metadata.get("closed_at"),
-            })
+            result.append(
+                {
+                    "episode_id": ep.id,
+                    "memory_id": ep.memory_id,
+                    "status": ep.metadata.get("status", "unknown"),
+                    "title": ep.metadata.get("episode_title", ""),
+                    "member_count": len(members),
+                    "created_at": ep.created_at.isoformat() if ep.created_at else None,
+                    "closed_at": ep.metadata.get("closed_at"),
+                }
+            )
         return {"count": len(result), "episodes": result}
 
     @mcp.tool()
@@ -587,8 +594,7 @@ def register_tools(
         """
         if not memory_svc._config.temporal_enabled:
             return {
-                "error": "Episode formation not enabled "
-                "(set NCMS_TEMPORAL_ENABLED=true)",
+                "error": "Episode formation not enabled (set NCMS_TEMPORAL_ENABLED=true)",
             }
         episode_node = await memory_svc.store.get_memory_node(episode_id)
         if episode_node is None:
@@ -598,13 +604,15 @@ def register_tools(
         member_details = []
         for m in members:
             mem = await memory_svc.get_memory(m.memory_id)
-            member_details.append({
-                "node_id": m.id,
-                "memory_id": m.memory_id,
-                "node_type": m.node_type,
-                "content": mem.content[:500] if mem else None,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-            })
+            member_details.append(
+                {
+                    "node_id": m.id,
+                    "memory_id": m.memory_id,
+                    "node_type": m.node_type,
+                    "content": mem.content[:500] if mem else None,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+            )
 
         return {
             "episode_id": episode_node.id,
@@ -682,8 +690,7 @@ def register_tools(
             from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
         except ImportError:
             return {
-                "error": "watchdog not installed. "
-                "Install with: pip install ncms[watch]",
+                "error": "watchdog not installed. Install with: pip install ncms[watch]",
             }
 
         watch_id = uuid.uuid4().hex[:8]
@@ -762,7 +769,10 @@ def register_tools(
             Scored memories filtered to requested level(s).
         """
         results = await memory_svc.search_level(
-            query, node_types=node_types, domain=domain, limit=limit,
+            query,
+            node_types=node_types,
+            domain=domain,
+            limit=limit,
         )
         return [
             {
@@ -798,7 +808,9 @@ def register_tools(
             Traversal results with path and hierarchy levels.
         """
         result = await memory_svc.traverse(
-            seed_memory_id, mode=mode, limit=limit,
+            seed_memory_id,
+            mode=mode,
+            limit=limit,
         )
         return {
             "seed_id": result.seed_id,
@@ -876,8 +888,12 @@ def register_tools(
             Synthesized response with content, sources, and token stats.
         """
         result = await memory_svc.synthesize(
-            query, mode=mode, domain=domain, limit=limit,
-            token_budget=token_budget, traversal=traversal,
+            query,
+            mode=mode,
+            domain=domain,
+            limit=limit,
+            token_budget=token_budget,
+            traversal=traversal,
             seed_memory_id=seed_memory_id,
         )
         return {

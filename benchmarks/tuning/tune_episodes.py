@@ -123,7 +123,8 @@ async def evaluate_episodes() -> dict:
 
     try:
         sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
     except Exception:
         sha = "unknown"
@@ -177,14 +178,23 @@ async def evaluate_episodes() -> dict:
                 )
 
                 admission_svc = AdmissionService(
-                    store=store, index=index, graph=graph, config=config,
+                    store=store,
+                    index=index,
+                    graph=graph,
+                    config=config,
                 )
                 episode_svc = EpisodeService(
-                    store=store, index=index, config=config,
+                    store=store,
+                    index=index,
+                    config=config,
                 )
                 svc = MemoryService(
-                    store=store, index=index, graph=graph, config=config,
-                    admission=admission_svc, episode=episode_svc,
+                    store=store,
+                    index=index,
+                    graph=graph,
+                    config=config,
+                    admission=admission_svc,
+                    episode=episode_svc,
                 )
 
                 # Run all scenarios
@@ -196,7 +206,9 @@ async def evaluate_episodes() -> dict:
                     fragment_mems = []
                     for frag in scenario["fragments"]:
                         mem = await svc.store_memory(
-                            content=frag, memory_type="fact", domains=["ops"],
+                            content=frag,
+                            memory_type="fact",
+                            domains=["ops"],
                         )
                         fragment_mems.append(mem)
 
@@ -204,7 +216,9 @@ async def evaluate_episodes() -> dict:
                     distractor_mems = []
                     for dist in scenario["distractors"]:
                         mem = await svc.store_memory(
-                            content=dist, memory_type="fact", domains=["general"],
+                            content=dist,
+                            memory_type="fact",
+                            domains=["general"],
                         )
                         distractor_mems.append(mem)
 
@@ -256,8 +270,7 @@ async def evaluate_episodes() -> dict:
 
                 if config_idx % 15 == 0 or config_idx == total_configs:
                     print(
-                        f"  [{config_idx}/{total_configs}] "
-                        f"best precision={best_precision:.3f}",
+                        f"  [{config_idx}/{total_configs}] best precision={best_precision:.3f}",
                         flush=True,
                     )
 
@@ -267,16 +280,20 @@ async def evaluate_episodes() -> dict:
     path = TUNING_DIR / "episode_tuning_results.json"
     path.write_text(json.dumps(results, indent=2) + "\n")
     print(f"\nResults written to {path}", flush=True)
-    print(f"Best: threshold={best_cfg['threshold']} "
-          f"min_entities={best_cfg['min_entities']} "
-          f"weights={best_cfg['weights']} "
-          f"precision={best_cfg['precision']:.3f}", flush=True)
+    print(
+        f"Best: threshold={best_cfg['threshold']} "
+        f"min_entities={best_cfg['min_entities']} "
+        f"weights={best_cfg['weights']} "
+        f"precision={best_cfg['precision']:.3f}",
+        flush=True,
+    )
 
     return results
 
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     asyncio.run(evaluate_episodes())
 

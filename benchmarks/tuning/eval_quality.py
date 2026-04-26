@@ -77,7 +77,8 @@ async def measure_latency() -> dict:
 
     try:
         sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
     except Exception:
         sha = "unknown"
@@ -148,8 +149,13 @@ async def measure_latency() -> dict:
     reconciliation_svc = ReconciliationService(store=store, config=config)
     episode_svc = EpisodeService(store=store, index=index, config=config)
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        admission=admission_svc, reconciliation=reconciliation_svc, episode=episode_svc,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        admission=admission_svc,
+        reconciliation=reconciliation_svc,
+        episode=episode_svc,
     )
 
     # Ingest
@@ -181,9 +187,12 @@ async def measure_latency() -> dict:
         "samples_ingested": len(INGEST_SAMPLES),
         "growth_ratio": round(len(all_memories) / len(INGEST_SAMPLES), 2),
     }
-    print(f"\n  Memory growth: {len(all_memories)} memories "
-          f"from {len(INGEST_SAMPLES)} inputs "
-          f"(ratio: {len(all_memories)/len(INGEST_SAMPLES):.2f})", flush=True)
+    print(
+        f"\n  Memory growth: {len(all_memories)} memories "
+        f"from {len(INGEST_SAMPLES)} inputs "
+        f"(ratio: {len(all_memories) / len(INGEST_SAMPLES):.2f})",
+        flush=True,
+    )
 
     await store.close()
 
@@ -217,6 +226,7 @@ def _format_pct(values: list[float]) -> str:
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     asyncio.run(measure_latency())
 

@@ -13,7 +13,7 @@ signals like "Superseded by ADR-007").
 | Status (Accepted / Proposed)                   | declaration |
 | Status (Deprecated / Superseded by X)          | retirement  |
 | Rationale / Decision Drivers / Factors         | causal_link |
-| Alternatives / Considered Options / Options    | retirement  (implicitly retires rejected alternatives) |
+| Alternatives / Considered Options / Options    | retirement  (implicitly retires rejected) |
 | Consequences / Outcomes / Implementation       | declaration |
 | Supersedes / Deprecates                        | retirement  |
 | Conclusion / Summary                            | ordinal_anchor |
@@ -42,19 +42,18 @@ DEFAULT_OUT = Path(__file__).parent / "raw_labeled"
 HEADING_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?i)\b(supersedes|deprecates)\b"), "retirement"),
     (re.compile(r"(?i)\balternatives?\s+considered\b"), "retirement"),
-    (re.compile(r"(?i)\b(considered\s+options|options|alternatives)\b"),
-        "retirement"),
-    (re.compile(r"(?i)\brationale\b"),           "causal_link"),
+    (re.compile(r"(?i)\b(considered\s+options|options|alternatives)\b"), "retirement"),
+    (re.compile(r"(?i)\brationale\b"), "causal_link"),
     (re.compile(r"(?i)\bdecision\s+drivers?\b"), "causal_link"),
-    (re.compile(r"(?i)\bfactors?\b"),            "causal_link"),
+    (re.compile(r"(?i)\bfactors?\b"), "causal_link"),
     (re.compile(r"(?i)\b(decision\s+outcome|decision)\b"), "declaration"),
-    (re.compile(r"(?i)\bcontext\b"),             "declaration"),
-    (re.compile(r"(?i)\bbackground\b"),          "declaration"),
-    (re.compile(r"(?i)\bproblem\b"),             "declaration"),
-    (re.compile(r"(?i)\bimplementation\b"),      "declaration"),
+    (re.compile(r"(?i)\bcontext\b"), "declaration"),
+    (re.compile(r"(?i)\bbackground\b"), "declaration"),
+    (re.compile(r"(?i)\bproblem\b"), "declaration"),
+    (re.compile(r"(?i)\bimplementation\b"), "declaration"),
     (re.compile(r"(?i)\b(consequences?|outcomes?)\b"), "declaration"),
     (re.compile(r"(?i)\b(conclusion|summary|recap)\b"), "ordinal_anchor"),
-    (re.compile(r"(?i)\bstatus\b"),              "declaration"),  # refined by body below
+    (re.compile(r"(?i)\bstatus\b"), "declaration"),  # refined by body below
 ]
 
 
@@ -92,8 +91,9 @@ def _mid_for(subject: str, message_id: str) -> str:
 
 def label_file(raw_path: Path, out_path: Path) -> dict[str, int]:
     lines = [
-        json.loads(line) for line in
-        raw_path.read_text(encoding="utf-8").split(chr(10)) if line.strip()
+        json.loads(line)
+        for line in raw_path.read_text(encoding="utf-8").split(chr(10))
+        if line.strip()
     ]
     if not lines:
         return {"total": 0}
@@ -101,9 +101,14 @@ def label_file(raw_path: Path, out_path: Path) -> dict[str, int]:
     if "_meta" not in meta or not body:
         return {"total": 0, "skipped": "no_meta"}
     subject = meta["_subject"]
-    stats: dict[str, int] = {"total": 0, "declaration": 0,
-                              "retirement": 0, "causal_link": 0,
-                              "ordinal_anchor": 0, "none": 0}
+    stats: dict[str, int] = {
+        "total": 0,
+        "declaration": 0,
+        "retirement": 0,
+        "causal_link": 0,
+        "ordinal_anchor": 0,
+        "none": 0,
+    }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8") as fh:

@@ -72,9 +72,7 @@ async def _seed_state(
 
 
 class TestFindMemoryIdsByEntity:
-    async def test_returns_ids_by_exact_entity_id(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_returns_ids_by_exact_entity_id(self, store: SQLiteStore) -> None:
         await _seed_state(
             store,
             content="Auth uses OAuth.",
@@ -86,9 +84,7 @@ class TestFindMemoryIdsByEntity:
         ids = await store.find_memory_ids_by_entity("OAuth")
         assert len(ids) == 1
 
-    async def test_case_insensitive_name_match(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_case_insensitive_name_match(self, store: SQLiteStore) -> None:
         await _seed_state(
             store,
             content="Auth uses OAuth.",
@@ -100,15 +96,11 @@ class TestFindMemoryIdsByEntity:
         ids_lower = await store.find_memory_ids_by_entity("oauth")
         assert len(ids_lower) == 1
 
-    async def test_missing_entity_returns_empty(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_missing_entity_returns_empty(self, store: SQLiteStore) -> None:
         ids = await store.find_memory_ids_by_entity("nonexistent")
         assert ids == []
 
-    async def test_multiple_memories_share_entity(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_multiple_memories_share_entity(self, store: SQLiteStore) -> None:
         for i in range(3):
             await _seed_state(
                 store,
@@ -123,9 +115,7 @@ class TestFindMemoryIdsByEntity:
 
 
 class TestDispatchUsesIndex:
-    async def test_sequence_dispatch_finds_via_index(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_sequence_dispatch_finds_via_index(self, store: SQLiteStore) -> None:
         """Happy path: entity registered under its canonical name —
         dispatch should succeed via the fast index lookup."""
         config = NCMSConfig(
@@ -137,14 +127,16 @@ class TestDispatchUsesIndex:
         await _seed_state(
             store,
             content="Auth uses session cookies.",
-            entity_id="auth-svc", state_key="auth_method",
+            entity_id="auth-svc",
+            state_key="auth_method",
             state_value="session cookies",
             linked_entity_ids=["session cookies", "authentication"],
         )
         v2 = await _seed_state(
             store,
             content="Retire session cookies; adopt OAuth.",
-            entity_id="auth-svc", state_key="auth_method",
+            entity_id="auth-svc",
+            state_key="auth_method",
             state_value="OAuth",
             linked_entity_ids=["OAuth", "authentication"],
         )

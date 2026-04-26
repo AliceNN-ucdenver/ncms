@@ -35,7 +35,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_source_filter": ["adr_section"],
         },
     ],
-
     # -----------------------------------------------------------------
     # origin — gold = Context / preamble
     # -----------------------------------------------------------------
@@ -46,7 +45,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_source_filter": ["adr_section"],
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_first — gold = first section (title/preamble, labeled ordinal_anchor)
     # -----------------------------------------------------------------
@@ -56,7 +54,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "ordinal_anchor",
         },
     ],
-
     # -----------------------------------------------------------------
     # ordinal_last — gold = Conclusion / Summary
     # -----------------------------------------------------------------
@@ -66,7 +63,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "ordinal_anchor",
         },
     ],
-
     # -----------------------------------------------------------------
     # sequence — gold = first section
     # -----------------------------------------------------------------
@@ -76,17 +72,17 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "ordinal_anchor",
         },
     ],
-
     # -----------------------------------------------------------------
     # predecessor — gold = Alternatives Considered section
     # -----------------------------------------------------------------
     "predecessor": [
         {
-            "text_template": "What alternatives were considered before the final choice in: {title}?",
+            "text_template": (
+                "What alternatives were considered before the final choice in: {title}?"
+            ),
             "gold_kind": "retirement",
         },
     ],
-
     # -----------------------------------------------------------------
     # transitive_cause — gold = Rationale / Factors / Drivers
     # -----------------------------------------------------------------
@@ -96,7 +92,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "causal_link",
         },
     ],
-
     # -----------------------------------------------------------------
     # causal_chain — gold = Rationale / Factors
     # -----------------------------------------------------------------
@@ -106,17 +101,17 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "causal_link",
         },
     ],
-
     # -----------------------------------------------------------------
     # concurrent — gold = Consequences (discussed alongside the decision)
     # -----------------------------------------------------------------
     "concurrent": [
         {
-            "text_template": "What consequences were anticipated alongside adopting the decision in: {title}?",
+            "text_template": (
+                "What consequences were anticipated alongside adopting the decision in: {title}?"
+            ),
             "gold_kind": "declaration",
         },
     ],
-
     # -----------------------------------------------------------------
     # before_named — gold = Context (state before the decision)
     # -----------------------------------------------------------------
@@ -126,7 +121,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "declaration",
         },
     ],
-
     # -----------------------------------------------------------------
     # retirement — gold = Alternatives / Deprecates / Supersedes section
     # -----------------------------------------------------------------
@@ -136,7 +130,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "retirement",
         },
     ],
-
     # -----------------------------------------------------------------
     # noise — off-topic / unrelated decisions
     # -----------------------------------------------------------------

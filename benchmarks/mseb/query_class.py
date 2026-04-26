@@ -34,10 +34,15 @@ logger = logging.getLogger("mseb.query_class")
 # Shapes that are inherently temporal — classifier falls back to
 # ``temporal`` on these regardless of parser hits, because the
 # evaluation mechanism for the shape itself is time-ordered retrieval.
-_TEMPORAL_SHAPES: frozenset[str] = frozenset({
-    "ordinal_first", "ordinal_last", "sequence",
-    "predecessor", "before_named",
-})
+_TEMPORAL_SHAPES: frozenset[str] = frozenset(
+    {
+        "ordinal_first",
+        "ordinal_last",
+        "sequence",
+        "predecessor",
+        "before_named",
+    }
+)
 
 
 def classify(query: GoldQuery) -> QueryClass:
@@ -54,10 +59,9 @@ def classify(query: GoldQuery) -> QueryClass:
     # temporal but happen to have time-referring wording.
     try:
         from ncms.domain.temporal.parser import parse_temporal_reference
+
         ref = parse_temporal_reference(query.text, now=datetime.now(UTC))
-        if ref is not None and (
-            ref.ordinal or ref.recency_bias or ref.range_start
-        ):
+        if ref is not None and (ref.ordinal or ref.recency_bias or ref.range_start):
             return "temporal"
     except Exception:  # pragma: no cover — keep classifier robust
         pass
@@ -72,6 +76,7 @@ def tag_gold_file(path: Path, overwrite: bool = True) -> dict[str, int]:
     """
     try:
         import yaml
+
         rows = yaml.safe_load(path.read_text(encoding="utf-8")) or []
     except ImportError:
         rows = json.loads(path.read_text(encoding="utf-8"))
@@ -95,12 +100,13 @@ def tag_gold_file(path: Path, overwrite: bool = True) -> dict[str, int]:
         else:
             try:
                 from ncms.domain.temporal.parser import parse_temporal_reference
+
                 ref = parse_temporal_reference(text, now=datetime.now(UTC))
-                cls = "temporal" if (
-                    ref is not None and (
-                        ref.ordinal or ref.recency_bias or ref.range_start
-                    )
-                ) else "general"
+                cls = (
+                    "temporal"
+                    if (ref is not None and (ref.ordinal or ref.recency_bias or ref.range_start))
+                    else "general"
+                )
             except Exception:
                 cls = "general"
 
@@ -110,6 +116,7 @@ def tag_gold_file(path: Path, overwrite: bool = True) -> dict[str, int]:
     if overwrite:
         try:
             import yaml
+
             body = yaml.safe_dump(rows, sort_keys=False, allow_unicode=True)
             # Preserve any comment header that was on the file.
             original = path.read_text(encoding="utf-8")
@@ -134,10 +141,12 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s  %(message)s",
     )
     ap = argparse.ArgumentParser(description="Tag gold queries with query_class")
-    ap.add_argument("paths", nargs="+", type=Path,
-                    help="One or more gold.yaml files to tag in place.")
-    ap.add_argument("--no-overwrite", action="store_true",
-                    help="Just report classes; don't modify files.")
+    ap.add_argument(
+        "paths", nargs="+", type=Path, help="One or more gold.yaml files to tag in place."
+    )
+    ap.add_argument(
+        "--no-overwrite", action="store_true", help="Just report classes; don't modify files."
+    )
     args = ap.parse_args()
 
     overall: Counter[str] = Counter()

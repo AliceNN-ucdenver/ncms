@@ -27,34 +27,33 @@ from typing import Literal
 # ---------------------------------------------------------------------------
 
 Intent = Literal[
-    "positive",    # "I love sushi"
-    "negative",    # "I can't stand snow"
-    "habitual",    # "I take the subway every morning"
+    "positive",  # "I love sushi"
+    "negative",  # "I can't stand snow"
+    "habitual",  # "I take the subway every morning"
     "difficulty",  # "this math test is hard"
-    "choice",      # "I went with the vegetarian option"
-    "none",        # no preference statement in the input
+    "choice",  # "I went with the vegetarian option"
+    "none",  # no preference statement in the input
 ]
 
 INTENT_CATEGORIES: tuple[Intent, ...] = (
-    "positive", "negative", "habitual", "difficulty", "choice", "none",
+    "positive",
+    "negative",
+    "habitual",
+    "difficulty",
+    "choice",
+    "none",
 )
 
 #: Descriptive label phrases used by the E5 zero-shot method.
 #: E5 requires a ``query:`` prefix for its asymmetric retrieval form;
 #: including it here so the caller can encode directly.
 INTENT_LABEL_DESCRIPTIONS: dict[Intent, str] = {
-    "positive":
-        "query: a statement expressing a like, preference, or enjoyment",
-    "negative":
-        "query: a statement expressing a dislike, hate, or aversion",
-    "habitual":
-        "query: a statement about a routine, frequency, or regular habit",
-    "difficulty":
-        "query: a statement evaluating how hard or challenging a task is",
-    "choice":
-        "query: a statement about a specific selection or decision made",
-    "none":
-        "query: a neutral statement without any preference",
+    "positive": "query: a statement expressing a like, preference, or enjoyment",
+    "negative": "query: a statement expressing a dislike, hate, or aversion",
+    "habitual": "query: a statement about a routine, frequency, or regular habit",
+    "difficulty": "query: a statement evaluating how hard or challenging a task is",
+    "choice": "query: a statement about a specific selection or decision made",
+    "none": "query: a neutral statement without any preference",
 }
 
 
@@ -65,7 +64,9 @@ INTENT_LABEL_DESCRIPTIONS: dict[Intent, str] = {
 Domain = Literal["conversational", "software_dev", "clinical"]
 
 DOMAINS: tuple[Domain, ...] = (
-    "conversational", "software_dev", "clinical",
+    "conversational",
+    "software_dev",
+    "clinical",
 )
 
 #: Slot tag universe per domain.  Used both by the hand-labelling
@@ -73,9 +74,9 @@ DOMAINS: tuple[Domain, ...] = (
 #: method's BIO label head.
 SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
     "conversational": (
-        "object",      # the thing the intent is about (food, hobby, person)
-        "frequency",   # "every morning", "usually" (habitual slot)
-        "alternative", # "instead of X" (choice slot)
+        "object",  # the thing the intent is about (food, hobby, person)
+        "frequency",  # "every morning", "usually" (habitual slot)
+        "alternative",  # "instead of X" (choice slot)
     ),
     "software_dev": (
         # Fine-grained, crisp functional categories for agent-SDLC
@@ -88,24 +89,24 @@ SLOT_TAXONOMY: dict[Domain, tuple[str, ...]] = {
         #   "what framework is service X?"  -> framework slot
         #   "what database do we use?"      -> database slot
         #   "what orchestration platform?"  -> platform slot
-        "language",     # compiled/interpreted: Python, Rust, Go, TS, Java
-        "framework",    # opinionated app framework: Django, React, Rails
-        "library",      # imported dep that isn't a framework: Pydantic, Lodash
-        "database",     # data stores / caches / queues / search indexes:
-                        # Postgres, MongoDB, Redis, Kafka, Elasticsearch
-        "platform",     # runtime / orchestration / cloud: Docker, K8s, AWS
-        "tool",         # dev-time only: ruff, pytest, VS Code, Jenkins
-        "pattern",      # architectural / coding pattern: async, CQRS, DI
+        "language",  # compiled/interpreted: Python, Rust, Go, TS, Java
+        "framework",  # opinionated app framework: Django, React, Rails
+        "library",  # imported dep that isn't a framework: Pydantic, Lodash
+        "database",  # data stores / caches / queues / search indexes:
+        # Postgres, MongoDB, Redis, Kafka, Elasticsearch
+        "platform",  # runtime / orchestration / cloud: Docker, K8s, AWS
+        "tool",  # dev-time only: ruff, pytest, VS Code, Jenkins
+        "pattern",  # architectural / coding pattern: async, CQRS, DI
         "alternative",  # contrast partner: "X over Y" / "instead of Y"
-        "frequency",    # timing: "every commit", "on save"
+        "frequency",  # timing: "every commit", "on save"
     ),
     "clinical": (
-        "medication",   # metformin, aspirin
-        "procedure",    # arthroscopy, MRI
-        "symptom",      # nausea, headache
-        "severity",     # mild, severe
+        "medication",  # metformin, aspirin
+        "procedure",  # arthroscopy, MRI
+        "symptom",  # nausea, headache
+        "severity",  # mild, severe
         "alternative",  # "X instead of Y" choices
-        "frequency",    # "every 6 hours", "twice daily"
+        "frequency",  # "every 6 hours", "twice daily"
     ),
 }
 
@@ -167,10 +168,7 @@ class DomainManifest:
 DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
     "conversational": DomainManifest(
         name="conversational",
-        description=(
-            "Conversational persona / preference corpus "
-            "(LongMemEval-shaped dialog)."
-        ),
+        description=("Conversational persona / preference corpus (LongMemEval-shaped dialog)."),
         intended_content=(
             "User messages in multi-turn chat; positive/negative/"
             "habitual/difficulty/choice preference signals; state "
@@ -178,8 +176,7 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
         ),
         gold_jsonl=_CORPUS_ROOT / "gold_conversational.jsonl",
         sdg_jsonl=_CORPUS_ROOT / "sdg_conversational.jsonl",
-        adversarial_train_jsonl=_CORPUS_ROOT
-        / "adversarial_train_conversational.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT / "adversarial_train_conversational.jsonl",
         taxonomy_yaml=_TAXONOMY_ROOT / "conversational.yaml",
         adapter_output_root=_ADAPTER_ROOT / "conversational",
         deployed_adapter_root=_DEPLOYED_ROOT / "conversational",
@@ -199,8 +196,7 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
         ),
         gold_jsonl=_CORPUS_ROOT / "gold_software_dev.jsonl",
         sdg_jsonl=_CORPUS_ROOT / "sdg_software_dev.jsonl",
-        adversarial_train_jsonl=_CORPUS_ROOT
-        / "adversarial_train_software_dev.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT / "adversarial_train_software_dev.jsonl",
         taxonomy_yaml=_TAXONOMY_ROOT / "software_dev.yaml",
         adapter_output_root=_ADAPTER_ROOT / "software_dev",
         deployed_adapter_root=_DEPLOYED_ROOT / "software_dev",
@@ -208,9 +204,7 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
     ),
     "clinical": DomainManifest(
         name="clinical",
-        description=(
-            "Clinical case-report corpus — PMC Open Access narratives."
-        ),
+        description=("Clinical case-report corpus — PMC Open Access narratives."),
         intended_content=(
             "Sections of case reports: presentation, investigations, "
             "differential / initial / final diagnosis, treatment, "
@@ -218,8 +212,7 @@ DOMAIN_MANIFESTS: dict[Domain, DomainManifest] = {
         ),
         gold_jsonl=_CORPUS_ROOT / "gold_clinical.jsonl",
         sdg_jsonl=_CORPUS_ROOT / "sdg_clinical.jsonl",
-        adversarial_train_jsonl=_CORPUS_ROOT
-        / "adversarial_train_clinical.jsonl",
+        adversarial_train_jsonl=_CORPUS_ROOT / "adversarial_train_clinical.jsonl",
         taxonomy_yaml=_TAXONOMY_ROOT / "clinical.yaml",
         adapter_output_root=_ADAPTER_ROOT / "clinical",
         deployed_adapter_root=_DEPLOYED_ROOT / "clinical",
@@ -305,6 +298,7 @@ def _hydrate_from_domain_registry() -> None:
     to stale defaults.
     """
     import os
+
     if os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") == "0":
         return
 
@@ -325,6 +319,7 @@ def _hydrate_from_domain_registry() -> None:
     # Repo-root discovery: walk up from this module looking for
     # pyproject.toml, then check for adapters/domains/ underneath.
     from pathlib import Path
+
     here = Path(__file__).resolve()
     domains_root: Path | None = None
     for parent in here.parents:
@@ -391,7 +386,7 @@ class ExtractedLabel:
     intent_confidence: float
     slots: dict[str, str] = field(default_factory=dict)
     slot_confidences: dict[str, float] = field(default_factory=dict)
-    method: str = ""          # name of the method that produced it (for logs)
+    method: str = ""  # name of the method that produced it (for logs)
 
     # Multi-head outputs (Sprint 2).  ``None`` when the extractor
     # doesn't produce that head (e.g. zero-shot baselines).
@@ -415,15 +410,17 @@ class ExtractedLabel:
 #: Admission routing decision — coarse content-worthiness gate.
 AdmissionDecision = Literal["persist", "ephemeral", "discard"]
 ADMISSION_DECISIONS: tuple[AdmissionDecision, ...] = (
-    "persist", "ephemeral", "discard",
+    "persist",
+    "ephemeral",
+    "discard",
 )
 
 #: State-change classification for ingest-time zone building.
 #: Feeds TLG's L2 node induction + retirement extractor.
 StateChange = Literal[
     "declaration",  # "Auth-svc: method = OAuth" — new state
-    "retirement",   # "Deprecated X in favor of Y" — retires prior state
-    "none",         # no state transition
+    "retirement",  # "Deprecated X in favor of Y" — retires prior state
+    "none",  # no state transition
 ]
 
 #: Role classification (v7+ replaces the BIO slot head).  Assigned
@@ -434,13 +431,16 @@ StateChange = Literal[
 #: (``database=postgres``), alternative spans become the
 #: ``alternative`` slot, casual/not_relevant spans are dropped.
 Role = Literal[
-    "primary",        # the main subject of the row for its slot
-    "alternative",    # the X-vs-Y contrast partner being rejected
-    "casual",         # mentioned in passing, NOT the row's subject
-    "not_relevant",   # distractor / unrelated / noise
+    "primary",  # the main subject of the row for its slot
+    "alternative",  # the X-vs-Y contrast partner being rejected
+    "casual",  # mentioned in passing, NOT the row's subject
+    "not_relevant",  # distractor / unrelated / noise
 ]
 ROLE_LABELS: tuple[Role, ...] = (
-    "primary", "alternative", "casual", "not_relevant",
+    "primary",
+    "alternative",
+    "casual",
+    "not_relevant",
 )
 
 
@@ -457,10 +457,10 @@ class DetectedSpan:
 
     char_start: int
     char_end: int
-    surface: str       # literal substring from text
-    canonical: str     # catalog canonical form
-    slot: str          # catalog-authoritative slot
-    topic: str         # catalog topic
+    surface: str  # literal substring from text
+    canonical: str  # catalog canonical form
+    slot: str  # catalog-authoritative slot
+    topic: str  # catalog topic
     source_alias: str = ""
 
 

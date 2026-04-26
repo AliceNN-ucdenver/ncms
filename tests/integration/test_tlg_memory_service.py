@@ -100,7 +100,8 @@ async def _seed_state(
 
 class TestTLGEnabled:
     async def test_current_intent_resolves(
-        self, service_tlg_on: MemoryService,
+        self,
+        service_tlg_on: MemoryService,
     ) -> None:
         await _seed_state(
             service_tlg_on.store,
@@ -129,7 +130,8 @@ class TestTLGEnabled:
         assert trace.has_confident_answer()
 
     async def test_invalidate_picks_up_new_state(
-        self, service_tlg_on: MemoryService,
+        self,
+        service_tlg_on: MemoryService,
     ) -> None:
         # Warm the cache with empty corpus.
         trace1 = await service_tlg_on.retrieve_lg(

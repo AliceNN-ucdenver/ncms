@@ -57,6 +57,7 @@ except ImportError:  # pragma: no cover
 
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -79,7 +80,7 @@ DEFAULT_QUERY = (
     'OR "Diagnostic Errors"[MeSH Terms]) '
     'AND "Case Reports"[Publication Type] '
     'AND "open access"[filter] '
-    'AND English[Language]'
+    "AND English[Language]"
 )
 
 # Narrative-section headings we surface as separate messages.  JATS
@@ -140,9 +141,13 @@ def _get(
     api_key = os.environ.get("NCBI_API_KEY")
     if api_key:
         params = {**params, "api_key": api_key}
-    params = {**params, "email": os.environ.get(
-        "NCBI_EMAIL", "mseb@example.com",
-    )}
+    params = {
+        **params,
+        "email": os.environ.get(
+            "NCBI_EMAIL",
+            "mseb@example.com",
+        ),
+    }
 
     last_exc: Exception | None = None
     for attempt in range(retries):
@@ -157,9 +162,11 @@ def _get(
             if resp.status_code in (429, 500, 502, 503, 504):
                 logger.warning(
                     "%s → %d on attempt %d — backing off",
-                    url, resp.status_code, attempt + 1,
+                    url,
+                    resp.status_code,
+                    attempt + 1,
                 )
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
                 continue
             raise
     if last_exc:
@@ -268,7 +275,8 @@ def _license_ok(root: ET.Element) -> tuple[bool, str]:
     lic = None
     for el in root.iter("license"):
         href = el.get(
-            "{http://www.w3.org/1999/xlink}href", "",
+            "{http://www.w3.org/1999/xlink}href",
+            "",
         ) or el.get("license-type", "")
         if href:
             lic = href
@@ -310,9 +318,12 @@ def xml_to_messages(pmcid: str, xml_bytes: bytes) -> dict:
         out["metadata"]["skipped_reason"] = "non_cc_by_license"
         return out
 
-    title = _clean_text(
-        next(iter(root.iter("article-title")), ET.Element("x")),
-    ) or f"PMC{pmcid}"
+    title = (
+        _clean_text(
+            next(iter(root.iter("article-title")), ET.Element("x")),
+        )
+        or f"PMC{pmcid}"
+    )
     out["metadata"]["title"] = title[:400]
     out["metadata"]["pub_date"] = _pub_date(root)
 
@@ -326,13 +337,15 @@ def xml_to_messages(pmcid: str, xml_bytes: bytes) -> dict:
         txt = _clean_text(abstract)
         if txt:
             msg_seq += 1
-            out["messages"].append({
-                "message_id": f"{subject}::abstract",
-                "text": txt[:4000],
-                "timestamp": base_ts,
-                "source": "abstract",
-                "section_title": "Abstract",
-            })
+            out["messages"].append(
+                {
+                    "message_id": f"{subject}::abstract",
+                    "text": txt[:4000],
+                    "timestamp": base_ts,
+                    "source": "abstract",
+                    "section_title": "Abstract",
+                }
+            )
         break
 
     # Then body sections.  JATS puts narrative under <body><sec>.
@@ -352,13 +365,15 @@ def xml_to_messages(pmcid: str, xml_bytes: bytes) -> dict:
             "other",
         )
         msg_seq += 1
-        out["messages"].append({
-            "message_id": f"{subject}::sec-{msg_seq:02d}",
-            "text": text[:4000],
-            "timestamp": base_ts,
-            "source": matched,
-            "section_title": heading[:200],
-        })
+        out["messages"].append(
+            {
+                "message_id": f"{subject}::sec-{msg_seq:02d}",
+                "text": text[:4000],
+                "timestamp": base_ts,
+                "source": matched,
+                "section_title": heading[:200],
+            }
+        )
 
     return out
 
@@ -390,15 +405,23 @@ def mine(
         session.headers["User-Agent"] = "mseb-clinical-miner/0.1"
 
         ids = esearch(
-            session, query=query, retmax=limit, rate=rate,
+            session,
+            query=query,
+            retmax=limit,
+            rate=rate,
         )
-        (out_dir / "_esearch.json").write_text(json.dumps({
-            "query": query,
-            "retmax": limit,
-            "returned": len(ids),
-            "pmcids": ids,
-            "fetched_at": datetime.now(tz=UTC).isoformat(),
-        }, indent=2))
+        (out_dir / "_esearch.json").write_text(
+            json.dumps(
+                {
+                    "query": query,
+                    "retmax": limit,
+                    "returned": len(ids),
+                    "pmcids": ids,
+                    "fetched_at": datetime.now(tz=UTC).isoformat(),
+                },
+                indent=2,
+            )
+        )
 
         stats = {
             "pmcids_requested": len(ids),
@@ -413,13 +436,16 @@ def mine(
         for i, pmcid in enumerate(ids):
             try:
                 xml_bytes = efetch(
-                    session, pmcid=pmcid,
+                    session,
+                    pmcid=pmcid,
                     out_xml=xml_cache / f"PMC{pmcid}.xml",
                     rate=rate,
                 )
             except Exception as exc:
                 logger.warning(
-                    "efetch PMC%s failed: %s — skipping", pmcid, exc,
+                    "efetch PMC%s failed: %s — skipping",
+                    pmcid,
+                    exc,
                 )
                 stats["papers_skipped_other"] += 1
                 stats["skipped_reasons"].setdefault("efetch_failed", 0)
@@ -437,17 +463,25 @@ def mine(
                     stats["papers_skipped_other"] += 1
                 logger.info(
                     "[%d/%d] PMC%s skipped: %s",
-                    i + 1, len(ids), pmcid, reason,
+                    i + 1,
+                    len(ids),
+                    pmcid,
+                    reason,
                 )
                 continue
 
             # Emit per-paper JSONL.
             out_path = out_dir / f"PMC{pmcid}.jsonl"
             with out_path.open("w", encoding="utf-8") as fh:
-                fh.write(json.dumps({
-                    "_meta": parsed["metadata"],
-                    "_pmcid": pmcid,
-                }, ensure_ascii=False))
+                fh.write(
+                    json.dumps(
+                        {
+                            "_meta": parsed["metadata"],
+                            "_pmcid": pmcid,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
                 fh.write("\n")
                 for msg in parsed["messages"]:
                     fh.write(json.dumps(msg, ensure_ascii=False))
@@ -461,8 +495,12 @@ def mine(
             if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                 logger.info(
                     "[%d/%d] PMC%s kept: %d sections (cum: %d papers, %d msgs)",
-                    i + 1, len(ids), pmcid, len(parsed["messages"]),
-                    stats["papers_kept"], stats["messages"],
+                    i + 1,
+                    len(ids),
+                    pmcid,
+                    len(parsed["messages"]),
+                    stats["papers_kept"],
+                    stats["messages"],
                 )
 
     (out_dir / "_stats.json").write_text(
@@ -481,11 +519,15 @@ def main() -> None:
     )
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--query", default=DEFAULT_QUERY,
-                        help="Override the esearch term (advanced)")
-    parser.add_argument("--rps", type=float, default=None,
-                        help="Override requests/sec (default: 3/s without "
-                             "NCBI_API_KEY, 10/s with)")
+    parser.add_argument(
+        "--query", default=DEFAULT_QUERY, help="Override the esearch term (advanced)"
+    )
+    parser.add_argument(
+        "--rps",
+        type=float,
+        default=None,
+        help="Override requests/sec (default: 3/s without NCBI_API_KEY, 10/s with)",
+    )
     args = parser.parse_args()
 
     stats = mine(

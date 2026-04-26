@@ -125,9 +125,9 @@ def test_graph_diagnostics(graph: NetworkXGraph, label: str) -> dict:
     degrees = [g.degree(n) for n in g.nodes()]
     mean_degree = sum(degrees) / len(degrees) if degrees else 0
 
-    log.info(f"\n{'='*60}")
+    log.info(f"\n{'=' * 60}")
     log.info(f"Graph Diagnostics: {label}")
-    log.info(f"{'='*60}")
+    log.info(f"{'=' * 60}")
     log.info(f"  Nodes:          {n_nodes}")
     log.info(f"  Edges:          {n_edges}")
     log.info(f"  Components:     {n_components}")
@@ -207,9 +207,7 @@ def test_spreading_activation(
             context_entity_ids=context_eids,
         )
         overlap = set(mem_eids) & set(context_eids)
-        overlap_names = [
-            n for n, eid in name_to_id.items() if eid in overlap
-        ]
+        overlap_names = [n for n, eid in name_to_id.items() if eid in overlap]
         log.info(f"  {doc_id}: spread={score:.4f}  overlap={overlap_names}")
 
 
@@ -256,11 +254,11 @@ def main() -> None:
     test_spreading_activation(graph_after, name_to_id2, "AFTER (with edges)")
 
     # --- Comparison ---
-    log.info(f"\n{'='*60}")
+    log.info(f"\n{'=' * 60}")
     log.info("COMPARISON")
-    log.info(f"{'='*60}")
+    log.info(f"{'=' * 60}")
     log.info(f"  {'Metric':<20s} {'Before':>10s} {'After':>10s}")
-    log.info(f"  {'-'*40}")
+    log.info(f"  {'-' * 40}")
     for key in ["nodes", "edges", "components", "largest", "mean_degree", "pr_max"]:
         log.info(
             f"  {key:<20s} {diag_before[key]:>10.4f} {diag_after[key]:>10.4f}"

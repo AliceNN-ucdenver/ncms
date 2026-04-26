@@ -30,14 +30,14 @@ REF = datetime(2026, 4, 20, 12, 0, tzinfo=UTC)
 
 def _span(text: str, label: str, char_start: int = 0, char_end: int = 0) -> RawSpan:
     return RawSpan(
-        text=text, label=label,
+        text=text,
+        label=label,
         char_start=char_start,
         char_end=char_end if char_end else len(text),
     )
 
 
 class TestNormalizeSpansAbsoluteDates:
-
     def test_iso_date(self) -> None:
         out = normalize_spans([_span("2024-06-05", "date")], REF)
         assert len(out) == 1
@@ -76,7 +76,6 @@ class TestNormalizeSpansAbsoluteDates:
 
 
 class TestNormalizeSpansRelative:
-
     def test_yesterday(self) -> None:
         out = normalize_spans([_span("yesterday", "relative date")], REF)
         assert len(out) == 1
@@ -134,7 +133,6 @@ class TestNormalizeSpansRelative:
 
 
 class TestDurationPairing:
-
     def test_duration_alone_dropped(self) -> None:
         out = normalize_spans([_span("three days", "duration")], REF)
         assert out == []
@@ -166,14 +164,11 @@ class TestDurationPairing:
         out = normalize_spans(spans, REF)
         # June 5 passes through unchanged; June 10 widens to June 10-13.
         starts = {(i.start, i.end) for i in out}
-        assert (datetime(2024, 6, 5, tzinfo=UTC),
-                datetime(2024, 6, 6, tzinfo=UTC)) in starts
-        assert (datetime(2024, 6, 10, tzinfo=UTC),
-                datetime(2024, 6, 13, tzinfo=UTC)) in starts
+        assert (datetime(2024, 6, 5, tzinfo=UTC), datetime(2024, 6, 6, tzinfo=UTC)) in starts
+        assert (datetime(2024, 6, 10, tzinfo=UTC), datetime(2024, 6, 13, tzinfo=UTC)) in starts
 
 
 class TestStartEndDateSemantics:
-
     def test_start_date(self) -> None:
         # "since June 5, 2024" → [June 5 2024, REF).
         out = normalize_spans([_span("since June 5, 2024", "start date")], REF)
@@ -196,7 +191,8 @@ class TestStartEndDateSemantics:
     def test_start_date_in_future_rejected(self) -> None:
         # "since next year" would be nonsensical — end (REF) < start.
         out = normalize_spans(
-            [_span("since next year", "start date")], REF,
+            [_span("since next year", "start date")],
+            REF,
         )
         # Either dropped (end<=start rejected) or resolved oddly —
         # both acceptable as long as no raise.
@@ -204,20 +200,21 @@ class TestStartEndDateSemantics:
 
 
 class TestLabelDispatch:
-
     def test_time_of_day_ignored(self) -> None:
         out = normalize_spans([_span("2pm", "time of day")], REF)
         assert out == []
 
     def test_event_anchor_ignored(self) -> None:
         out = normalize_spans(
-            [_span("after the surgery", "event anchor")], REF,
+            [_span("after the surgery", "event anchor")],
+            REF,
         )
         assert out == []
 
     def test_unknown_label_ignored(self) -> None:
         out = normalize_spans(
-            [_span("June 5", "something-weird")], REF,
+            [_span("June 5", "something-weird")],
+            REF,
         )
         assert out == []
 
@@ -227,7 +224,6 @@ class TestLabelDispatch:
 
 
 class TestDedupByPosition:
-
     def test_same_position_different_labels_keeps_higher_priority(self) -> None:
         # GLiNER occasionally returns the same span twice.  The
         # 'date' label should win over 'relative date'.
@@ -242,7 +238,6 @@ class TestDedupByPosition:
 
 
 class TestRejectGates:
-
     def test_horizon_rejects_far_past(self) -> None:
         # Year 1800 is outside the 100-year horizon around REF.
         out = normalize_spans([_span("1800", "date")], REF)
@@ -258,7 +253,6 @@ class TestRejectGates:
 
 
 class TestInputRobustness:
-
     def test_empty_input(self) -> None:
         assert normalize_spans([], REF) == []
 
@@ -276,7 +270,6 @@ class TestInputRobustness:
 
 
 class TestMergeIntervals:
-
     def test_empty_returns_none(self) -> None:
         assert merge_intervals([]) is None
 
@@ -297,13 +290,15 @@ class TestMergeIntervals:
             NormalizedInterval(
                 start=datetime(2024, 1, 1, tzinfo=UTC),
                 end=datetime(2024, 1, 2, tzinfo=UTC),
-                confidence=0.9, source_span=_span("a", "date"),
+                confidence=0.9,
+                source_span=_span("a", "date"),
                 origin="a",
             ),
             NormalizedInterval(
                 start=datetime(2024, 6, 1, tzinfo=UTC),
                 end=datetime(2024, 6, 2, tzinfo=UTC),
-                confidence=0.7, source_span=_span("b", "date"),
+                confidence=0.7,
+                source_span=_span("b", "date"),
                 origin="b",
             ),
         ]
@@ -315,7 +310,6 @@ class TestMergeIntervals:
 
 
 class TestConfidenceThreshold:
-
     def test_low_confidence_dropped(self) -> None:
         # Currently normalizer emits >= 0.7 for all paths; this is a
         # guard test — if someone lowers confidences below the min,

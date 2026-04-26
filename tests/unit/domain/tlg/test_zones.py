@@ -141,7 +141,9 @@ class TestCurrentZone:
 class TestOriginMemory:
     def test_earliest_zone_root_wins(self) -> None:
         early, mid, late = (
-            _mem("early", day=1), _mem("mid", day=3), _mem("late", day=5),
+            _mem("early", day=1),
+            _mem("mid", day=3),
+            _mem("late", day=5),
         )
         edges = [
             ZoneEdge(src="early", dst="mid", transition="supersedes"),
@@ -160,7 +162,8 @@ class TestOriginMemory:
 
 class TestRetirementMemory:
     def _edges(
-        self, retires: list[tuple[str, str, list[str]]],
+        self,
+        retires: list[tuple[str, str, list[str]]],
     ) -> list[ZoneEdge]:
         return [
             ZoneEdge(
@@ -175,7 +178,9 @@ class TestRetirementMemory:
     def test_stem_equality_direct_match(self) -> None:
         edges = self._edges([("a", "b", ["session cookies"])])
         result = retirement_memory(
-            "session cookie", edges, subject_memory_ids={"a", "b"},
+            "session cookie",
+            edges,
+            subject_memory_ids={"a", "b"},
         )
         # Stemmer collapses "cookies"/"cookie".
         assert result == "b"
@@ -186,39 +191,66 @@ class TestRetirementMemory:
             "JWT": frozenset({"JSON Web Tokens"}),
             "JSON Web Tokens": frozenset({"JWT"}),
         }
-        assert retirement_memory(
-            "JWT", edges, subject_memory_ids={"a", "b"}, aliases=aliases,
-        ) == "b"
+        assert (
+            retirement_memory(
+                "JWT",
+                edges,
+                subject_memory_ids={"a", "b"},
+                aliases=aliases,
+            )
+            == "b"
+        )
 
     def test_prefix_tolerance(self) -> None:
         edges = self._edges([("a", "b", ["blocker"])])
         # "blocked" stem == "block"; "blocker" stem == "blocker".
         # Prefix match triggers at 4+ char stems.
-        assert retirement_memory(
-            "blocked", edges, subject_memory_ids={"a", "b"},
-        ) == "b"
+        assert (
+            retirement_memory(
+                "blocked",
+                edges,
+                subject_memory_ids={"a", "b"},
+            )
+            == "b"
+        )
 
     def test_no_match_returns_none(self) -> None:
         edges = self._edges([("a", "b", ["something-else"])])
-        assert retirement_memory(
-            "xyz", edges, subject_memory_ids={"a", "b"},
-        ) is None
+        assert (
+            retirement_memory(
+                "xyz",
+                edges,
+                subject_memory_ids={"a", "b"},
+            )
+            is None
+        )
 
     def test_non_subject_edges_skipped(self) -> None:
         # dst is out-of-subject → edge ignored.
         edges = self._edges([("a", "OTHER", ["session cookies"])])
-        assert retirement_memory(
-            "session cookies", edges, subject_memory_ids={"a"},
-        ) is None
+        assert (
+            retirement_memory(
+                "session cookies",
+                edges,
+                subject_memory_ids={"a"},
+            )
+            is None
+        )
 
     def test_non_retirement_transition_ignored(self) -> None:
         edges = [
             ZoneEdge(
-                src="a", dst="b",
+                src="a",
+                dst="b",
                 transition="refines",
                 retires_entities=frozenset({"session cookies"}),
             ),
         ]
-        assert retirement_memory(
-            "session cookies", edges, subject_memory_ids={"a", "b"},
-        ) is None
+        assert (
+            retirement_memory(
+                "session cookies",
+                edges,
+                subject_memory_ids={"a", "b"},
+            )
+            is None
+        )

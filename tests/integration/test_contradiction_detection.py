@@ -43,7 +43,10 @@ class TestContradictionDetection:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=contradiction_config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=contradiction_config,
         )
 
         # Store the first memory
@@ -97,7 +100,10 @@ class TestContradictionDetection:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=contradiction_config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=contradiction_config,
         )
 
         old_mem = await svc.store_memory(
@@ -149,7 +155,10 @@ class TestContradictionDetection:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=contradiction_config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=contradiction_config,
         )
 
         await svc.store_memory(
@@ -219,7 +228,10 @@ class TestContradictionDetection:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=contradiction_config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=contradiction_config,
         )
 
         await svc.store_memory(content="first memory", domains=["test"])
@@ -232,7 +244,8 @@ class TestContradictionDetection:
             side_effect=mock_detect_error,
         ):
             new_mem = await svc.store_memory(
-                content="second memory", domains=["test"],
+                content="second memory",
+                domains=["test"],
             )
             # Wait for deferred contradiction task to complete
             await asyncio.gather(*asyncio.all_tasks() - {asyncio.current_task()})
@@ -254,7 +267,10 @@ class TestContradictionDetection:
         graph = NetworkXGraph()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=contradiction_config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=contradiction_config,
         )
 
         # Memory in a different domain

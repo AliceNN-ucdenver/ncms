@@ -229,14 +229,17 @@ class MetricsCollector:
 
     @contextmanager
     def time_pipeline_stage(
-        self, pipeline_type: str, stage: str,
+        self,
+        pipeline_type: str,
+        stage: str,
     ) -> Generator[None, None, None]:
         """Context manager to time a pipeline stage."""
         start = time.perf_counter()
         yield
         elapsed = time.perf_counter() - start
         self.pipeline_stage_latency.labels(
-            pipeline_type=pipeline_type, stage=stage,
+            pipeline_type=pipeline_type,
+            stage=stage,
         ).observe(elapsed)
 
 

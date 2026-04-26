@@ -24,12 +24,12 @@ from typing import Any
 
 import networkx as nx
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -188,9 +188,15 @@ async def ingest_swebench(
         logger.info("Cross-encoder reranker enabled: %s", config.reranker_model)
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission, reconciliation=reconciliation,
-        episode=episode, reranker=reranker,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
+        reranker=reranker,
     )
     await svc.start_index_pool()
 
@@ -239,7 +245,10 @@ async def ingest_swebench(
             eta = (total - i - 1) / rate if rate > 0 else 0
             logger.info(
                 "  Ingested %d/%d docs (%.1f docs/sec, ETA %.0fs)",
-                i + 1, total, rate, eta,
+                i + 1,
+                total,
+                rate,
+                eta,
             )
             last_log = now
 
@@ -248,17 +257,27 @@ async def ingest_swebench(
         logger.warning("Skipped %d/%d docs (ephemeral/discarded)", skipped, total)
     logger.info(
         "Ingestion complete: %d docs in %.1fs (%.1f docs/sec)",
-        len(doc_to_mem), elapsed, len(doc_to_mem) / elapsed if elapsed > 0 else 0,
+        len(doc_to_mem),
+        elapsed,
+        len(doc_to_mem) / elapsed if elapsed > 0 else 0,
     )
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     return SWEState(
-        store=store, index=index, graph=graph, splade=splade,
-        config=config, doc_to_mem=doc_to_mem, mem_to_doc=mem_to_doc,
-        domain="django", llm_model=llm_model, llm_api_base=llm_api_base,
+        store=store,
+        index=index,
+        graph=graph,
+        splade=splade,
+        config=config,
+        doc_to_mem=doc_to_mem,
+        mem_to_doc=mem_to_doc,
+        domain="django",
+        llm_model=llm_model,
+        llm_api_base=llm_api_base,
         reranker=reranker,
         train_instances=train,
         docs_ingested=len(doc_to_mem),
@@ -300,8 +319,11 @@ async def inject_access_history(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -344,8 +366,11 @@ async def run_consolidation_stage(state: SWEState, stage: DreamStage) -> dict[st
     )
 
     consolidation_svc = ConsolidationService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=config,
+        splade=state.splade,
     )
 
     all_metrics: dict[str, int] = {}
@@ -377,16 +402,22 @@ async def measure_ar(
 
     config = NCMSConfig(
         **{
-            **{k: v for k, v in state.config.model_dump().items()
-               if k not in ("scoring_weight_actr", "actr_threshold")},
+            **{
+                k: v
+                for k, v in state.config.model_dump().items()
+                if k not in ("scoring_weight_actr", "actr_threshold")
+            },
             "scoring_weight_actr": actr_weight,
             "actr_threshold": -2.0 if actr_weight > 0 else -999.0,
         }
     )
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=config,
+        splade=state.splade,
     )
 
     rankings: dict[str, list[str]] = {}
@@ -418,8 +449,11 @@ async def measure_ttl(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -470,8 +504,11 @@ async def measure_cr(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -522,8 +559,11 @@ async def measure_lru(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -552,8 +592,11 @@ async def measure_ar_recall(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -587,8 +630,11 @@ async def measure_cr_recall(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -627,8 +673,11 @@ async def measure_lru_recall(
     from ncms.application.memory_service import MemoryService
 
     svc = MemoryService(
-        store=state.store, index=state.index, graph=state.graph,
-        config=state.config, splade=state.splade,
+        store=state.store,
+        index=state.index,
+        graph=state.graph,
+        config=state.config,
+        splade=state.splade,
         reranker=state.reranker,
     )
 
@@ -736,7 +785,10 @@ async def actr_crossover_sweep(
 
         logger.info(
             "    ACT-R=%.1f → nDCG@10=%.4f  MRR@10=%.4f  (%.1fs)",
-            weight, metrics["nDCG@10"], metrics["MRR@10"], elapsed,
+            weight,
+            metrics["nDCG@10"],
+            metrics["MRR@10"],
+            elapsed,
         )
 
     logger.info("    Best ACT-R weight: %.1f (nDCG@10=%.4f)", best_weight, best_ndcg)
@@ -814,12 +866,14 @@ async def run_swebench_experiment(
 
         # Run consolidation (skip for baseline)
         consolidation_metrics: dict[str, int] = {}
-        if any([
-            stage.episode_consolidation,
-            stage.trajectory_consolidation,
-            stage.pattern_consolidation,
-            stage.dream_cycle,
-        ]):
+        if any(
+            [
+                stage.episode_consolidation,
+                stage.trajectory_consolidation,
+                stage.pattern_consolidation,
+                stage.dream_cycle,
+            ]
+        ):
             logger.info("  Running consolidation...")
             consolidation_metrics = await run_consolidation_stage(state, stage)
             logger.info("  Consolidation: %s", consolidation_metrics)
@@ -849,7 +903,9 @@ async def run_swebench_experiment(
                 ar_recall = await measure_ar_recall(state, ar_queries, ar_qrels)
                 cr_recall = await measure_cr_recall(state, cr_queries, cr_qrels)
                 lru_recall = await measure_lru_recall(
-                    state, lru_queries, lru_qrels,
+                    state,
+                    lru_queries,
+                    lru_qrels,
                 )
                 recall_metrics = {
                     "ar_ndcg10": ar_recall["nDCG@10"],
@@ -865,7 +921,8 @@ async def run_swebench_experiment(
                 )
             except Exception:
                 logger.warning(
-                    "Recall metrics failed, skipping", exc_info=True,
+                    "Recall metrics failed, skipping",
+                    exc_info=True,
                 )
 
         # ACT-R crossover sweep (AR only)
@@ -895,8 +952,10 @@ async def run_swebench_experiment(
 
         logger.info(
             "  Stage complete: AR=%.4f  TTL=%.4f  CR=%.4f  LRU=%.4f  (%.1fs)",
-            ar_metrics["nDCG@10"], ttl_metrics["accuracy"],
-            cr_metrics["temporal_mrr"], lru_metrics["nDCG@10"],
+            ar_metrics["nDCG@10"],
+            ttl_metrics["accuracy"],
+            cr_metrics["temporal_mrr"],
+            lru_metrics["nDCG@10"],
             stage_elapsed,
         )
 

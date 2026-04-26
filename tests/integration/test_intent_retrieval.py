@@ -121,7 +121,9 @@ class TestIntentAwareRetrieval:
     ) -> None:
         """Results include the node_types of the matched memory."""
         await _store_and_index(
-            store, index, "Database schema version 5",
+            store,
+            index,
+            "Database schema version 5",
             node_type=NodeType.ENTITY_STATE,
         )
 
@@ -138,11 +140,15 @@ class TestIntentAwareRetrieval:
         """Entity state results get hierarchy bonus for state lookup queries."""
         # Store both an atomic and entity_state about the same topic
         mem_atomic, _ = await _store_and_index(
-            store, index, "The API version is currently v2",
+            store,
+            index,
+            "The API version is currently v2",
             node_type=NodeType.ATOMIC,
         )
         mem_state, _ = await _store_and_index(
-            store, index, "The API version currently set to v2",
+            store,
+            index,
+            "The API version currently set to v2",
             node_type=NodeType.ENTITY_STATE,
         )
 
@@ -152,10 +158,12 @@ class TestIntentAwareRetrieval:
 
         # Find both results
         state_result = next(
-            (r for r in results if r.memory.id == mem_state.id), None,
+            (r for r in results if r.memory.id == mem_state.id),
+            None,
         )
         atomic_result = next(
-            (r for r in results if r.memory.id == mem_atomic.id), None,
+            (r for r in results if r.memory.id == mem_atomic.id),
+            None,
         )
         assert state_result is not None
         assert atomic_result is not None
@@ -174,12 +182,16 @@ class TestIntentAwareRetrieval:
         """Episode nodes get hierarchy bonus for event reconstruction queries."""
         # Atomic memory
         await _store_and_index(
-            store, index, "The deployment incident caused downtime",
+            store,
+            index,
+            "The deployment incident caused downtime",
             node_type=NodeType.ATOMIC,
         )
         # Episode-typed memory
         _, ep_node = await _store_and_index(
-            store, index, "The deployment incident timeline and resolution",
+            store,
+            index,
+            "The deployment incident timeline and resolution",
             node_type=NodeType.EPISODE,
         )
 
@@ -188,7 +200,8 @@ class TestIntentAwareRetrieval:
         assert len(results) >= 1
 
         ep_result = next(
-            (r for r in results if "episode" in r.node_types), None,
+            (r for r in results if "episode" in r.node_types),
+            None,
         )
         if ep_result:
             assert ep_result.hierarchy_bonus > 0
@@ -230,7 +243,9 @@ class TestIntentAwareRetrieval:
     ) -> None:
         """Change detection queries are properly classified."""
         await _store_and_index(
-            store, index, "Schema changed from v4 to v5",
+            store,
+            index,
+            "Schema changed from v4 to v5",
             node_type=NodeType.ENTITY_STATE,
         )
 

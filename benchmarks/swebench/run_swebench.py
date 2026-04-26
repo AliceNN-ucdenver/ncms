@@ -53,10 +53,13 @@ def setup_logging(output_dir: Path, verbose: bool = False) -> None:
 async def run_analysis(output_dir: Path) -> None:
     """Run structural analysis only (no LLM needed)."""
     from benchmarks.swebench.analysis import main as analysis_main
+
     sys.argv = [
         "swebench_analysis",
-        "--output-dir", str(output_dir / "analysis"),
-        "--sample-size", "100",
+        "--output-dir",
+        str(output_dir / "analysis"),
+        "--sample-size",
+        "100",
     ]
     analysis_main()
 
@@ -141,12 +144,14 @@ def main() -> None:
     # Load env from .env if present
     try:
         from benchmarks.env import load_env
+
         load_env()
     except ImportError:
         pass
 
     # Override from env
     import os
+
     if os.getenv("LLM_MODEL"):
         args.llm_model = os.environ["LLM_MODEL"]
     if os.getenv("LLM_API_BASE"):

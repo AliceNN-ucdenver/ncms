@@ -29,7 +29,8 @@ class TestLoadCachedLabels:
         """Pre-populated labels should be returned."""
         labels = ["endpoint", "service", "protocol"]
         await store.set_consolidation_value(
-            "entity_labels:api", json.dumps(labels),
+            "entity_labels:api",
+            json.dumps(labels),
         )
         result = await load_cached_labels(store, ["api"])
         assert result == {"api": labels}
@@ -37,10 +38,12 @@ class TestLoadCachedLabels:
     async def test_multiple_domains(self, store: SQLiteStore) -> None:
         """Should load labels for all requested domains."""
         await store.set_consolidation_value(
-            "entity_labels:api", json.dumps(["endpoint", "service"]),
+            "entity_labels:api",
+            json.dumps(["endpoint", "service"]),
         )
         await store.set_consolidation_value(
-            "entity_labels:db", json.dumps(["table", "column"]),
+            "entity_labels:db",
+            json.dumps(["table", "column"]),
         )
         result = await load_cached_labels(store, ["api", "db"])
         assert result == {
@@ -49,11 +52,13 @@ class TestLoadCachedLabels:
         }
 
     async def test_missing_domain_excluded(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         """Domains without cached labels should not appear in result."""
         await store.set_consolidation_value(
-            "entity_labels:api", json.dumps(["endpoint"]),
+            "entity_labels:api",
+            json.dumps(["endpoint"]),
         )
         result = await load_cached_labels(store, ["api", "finance"])
         assert "api" in result
@@ -62,7 +67,8 @@ class TestLoadCachedLabels:
     async def test_invalid_json_ignored(self, store: SQLiteStore) -> None:
         """Corrupted cache entries should be silently ignored."""
         await store.set_consolidation_value(
-            "entity_labels:api", "not-valid-json",
+            "entity_labels:api",
+            "not-valid-json",
         )
         result = await load_cached_labels(store, ["api"])
         assert result == {}
@@ -70,13 +76,15 @@ class TestLoadCachedLabels:
     async def test_non_list_json_ignored(self, store: SQLiteStore) -> None:
         """Cache entries that aren't JSON arrays should be ignored."""
         await store.set_consolidation_value(
-            "entity_labels:api", json.dumps({"not": "a list"}),
+            "entity_labels:api",
+            json.dumps({"not": "a list"}),
         )
         result = await load_cached_labels(store, ["api"])
         assert result == {}
 
     async def test_empty_domains_returns_empty(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         """Empty domain list should return empty dict."""
         result = await load_cached_labels(store, [])
@@ -85,14 +93,17 @@ class TestLoadCachedLabels:
     async def test_keep_universal_loaded(self, store: SQLiteStore) -> None:
         """The ``_keep_universal`` flag is decoded and merged in."""
         await store.set_consolidation_value(
-            "_keep_universal", json.dumps(True),
+            "_keep_universal",
+            json.dumps(True),
         )
         result = await load_cached_labels(store, [])
         assert result.get("_keep_universal") is True
 
     @pytest.mark.parametrize("bad_value", ["null", "{}"])
     async def test_keep_universal_bad_values(
-        self, store: SQLiteStore, bad_value: str,
+        self,
+        store: SQLiteStore,
+        bad_value: str,
     ) -> None:
         """Non-fatal decode: bad ``_keep_universal`` values are kept as parsed.
 

@@ -102,7 +102,8 @@ class LoraJointExtractor:
         # The unified implementation loads the manifest itself from
         # ``adapter_dir/manifest.json`` — we don't need to pass it.
         self._backend = LoraJointBert(
-            self._adapter_dir, device=device,
+            self._adapter_dir,
+            device=device,
         )
         logger.info(
             "[intent_slot] loaded LoRA adapter: %s domain=%s version=%s",

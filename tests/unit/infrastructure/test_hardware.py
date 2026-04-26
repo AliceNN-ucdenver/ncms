@@ -38,7 +38,9 @@ class TestResolveDevice:
 
     @pytest.mark.parametrize("value", ["gpu", "amd", "tpu", ""])
     def test_invalid_env_values_fall_through(
-        self, monkeypatch, value: str,
+        self,
+        monkeypatch,
+        value: str,
     ) -> None:
         monkeypatch.setenv("NCMS_DEVICE", value)
         with patch("ncms.infrastructure.hardware._auto", return_value="cpu"):

@@ -79,15 +79,17 @@ def create_dashboard_app(
     async def api_agents(request: Request) -> JSONResponse:
         """Return all registered agents with status and domains."""
         agents = bus_service.get_all_agents()
-        return JSONResponse([
-            {
-                "agent_id": a.agent_id,
-                "domains": a.domains,
-                "status": a.status,
-                "last_seen": a.last_seen.isoformat() if a.last_seen else None,
-            }
-            for a in agents
-        ])
+        return JSONResponse(
+            [
+                {
+                    "agent_id": a.agent_id,
+                    "domains": a.domains,
+                    "status": a.status,
+                    "last_seen": a.last_seen.isoformat() if a.last_seen else None,
+                }
+                for a in agents
+            ]
+        )
 
     async def api_domains(request: Request) -> JSONResponse:
         """Return domain -> provider agent mapping."""
@@ -119,17 +121,19 @@ def create_dashboard_app(
             memory = await memory_service.get_memory(mid)
             if memory:
                 structured = memory.structured or {}
-                connected_memories.append({
-                    "id": memory.id,
-                    "content": memory.content[:200],
-                    "type": memory.type,
-                    "domains": memory.domains,
-                    "source_agent": memory.source_agent,
-                    "is_insight": memory.type == "insight",
-                    "has_contradictions": bool(structured.get("contradictions")),
-                    "is_contradicted": bool(structured.get("contradicted_by")),
-                    "created_at": memory.created_at.isoformat() if memory.created_at else None,
-                })
+                connected_memories.append(
+                    {
+                        "id": memory.id,
+                        "content": memory.content[:200],
+                        "type": memory.type,
+                        "domains": memory.domains,
+                        "source_agent": memory.source_agent,
+                        "is_insight": memory.type == "insight",
+                        "has_contradictions": bool(structured.get("contradictions")),
+                        "is_contradicted": bool(structured.get("contradicted_by")),
+                        "created_at": memory.created_at.isoformat() if memory.created_at else None,
+                    }
+                )
 
         # Connected entities (via relationships)
         relationships = await memory_service._store.get_relationships(entity_id)
@@ -137,33 +141,38 @@ def create_dashboard_app(
         seen_entity_ids: set[str] = set()
         for rel in relationships:
             other_id = (
-                rel.target_entity_id if rel.source_entity_id == entity_id
-                else rel.source_entity_id
+                rel.target_entity_id if rel.source_entity_id == entity_id else rel.source_entity_id
             )
             if other_id in seen_entity_ids:
                 continue
             seen_entity_ids.add(other_id)
             other = await memory_service._store.get_entity(other_id)
             if other:
-                connected_entities.append({
-                    "id": other.id,
-                    "name": other.name,
-                    "type": other.type,
-                    "relationship_type": rel.type,
-                    "direction": "outgoing" if rel.source_entity_id == entity_id else "incoming",
-                })
+                connected_entities.append(
+                    {
+                        "id": other.id,
+                        "name": other.name,
+                        "type": other.type,
+                        "relationship_type": rel.type,
+                        "direction": "outgoing"
+                        if rel.source_entity_id == entity_id
+                        else "incoming",
+                    }
+                )
 
-        return JSONResponse({
-            "entity": {
-                "id": entity.id,
-                "name": entity.name,
-                "type": entity.type,
-                "attributes": entity.attributes,
-                "created_at": entity.created_at.isoformat() if entity.created_at else None,
-            },
-            "connected_memories": connected_memories,
-            "connected_entities": connected_entities,
-        })
+        return JSONResponse(
+            {
+                "entity": {
+                    "id": entity.id,
+                    "name": entity.name,
+                    "type": entity.type,
+                    "attributes": entity.attributes,
+                    "created_at": entity.created_at.isoformat() if entity.created_at else None,
+                },
+                "connected_memories": connected_memories,
+                "connected_entities": connected_entities,
+            }
+        )
 
     async def api_graph(request: Request) -> JSONResponse:
         """Return graph data for D3 force-directed visualization."""
@@ -175,13 +184,15 @@ def create_dashboard_app(
         entities = await memory_service.list_entities()
         entity_ids = set()
         for entity in entities[:200]:  # Cap at 200 for performance
-            nodes.append({
-                "id": entity.id,
-                "name": entity.name,
-                "type": entity.type,
-                "group": "entity",
-                "attributes": entity.attributes,
-            })
+            nodes.append(
+                {
+                    "id": entity.id,
+                    "name": entity.name,
+                    "type": entity.type,
+                    "group": "entity",
+                    "attributes": entity.attributes,
+                }
+            )
             entity_ids.add(entity.id)
 
         # Memory nodes (only those linked to entities)
@@ -193,47 +204,49 @@ def create_dashboard_app(
                     memory = await memory_service.get_memory(mid)
                     if memory:
                         structured = memory.structured or {}
-                        nodes.append({
-                            "id": mid,
-                            "name": memory.content[:60],
-                            "type": memory.type,
-                            "group": "memory",
-                            "domains": memory.domains,
-                            "source_agent": memory.source_agent,
-                            "is_insight": memory.type == "insight",
-                            "has_contradictions": bool(structured.get("contradictions")),
-                            "is_contradicted": bool(structured.get("contradicted_by")),
-                        })
+                        nodes.append(
+                            {
+                                "id": mid,
+                                "name": memory.content[:60],
+                                "type": memory.type,
+                                "group": "memory",
+                                "domains": memory.domains,
+                                "source_agent": memory.source_agent,
+                                "is_insight": memory.type == "insight",
+                                "has_contradictions": bool(structured.get("contradictions")),
+                                "is_contradicted": bool(structured.get("contradicted_by")),
+                            }
+                        )
                         memory_ids_seen.add(mid)
                 # Entity -> Memory link
-                links.append({
-                    "source": entity.id,
-                    "target": mid,
-                    "type": "linked",
-                })
+                links.append(
+                    {
+                        "source": entity.id,
+                        "target": mid,
+                        "type": "linked",
+                    }
+                )
 
         # Batch-lookup HTMG node types for memories
         if memory_ids_seen:
             store = cast(SQLiteStore, memory_service._store)
-            mem_nodes = await store.get_memory_nodes_for_memories(
-                list(memory_ids_seen)
-            )
+            mem_nodes = await store.get_memory_nodes_for_memories(list(memory_ids_seen))
             for node in nodes:
                 if node.get("group") == "memory":
                     node_list = mem_nodes.get(node["id"], [])
-                    node["node_type"] = (
-                        node_list[0].node_type if node_list else None
-                    )
+                    node["node_type"] = node_list[0].node_type if node_list else None
 
         # Entity -> Entity relationships (from graph edges)
         nx_graph = graph._graph
         for source, target, data in nx_graph.edges(data=True):
             if source in entity_ids and target in entity_ids:
-                links.append({
-                    "source": source,
-                    "target": target,
-                    "type": data.get("type", "related_to"),
-                })
+                links.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "type": data.get("type", "related_to"),
+                    }
+                )
 
         return JSONResponse({"nodes": nodes, "links": links})
 
@@ -241,18 +254,20 @@ def create_dashboard_app(
         """Return recent memories."""
         limit = int(request.query_params.get("limit", "30"))
         memories = await memory_service.list_memories(limit=limit)
-        return JSONResponse([
-            {
-                "id": m.id,
-                "content": m.content[:200],
-                "type": m.type,
-                "domains": m.domains,
-                "source_agent": m.source_agent,
-                "importance": m.importance,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-            }
-            for m in memories
-        ])
+        return JSONResponse(
+            [
+                {
+                    "id": m.id,
+                    "content": m.content[:200],
+                    "type": m.type,
+                    "domains": m.domains,
+                    "source_agent": m.source_agent,
+                    "importance": m.importance,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in memories
+            ]
+        )
 
     async def api_stats(request: Request) -> JSONResponse:
         """Return system statistics and active feature flags."""
@@ -299,8 +314,8 @@ def create_dashboard_app(
                 "name": "Temporal Scoring",
                 "category": "retrieval",
                 "description": (
-                    "Parses temporal expressions like \"3 weeks ago\" or "
-                    "\"last month\" from the query and boosts memories "
+                    'Parses temporal expressions like "3 weeks ago" or '
+                    '"last month" from the query and boosts memories '
                     "whose observed_at falls inside the resolved range "
                     "(Gaussian proximity)."
                 ),
@@ -432,18 +447,20 @@ def create_dashboard_app(
         # caller that reads `features` as a list-of-strings.
         enabled_names = [f["name"] for f in catalog if f["enabled"]]
 
-        return JSONResponse({
-            "memory_count": await memory_service.memory_count(),
-            "entity_count": memory_service.entity_count(),
-            "relationship_count": memory_service.relationship_count(),
-            "agent_count": len(agents),
-            "agents_online": online,
-            "agents_sleeping": sum(1 for a in agents if a.status == "sleeping"),
-            "domain_count": len(bus_service.list_domains()),
-            "event_count": event_log.count(),
-            "features": enabled_names,
-            "features_catalog": catalog,
-        })
+        return JSONResponse(
+            {
+                "memory_count": await memory_service.memory_count(),
+                "entity_count": memory_service.entity_count(),
+                "relationship_count": memory_service.relationship_count(),
+                "agent_count": len(agents),
+                "agents_online": online,
+                "agents_sleeping": sum(1 for a in agents if a.status == "sleeping"),
+                "domain_count": len(bus_service.list_domains()),
+                "event_count": event_log.count(),
+                "features": enabled_names,
+                "features_catalog": catalog,
+            }
+        )
 
     async def api_topics(request: Request) -> JSONResponse:
         """Return cached entity labels (topics) for all domains."""
@@ -454,8 +471,7 @@ def create_dashboard_app(
         store = cast(SQLiteStore, memory_service._store)
         # Query all entity_labels:* keys from consolidation_state
         rows = await store.db.execute_fetchall(
-            "SELECT key, value FROM consolidation_state"
-            " WHERE key LIKE 'entity_labels:%'"
+            "SELECT key, value FROM consolidation_state WHERE key LIKE 'entity_labels:%'"
         )
         domains: dict[str, list[str]] = {}
         for key, value in rows:
@@ -467,10 +483,12 @@ def create_dashboard_app(
             except Exception:
                 pass
 
-        return JSONResponse({
-            "domains": domains,
-            "universal_labels": UNIVERSAL_LABELS,
-        })
+        return JSONResponse(
+            {
+                "domains": domains,
+                "universal_labels": UNIVERSAL_LABELS,
+            }
+        )
 
     # ── Phase 6: HTMG Endpoints ─────────────────────────────────────────
 
@@ -484,15 +502,17 @@ def create_dashboard_app(
         result = []
         for ep in all_episodes:
             members = await store.get_episode_members(ep.id)
-            result.append({
-                "episode_id": ep.id,
-                "memory_id": ep.memory_id,
-                "status": ep.metadata.get("status", "unknown"),
-                "title": ep.metadata.get("episode_title", ""),
-                "member_count": len(members),
-                "created_at": ep.created_at.isoformat() if ep.created_at else None,
-                "closed_at": ep.metadata.get("closed_at"),
-            })
+            result.append(
+                {
+                    "episode_id": ep.id,
+                    "memory_id": ep.memory_id,
+                    "status": ep.metadata.get("status", "unknown"),
+                    "title": ep.metadata.get("episode_title", ""),
+                    "member_count": len(members),
+                    "created_at": ep.created_at.isoformat() if ep.created_at else None,
+                    "closed_at": ep.metadata.get("closed_at"),
+                }
+            )
         return JSONResponse(result)
 
     async def api_episode_detail(request: Request) -> JSONResponse:
@@ -508,22 +528,26 @@ def create_dashboard_app(
         member_details = []
         for m in members:
             mem = await memory_service.get_memory(m.memory_id)
-            member_details.append({
-                "node_id": m.id,
-                "memory_id": m.memory_id,
-                "node_type": m.node_type,
-                "content": mem.content[:200] if mem else None,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-            })
+            member_details.append(
+                {
+                    "node_id": m.id,
+                    "memory_id": m.memory_id,
+                    "node_type": m.node_type,
+                    "content": mem.content[:200] if mem else None,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+            )
 
-        return JSONResponse({
-            "episode_id": episode.id,
-            "status": episode.metadata.get("status", "unknown"),
-            "title": episode.metadata.get("episode_title", ""),
-            "metadata": episode.metadata,
-            "member_count": len(member_details),
-            "members": member_details,
-        })
+        return JSONResponse(
+            {
+                "episode_id": episode.id,
+                "status": episode.metadata.get("status", "unknown"),
+                "title": episode.metadata.get("episode_title", ""),
+                "metadata": episode.metadata,
+                "member_count": len(member_details),
+                "members": member_details,
+            }
+        )
 
     async def api_entity_states(request: Request) -> JSONResponse:
         """Return current states for an entity."""
@@ -532,11 +556,13 @@ def create_dashboard_app(
 
         states = await store.get_entity_states_by_entity(entity_id)
         current = [s for s in states if s.is_current]
-        return JSONResponse({
-            "entity_id": entity_id,
-            "current_states": [s.model_dump(mode="json") for s in current],
-            "total_states": len(states),
-        })
+        return JSONResponse(
+            {
+                "entity_id": entity_id,
+                "current_states": [s.model_dump(mode="json") for s in current],
+                "total_states": len(states),
+            }
+        )
 
     async def api_entity_state_history(request: Request) -> JSONResponse:
         """Return state history for an entity."""
@@ -545,12 +571,14 @@ def create_dashboard_app(
         store = cast(SQLiteStore, memory_service._store)
 
         history = await store.get_state_history(entity_id, state_key)
-        return JSONResponse({
-            "entity_id": entity_id,
-            "state_key": state_key,
-            "count": len(history),
-            "states": [n.model_dump(mode="json") for n in history],
-        })
+        return JSONResponse(
+            {
+                "entity_id": entity_id,
+                "state_key": state_key,
+                "count": len(history),
+                "states": [n.model_dump(mode="json") for n in history],
+            }
+        )
 
     async def api_entities_with_states(request: Request) -> JSONResponse:
         """Return entities that have state nodes, with state counts and keys."""
@@ -589,25 +617,27 @@ def create_dashboard_app(
         agents = bus_service.get_all_agents()
         domains = bus_service.list_domains()
         subs = bus_service.get_subscriptions()
-        return JSONResponse({
-            "agents": [
-                {
-                    "agent_id": a.agent_id,
-                    "domains": a.domains,
-                    "status": a.status,
-                    "last_seen": a.last_seen.isoformat() if a.last_seen else None,
-                }
-                for a in agents
-            ],
-            "domains": {d: aids for d, aids in domains.items()},
-            "subscriptions": {
-                aid: {
-                    "domains": sf.domains,
-                    "severity_min": sf.severity_min,
-                }
-                for aid, sf in subs.items()
-            },
-        })
+        return JSONResponse(
+            {
+                "agents": [
+                    {
+                        "agent_id": a.agent_id,
+                        "domains": a.domains,
+                        "status": a.status,
+                        "last_seen": a.last_seen.isoformat() if a.last_seen else None,
+                    }
+                    for a in agents
+                ],
+                "domains": {d: aids for d, aids in domains.items()},
+                "subscriptions": {
+                    aid: {
+                        "domains": sf.domains,
+                        "severity_min": sf.severity_min,
+                    }
+                    for aid, sf in subs.items()
+                },
+            }
+        )
 
     async def api_events(request: Request) -> JSONResponse:
         """Return recent events as JSON (non-streaming).
@@ -658,11 +688,13 @@ def create_dashboard_app(
             events = await event_log.query_events(after_seq=after_seq, limit=limit)
             last_seq = events[-1]["seq"] if events else after_seq
 
-        return JSONResponse({
-            "events": events,
-            "last_seq": last_seq,
-            "count": len(events),
-        })
+        return JSONResponse(
+            {
+                "events": events,
+                "last_seq": last_seq,
+                "count": len(events),
+            }
+        )
 
     async def api_events_count(request: Request) -> JSONResponse:
         """Return count of persisted events."""
@@ -788,7 +820,9 @@ async def run_dashboard(
         from ncms.application.reconciliation_service import ReconciliationService
 
         reconciliation = ReconciliationService(
-            store=store, config=config, event_log=event_log,
+            store=store,
+            config=config,
+            event_log=event_log,
         )
 
     # Episode formation (Phase 3, disabled by default)
@@ -797,8 +831,11 @@ async def run_dashboard(
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
-            store=store, index=index, config=config,
-            event_log=event_log, splade=splade,
+            store=store,
+            index=index,
+            config=config,
+            event_log=event_log,
+            splade=splade,
         )
 
     # Intent classifier (Phase 4, disabled by default)
@@ -838,15 +875,20 @@ async def run_dashboard(
         )
     else:
         logger.info(
-            "SLM chain inactive (default_adapter_domain=%r) "
-            "— ingestion uses heuristic fallback",
+            "SLM chain inactive (default_adapter_domain=%r) — ingestion uses heuristic fallback",
             config.default_adapter_domain,
         )
 
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        event_log=event_log, splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        event_log=event_log,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
         intent_classifier=intent_classifier,
         reranker=reranker,
         intent_slot=intent_slot,
@@ -857,8 +899,8 @@ async def run_dashboard(
         ttl_hours=config.snapshot_ttl_hours,
     )
     bus_svc = BusService(
-        bus=bus, snapshot_service=snapshot_svc,
-        surrogate_enabled=True,  # Always on (retired flag)
+        bus=bus,
+        snapshot_service=snapshot_svc,
         event_log=event_log,
     )
 
@@ -883,12 +925,13 @@ async def run_dashboard(
     elif effective_mode == "classic":
         from ncms.interfaces.http.demo_runner import run_demo_loop
 
-        demo_task = asyncio.create_task(
-            run_demo_loop(memory_svc, bus_svc, snapshot_svc, event_log)
-        )
+        demo_task = asyncio.create_task(run_demo_loop(memory_svc, bus_svc, snapshot_svc, event_log))
 
     config_uvicorn = uvicorn.Config(
-        app, host=host, port=port, log_level="info",
+        app,
+        host=host,
+        port=port,
+        log_level="info",
     )
     server = uvicorn.Server(config_uvicorn)
 

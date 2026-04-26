@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO = Path(__file__).resolve().parents[2]
 _DOMAIN = _REPO / "adapters/domains/conversational"
 
@@ -19,6 +18,7 @@ _DOMAIN = _REPO / "adapters/domains/conversational"
 @pytest.fixture(scope="module")
 def spec():
     from ncms.application.adapters.domain_loader import load_domain
+
     if not _DOMAIN.is_dir():
         pytest.skip(f"conversational domain not present at {_DOMAIN}")
     return load_domain(_DOMAIN)
@@ -48,6 +48,7 @@ class TestConversationalYAMLDomain:
         """Every topic appearing in diversity should have >=30 members
         so the topic head can learn it."""
         from collections import Counter
+
         counts: Counter = Counter()
         for n in spec.diversity.nodes:
             pool = spec.diversity.resolve_examples(n, spec.gazetteer)
@@ -62,8 +63,7 @@ class TestConversationalYAMLDomain:
         """Every node should be source=inline since there's no gazetteer."""
         for n in spec.diversity.nodes:
             assert n.source == "inline", (
-                f"node {n.qualified_name!r} has source={n.source!r} "
-                "but the domain has no gazetteer"
+                f"node {n.qualified_name!r} has source={n.source!r} but the domain has no gazetteer"
             )
 
     def test_no_duplicate_members_within_node(self, spec):
@@ -85,9 +85,7 @@ class TestConversationalYAMLDomain:
             "neutral_object_casual",
             "difficulty_temporary",
         }
-        assert expected.issubset(names), (
-            f"missing starter archetypes: {expected - names}"
-        )
+        assert expected.issubset(names), f"missing starter archetypes: {expected - names}"
 
     def test_archetype_role_spans_reference_valid_slots(self, spec):
         slot_set = set(spec.slots)
@@ -101,10 +99,8 @@ class TestConversationalYAMLDomain:
     def test_total_inline_member_count_reasonable(self, spec):
         """Ballpark: ~500-1000 total members across all inline nodes."""
         total = sum(
-            len(spec.diversity.resolve_examples(n, spec.gazetteer))
-            for n in spec.diversity.nodes
+            len(spec.diversity.resolve_examples(n, spec.gazetteer)) for n in spec.diversity.nodes
         )
         assert 400 <= total <= 1500, (
-            f"unexpected total inline member count: {total} "
-            "(expected 400-1500 for conversational)"
+            f"unexpected total inline member count: {total} (expected 400-1500 for conversational)"
         )

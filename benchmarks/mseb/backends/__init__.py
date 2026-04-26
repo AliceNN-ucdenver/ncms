@@ -18,13 +18,16 @@ from benchmarks.mseb.backends.base import BackendRanking, MemoryBackend
 
 # Lazy registry — heavy imports (mem0, ncms) land only when selected.
 
+
 def _make_ncms_backend(**kwargs) -> MemoryBackend:
     from benchmarks.mseb.backends.ncms_backend import NcmsBackend
+
     return NcmsBackend(**kwargs)
 
 
 def _make_mem0_backend(**kwargs) -> MemoryBackend:
     from benchmarks.mseb.backends.mem0_backend import Mem0Backend
+
     return Mem0Backend(**kwargs)
 
 

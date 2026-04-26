@@ -286,9 +286,7 @@ class TestGraphExpansion:
 
             # Access mem_graph many times to boost its base-level activation
             for _ in range(10):
-                await store.log_access(
-                    AccessRecord(memory_id=mem_graph.id, accessing_agent="test")
-                )
+                await store.log_access(AccessRecord(memory_id=mem_graph.id, accessing_agent="test"))
 
             # Query: "PostgreSQL configuration" — BM25 matches the third memory
             # and may weakly match mem_weak on "configuration".
@@ -326,9 +324,7 @@ class TestGraphExpansion:
             )
 
             # Search with domain filter for "api" only
-            results = await svc.search(
-                "PostgreSQL management", domain="api"
-            )
+            results = await svc.search("PostgreSQL management", domain="api")
             result_ids = [r.memory.id for r in results]
 
             # mem_db should be excluded by domain filter even if graph-expanded

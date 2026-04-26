@@ -57,7 +57,6 @@ def _pipeline(graph_mapping: dict[str, set[str]]) -> RetrievalPipeline:
 
 
 class TestSingleSubject:
-
     def test_first_sorts_subject_linked_ascending(self) -> None:
         pool = [
             _sm("x3", datetime(2024, 3, 1, tzinfo=UTC), 0.9),
@@ -67,8 +66,10 @@ class TestSingleSubject:
         ]
         pipe = _pipeline({"xray": {"x1", "x2", "x3"}})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["xray"],
-            ordinal="first", multi_subject=False,
+            pool,
+            subject_entity_ids=["xray"],
+            ordinal="first",
+            multi_subject=False,
         )
         assert [s.memory.id for s in out] == ["x1", "x2", "x3", "other"]
 
@@ -81,14 +82,15 @@ class TestSingleSubject:
         ]
         pipe = _pipeline({"xray": {"x1", "x2", "x3"}})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["xray"],
-            ordinal="last", multi_subject=False,
+            pool,
+            subject_entity_ids=["xray"],
+            ordinal="last",
+            multi_subject=False,
         )
         assert [s.memory.id for s in out] == ["x3", "x2", "x1", "other"]
 
 
 class TestMultiSubject:
-
     def test_compare_two_subjects_representatives_chronological(
         self,
     ) -> None:
@@ -96,17 +98,21 @@ class TestMultiSubject:
         pool = [
             _sm("moma-a", datetime(2024, 6, 1, tzinfo=UTC), 0.9),
             _sm("moma-b", datetime(2024, 3, 1, tzinfo=UTC), 0.8),  # earliest MoMA
-            _sm("met-a", datetime(2024, 4, 1, tzinfo=UTC), 0.7),   # earliest Met
+            _sm("met-a", datetime(2024, 4, 1, tzinfo=UTC), 0.7),  # earliest Met
             _sm("met-b", datetime(2024, 8, 1, tzinfo=UTC), 0.6),
             _sm("other", datetime(2024, 5, 1, tzinfo=UTC), 0.5),
         ]
-        pipe = _pipeline({
-            "moma": {"moma-a", "moma-b"},
-            "met":  {"met-a", "met-b"},
-        })
+        pipe = _pipeline(
+            {
+                "moma": {"moma-a", "moma-b"},
+                "met": {"met-a", "met-b"},
+            }
+        )
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["moma", "met"],
-            ordinal="first", multi_subject=True,
+            pool,
+            subject_entity_ids=["moma", "met"],
+            ordinal="first",
+            multi_subject=True,
         )
         ids = [s.memory.id for s in out]
         # Reps: moma-b (Mar) then met-a (Apr), both chronologically.
@@ -122,12 +128,18 @@ class TestMultiSubject:
             _sm("b1", datetime(2024, 3, 1, tzinfo=UTC), 0.8),
             _sm("c1", datetime(2024, 2, 1, tzinfo=UTC), 0.7),
         ]
-        pipe = _pipeline({
-            "a": {"a1"}, "b": {"b1"}, "c": {"c1"},
-        })
+        pipe = _pipeline(
+            {
+                "a": {"a1"},
+                "b": {"b1"},
+                "c": {"c1"},
+            }
+        )
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["a", "b", "c"],
-            ordinal="first", multi_subject=True,
+            pool,
+            subject_entity_ids=["a", "b", "c"],
+            ordinal="first",
+            multi_subject=True,
         )
         # Reps chronological regardless of subject order.
         assert [s.memory.id for s in out] == ["a1", "c1", "b1"]
@@ -140,21 +152,27 @@ class TestMultiSubject:
         ]
         pipe = _pipeline({"a": {"a1", "a2"}, "b": set()})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["a", "b"],
-            ordinal="first", multi_subject=True,
+            pool,
+            subject_entity_ids=["a", "b"],
+            ordinal="first",
+            multi_subject=True,
         )
         # Only "a" has a rep.
         assert [s.memory.id for s in out] == ["a1", "a2"]
 
 
 class TestDegradeRules:
-
     def test_empty_pool_empty_output(self) -> None:
         pipe = _pipeline({"a": {"x"}})
-        assert pipe.apply_ordinal_ordering(
-            [], subject_entity_ids=["a"],
-            ordinal="first", multi_subject=False,
-        ) == []
+        assert (
+            pipe.apply_ordinal_ordering(
+                [],
+                subject_entity_ids=["a"],
+                ordinal="first",
+                multi_subject=False,
+            )
+            == []
+        )
 
     def test_no_subjects_is_noop(self) -> None:
         pool = [
@@ -163,8 +181,10 @@ class TestDegradeRules:
         ]
         pipe = _pipeline({})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=[],
-            ordinal="first", multi_subject=False,
+            pool,
+            subject_entity_ids=[],
+            ordinal="first",
+            multi_subject=False,
         )
         assert [s.memory.id for s in out] == ["a", "b"]
 
@@ -176,8 +196,10 @@ class TestDegradeRules:
         # Graph has "x" pointing to memories NOT in the pool.
         pipe = _pipeline({"x": {"outside-1", "outside-2"}})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["x"],
-            ordinal="first", multi_subject=False,
+            pool,
+            subject_entity_ids=["x"],
+            ordinal="first",
+            multi_subject=False,
         )
         assert [s.memory.id for s in out] == ["a", "b"]
 
@@ -187,8 +209,10 @@ class TestDegradeRules:
         ]
         pipe = _pipeline({"x": {"a"}})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["x"],
-            ordinal="middle", multi_subject=False,
+            pool,
+            subject_entity_ids=["x"],
+            ordinal="middle",
+            multi_subject=False,
         )
         assert [s.memory.id for s in out] == ["a"]
 
@@ -205,36 +229,43 @@ class TestTextFallback:
         """3 of 5 ADRs graph-linked to 'authentication'; the other 2
         contain the word but weren't linked at ingest.  Text-fallback
         includes all 5."""
+
         def _adr(id_: str, content: str, when: datetime) -> ScoredMemory:
             mem = Memory(content=content, observed_at=when)
             mem.id = id_
             return ScoredMemory(memory=mem, total_activation=0.5)
 
         pool = [
-            _adr("ADR-021", "Authentication supersedes JWT",
-                 datetime(2025, 3, 1, tzinfo=UTC)),
-            _adr("ADR-014", "Authentication adds JWT",
-                 datetime(2024, 2, 1, tzinfo=UTC)),
-            _adr("ADR-007", "Authentication refactored OAuth",
-                 datetime(2023, 6, 1, tzinfo=UTC)),
-            _adr("ADR-029", "Authentication latest passkeys",
-                 datetime(2026, 1, 1, tzinfo=UTC)),  # NOT graph-linked
-            _adr("ADR-001", "Initial authentication cookies",
-                 datetime(2023, 1, 1, tzinfo=UTC)),  # NOT graph-linked
+            _adr("ADR-021", "Authentication supersedes JWT", datetime(2025, 3, 1, tzinfo=UTC)),
+            _adr("ADR-014", "Authentication adds JWT", datetime(2024, 2, 1, tzinfo=UTC)),
+            _adr("ADR-007", "Authentication refactored OAuth", datetime(2023, 6, 1, tzinfo=UTC)),
+            _adr(
+                "ADR-029", "Authentication latest passkeys", datetime(2026, 1, 1, tzinfo=UTC)
+            ),  # NOT graph-linked
+            _adr(
+                "ADR-001", "Initial authentication cookies", datetime(2023, 1, 1, tzinfo=UTC)
+            ),  # NOT graph-linked
         ]
         pipe = _pipeline({"auth": {"ADR-007", "ADR-014", "ADR-021"}})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["auth"],
+            pool,
+            subject_entity_ids=["auth"],
             subject_names=["authentication"],
-            ordinal="last", multi_subject=False,
+            ordinal="last",
+            multi_subject=False,
         )
         # All 5 are subject-linked via text fallback; desc by date:
         assert [s.memory.id for s in out] == [
-            "ADR-029", "ADR-021", "ADR-014", "ADR-007", "ADR-001",
+            "ADR-029",
+            "ADR-021",
+            "ADR-014",
+            "ADR-007",
+            "ADR-001",
         ]
 
     def test_multi_subject_ignores_text_fallback(self) -> None:
         """subject_names passed but multi_subject=True → ignored."""
+
         def _mk(id_: str, content: str, when: datetime) -> ScoredMemory:
             mem = Memory(content=content, observed_at=when)
             mem.id = id_
@@ -247,16 +278,17 @@ class TestTextFallback:
         # Graph has neither linked; text fallback would match both if used.
         pipe = _pipeline({"a": set(), "b": set()})
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["a", "b"],
+            pool,
+            subject_entity_ids=["a", "b"],
             subject_names=["museum", "gallery"],
-            ordinal="first", multi_subject=True,
+            ordinal="first",
+            multi_subject=True,
         )
         # Should be a no-op (no graph links, text-fallback disabled).
         assert [s.memory.id for s in out] == ["x1", "x2"]
 
 
 class TestInputIntegrity:
-
     def test_input_list_not_mutated(self) -> None:
         pool = [
             _sm("x2", datetime(2024, 2, 1, tzinfo=UTC), 0.9),
@@ -265,8 +297,10 @@ class TestInputIntegrity:
         before = [s.memory.id for s in pool]
         pipe = _pipeline({"x": {"x1", "x2"}})
         pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["x"],
-            ordinal="first", multi_subject=False,
+            pool,
+            subject_entity_ids=["x"],
+            ordinal="first",
+            multi_subject=False,
         )
         assert [s.memory.id for s in pool] == before
 
@@ -275,19 +309,24 @@ class TestInputIntegrity:
             _sm("xA", datetime(2024, 1, 1, tzinfo=UTC), 1.0),
             _sm("xB", datetime(2023, 1, 1, tzinfo=UTC), 0.9),
             _sm("tail-subject", datetime(2022, 1, 1, tzinfo=UTC), 0.5),
-            _sm("tail-other",   datetime(2021, 1, 1, tzinfo=UTC), 0.4),
+            _sm("tail-other", datetime(2021, 1, 1, tzinfo=UTC), 0.4),
         ]
-        pipe = _pipeline({
-            "x": {"xA", "xB", "tail-subject"},
-        })
+        pipe = _pipeline(
+            {
+                "x": {"xA", "xB", "tail-subject"},
+            }
+        )
         out = pipe.apply_ordinal_ordering(
-            pool, subject_entity_ids=["x"],
-            ordinal="first", multi_subject=False,
+            pool,
+            subject_entity_ids=["x"],
+            ordinal="first",
+            multi_subject=False,
             rerank_k=2,
         )
         # Top-2 reordered, tail preserved.
         assert [s.memory.id for s in out] == [
-            "xB", "xA",      # head sorted ascending by date
+            "xB",
+            "xA",  # head sorted ascending by date
             "tail-subject",  # original index 2
-            "tail-other",    # original index 3
+            "tail-other",  # original index 3
         ]

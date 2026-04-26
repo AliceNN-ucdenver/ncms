@@ -96,8 +96,7 @@ async def synthesize_episode_summary(
 
     try:
         members_text = "\n".join(
-            f"- {content[:_MAX_MEMBER_CHARS]}"
-            for content in member_contents[:_MAX_MEMBERS]
+            f"- {content[:_MAX_MEMBER_CHARS]}" for content in member_contents[:_MAX_MEMBERS]
         )
 
         prompt = EPISODE_SUMMARY_PROMPT.format(
@@ -183,8 +182,7 @@ async def synthesize_recurring_pattern(
 
     try:
         summaries_text = "\n".join(
-            f"- {s[:_MAX_SUMMARY_CHARS]}"
-            for s in episode_summaries[:_MAX_SUMMARIES]
+            f"- {s[:_MAX_SUMMARY_CHARS]}" for s in episode_summaries[:_MAX_SUMMARIES]
         )
         entities_text = ", ".join(shared_entities[:15]) or "none"
 

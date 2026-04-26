@@ -49,9 +49,7 @@ class TestConfidence:
         assert not is_confident("elephant")
 
     def test_confident_levels_exactly_high_and_medium(self) -> None:
-        assert frozenset(
-            {Confidence.HIGH, Confidence.MEDIUM}
-        ) == CONFIDENT_LEVELS
+        assert frozenset({Confidence.HIGH, Confidence.MEDIUM}) == CONFIDENT_LEVELS
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +114,9 @@ class TestCompose:
 
     def test_zone_context_inserted_after_grammar_answer(self) -> None:
         trace = _trace(
-            "grammar-hit", Confidence.HIGH, zone_context=["sib-1", "sib-2"],
+            "grammar-hit",
+            Confidence.HIGH,
+            zone_context=["sib-1", "sib-2"],
         )
         result = compose(["grammar-hit", "a", "b", "sib-1", "c"], trace)
         # Expected order: grammar-hit, then zone_context, then remaining
@@ -131,7 +131,9 @@ class TestCompose:
 
     def test_empty_bm25_yields_just_the_grammar_answer(self) -> None:
         trace = _trace(
-            "grammar-hit", Confidence.HIGH, zone_context=["sib-1"],
+            "grammar-hit",
+            Confidence.HIGH,
+            zone_context=["sib-1"],
         )
         result = compose([], trace)
         assert result == ["grammar-hit", "sib-1"]

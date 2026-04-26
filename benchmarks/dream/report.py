@@ -28,14 +28,8 @@ def generate_dream_table(results: dict[str, Any]) -> str:
     if not stages:
         return "No stage results."
 
-    header = (
-        "| Stage | nDCG@10 | \u0394% | MRR@10 | Recall@100 "
-        "| Insights | Memories | Time |"
-    )
-    separator = (
-        "|-------|---------|------|--------|------------"
-        "|----------|----------|------|"
-    )
+    header = "| Stage | nDCG@10 | \u0394% | MRR@10 | Recall@100 | Insights | Memories | Time |"
+    separator = "|-------|---------|------|--------|------------|----------|----------|------|"
     lines = [header, separator]
 
     for stage in DREAM_STAGES:
@@ -117,12 +111,10 @@ def generate_diagnostics_structural_table(results: dict[str, Any]) -> str:
         return "No diagnostics."
 
     header = (
-        "| Stage | Entities | Edges | Density | Components "
-        "| PR max | Assoc Pairs | Abstracts |"
+        "| Stage | Entities | Edges | Density | Components | PR max | Assoc Pairs | Abstracts |"
     )
     separator = (
-        "|-------|----------|-------|---------|------------"
-        "|--------|-------------|-----------|"
+        "|-------|----------|-------|---------|------------|--------|-------------|-----------|"
     )
     lines = [header, separator]
 
@@ -301,18 +293,10 @@ def save_dream_results(
 
             ingestion = results.get("ingestion", {})
             f.write(f"- **Documents**: {ingestion.get('docs_ingested', 0)}\n")
-            f.write(
-                f"- **Episodes created**: {ingestion.get('episodes_created', 0)}\n"
-            )
-            f.write(
-                f"- **Ingestion time**: "
-                f"{ingestion.get('ingestion_seconds', 0):.1f}s\n"
-            )
+            f.write(f"- **Episodes created**: {ingestion.get('episodes_created', 0)}\n")
+            f.write(f"- **Ingestion time**: {ingestion.get('ingestion_seconds', 0):.1f}s\n")
             f.write(f"- **LLM model**: `{ingestion.get('llm_model', 'N/A')}`\n")
-            f.write(
-                f"- **Total time**: "
-                f"{results.get('total_elapsed_seconds', 0):.1f}s\n"
-            )
+            f.write(f"- **Total time**: {results.get('total_elapsed_seconds', 0):.1f}s\n")
             f.write("\n")
 
             # Retrieval progression table

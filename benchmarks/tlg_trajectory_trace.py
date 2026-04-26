@@ -17,10 +17,12 @@ Prints per-shape accuracy + the first few examples where the
 grammar answer differs from gold, so we can see where the walk
 drifts.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
+
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -35,7 +37,9 @@ ROOT = Path("/Users/shawnmccarthy/ncms")
 
 
 async def trace_domain(
-    mseb_domain: str, adapter_domain: str, limit_queries: int | None = None,
+    mseb_domain: str,
+    adapter_domain: str,
+    limit_queries: int | None = None,
 ) -> None:
     print(f"[{mseb_domain}] loading corpus + queries", flush=True)
     build = ROOT / f"benchmarks/mseb_{mseb_domain}/build_mini"
@@ -43,8 +47,7 @@ async def trace_domain(
     queries = load_queries(build / "queries.jsonl")
     if limit_queries:
         queries = queries[:limit_queries]
-    print(f"[{mseb_domain}] loaded {len(corpus)} mems + "
-          f"{len(queries)} queries", flush=True)
+    print(f"[{mseb_domain}] loaded {len(corpus)} mems + {len(queries)} queries", flush=True)
 
     # MSEB gold for correctness check
     gold_yaml = yaml.safe_load(
@@ -62,18 +65,18 @@ async def trace_domain(
     try:
         print(f"[{mseb_domain}] ingesting {len(corpus)} memories...", flush=True)
         import time as _t
+
         t0 = _t.perf_counter()
         await backend.ingest(corpus)
-        print(f"[{mseb_domain}] ingest done in {_t.perf_counter()-t0:.1f}s",
-              flush=True)
+        print(f"[{mseb_domain}] ingest done in {_t.perf_counter() - t0:.1f}s", flush=True)
         svc = backend._svc
-        print(f"[{mseb_domain}] starting trace over {len(queries)} queries...",
-              flush=True)
+        print(f"[{mseb_domain}] starting trace over {len(queries)} queries...", flush=True)
 
-        print(f"\n{'='*86}")
-        print(f"  {mseb_domain} → {adapter_domain}/v6  "
-              f"(corpus={len(corpus)} queries={len(queries)})")
-        print(f"{'='*86}")
+        print(f"\n{'=' * 86}")
+        print(
+            f"  {mseb_domain} → {adapter_domain}/v6  (corpus={len(corpus)} queries={len(queries)})"
+        )
+        print(f"{'=' * 86}")
 
         per_shape_stats: dict[str, Counter] = defaultdict(Counter)
         mismatches: list[dict] = []
@@ -112,10 +115,10 @@ async def trace_domain(
                     mem = None
                 if mem is not None:
                     mid_tag = next(
-                        (t.split(":", 1)[1] for t in (mem.tags or [])
-                         if t.startswith("mid:")), None,
+                        (t.split(":", 1)[1] for t in (mem.tags or []) if t.startswith("mid:")),
+                        None,
                     )
-                    grammar_correct = (mid_tag == gold_mid)
+                    grammar_correct = mid_tag == gold_mid
 
             # Accumulate per-shape stats
             per_shape_stats[expected_shape]["total"] += 1
@@ -126,43 +129,48 @@ async def trace_domain(
                 per_shape_stats[expected_shape]["grammar_wrong"] += 1
 
             # Record mismatches for review
-            if (confidence in ("high", "medium") and grammar_correct is False):
-                mismatches.append({
-                    "qid": q.qid,
-                    "text": q.text,
-                    "expected_shape": expected_shape,
-                    "slm_shape": slm_shape,
-                    "dispatch_intent": dispatch_intent,
-                    "grammar_answer": trace.grammar_answer,
-                    "gold_mid": gold_mid,
-                    "confidence": confidence,
-                    "proof": trace.proof,
-                    "subject": trace.intent.subject if trace.intent else None,
-                    "entity": trace.intent.entity if trace.intent else None,
-                })
+            if confidence in ("high", "medium") and grammar_correct is False:
+                mismatches.append(
+                    {
+                        "qid": q.qid,
+                        "text": q.text,
+                        "expected_shape": expected_shape,
+                        "slm_shape": slm_shape,
+                        "dispatch_intent": dispatch_intent,
+                        "grammar_answer": trace.grammar_answer,
+                        "gold_mid": gold_mid,
+                        "confidence": confidence,
+                        "proof": trace.proof,
+                        "subject": trace.intent.subject if trace.intent else None,
+                        "entity": trace.intent.entity if trace.intent else None,
+                    }
+                )
 
             # Sample first 3 abstains per shape — need this when
             # ALL queries abstain (no mismatches to print).
             shape_abstains = sum(
-                1 for a in abstain_samples
-                if a["expected_shape"] == expected_shape
+                1 for a in abstain_samples if a["expected_shape"] == expected_shape
             )
             if confidence in ("abstain", "none") and shape_abstains < 3:
-                abstain_samples.append({
-                    "qid": q.qid,
-                    "text": q.text,
-                    "expected_shape": expected_shape,
-                    "slm_shape": slm_shape,
-                    "dispatch_intent": dispatch_intent,
-                    "confidence": confidence,
-                    "proof": trace.proof,
-                    "subject": trace.intent.subject if trace.intent else None,
-                    "entity": trace.intent.entity if trace.intent else None,
-                })
+                abstain_samples.append(
+                    {
+                        "qid": q.qid,
+                        "text": q.text,
+                        "expected_shape": expected_shape,
+                        "slm_shape": slm_shape,
+                        "dispatch_intent": dispatch_intent,
+                        "confidence": confidence,
+                        "proof": trace.proof,
+                        "subject": trace.intent.subject if trace.intent else None,
+                        "entity": trace.intent.entity if trace.intent else None,
+                    }
+                )
 
         # Per-shape summary
-        print(f"\n{'shape':20} {'n':>4} {'high':>5} {'med':>4} "
-              f"{'abs':>4} {'none':>5} {'✓':>4} {'✗':>4}")
+        print(
+            f"\n{'shape':20} {'n':>4} {'high':>5} {'med':>4} "
+            f"{'abs':>4} {'none':>5} {'✓':>4} {'✗':>4}"
+        )
         print("-" * 72)
         for shape in sorted(per_shape_stats):
             s = per_shape_stats[shape]
@@ -175,13 +183,17 @@ async def trace_domain(
 
         # Show first N mismatches for forensic review
         if mismatches:
-            print(f"\nFirst {min(8, len(mismatches))} grammar mismatches "
-                  f"(confident but wrong) — {len(mismatches)} total:\n")
+            print(
+                f"\nFirst {min(8, len(mismatches))} grammar mismatches "
+                f"(confident but wrong) — {len(mismatches)} total:\n"
+            )
             for m in mismatches[:8]:
                 print(f"  [{m['confidence']}] qid={m['qid']}")
-                print(f"     expected_shape={m['expected_shape']:18} "
-                      f"slm_shape={m['slm_shape']:18} "
-                      f"dispatch={m['dispatch_intent']}")
+                print(
+                    f"     expected_shape={m['expected_shape']:18} "
+                    f"slm_shape={m['slm_shape']:18} "
+                    f"dispatch={m['dispatch_intent']}"
+                )
                 print(f"     query: {m['text'][:110]}")
                 print(f"     subject={m['subject']!r} entity={m['entity']!r}")
                 print(f"     grammar_answer={m['grammar_answer']}")
@@ -191,13 +203,14 @@ async def trace_domain(
 
         # Show abstain samples — useful when ALL queries abstain
         if abstain_samples:
-            print(f"\n{len(abstain_samples)} abstain samples "
-                  f"(up to 3 per shape):\n")
+            print(f"\n{len(abstain_samples)} abstain samples (up to 3 per shape):\n")
             for m in abstain_samples:
                 print(f"  [{m['confidence']}] qid={m['qid']}")
-                print(f"     expected_shape={m['expected_shape']:18} "
-                      f"slm_shape={m['slm_shape']:18} "
-                      f"dispatch={m['dispatch_intent']}")
+                print(
+                    f"     expected_shape={m['expected_shape']:18} "
+                    f"slm_shape={m['slm_shape']:18} "
+                    f"dispatch={m['dispatch_intent']}"
+                )
                 print(f"     query: {m['text'][:110]}")
                 print(f"     subject={m['subject']!r} entity={m['entity']!r}")
                 print(f"     proof: {m['proof']}")
@@ -212,12 +225,15 @@ async def trace_domain(
             )
             subjects = sorted(set(vocab_ctx.vocabulary.subject_lookup.values()))
             entity_names = list(vocab_ctx.vocabulary.entity_lookup.keys())
-            print(f"\nInduced L1 vocabulary after ingest:")
-            print(f"  subjects ({len(subjects)}): {subjects[:10]}"
-                  f"{'…' if len(subjects) > 10 else ''}")
-            print(f"  entities ({len(entity_names)}): "
-                  f"{entity_names[:12]}"
-                  f"{'…' if len(entity_names) > 12 else ''}")
+            print("\nInduced L1 vocabulary after ingest:")
+            print(
+                f"  subjects ({len(subjects)}): {subjects[:10]}{'…' if len(subjects) > 10 else ''}"
+            )
+            print(
+                f"  entities ({len(entity_names)}): "
+                f"{entity_names[:12]}"
+                f"{'…' if len(entity_names) > 12 else ''}"
+            )
         except Exception as exc:
             print(f"\nvocabulary diagnostic failed: {exc!r}")
 

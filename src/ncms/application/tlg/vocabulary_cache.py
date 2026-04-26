@@ -68,30 +68,61 @@ logger = logging.getLogger(__name__)
 # vocabularies are gone and these two seed sets are the only
 # survivors — relocated here so vocabulary_cache owns them directly
 # and the L3 query parser can shed all its regex machinery.
-_L2_SEED_CURRENT: frozenset[str] = frozenset({
-    "current", "currently", "now", "today", "latest",
-    "present", "presently", "as of",
-})
-_L2_SEED_ORIGIN: frozenset[str] = frozenset({
-    "original", "first", "initial", "earliest", "starting",
-    "started", "start", "begin", "began", "kickoff", "onset",
-})
+_L2_SEED_CURRENT: frozenset[str] = frozenset(
+    {
+        "current",
+        "currently",
+        "now",
+        "today",
+        "latest",
+        "present",
+        "presently",
+        "as of",
+    }
+)
+_L2_SEED_ORIGIN: frozenset[str] = frozenset(
+    {
+        "original",
+        "first",
+        "initial",
+        "earliest",
+        "starting",
+        "started",
+        "start",
+        "begin",
+        "began",
+        "kickoff",
+        "onset",
+    }
+)
 
 # Irreducible English issue-seed vocabulary used by the L3 parser
 # when preferring "issue entity" over subject noun for cause_of
 # target extraction.  Kept here (not in query_parser) because the
 # parser itself is entity-extraction-only now — the L2 side still
 # needs this seed for its domain-agnostic issue vocabulary.
-_ISSUE_SEED: frozenset[str] = frozenset({
-    "blocker", "blockers", "blocked",
-    "delay", "delays", "delayed",
-    "issue", "issues",
-    "problem", "problems",
-    "incident", "incidents",
-    "bug", "bugs",
-    "error", "errors",
-    "failure", "failures",
-})
+_ISSUE_SEED: frozenset[str] = frozenset(
+    {
+        "blocker",
+        "blockers",
+        "blocked",
+        "delay",
+        "delays",
+        "delayed",
+        "issue",
+        "issues",
+        "problem",
+        "problems",
+        "incident",
+        "incidents",
+        "bug",
+        "bugs",
+        "error",
+        "errors",
+        "failure",
+        "failures",
+    }
+)
 
 
 class VocabularyCache:
@@ -135,7 +166,9 @@ class VocabularyCache:
         return self._vocab
 
     async def lookup_subject(
-        self, query: str, store: object,
+        self,
+        query: str,
+        store: object,
     ) -> str | None:
         """Return the subject most strongly implied by ``query`` per the
         induced vocabulary, or ``None``.  Rebuilds the cache on first
@@ -145,7 +178,9 @@ class VocabularyCache:
         return lookup_subject(query, vocab)
 
     async def lookup_entity(
-        self, query: str, store: object,
+        self,
+        query: str,
+        store: object,
     ) -> str | None:
         """Return the canonical form of the longest matching entity in
         ``query``, or ``None``.  Rebuilds the cache on first call.
@@ -154,7 +189,8 @@ class VocabularyCache:
         return lookup_entity(query, vocab)
 
     async def get_aliases(
-        self, store: object,
+        self,
+        store: object,
     ) -> dict[str, frozenset[str]]:
         """Return the cached alias mapping, rebuilding on first call.
 
@@ -170,7 +206,9 @@ class VocabularyCache:
         return self._aliases
 
     async def expand(
-        self, entity: str, store: object,
+        self,
+        entity: str,
+        store: object,
     ) -> frozenset[str]:
         """``{entity}`` unioned with its known aliases (case-insensitive)."""
         aliases = await self.get_aliases(store)
@@ -202,14 +240,10 @@ class VocabularyCache:
         if self._content_markers is None:
             self._content_markers = await self._compute_content_markers(store)
         markers = induced_markers or InducedEdgeMarkers(markers={})
-        marker_key = tuple(sorted(
-            (t, tuple(sorted(heads)))
-            for t, heads in markers.markers.items()
-        ))
-        if (
-            self._parser_context is not None
-            and self._parser_context_key == marker_key
-        ):
+        marker_key = tuple(
+            sorted((t, tuple(sorted(heads))) for t, heads in markers.markers.items())
+        )
+        if self._parser_context is not None and self._parser_context_key == marker_key:
             return self._parser_context
         ctx = ParserContext(
             vocabulary=vocab,
@@ -227,7 +261,8 @@ class VocabularyCache:
     # ── Rebuild ──────────────────────────────────────────────────────
 
     async def _rebuild_aliases(
-        self, store: object,
+        self,
+        store: object,
     ) -> dict[str, frozenset[str]]:
         """Mine the alias table from the store's entity universe.
 
@@ -287,7 +322,8 @@ class VocabularyCache:
             )
         except Exception as exc:  # pragma: no cover — defensive guard
             logger.warning(
-                "TLG aliases: could not list supersession edges: %s", exc,
+                "TLG aliases: could not list supersession edges: %s",
+                exc,
             )
             edges = []
         for edge in edges:
@@ -295,9 +331,7 @@ class VocabularyCache:
 
         aliases = induce_aliases(universe)
         if aliases:
-            group_count = len({
-                frozenset({k, *v}) for k, v in aliases.items()
-            })
+            group_count = len({frozenset({k, *v}) for k, v in aliases.items()})
             logger.info(
                 "TLG L1 aliases: %d surface forms, %d alias groups",
                 len(aliases),
@@ -306,7 +340,8 @@ class VocabularyCache:
         return aliases
 
     async def _compute_content_markers(
-        self, store: object,
+        self,
+        store: object,
     ) -> InducedContentMarkers:
         """Mine content-derived current/origin markers from the
         subject graphs.
@@ -338,18 +373,20 @@ class VocabularyCache:
             # Subject's earliest memory — by observed_at, then created_at.
             earliest = min(
                 subj_nodes,
-                key=lambda n: (n.observed_at or n.created_at),
+                key=lambda n: n.observed_at or n.created_at,
             )
             root_ids.add(earliest.memory_id)
             # Current-zone terminal(s).
             try:
                 zones, node_index, _ = await _load_subject_zones(
-                    store, subject,
+                    store,
+                    subject,
                 )
             except Exception as exc:  # pragma: no cover — defensive guard
                 logger.warning(
                     "TLG content markers: zone build failed for %s: %s",
-                    subject, exc,
+                    subject,
+                    exc,
                 )
                 continue
             terminal_zone = current_zone(zones, node_index)
@@ -381,7 +418,8 @@ class VocabularyCache:
         )
 
     async def _compute_domain_nouns(
-        self, store: object,
+        self,
+        store: object,
     ) -> frozenset[str]:
         """Build the domain-noun frozenset by scanning the same
         ENTITY_STATE universe the vocabulary uses.
@@ -496,9 +534,7 @@ class VocabularyCache:
                 continue
             if not linked:
                 continue
-            memories.append(
-                SubjectMemory(subject=subject, entities=frozenset(linked))
-            )
+            memories.append(SubjectMemory(subject=subject, entities=frozenset(linked)))
 
         # Signal 2: subject-typed entity rows (caller-asserted
         # aboutness).  Each (subject_entity, linked_memory) pair is
@@ -510,7 +546,8 @@ class VocabularyCache:
             )
         except Exception as exc:  # pragma: no cover — defensive guard
             logger.warning(
-                "TLG vocabulary: could not list subject entities: %s", exc,
+                "TLG vocabulary: could not list subject entities: %s",
+                exc,
             )
             subj_entities = []
         n_subject_memories = 0
@@ -525,7 +562,8 @@ class VocabularyCache:
             except Exception as exc:  # pragma: no cover — defensive guard
                 logger.warning(
                     "TLG vocabulary: could not find memories for subject %s: %s",
-                    ent.id, exc,
+                    ent.id,
+                    exc,
                 )
                 continue
             for mid in mids:
@@ -537,7 +575,8 @@ class VocabularyCache:
                     continue
                 memories.append(
                     SubjectMemory(
-                        subject=subject_name, entities=frozenset(linked),
+                        subject=subject_name,
+                        entities=frozenset(linked),
                     ),
                 )
                 n_subject_memories += 1
@@ -548,6 +587,7 @@ class VocabularyCache:
             "(entity_state_memories=%d, subject_entity_memories=%d)",
             len({m.subject for m in memories}),
             len(vocab.entity_lookup),
-            len(nodes), n_subject_memories,
+            len(nodes),
+            n_subject_memories,
         )
         return vocab

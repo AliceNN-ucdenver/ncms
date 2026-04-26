@@ -26,10 +26,13 @@ class IntentSlotExtractor(Protocol):
     side-effect-free.
     """
 
-    name: str                   # human-readable method tag (logs, matrix)
+    name: str  # human-readable method tag (logs, matrix)
 
     def extract(
-        self, text: str, *, domain: Domain,
+        self,
+        text: str,
+        *,
+        domain: Domain,
     ) -> ExtractedLabel:
         """Return the predicted ``(intent, slots, confidences)``.
 

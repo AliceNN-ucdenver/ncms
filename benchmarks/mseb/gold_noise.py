@@ -138,9 +138,11 @@ def main() -> None:
     rows = emit_noise_queries(args.domain)
     try:
         import yaml
+
         body = yaml.safe_dump(rows, sort_keys=False, allow_unicode=True)
     except ImportError:
         import json
+
         body = json.dumps(rows, indent=2, ensure_ascii=False)
     args.out.write_text(
         f"# MSEB {args.domain} noise gold — hand-authored off-topic.\n\n" + body,

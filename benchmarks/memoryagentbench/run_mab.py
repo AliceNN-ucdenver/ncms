@@ -83,9 +83,7 @@ def save_results(results: dict[str, Any], output_dir: Path) -> None:
 
     for split_name, sm in splits.items():
         if sm.get("skipped"):
-            lines.append(
-                f"| {split_name.upper()} | - | - | SKIPPED | - | - | - |"
-            )
+            lines.append(f"| {split_name.upper()} | - | - | SKIPPED | - | - | - |")
         else:
             lines.append(
                 f"| {split_name.upper()} "
@@ -172,15 +170,19 @@ async def run_benchmark(
     if missing:
         logger.warning(
             "Requested splits not in dataset: %s. Available: %s",
-            ", ".join(sorted(missing)), ", ".join(sorted(available)),
+            ", ".join(sorted(missing)),
+            ", ".join(sorted(available)),
         )
 
     # In test mode, limit samples and truncate large contexts
     max_samples = 2 if test_mode else None
     max_context_chars = 50_000 if test_mode else None
     if test_mode:
-        logger.info("TEST MODE: limiting to %d samples per split, max context %d chars",
-                     max_samples, max_context_chars)
+        logger.info(
+            "TEST MODE: limiting to %d samples per split, max context %d chars",
+            max_samples,
+            max_context_chars,
+        )
         # Truncate large contexts to speed up test runs
         for _split_name, split_data in data.items():
             if isinstance(split_data, list):
@@ -245,7 +247,8 @@ def main() -> None:
         help="Context chunk size in characters (default: 2000)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable debug logging",
     )
@@ -262,6 +265,7 @@ def main() -> None:
     # Load env
     try:
         from benchmarks.env import load_env
+
         load_env()
     except ImportError:
         pass
@@ -275,14 +279,16 @@ def main() -> None:
     logger.info("  Test mode: %s", args.test)
     logger.info("  Top-K: %d, Chunk size: %d", args.top_k, args.chunk_size)
 
-    asyncio.run(run_benchmark(
-        cache_dir=args.cache_dir,
-        output_dir=args.output_dir,
-        splits=splits,
-        test_mode=args.test,
-        top_k=args.top_k,
-        chunk_size=args.chunk_size,
-    ))
+    asyncio.run(
+        run_benchmark(
+            cache_dir=args.cache_dir,
+            output_dir=args.output_dir,
+            splits=splits,
+            test_mode=args.test,
+            top_k=args.top_k,
+            chunk_size=args.chunk_size,
+        )
+    )
 
 
 if __name__ == "__main__":

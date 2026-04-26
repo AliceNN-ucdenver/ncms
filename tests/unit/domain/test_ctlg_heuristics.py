@@ -41,9 +41,7 @@ def _mk(**overrides):
 
 class TestExplanatory:
     def test_fully_explained_returns_one(self) -> None:
-        t = _mk(explained_state_keys=frozenset(
-            {("a", "s1"), ("a", "s2"), ("a", "s3")}
-        ))
+        t = _mk(explained_state_keys=frozenset({("a", "s1"), ("a", "s2"), ("a", "s3")}))
         ctx = HeuristicContext(total_state_keys=3)
         assert h_explanatory(t, ctx) == 1.0
 
@@ -90,7 +88,8 @@ class TestRecency:
         now = datetime.now(UTC)
         t = _mk(terminal_observed_at=now)
         ctx = HeuristicContext(
-            evaluated_at=now, recency_lambda_per_day=0.01,
+            evaluated_at=now,
+            recency_lambda_per_day=0.01,
         )
         assert h_recency(t, ctx) == pytest.approx(1.0)
 
@@ -107,7 +106,8 @@ class TestRecency:
         old = now - timedelta(days=100)
         t = _mk(terminal_observed_at=old)
         ctx = HeuristicContext(
-            evaluated_at=now, recency_lambda_per_day=0.01,
+            evaluated_at=now,
+            recency_lambda_per_day=0.01,
         )
         # e^(-0.01 * 100) ≈ 0.367
         assert h_recency(t, ctx) == pytest.approx(math.exp(-1.0), rel=1e-3)
@@ -134,14 +134,12 @@ class TestRobustness:
         assert h_robustness(t, HeuristicContext()) == 1.0
 
     def test_partial_supports(self) -> None:
-        t = _mk(memory_ids=("m1", "m2", "m3"),
-                supports_edge_counts=(2, 0, 1))
+        t = _mk(memory_ids=("m1", "m2", "m3"), supports_edge_counts=(2, 0, 1))
         # total = 3 supports over 3 nodes → 1.0 (capped)
         assert h_robustness(t, HeuristicContext()) == 1.0
 
     def test_low_support_density(self) -> None:
-        t = _mk(memory_ids=("m1", "m2", "m3", "m4"),
-                supports_edge_counts=(1, 0, 0, 0))
+        t = _mk(memory_ids=("m1", "m2", "m3", "m4"), supports_edge_counts=(1, 0, 0, 0))
         assert h_robustness(t, HeuristicContext()) == pytest.approx(0.25)
 
 
@@ -173,8 +171,13 @@ class TestScoreTrajectory:
         )
         ctx = HeuristicContext(total_state_keys=1)
         scored = score_trajectory(t, ctx)
-        for h in ["h_explanatory", "h_parsimony", "h_recency",
-                  "h_robustness", "h_counterfactual_dist"]:
+        for h in [
+            "h_explanatory",
+            "h_parsimony",
+            "h_recency",
+            "h_robustness",
+            "h_counterfactual_dist",
+        ]:
             assert h in scored.heuristic_scores, f"missing {h}"
 
     def test_subset_scoring(self) -> None:
@@ -242,6 +245,7 @@ class TestWeightsRegistry:
         import typing
 
         from ncms.domain.tlg.semantic_parser import TLGRelation
+
         relations = typing.get_args(TLGRelation)
         for rel in relations:
             w = weights_for_relation(rel)
@@ -277,9 +281,7 @@ class TestIntegration:
             memory_ids=("a1", "a2"),
             edge_types=("caused_by",),
             kind="causal_chain",
-            explained_state_keys=frozenset(
-                {("s", "a"), ("s", "b"), ("s", "c")}
-            ),
+            explained_state_keys=frozenset({("s", "a"), ("s", "b"), ("s", "c")}),
             supports_edge_counts=(1, 1),
         )
         b = _mk(

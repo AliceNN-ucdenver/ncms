@@ -38,22 +38,35 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 # Each has the date in content too, so GLiNER may extract a content
 # range; the metadata fallback catches whatever it misses.
 _ADR_CORPUS: list[tuple[str, datetime]] = [
-    ("ADR-001 (2023-02-10): Initial authentication via session cookies.",
-     datetime(2023, 2, 10, tzinfo=UTC)),
-    ("ADR-005 (2023-07-14): Migrate logging to structured JSON.",
-     datetime(2023, 7, 14, tzinfo=UTC)),
-    ("ADR-012 (2024-01-20): Introduce OAuth 2.0 authentication.",
-     datetime(2024, 1, 20, tzinfo=UTC)),
-    ("ADR-014 (2024-02-05): Adopt JSON Web Tokens for API authentication.",
-     datetime(2024, 2, 5, tzinfo=UTC)),
-    ("ADR-017 (2024-03-22): Split monolith into microservices.",
-     datetime(2024, 3, 22, tzinfo=UTC)),
-    ("ADR-021 (2024-07-15): Retire JWT in favour of short-lived tokens.",
-     datetime(2024, 7, 15, tzinfo=UTC)),
-    ("ADR-025 (2024-09-03): Migrate database from Postgres to CockroachDB.",
-     datetime(2024, 9, 3, tzinfo=UTC)),
-    ("ADR-029 (2025-04-02): Replace passwords with passkeys + WebAuthn.",
-     datetime(2025, 4, 2, tzinfo=UTC)),
+    (
+        "ADR-001 (2023-02-10): Initial authentication via session cookies.",
+        datetime(2023, 2, 10, tzinfo=UTC),
+    ),
+    (
+        "ADR-005 (2023-07-14): Migrate logging to structured JSON.",
+        datetime(2023, 7, 14, tzinfo=UTC),
+    ),
+    (
+        "ADR-012 (2024-01-20): Introduce OAuth 2.0 authentication.",
+        datetime(2024, 1, 20, tzinfo=UTC),
+    ),
+    (
+        "ADR-014 (2024-02-05): Adopt JSON Web Tokens for API authentication.",
+        datetime(2024, 2, 5, tzinfo=UTC),
+    ),
+    ("ADR-017 (2024-03-22): Split monolith into microservices.", datetime(2024, 3, 22, tzinfo=UTC)),
+    (
+        "ADR-021 (2024-07-15): Retire JWT in favour of short-lived tokens.",
+        datetime(2024, 7, 15, tzinfo=UTC),
+    ),
+    (
+        "ADR-025 (2024-09-03): Migrate database from Postgres to CockroachDB.",
+        datetime(2024, 9, 3, tzinfo=UTC),
+    ),
+    (
+        "ADR-029 (2025-04-02): Replace passwords with passkeys + WebAuthn.",
+        datetime(2025, 4, 2, tzinfo=UTC),
+    ),
 ]
 
 
@@ -69,7 +82,8 @@ async def _make_service(
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        splade_enabled=False, scoring_weight_splade=0.0,
+        splade_enabled=False,
+        scoring_weight_splade=0.0,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_graph=0.0,
@@ -80,12 +94,17 @@ async def _make_service(
         temporal_missing_range_policy=missing_range_policy,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     for content, when in _ADR_CORPUS:
         await svc.store_memory(
-            content=content, memory_type="fact",
-            tags=["adr"], observed_at=when,
+            content=content,
+            memory_type="fact",
+            tags=["adr"],
+            observed_at=when,
         )
     await svc.flush_indexing()
     return svc
@@ -108,16 +127,14 @@ async def adr_service_exclude() -> MemoryService:
 def _year(results, year: int) -> int:
     """Count results whose observed_at falls in ``year``."""
     return sum(
-        1 for r in results
-        if r.memory.observed_at is not None
-        and r.memory.observed_at.year == year
+        1 for r in results if r.memory.observed_at is not None and r.memory.observed_at.year == year
     )
 
 
 class TestExplicitRange:
-
     async def test_range_query_filters_out_of_window_memories(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         """'ADRs from 2024' should not surface 2023 or 2025 memories.
 
@@ -140,7 +157,8 @@ class TestExplicitRange:
         assert _year(results, 2024) >= 1
 
     async def test_since_anchor_filters_older_memories(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         """'Since June 2024' should filter out pre-June-2024 ADRs."""
         results = await adr_service.search(
@@ -160,9 +178,9 @@ class TestExplicitRange:
 
 
 class TestNoFireOnNonTemporal:
-
     async def test_no_temporal_signal_no_filter(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         """Queries without a temporal signal see the full corpus."""
         results = await adr_service.search(
@@ -171,16 +189,12 @@ class TestNoFireOnNonTemporal:
         )
         # Multiple years should be represented when the filter doesn't
         # fire (no temporal intent).
-        years = {
-            r.memory.observed_at.year for r in results
-            if r.memory.observed_at is not None
-        }
-        assert len(years) >= 2, (
-            f"Expected multiple years; got {years}"
-        )
+        years = {r.memory.observed_at.year for r in results if r.memory.observed_at is not None}
+        assert len(years) >= 2, f"Expected multiple years; got {years}"
 
     async def test_arithmetic_intent_skips_filter(
-        self, adr_service: MemoryService,
+        self,
+        adr_service: MemoryService,
     ) -> None:
         """Arithmetic questions must not filter — the classifier
         fast-fails and the explicit-range primitive is skipped."""
@@ -208,7 +222,8 @@ class TestMissingRangePolicy:
     when content_ranges rows are missing (never in this fixture)."""
 
     async def test_exclude_policy_preserves_results_when_ranges_present(
-        self, adr_service_exclude: MemoryService,
+        self,
+        adr_service_exclude: MemoryService,
     ) -> None:
         """Every memory has a metadata-fallback range → exclude-mode
         matches include-mode."""

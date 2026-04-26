@@ -135,7 +135,7 @@ def download_mab(cache_dir: Path | None = None) -> Path | None:
         "MemoryAgentBench dataset not available. "
         "This may be an unreleased ICLR 2026 dataset. "
         "Install with: pip install datasets && "
-        "python -c \"from datasets import load_dataset; "
+        'python -c "from datasets import load_dataset; '
         "load_dataset('%s')\"",
         DATASET_REPO,
     )
@@ -179,7 +179,9 @@ def load_mab_dataset(cache_dir: Path | None = None) -> dict[str, Any] | None:
                     cached_any = True
                     logger.info(
                         "Loaded cached split '%s' from %s: %d items",
-                        split, split_path.name, len(data),
+                        split,
+                        split_path.name,
+                        len(data),
                     )
                     break
                 except (json.JSONDecodeError, OSError) as exc:
@@ -188,7 +190,8 @@ def load_mab_dataset(cache_dir: Path | None = None) -> dict[str, Any] | None:
     if cached_any and len(result) > 0:
         logger.info(
             "Loaded %d/%d MAB splits from cache",
-            len(result), len(COMPETENCY_SPLITS),
+            len(result),
+            len(COMPETENCY_SPLITS),
         )
         return result
 

@@ -15,22 +15,21 @@ from __future__ import annotations
 
 from ncms.domain.tlg.semantic_parser import TLGQuery
 
-
 #: Legacy shape_intent → TLGQuery mapping for tests.  Each entry
 #: produces a minimal TLGQuery with no referent / subject — tests
 #: that depend on referent extraction pass ``referent=...`` to
 #: :func:`tlg_query_for` directly.
 _SHAPE_TO_TLG: dict[str, TLGQuery] = {
-    "current_state":    TLGQuery(axis="state",    relation="current"),
-    "origin":           TLGQuery(axis="ordinal",  relation="first"),
-    "retirement":       TLGQuery(axis="state",    relation="retired"),
-    "sequence":         TLGQuery(axis="temporal", relation="after_named"),
-    "predecessor":      TLGQuery(axis="temporal", relation="predecessor"),
-    "before_named":     TLGQuery(axis="temporal", relation="before_named"),
-    "interval":         TLGQuery(axis="temporal", relation="during_interval"),
-    "transitive_cause": TLGQuery(axis="causal",   relation="chain_cause_of"),
-    "concurrent":       TLGQuery(axis="temporal", relation="concurrent_with"),
-    "cause_of":         TLGQuery(axis="causal",   relation="cause_of"),
+    "current_state": TLGQuery(axis="state", relation="current"),
+    "origin": TLGQuery(axis="ordinal", relation="first"),
+    "retirement": TLGQuery(axis="state", relation="retired"),
+    "sequence": TLGQuery(axis="temporal", relation="after_named"),
+    "predecessor": TLGQuery(axis="temporal", relation="predecessor"),
+    "before_named": TLGQuery(axis="temporal", relation="before_named"),
+    "interval": TLGQuery(axis="temporal", relation="during_interval"),
+    "transitive_cause": TLGQuery(axis="causal", relation="chain_cause_of"),
+    "concurrent": TLGQuery(axis="temporal", relation="concurrent_with"),
+    "cause_of": TLGQuery(axis="causal", relation="cause_of"),
 }
 
 
@@ -51,6 +50,7 @@ def tlg_query_for(
     if referent is None and subject is None:
         return base
     import dataclasses
+
     return dataclasses.replace(
         base,
         referent=referent or base.referent,

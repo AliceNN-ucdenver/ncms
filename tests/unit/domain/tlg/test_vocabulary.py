@@ -75,24 +75,30 @@ class TestInduction:
         assert "cookies" not in vocab.primary_tokens
 
     def test_short_lowercase_tokens_dropped(self) -> None:
-        vocab = induce_vocabulary([
-            SubjectMemory(subject="s", entities=frozenset({"on ramp"})),
-        ])
+        vocab = induce_vocabulary(
+            [
+                SubjectMemory(subject="s", entities=frozenset({"on ramp"})),
+            ]
+        )
         # "on" is a 2-char lowercase word → dropped
         assert "on" not in vocab.subject_lookup
         assert "ramp" in vocab.subject_lookup
 
     def test_two_char_allcaps_kept(self) -> None:
-        vocab = induce_vocabulary([
-            SubjectMemory(subject="clinic", entities=frozenset({"PT program"})),
-        ])
+        vocab = induce_vocabulary(
+            [
+                SubjectMemory(subject="clinic", entities=frozenset({"PT program"})),
+            ]
+        )
         # "PT" (uppercase) → kept as signal
         assert "pt" in vocab.subject_lookup
 
     def test_digit_tokens_dropped(self) -> None:
-        vocab = induce_vocabulary([
-            SubjectMemory(subject="s", entities=frozenset({"2024 roadmap"})),
-        ])
+        vocab = induce_vocabulary(
+            [
+                SubjectMemory(subject="s", entities=frozenset({"2024 roadmap"})),
+            ]
+        )
         assert "2024" not in vocab.subject_lookup
         assert "roadmap" in vocab.subject_lookup
 
@@ -100,7 +106,8 @@ class TestInduction:
         # "authentication" appears in both subjects but more often in auth.
         corpus = _auth_corpus() + [
             SubjectMemory(
-                subject="docs", entities=frozenset({"authentication guide"}),
+                subject="docs",
+                entities=frozenset({"authentication guide"}),
             ),
         ]
         vocab = induce_vocabulary(corpus)
@@ -127,9 +134,7 @@ class TestLookupSubject:
         # query mentions both — primary-ness should win.
         corpus = _payments_corpus() + _identity_corpus()
         vocab = induce_vocabulary(corpus)
-        assert lookup_subject(
-            "what's on the roadmap for the project?", vocab
-        ) == "identity_project"
+        assert lookup_subject("what's on the roadmap for the project?", vocab) == "identity_project"
 
     def test_stem_match_handles_morphology(self) -> None:
         vocab = induce_vocabulary(_auth_corpus())
@@ -176,7 +181,9 @@ class TestEmptyCorpus:
         assert lookup_entity("anything", vocab) is None
 
     def test_memory_with_no_subject_skipped(self) -> None:
-        vocab = induce_vocabulary([
-            SubjectMemory(subject="", entities=frozenset({"something"})),
-        ])
+        vocab = induce_vocabulary(
+            [
+                SubjectMemory(subject="", entities=frozenset({"something"})),
+            ]
+        )
         assert vocab.subject_lookup == {}

@@ -198,7 +198,10 @@ class TestFileEventHandling:
     async def test_ingest_new_markdown(self, watch_svc: WatchService) -> None:
         """New markdown files are ingested."""
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False, dir="/tmp",
+            mode="w",
+            suffix=".md",
+            delete=False,
+            dir="/tmp",
         ) as f:
             f.write("# Test\n\nSome knowledge content.")
             f.flush()
@@ -214,7 +217,10 @@ class TestFileEventHandling:
     async def test_skip_unchanged_file(self, watch_svc: WatchService) -> None:
         """Unchanged files (same hash) are skipped on second event."""
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".md", delete=False, dir="/tmp",
+            mode="w",
+            suffix=".md",
+            delete=False,
+            dir="/tmp",
         ) as f:
             f.write("# Stable\n\nContent that doesn't change.")
             f.flush()
@@ -256,7 +262,8 @@ class TestHashPersistence:
         assert watch_svc._file_hashes == {}
 
     async def test_load_hashes_from_store(
-        self, memory_svc: AsyncMock,
+        self,
+        memory_svc: AsyncMock,
     ) -> None:
         """Persisted hashes are loaded correctly."""
         import json

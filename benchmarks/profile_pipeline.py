@@ -59,23 +59,22 @@ class TracingEventLog:
         agent_id: str | None = None,
         memory_id: str | None = None,
     ) -> None:
-        self.events.append(StageEvent(
-            pipeline_id=pipeline_id,
-            pipeline_type=pipeline_type,
-            stage=stage,
-            duration_ms=duration_ms,
-            data=data or {},
-            memory_id=memory_id,
-        ))
+        self.events.append(
+            StageEvent(
+                pipeline_id=pipeline_id,
+                pipeline_type=pipeline_type,
+                stage=stage,
+                duration_ms=duration_ms,
+                data=data or {},
+                memory_id=memory_id,
+            )
+        )
 
     def get_pipeline_events(self, pipeline_id: str) -> list[StageEvent]:
         return [e for e in self.events if e.pipeline_id == pipeline_id]
 
     def get_last_pipeline(self, pipeline_type: str) -> list[StageEvent]:
-        pids = [
-            e.pipeline_id for e in reversed(self.events)
-            if e.pipeline_type == pipeline_type
-        ]
+        pids = [e.pipeline_id for e in reversed(self.events) if e.pipeline_type == pipeline_type]
         if not pids:
             return []
         return self.get_pipeline_events(pids[0])
@@ -141,7 +140,10 @@ def print_trace(label: str, stages: list[StageEvent], wall_ms: float) -> None:
         elif s.stage == "rrf_fusion":
             extra = f"  fused={s.data.get('fused_count', '?')}"
         elif s.stage == "graph_expansion":
-            extra = f"  novel={s.data.get('novel_candidates', 0)} total={s.data.get('total_candidates', '?')}"
+            extra = (
+                f"  novel={s.data.get('novel_candidates', 0)}"
+                f" total={s.data.get('total_candidates', '?')}"
+            )
         elif s.stage == "node_preload":
             extra = f"  nodes={s.data.get('nodes_loaded', '?')}"
         elif s.stage == "intent_classification":
@@ -187,6 +189,7 @@ async def run_profile(
     splade_engine = None
     if splade:
         from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
         splade_engine = SpladeEngine()
 
     config = NCMSConfig(
@@ -206,21 +209,33 @@ async def run_profile(
     episode_svc = None
     if episodes:
         from ncms.application.episode_service import EpisodeService
+
         episode_svc = EpisodeService(
-            store=store, index=index,
-            splade=splade_engine, config=config,
+            store=store,
+            index=index,
+            splade=splade_engine,
+            config=config,
         )
 
     admission_svc = None
     if admission:
         from ncms.application.admission_service import AdmissionService
+
         admission_svc = AdmissionService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade_engine, episode=episode_svc, admission=admission_svc,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade_engine,
+        episode=episode_svc,
+        admission=admission_svc,
     )
     # Inject our tracing event log
     svc._event_log = tracer
@@ -279,8 +294,11 @@ async def run_profile(
         t0 = time.perf_counter()
         try:
             await svc.store_memory(
-                content=content, memory_type="fact", importance=5.0,
-                domains=["architecture"], source_agent="architect",
+                content=content,
+                memory_type="fact",
+                importance=5.0,
+                domains=["architecture"],
+                source_agent="architect",
             )
             wall_ms = (time.perf_counter() - t0) * 1000
             store_times.append(wall_ms)
@@ -294,6 +312,7 @@ async def run_profile(
             wall_ms = (time.perf_counter() - t0) * 1000
             print(f"  mem {i + 1:>2}: {wall_ms:.1f}ms  ERROR: {e}")
             import traceback
+
             traceback.print_exc()
             print()
 
@@ -306,8 +325,9 @@ async def run_profile(
         dedup_count = sum(1 for t in warm if t < 5)
         print(f"{'─' * 60}")
         print(f"Store summary — {mode_label} (warm, excl. cold start):")
-        print(f"  avg={avg:.0f}ms  p50={p50:.0f}ms  p95={p95:.0f}ms  "
-              f"total={sum(store_times):.0f}ms")
+        print(
+            f"  avg={avg:.0f}ms  p50={p50:.0f}ms  p95={p95:.0f}ms  total={sum(store_times):.0f}ms"
+        )
         print(f"  dedup hits: {dedup_count}/{len(warm)}")
 
     # ── Wait for background indexing to finish ──────────────────────
@@ -366,10 +386,13 @@ async def run_profile(
     episodes_list = await store.get_open_episodes() if episodes else []
 
     print(f"{'─' * 60}")
-    print(f"  memories={mem_count}  entities={ent_count}  nodes={node_count}  "
-          f"episodes={len(episodes_list)}")
-    print(f"  graph: {graph._graph.number_of_nodes()} nodes, "
-          f"{graph._graph.number_of_edges()} edges")
+    print(
+        f"  memories={mem_count}  entities={ent_count}  nodes={node_count}  "
+        f"episodes={len(episodes_list)}"
+    )
+    print(
+        f"  graph: {graph._graph.number_of_nodes()} nodes, {graph._graph.number_of_edges()} edges"
+    )
     print()
 
     # ── SEARCH with full traces ─────────────────────────────────────
@@ -413,10 +436,12 @@ def main() -> None:
     parser.add_argument("--no-admission", action="store_true")
     parser.add_argument("--no-splade", action="store_true")
     parser.add_argument("--contradiction", action="store_true")
-    parser.add_argument("--async", dest="async_indexing", action="store_true",
-                        help="Enable background indexing")
-    parser.add_argument("--workers", type=int, default=3,
-                        help="Number of index workers (async mode)")
+    parser.add_argument(
+        "--async", dest="async_indexing", action="store_true", help="Enable background indexing"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=3, help="Number of index workers (async mode)"
+    )
     parser.add_argument("-n", type=int, default=10, help="Number of memories")
     args = parser.parse_args()
 
@@ -428,21 +453,24 @@ def main() -> None:
     print()
 
     try:
-        asyncio.run(run_profile(
-            episodes=not args.no_episodes,
-            admission=not args.no_admission,
-            contradiction=args.contradiction,
-            splade=not args.no_splade,
-            async_indexing=args.async_indexing,
-            n_memories=args.n,
-            index_workers=args.workers,
-        ))
+        asyncio.run(
+            run_profile(
+                episodes=not args.no_episodes,
+                admission=not args.no_admission,
+                contradiction=args.contradiction,
+                splade=not args.no_splade,
+                async_indexing=args.async_indexing,
+                n_memories=args.n,
+                index_workers=args.workers,
+            )
+        )
     except KeyboardInterrupt:
         print("\nInterrupted")
         sys.exit(130)
     except Exception as e:
         print(f"\nFATAL: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

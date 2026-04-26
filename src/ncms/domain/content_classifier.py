@@ -95,13 +95,20 @@ def classify_content(
             if section_count >= 2 and len(content) >= _MIN_NAVIGABLE_CHARS:
                 logger.info(
                     "[classifier] source_format=%r -> %s, NAVIGABLE (%d sections, %d chars)",
-                    source_format, fmt, section_count, len(content),
+                    source_format,
+                    fmt,
+                    section_count,
+                    len(content),
                 )
                 return ContentClassification(ContentClass.NAVIGABLE, fmt, section_count)
             logger.info(
                 "[classifier] source_format=%r -> %s, ATOMIC (sections=%d, chars=%d, "
                 "need ≥2 sections and ≥%d chars)",
-                source_format, fmt, section_count, len(content), _MIN_NAVIGABLE_CHARS,
+                source_format,
+                fmt,
+                section_count,
+                len(content),
+                _MIN_NAVIGABLE_CHARS,
             )
         else:
             logger.warning(
@@ -122,7 +129,9 @@ def classify_content(
         heading_count = len(_MD_HEADING_RE.findall(content))
         if heading_count >= 2:
             return ContentClassification(
-                ContentClass.NAVIGABLE, "markdown", heading_count,
+                ContentClass.NAVIGABLE,
+                "markdown",
+                heading_count,
             )
         return ContentClassification(ContentClass.NAVIGABLE, "structured_text", 0)
 
@@ -152,6 +161,7 @@ def _resolve_format(source_format: str) -> str:
 
     # Extract extension from filename (handles "security-controls.yaml")
     import os
+
     _, ext = os.path.splitext(sf)
     if ext and ext in _EXT_TO_FORMAT:
         return _EXT_TO_FORMAT[ext]
@@ -207,7 +217,9 @@ def _classify_by_heuristic(content: str) -> ContentClassification:
         result = ContentClassification(ContentClass.NAVIGABLE, "yaml", len(top_level_keys))
         logger.info(
             "[classifier] Heuristic: detected YAML (%d top-level keys: %s), %d chars",
-            len(top_level_keys), ", ".join(top_level_keys[:5]), len(content),
+            len(top_level_keys),
+            ", ".join(top_level_keys[:5]),
+            len(content),
         )
         return result
 
@@ -219,7 +231,9 @@ def _classify_by_heuristic(content: str) -> ContentClassification:
         logger.info(
             "[classifier] Heuristic: %d headings + %d YAML keys — "
             "treating as YAML-with-comments, ATOMIC (%d chars)",
-            heading_count, len(top_level_keys), len(content),
+            heading_count,
+            len(top_level_keys),
+            len(content),
         )
         return ContentClassification(ContentClass.ATOMIC, "plain", 0)
 
@@ -227,7 +241,8 @@ def _classify_by_heuristic(content: str) -> ContentClassification:
         result = ContentClassification(ContentClass.NAVIGABLE, "markdown", heading_count)
         logger.info(
             "[classifier] Heuristic: detected markdown (%d headings), NAVIGABLE (%d chars)",
-            heading_count, len(content),
+            heading_count,
+            len(content),
         )
         return result
 
@@ -240,7 +255,8 @@ def _classify_by_heuristic(content: str) -> ContentClassification:
                 result = ContentClassification(ContentClass.NAVIGABLE, "json", len(obj))
                 logger.info(
                     "[classifier] Heuristic: detected JSON (%d keys), NAVIGABLE (%d chars)",
-                    len(obj), len(content),
+                    len(obj),
+                    len(content),
                 )
                 return result
         except (json.JSONDecodeError, ValueError):
@@ -254,12 +270,14 @@ def _classify_by_heuristic(content: str) -> ContentClassification:
             logger.info(
                 "[classifier] Heuristic: detected structured text (%d paragraphs), "
                 "NAVIGABLE (%d chars)",
-                len(sections), len(content),
+                len(sections),
+                len(content),
             )
             return result
 
     logger.info(
-        "[classifier] Heuristic: no structure detected, ATOMIC (%d chars)", len(content),
+        "[classifier] Heuristic: no structure detected, ATOMIC (%d chars)",
+        len(content),
     )
     return ContentClassification(ContentClass.ATOMIC, "plain", 0)
 
@@ -302,11 +320,13 @@ def _extract_markdown_sections(content: str) -> list[Section]:
             if current_lines:
                 text = "\n".join(current_lines).strip()
                 if text:
-                    sections.append(Section(
-                        heading=current_heading or "(preamble)",
-                        text=text,
-                        index=len(sections),
-                    ))
+                    sections.append(
+                        Section(
+                            heading=current_heading or "(preamble)",
+                            text=text,
+                            index=len(sections),
+                        )
+                    )
             current_heading = heading_match.group(1).strip()
             current_lines = [line]
         else:
@@ -316,11 +336,13 @@ def _extract_markdown_sections(content: str) -> list[Section]:
     if current_lines:
         text = "\n".join(current_lines).strip()
         if text:
-            sections.append(Section(
-                heading=current_heading or "(preamble)",
-                text=text,
-                index=len(sections),
-            ))
+            sections.append(
+                Section(
+                    heading=current_heading or "(preamble)",
+                    text=text,
+                    index=len(sections),
+                )
+            )
 
     return sections
 
@@ -337,11 +359,13 @@ def _extract_json_sections(content: str) -> list[Section]:
 
     sections: list[Section] = []
     for i, (key, value) in enumerate(data.items()):
-        sections.append(Section(
-            heading=str(key),
-            text=f"{key}: {json.dumps(value, indent=2)}",
-            index=i,
-        ))
+        sections.append(
+            Section(
+                heading=str(key),
+                text=f"{key}: {json.dumps(value, indent=2)}",
+                index=i,
+            )
+        )
     return sections
 
 
@@ -359,11 +383,13 @@ def _extract_yaml_sections(content: str) -> list[Section]:
             if current_key and current_lines:
                 text = "\n".join(current_lines).strip()
                 if text:
-                    sections.append(Section(
-                        heading=current_key,
-                        text=text,
-                        index=len(sections),
-                    ))
+                    sections.append(
+                        Section(
+                            heading=current_key,
+                            text=text,
+                            index=len(sections),
+                        )
+                    )
             current_key = m.group(1)
             current_lines = [line]
         else:
@@ -373,11 +399,13 @@ def _extract_yaml_sections(content: str) -> list[Section]:
     if current_key and current_lines:
         text = "\n".join(current_lines).strip()
         if text:
-            sections.append(Section(
-                heading=current_key,
-                text=text,
-                index=len(sections),
-            ))
+            sections.append(
+                Section(
+                    heading=current_key,
+                    text=text,
+                    index=len(sections),
+                )
+            )
 
     return sections
 
@@ -389,9 +417,11 @@ def _extract_structured_text_sections(content: str) -> list[Section]:
     for i, para in enumerate(paragraphs):
         # Use the first line (up to 80 chars) as the heading
         first_line = para.split("\n")[0][:80].strip()
-        sections.append(Section(
-            heading=first_line or f"Section {i + 1}",
-            text=para,
-            index=i,
-        ))
+        sections.append(
+            Section(
+                heading=first_line or f"Section {i + 1}",
+                text=para,
+                index=i,
+            )
+        )
     return sections

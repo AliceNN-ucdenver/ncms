@@ -31,11 +31,11 @@ class TestV4Migration:
         assert row is not None
 
     async def test_association_strengths_table_exists(
-        self, phase8_store: SQLiteStore,
+        self,
+        phase8_store: SQLiteStore,
     ) -> None:
         cursor = await phase8_store.db.execute(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name='association_strengths'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='association_strengths'"
         )
         row = await cursor.fetchone()
         assert row is not None
@@ -43,9 +43,7 @@ class TestV4Migration:
     async def test_schema_version_is_current(self, phase8_store: SQLiteStore) -> None:
         from ncms.infrastructure.storage.migrations import SCHEMA_VERSION
 
-        cursor = await phase8_store.db.execute(
-            "SELECT MAX(version) FROM schema_version"
-        )
+        cursor = await phase8_store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
         assert row[0] == SCHEMA_VERSION
 
@@ -71,7 +69,8 @@ class TestSearchLog:
         assert results[0].agent_id == "test-agent"
 
     async def test_get_recent_searches_with_since(
-        self, phase8_store: SQLiteStore,
+        self,
+        phase8_store: SQLiteStore,
     ) -> None:
         old = SearchLogEntry(
             query="old query",
@@ -92,10 +91,12 @@ class TestSearchLog:
 
     async def test_get_search_access_pairs(self, phase8_store: SQLiteStore) -> None:
         for i in range(3):
-            await phase8_store.log_search(SearchLogEntry(
-                query=f"query {i}",
-                returned_ids=[f"mem-{i}-a", f"mem-{i}-b"],
-            ))
+            await phase8_store.log_search(
+                SearchLogEntry(
+                    query=f"query {i}",
+                    returned_ids=[f"mem-{i}-a", f"mem-{i}-b"],
+                )
+            )
 
         pairs = await phase8_store.get_search_access_pairs()
         assert len(pairs) == 3

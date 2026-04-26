@@ -54,20 +54,24 @@ class KnowledgeLoader:
 
     # Text-based formats — always available (stdlib parsing)
     TEXT_EXTENSIONS = {
-        ".md", ".markdown",  # Markdown
-        ".txt", ".text",     # Plain text
-        ".json",             # JSON
-        ".yaml", ".yml",     # YAML
-        ".csv",              # CSV
-        ".rst",              # reStructuredText
-        ".html", ".htm",     # HTML (basic text extraction)
+        ".md",
+        ".markdown",  # Markdown
+        ".txt",
+        ".text",  # Plain text
+        ".json",  # JSON
+        ".yaml",
+        ".yml",  # YAML
+        ".csv",  # CSV
+        ".rst",  # reStructuredText
+        ".html",
+        ".htm",  # HTML (basic text extraction)
     }
 
     # Rich document formats — require `ncms[docs]` (markitdown)
     DOCUMENT_EXTENSIONS = {
         ".docx",  # Microsoft Word
         ".pptx",  # Microsoft PowerPoint
-        ".pdf",   # PDF documents
+        ".pdf",  # PDF documents
         ".xlsx",  # Microsoft Excel
     }
 
@@ -239,7 +243,8 @@ class KnowledgeLoader:
         # Phase 1: Load all files (fast — just persist + enqueue)
         pattern = "**/*" if recursive else "*"
         files = sorted(
-            f for f in path.glob(pattern)
+            f
+            for f in path.glob(pattern)
             if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS
         )
         logger.info("Bulk import: %d files to load from %s", len(files), path)
@@ -255,9 +260,10 @@ class KnowledgeLoader:
 
         load_ms = (_time.perf_counter() - t0) * 1000
         logger.info(
-            "Bulk import: %d files -> %d memories persisted in %.0fms, "
-            "waiting for indexing...",
-            stats.files_processed, stats.memories_created, load_ms,
+            "Bulk import: %d files -> %d memories persisted in %.0fms, waiting for indexing...",
+            stats.files_processed,
+            stats.memories_created,
+            load_ms,
         )
 
         # Phase 2: Wait for all indexing to complete
@@ -266,7 +272,9 @@ class KnowledgeLoader:
         total_ms = (_time.perf_counter() - t0) * 1000
         logger.info(
             "Bulk import complete: %d files, %d memories, %.1fs total",
-            stats.files_processed, stats.memories_created, total_ms / 1000,
+            stats.files_processed,
+            stats.memories_created,
+            total_ms / 1000,
         )
 
         # Stop pool only if we started it
@@ -376,10 +384,7 @@ class KnowledgeLoader:
         elif isinstance(data, dict):
             # If it has clear sections, split by top-level keys
             if len(data) > 3:
-                return [
-                    f"{key}: {json.dumps(value, indent=2)}"
-                    for key, value in data.items()
-                ]
+                return [f"{key}: {json.dumps(value, indent=2)}" for key, value in data.items()]
             return [json.dumps(data, indent=2)]
         return [content]
 

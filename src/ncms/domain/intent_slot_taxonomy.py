@@ -17,7 +17,12 @@ per-deployment content taxonomy.
 from __future__ import annotations
 
 INTENT_CATEGORIES: tuple[str, ...] = (
-    "positive", "negative", "habitual", "difficulty", "choice", "none",
+    "positive",
+    "negative",
+    "habitual",
+    "difficulty",
+    "choice",
+    "none",
 )
 
 ADMISSION_DECISIONS: tuple[str, ...] = ("persist", "ephemeral", "discard")
@@ -28,18 +33,12 @@ STATE_CHANGES: tuple[str, ...] = ("declaration", "retirement", "none")
 #: Descriptive label phrases used by the E5 zero-shot method.
 #: E5 requires a ``query:`` prefix for its asymmetric retrieval form.
 INTENT_LABEL_DESCRIPTIONS: dict[str, str] = {
-    "positive":
-        "query: a statement expressing a like, preference, or enjoyment",
-    "negative":
-        "query: a statement expressing a dislike, hate, or aversion",
-    "habitual":
-        "query: a statement about a routine, frequency, or regular habit",
-    "difficulty":
-        "query: a statement evaluating how hard or challenging a task is",
-    "choice":
-        "query: a statement about a specific selection or decision made",
-    "none":
-        "query: a neutral statement without any preference",
+    "positive": "query: a statement expressing a like, preference, or enjoyment",
+    "negative": "query: a statement expressing a dislike, hate, or aversion",
+    "habitual": "query: a statement about a routine, frequency, or regular habit",
+    "difficulty": "query: a statement evaluating how hard or challenging a task is",
+    "choice": "query: a statement about a specific selection or decision made",
+    "none": "query: a neutral statement without any preference",
 }
 
 
@@ -50,25 +49,25 @@ INTENT_LABEL_DESCRIPTIONS: dict[str, str] = {
 #: row here AND shipping a taxonomy YAML under the adapter artifact.
 SLOT_TAXONOMY: dict[str, tuple[str, ...]] = {
     "conversational": (
-        "object",       # the thing the intent is about (food, hobby, person)
-        "frequency",    # "every morning", "usually" (habitual slot)
+        "object",  # the thing the intent is about (food, hobby, person)
+        "frequency",  # "every morning", "usually" (habitual slot)
         "alternative",  # "instead of X" (choice slot)
     ),
     "software_dev": (
-        "library",      # FastAPI, Pydantic
-        "language",     # Python, Rust
-        "pattern",      # async, threads, event-loop
-        "tool",         # IDE, linter, debugger
+        "library",  # FastAPI, Pydantic
+        "language",  # Python, Rust
+        "pattern",  # async, threads, event-loop
+        "tool",  # IDE, linter, debugger
         "alternative",
-        "frequency",    # "before every commit", "on save"
+        "frequency",  # "before every commit", "on save"
     ),
     "clinical": (
-        "medication",   # metformin, aspirin
-        "procedure",    # arthroscopy, MRI
-        "symptom",      # nausea, headache
-        "severity",     # mild, severe
+        "medication",  # metformin, aspirin
+        "procedure",  # arthroscopy, MRI
+        "symptom",  # nausea, headache
+        "severity",  # mild, severe
         "alternative",  # "X instead of Y" choices
-        "frequency",    # "every 6 hours", "twice daily"
+        "frequency",  # "every 6 hours", "twice daily"
     ),
 }
 

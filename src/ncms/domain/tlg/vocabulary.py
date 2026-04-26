@@ -128,7 +128,11 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
     primary: set[str] = set()
 
     def _register(
-        token: str, orig: str, subject: str, *, is_primary: bool,
+        token: str,
+        orig: str,
+        subject: str,
+        *,
+        is_primary: bool,
     ) -> None:
         tok = token.strip().lower()
         orig = orig.strip()
@@ -154,15 +158,18 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
                     _register(word, word, mem.subject, is_primary=False)
 
     subject_lookup: dict[str, str] = {
-        token: counts.most_common(1)[0][0]
-        for token, counts in subject_counts.items()
+        token: counts.most_common(1)[0][0] for token, counts in subject_counts.items()
     }
 
     subject_tokens_ranked = sorted(
-        subject_lookup.keys(), key=len, reverse=True,
+        subject_lookup.keys(),
+        key=len,
+        reverse=True,
     )
     entity_tokens_ranked = sorted(
-        entity_canon.keys(), key=len, reverse=True,
+        entity_canon.keys(),
+        key=len,
+        reverse=True,
     )
 
     # Stem-keyed inverted indexes + precomputed per-token stem sets.
@@ -172,9 +179,7 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
     subject_stem_index: dict[str, list[str]] = {}
     subject_token_stems: dict[str, frozenset[str]] = {}
     for token in subject_tokens_ranked:
-        stems = {
-            _stem(word) for word in re.findall(r"\w+", token) if word
-        }
+        stems = {_stem(word) for word in re.findall(r"\w+", token) if word}
         stems.discard("")
         subject_token_stems[token] = frozenset(stems)
         for stem in stems:
@@ -183,9 +188,7 @@ def induce_vocabulary(memories: Iterable[SubjectMemory]) -> InducedVocabulary:
     entity_stem_index: dict[str, list[str]] = {}
     entity_token_stems: dict[str, frozenset[str]] = {}
     for token in entity_tokens_ranked:
-        stems = {
-            _stem(word) for word in re.findall(r"\w+", token) if word
-        }
+        stems = {_stem(word) for word in re.findall(r"\w+", token) if word}
         stems.discard("")
         entity_token_stems[token] = frozenset(stems)
         for stem in stems:
@@ -232,7 +235,7 @@ def _token_in_query(token: str, query_lower: str) -> bool:
         return False
     window = len(token_stems)
     for i in range(len(query_stems) - window + 1):
-        if query_stems[i:i + window] == token_stems:
+        if query_stems[i : i + window] == token_stems:
             return True
     return False
 
@@ -267,15 +270,15 @@ def _candidate_tokens(
         seeds.update(stem_index.get(stem, ()))
 
     candidates = [
-        token for token in seeds
-        if token_stems.get(token, frozenset()).issubset(query_stems)
+        token for token in seeds if token_stems.get(token, frozenset()).issubset(query_stems)
     ]
     candidates.sort(key=len, reverse=True)
     return candidates
 
 
 def lookup_subject(
-    query: str, vocab: InducedVocabulary,
+    query: str,
+    vocab: InducedVocabulary,
 ) -> str | None:
     """Return the subject most strongly implied by ``query``, or None.
 
@@ -288,7 +291,9 @@ def lookup_subject(
     """
     q = query.lower()
     candidates = _candidate_tokens(
-        q, vocab.subject_stem_index, vocab.subject_token_stems,
+        q,
+        vocab.subject_stem_index,
+        vocab.subject_token_stems,
     )
     matches: list[tuple[bool, float, int, str]] = []
     for token in candidates:
@@ -298,8 +303,7 @@ def lookup_subject(
         n_subjects = max(len(counts), 1)
         distinctiveness = 1.0 / n_subjects
         is_primary = token in vocab.primary_tokens
-        matches.append((is_primary, distinctiveness, len(token),
-                        vocab.subject_lookup[token]))
+        matches.append((is_primary, distinctiveness, len(token), vocab.subject_lookup[token]))
     if not matches:
         return None
     matches.sort(reverse=True)
@@ -307,7 +311,8 @@ def lookup_subject(
 
 
 def lookup_entity(
-    query: str, vocab: InducedVocabulary,
+    query: str,
+    vocab: InducedVocabulary,
 ) -> str | None:
     """Return the canonical form of the longest matching entity, or None.
 
@@ -317,7 +322,9 @@ def lookup_entity(
     """
     q = query.lower()
     candidates = _candidate_tokens(
-        q, vocab.entity_stem_index, vocab.entity_token_stems,
+        q,
+        vocab.entity_stem_index,
+        vocab.entity_token_stems,
     )
     longest_hit: str | None = None
     longest_len = -1
@@ -339,10 +346,13 @@ def lookup_entity(
 
 def summary(vocab: InducedVocabulary) -> str:
     """Human-readable dump of what induction produced."""
-    lines = ["Induced vocabulary", "=" * 60,
-             f"Entity tokens:  {len(vocab.entity_lookup)}",
-             f"Subject tokens: {len(vocab.subject_lookup)}",
-             ""]
+    lines = [
+        "Induced vocabulary",
+        "=" * 60,
+        f"Entity tokens:  {len(vocab.entity_lookup)}",
+        f"Subject tokens: {len(vocab.subject_lookup)}",
+        "",
+    ]
     by_subject: dict[str, list[str]] = {}
     for token, subj in vocab.subject_lookup.items():
         by_subject.setdefault(subj, []).append(token)

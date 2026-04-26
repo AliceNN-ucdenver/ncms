@@ -54,11 +54,11 @@ logger = logging.getLogger("mseb.build_swe_diff_gold")
 # reason about one — so map to ``none``.  ordinal_anchor acts like
 # a declaration (the first state in a chain).
 KIND_TO_STATE_CHANGE: dict[str, str] = {
-    "declaration":    "declaration",
-    "retirement":     "retirement",
+    "declaration": "declaration",
+    "retirement": "retirement",
     "ordinal_anchor": "declaration",
-    "causal_link":    "none",
-    "none":           "none",
+    "causal_link": "none",
+    "none": "none",
 }
 
 
@@ -79,14 +79,12 @@ def topic_from_source_and_path(source: str, content: str) -> str:
     plow = path.lower()
     if "docs/" in plow or plow.endswith((".rst", ".md")):
         return "docs"
-    if (
-        plow.endswith((".cfg", ".toml", ".ini"))
-        or "setup.py" in plow or "pyproject" in plow
-    ):
+    if plow.endswith((".cfg", ".toml", ".ini")) or "setup.py" in plow or "pyproject" in plow:
         return "config"
     if (
         plow.endswith((".yaml", ".yml", ".dockerfile"))
-        or "makefile" in plow or "dockerfile" in plow
+        or "makefile" in plow
+        or "dockerfile" in plow
     ):
         return "build"
     return "core_module"
@@ -127,18 +125,15 @@ def row_to_gold_example(row: dict) -> dict:
 
     return {
         # GoldExample fields — see experiments/intent_slot_distillation/schemas.py
-        "text": content[:4000],   # cap at the same 4k the miner uses
+        "text": content[:4000],  # cap at the same 4k the miner uses
         "domain": "swe_diff",
-        "intent": "none",          # diff content carries no preference
+        "intent": "none",  # diff content carries no preference
         "slots": slots,
         "topic": topic,
-        "admission": "persist",    # everything the MSEB corpus keeps is persist-grade
+        "admission": "persist",  # everything the MSEB corpus keeps is persist-grade
         "state_change": state_change,
         "split": "gold",
-        "source": (
-            f"mseb_swe_rule_label/{source}/{kind}"
-            f"/{meta.get('instance_id', '?')}"
-        ),
+        "source": (f"mseb_swe_rule_label/{source}/{kind}/{meta.get('instance_id', '?')}"),
         "note": "",
     }
 
@@ -149,8 +144,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s  %(message)s",
     )
     ap = argparse.ArgumentParser()
-    ap.add_argument("--labeled-dir", type=Path,
-                    default=Path("benchmarks/mseb_swe/raw_labeled"))
+    ap.add_argument("--labeled-dir", type=Path, default=Path("benchmarks/mseb_swe/raw_labeled"))
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
@@ -174,9 +168,13 @@ def main() -> None:
                 fh.write(json.dumps(ex, ensure_ascii=False))
                 fh.write("\n")
                 n_total += 1
-                by_state_change[ex["state_change"]] = by_state_change.get(
-                    ex["state_change"], 0,
-                ) + 1
+                by_state_change[ex["state_change"]] = (
+                    by_state_change.get(
+                        ex["state_change"],
+                        0,
+                    )
+                    + 1
+                )
                 by_topic[ex["topic"]] = by_topic.get(ex["topic"], 0) + 1
                 src = row.get("metadata", {}).get("source", "?")
                 by_source[src] = by_source.get(src, 0) + 1

@@ -66,17 +66,13 @@ async def _seed_state(
 
 
 class TestBuildFromEntityStates:
-    async def test_cold_store_produces_empty_vocab(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_cold_store_produces_empty_vocab(self, store: SQLiteStore) -> None:
         cache = VocabularyCache()
         vocab = await cache.get_vocabulary(store)
         assert vocab.subject_lookup == {}
         assert vocab.entity_lookup == {}
 
-    async def test_entity_state_nodes_contribute(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_entity_state_nodes_contribute(self, store: SQLiteStore) -> None:
         await _seed_state(
             store,
             subject="auth-svc",
@@ -92,9 +88,7 @@ class TestBuildFromEntityStates:
         assert vocab.subject_lookup["session cookies"] == "auth-svc"
         assert vocab.subject_lookup["oauth 2.0"] == "auth-svc"
 
-    async def test_nodes_without_entity_id_skipped(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_nodes_without_entity_id_skipped(self, store: SQLiteStore) -> None:
         # A MemoryNode with ENTITY_STATE but no entity_id in metadata.
         mem = Memory(content="orphan state", domains=["tlg-test"])
         await store.save_memory(mem)
@@ -111,9 +105,7 @@ class TestBuildFromEntityStates:
         vocab = await cache.get_vocabulary(store)
         assert vocab.subject_lookup == {}
 
-    async def test_nodes_without_linked_entities_skipped(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_nodes_without_linked_entities_skipped(self, store: SQLiteStore) -> None:
         mem = Memory(content="no-entity state", domains=["tlg-test"])
         await store.save_memory(mem)
         node = MemoryNode(
@@ -184,13 +176,12 @@ class TestLookups:
         )
         cache = VocabularyCache()
         result = await cache.lookup_subject(
-            "are we still using session cookies?", store,
+            "are we still using session cookies?",
+            store,
         )
         assert result == "auth-svc"
 
-    async def test_lookup_entity_returns_canonical_form(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_lookup_entity_returns_canonical_form(self, store: SQLiteStore) -> None:
         await _seed_state(
             store,
             subject="auth-svc",
@@ -198,7 +189,8 @@ class TestLookups:
         )
         cache = VocabularyCache()
         result = await cache.lookup_entity(
-            "did we drop session cookies?", store,
+            "did we drop session cookies?",
+            store,
         )
         assert result == "session cookies"
 
@@ -212,19 +204,23 @@ class TestLookups:
         assert await cache.lookup_subject("what's for lunch?", store) is None
         assert await cache.lookup_entity("what's for lunch?", store) is None
 
-    async def test_cross_subject_ambiguity_resolves_to_majority(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_cross_subject_ambiguity_resolves_to_majority(self, store: SQLiteStore) -> None:
         # "shared-token" appears in two subjects; auth-svc mentions it twice
         # vs gateway-svc once.  Majority wins.
         await _seed_state(
-            store, subject="auth-svc", linked_entity_ids=["shared-token"],
+            store,
+            subject="auth-svc",
+            linked_entity_ids=["shared-token"],
         )
         await _seed_state(
-            store, subject="auth-svc", linked_entity_ids=["shared-token"],
+            store,
+            subject="auth-svc",
+            linked_entity_ids=["shared-token"],
         )
         await _seed_state(
-            store, subject="gateway-svc", linked_entity_ids=["shared-token"],
+            store,
+            subject="gateway-svc",
+            linked_entity_ids=["shared-token"],
         )
         cache = VocabularyCache()
         assert await cache.lookup_subject("where is shared-token used?", store) == "auth-svc"

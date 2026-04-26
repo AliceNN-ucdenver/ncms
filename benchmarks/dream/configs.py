@@ -20,10 +20,10 @@ class DreamStage:
     name: str
     display_name: str
     # Which consolidation sub-phases to run at this stage
-    episode_consolidation: bool = False    # Phase 5A
+    episode_consolidation: bool = False  # Phase 5A
     trajectory_consolidation: bool = False  # Phase 5B
-    pattern_consolidation: bool = False     # Phase 5C
-    dream_cycle: bool = False              # Phase 8
+    pattern_consolidation: bool = False  # Phase 5C
+    dream_cycle: bool = False  # Phase 8
     cycles: int = 1  # How many times to run consolidation at this stage
 
 

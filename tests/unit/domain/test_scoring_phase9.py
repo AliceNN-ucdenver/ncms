@@ -30,9 +30,7 @@ class TestPPRGraphScore:
 
     def test_multi_entity_mean(self) -> None:
         # Mean-pooled: (0.3 + 0.2) / 2 = 0.25
-        result = ppr_graph_score(
-            ["e1", "e2"], {"e1": 0.3, "e2": 0.2, "e3": 0.1}
-        )
+        result = ppr_graph_score(["e1", "e2"], {"e1": 0.3, "e2": 0.2, "e3": 0.1})
         assert result == pytest.approx(0.25)
 
     def test_idf_weighting(self) -> None:
@@ -58,14 +56,10 @@ class TestPPRGraphScore:
     def test_no_idf_dict(self) -> None:
         # When entity_idf is None, all weights are 1.0
         # Mean-pooled: (0.3 + 0.2) / 2 = 0.25
-        result = ppr_graph_score(
-            ["e1", "e2"], {"e1": 0.3, "e2": 0.2}, entity_idf=None
-        )
+        result = ppr_graph_score(["e1", "e2"], {"e1": 0.3, "e2": 0.2}, entity_idf=None)
         assert result == pytest.approx(0.25)
 
     def test_zero_ppr_score_ignored(self) -> None:
         # Only e2 has PPR > 0, so mean is over count=1: 0.3/1 = 0.3
-        result = ppr_graph_score(
-            ["e1", "e2"], {"e1": 0.0, "e2": 0.3}
-        )
+        result = ppr_graph_score(["e1", "e2"], {"e1": 0.0, "e2": 0.3})
         assert result == pytest.approx(0.3)

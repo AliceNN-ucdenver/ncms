@@ -151,8 +151,18 @@ INTENT_EXEMPLARS: dict[QueryIntent, list[str]] = {
 # summing weights of matched keyword groups.
 # ---------------------------------------------------------------------------
 _MONTHS = [
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
 ]
 
 _INTENT_PATTERNS: dict[QueryIntent, list[tuple[list[str], float]]] = {

@@ -85,41 +85,56 @@ class MemoryNodeStore(Protocol):
     async def get_memory_nodes_for_memory(self, memory_id: str) -> list[MemoryNode]: ...
     # Phase 2A: Entity state queries
     async def get_current_entity_states(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> list[MemoryNode]: ...
     async def get_entity_states_by_entity(
-        self, entity_id: str,
+        self,
+        entity_id: str,
     ) -> list[MemoryNode]: ...
     async def update_memory_node(self, node: MemoryNode) -> None: ...
     # Phase 2B: Temporal queries
     async def get_current_state(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> MemoryNode | None: ...
     async def get_state_at_time(
-        self, entity_id: str, state_key: str, timestamp: str,
+        self,
+        entity_id: str,
+        state_key: str,
+        timestamp: str,
     ) -> MemoryNode | None: ...
     async def get_state_changes_since(
-        self, timestamp: str,
+        self,
+        timestamp: str,
     ) -> list[MemoryNode]: ...
     async def get_state_history(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> list[MemoryNode]: ...
     # Phase 4: Batch node lookup for intent-aware retrieval
     async def get_memory_nodes_for_memories(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, list[MemoryNode]]: ...
     # Phase 3: Episode queries
     async def get_open_episodes(self) -> list[MemoryNode]: ...
     async def get_episode_members(
-        self, episode_id: str,
+        self,
+        episode_id: str,
     ) -> list[MemoryNode]: ...
     # Phase 5: Consolidation queries
     async def get_closed_unsummarized_episodes(self) -> list[MemoryNode]: ...
     async def get_entities_with_state_count(
-        self, min_count: int,
+        self,
+        min_count: int,
     ) -> list[tuple[str, int]]: ...
     async def get_abstract_nodes_by_type(
-        self, abstract_type: str,
+        self,
+        abstract_type: str,
     ) -> list[MemoryNode]: ...
 
 
@@ -155,20 +170,22 @@ class ContentRangeStore(Protocol):
     async def save_content_range(
         self,
         memory_id: str,
-        range_start: str,    # ISO 8601, UTC
+        range_start: str,  # ISO 8601, UTC
         range_end: str,
         span_count: int,
-        source: str,         # 'gliner' | 'metadata' | 'mixed'
+        source: str,  # 'gliner' | 'metadata' | 'mixed'
     ) -> None: ...
 
     async def get_content_range(
-        self, memory_id: str,
+        self,
+        memory_id: str,
     ) -> tuple[str, str] | None:
         """Return (range_start, range_end) or None if unknown."""
         ...
 
     async def get_content_ranges_batch(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, tuple[str, str]]: ...
 
 
@@ -207,30 +224,41 @@ class MemoryStore(
     async def log_access(self, record: AccessRecord) -> None: ...
     async def get_access_times(self, memory_id: str) -> list[float]: ...
     async def get_access_times_batch(
-        self, memory_ids: list[str],
+        self,
+        memory_ids: list[str],
     ) -> dict[str, list[float]]: ...
     async def count_memories(self) -> int: ...
     # Phase 9: Access record pruning for active forgetting
     async def prune_access_records(
-        self, memory_id: str, max_age_days: int,
+        self,
+        memory_id: str,
+        max_age_days: int,
     ) -> int: ...
     # Phase 8: Search logging for dream cycle PMI
     async def log_search(self, entry: SearchLogEntry) -> None: ...
     async def get_recent_searches(
-        self, limit: int = 100, since: str | None = None,
+        self,
+        limit: int = 100,
+        since: str | None = None,
     ) -> list[SearchLogEntry]: ...
     async def get_search_access_pairs(
-        self, since: str | None = None,
+        self,
+        since: str | None = None,
     ) -> list[tuple[str, list[str]]]: ...
     # Phase 8: Association strengths (PMI output)
     async def save_association_strength(
-        self, entity_id_1: str, entity_id_2: str, strength: float,
+        self,
+        entity_id_1: str,
+        entity_id_2: str,
+        strength: float,
     ) -> None: ...
     async def get_association_strengths(
         self,
     ) -> dict[tuple[str, str], float]: ...
     async def get_strong_associations(
-        self, min_strength: float = 0.3, limit: int = 50_000,
+        self,
+        min_strength: float = 0.3,
+        limit: int = 50_000,
     ) -> list[tuple[str, str, float]]: ...
 
 
@@ -288,8 +316,11 @@ class GraphEngine(Protocol):
     def get_cooccurrence_edges(self) -> list[tuple[str, str, int]]: ...
     # Phase 9: Personalized PageRank for query-conditioned graph scoring
     def personalized_pagerank(
-        self, seed_entities: dict[str, float],
-        alpha: float = 0.85, max_iter: int = 50, tol: float = 1e-6,
+        self,
+        seed_entities: dict[str, float],
+        alpha: float = 0.85,
+        max_iter: int = 50,
+        tol: float = 1e-6,
     ) -> dict[str, float]: ...
 
 
@@ -337,7 +368,9 @@ class DocumentStore(Protocol):
     async def save_project(self, project: Project) -> None: ...
     async def get_project(self, project_id: str) -> Project | None: ...
     async def list_projects(
-        self, status: str | None = None, limit: int = 50,
+        self,
+        status: str | None = None,
+        limit: int = 50,
     ) -> list[Project]: ...
     async def update_project(self, project: Project) -> None: ...
 
@@ -345,26 +378,35 @@ class DocumentStore(Protocol):
     async def save_document(self, doc: Document) -> None: ...
     async def get_document(self, doc_id: str) -> Document | None: ...
     async def list_documents(
-        self, project_id: str | None = None, doc_type: str | None = None,
+        self,
+        project_id: str | None = None,
+        doc_type: str | None = None,
         limit: int = 50,
     ) -> list[Document]: ...
     async def search_documents(
-        self, entity: str | None = None, doc_type: str | None = None,
-        min_score: int | None = None, limit: int = 50,
+        self,
+        entity: str | None = None,
+        doc_type: str | None = None,
+        min_score: int | None = None,
+        limit: int = 50,
     ) -> list[Document]: ...
     async def get_document_versions(self, doc_id: str) -> list[Document]: ...
 
     # ── Document Links ──
     async def save_document_link(self, link: DocumentLink) -> None: ...
     async def get_document_links(
-        self, doc_id: str, direction: str = "both",
+        self,
+        doc_id: str,
+        direction: str = "both",
     ) -> list[DocumentLink]: ...
     async def get_traceability_chain(self, doc_id: str) -> list[DocumentLink]: ...
 
     # ── Review Scores ──
     async def save_review_score(self, score: ReviewScore) -> None: ...
     async def get_review_scores(
-        self, document_id: str | None = None, project_id: str | None = None,
+        self,
+        document_id: str | None = None,
+        project_id: str | None = None,
     ) -> list[ReviewScore]: ...
 
     # ── Pipeline Events ──
@@ -375,10 +417,15 @@ class DocumentStore(Protocol):
     async def create_pending_approval(self, approval: PendingApproval) -> None: ...
     async def get_pending_approval(self, approval_id: str) -> PendingApproval | None: ...
     async def list_pending_approvals(
-        self, status: str | None = None, project_id: str | None = None,
+        self,
+        status: str | None = None,
+        project_id: str | None = None,
     ) -> list[PendingApproval]: ...
     async def decide_approval(
-        self, approval_id: str, decision: str, decided_by: str,
+        self,
+        approval_id: str,
+        decision: str,
+        decided_by: str,
         comment: str | None = None,
     ) -> bool: ...
 
@@ -417,7 +464,10 @@ class IntentSlotExtractor(Protocol):
     ``"joint_bert_lora"`` or ``"gliner_plus_e5"``."""
 
     def extract(
-        self, text: str, *, domain: str,
+        self,
+        text: str,
+        *,
+        domain: str,
     ) -> ExtractedLabel:
         """Classify ``text`` into the five-head label space.
 

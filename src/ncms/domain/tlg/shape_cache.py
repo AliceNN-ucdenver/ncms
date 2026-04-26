@@ -55,7 +55,8 @@ class CachedShape:
 
 
 def extract_skeleton(
-    query: str, vocabulary: InducedVocabulary,
+    query: str,
+    vocabulary: InducedVocabulary,
 ) -> tuple[str, dict[str, str]]:
     """Normalize ``query`` into a placeholder skeleton + slot map.
 
@@ -79,18 +80,18 @@ def extract_skeleton(
     for token in vocabulary.entity_tokens_ranked:
         pattern = rf"\b{re.escape(token)}\w*\b"
         for m in re.finditer(pattern, q):
-            spans.append((
-                m.start(), m.end(),
-                vocabulary.entity_lookup.get(token, token),
-            ))
+            spans.append(
+                (
+                    m.start(),
+                    m.end(),
+                    vocabulary.entity_lookup.get(token, token),
+                )
+            )
 
     spans.sort(key=lambda s: (s[0], -(s[1] - s[0])))
     claimed: list[tuple[int, int, str]] = []
     for start, end, canon in spans:
-        if not any(
-            cs <= start < ce or cs < end <= ce
-            for cs, ce, _ in claimed
-        ):
+        if not any(cs <= start < ce or cs < end <= ce for cs, ce, _ in claimed):
             claimed.append((start, end, canon))
     claimed.sort(key=lambda s: s[0])
 
@@ -133,7 +134,9 @@ class QueryShapeCache:
         return len(self._cache)
 
     def lookup(
-        self, query: str, vocabulary: InducedVocabulary,
+        self,
+        query: str,
+        vocabulary: InducedVocabulary,
     ) -> tuple[str, dict[str, str]] | None:
         skel, slots = extract_skeleton(query, vocabulary)
         cached = self._cache.get(skel)
@@ -143,7 +146,10 @@ class QueryShapeCache:
         return cached.intent, slots
 
     def learn(
-        self, query: str, intent: str, vocabulary: InducedVocabulary,
+        self,
+        query: str,
+        intent: str,
+        vocabulary: InducedVocabulary,
     ) -> None:
         """Memoise ``(skeleton → intent)`` from a successful parse.
 
@@ -178,9 +184,7 @@ class QueryShapeCache:
                 "intent": sh.intent,
                 "slot_names": list(sh.slot_names),
                 "hit_count": sh.hit_count,
-                "last_used": (
-                    sh.last_used.isoformat() if sh.last_used else None
-                ),
+                "last_used": (sh.last_used.isoformat() if sh.last_used else None),
             }
             for skel, sh in self._cache.items()
         }
@@ -190,10 +194,7 @@ class QueryShapeCache:
         cache = cls()
         for skel, entry in data.items():
             last_used_str = entry.get("last_used")
-            last_used = (
-                datetime.fromisoformat(last_used_str)
-                if last_used_str else None
-            )
+            last_used = datetime.fromisoformat(last_used_str) if last_used_str else None
             cache._cache[skel] = CachedShape(
                 skeleton=skel,
                 intent=entry["intent"],

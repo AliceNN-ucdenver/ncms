@@ -114,8 +114,11 @@ async def _build_service_with_adapter(
     )
     chain = _cached_chain(domain)
     service = MemoryService(
-        store=store, index=index, graph=graph,
-        config=config, event_log=event_log,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        event_log=event_log,
         intent_slot=chain,
     )
     return service, store, event_log
@@ -174,8 +177,7 @@ async def test_store_with_conversational_adapter_populates_all_five_heads():
     assert "food_pref" in saved.domains
 
     # Dashboard event emitted.
-    events = [e for e in event_log.recent(100)
-              if e.type.startswith("intent_slot.")]
+    events = [e for e in event_log.recent(100) if e.type.startswith("intent_slot.")]
     assert events, "no intent_slot.* dashboard event emitted"
     assert events[0].data["topic"] == "food_pref"
     assert events[0].data["method"] == "joint_bert_lora"
@@ -209,9 +211,7 @@ async def test_switch_adapter_changes_taxonomy_at_runtime():
     # software_dev → a framework/testing-family label
     assert topic_a is not None, "conversational adapter didn't emit a topic"
     assert topic_b is not None, "software_dev adapter didn't emit a topic"
-    assert topic_a != topic_b, (
-        f"expected different topics across adapters, got {topic_a} for both"
-    )
+    assert topic_a != topic_b, f"expected different topics across adapters, got {topic_a} for both"
 
 
 @pytest.mark.asyncio
@@ -221,10 +221,12 @@ async def test_dynamic_topic_enumeration_without_config():
 
     # Ingest several distinct-topic memories.
     await svc.store_memory(
-        content="I love sushi", domains=["conversational"],
+        content="I love sushi",
+        domains=["conversational"],
     )
     await svc.store_memory(
-        content="I can't stand cold weather", domains=["conversational"],
+        content="I can't stand cold weather",
+        domains=["conversational"],
     )
     await svc.store_memory(
         content="I go rock climbing every weekend",
@@ -259,8 +261,11 @@ async def test_heuristic_fallback_when_no_adapter():
         include_e5_fallback=False,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph,
-        config=config, intent_slot=chain,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        intent_slot=chain,
     )
 
     mem = await svc.store_memory(
@@ -290,6 +295,4 @@ async def test_adapter_listing_sees_a_published_version():
     """
     available = list_available_adapters(root=ADAPTERS_ROOT)
     assert "conversational" in available
-    assert available["conversational"], (
-        "expected at least one published version for conversational"
-    )
+    assert available["conversational"], "expected at least one published version for conversational"

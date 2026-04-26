@@ -118,7 +118,9 @@ class TestResolveLabels:
         """With keep_universal=True, partial cache merges with universals."""
         cached = {"api": ["endpoint", "service"]}
         result = resolve_labels(
-            ["api", "finance"], cached_labels=cached, keep_universal=True,
+            ["api", "finance"],
+            cached_labels=cached,
+            keep_universal=True,
         )
         # Universal labels included
         for label in UNIVERSAL_LABELS:

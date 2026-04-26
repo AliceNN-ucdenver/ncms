@@ -69,8 +69,11 @@ class TestMetricsCollector:
     def test_update_gauges(self) -> None:
         collector = MetricsCollector()
         collector.update_gauges(
-            memories=100, entities=50, relationships=200,
-            agents_online=3, agents_sleeping=1,
+            memories=100,
+            entities=50,
+            relationships=200,
+            agents_online=3,
+            agents_sleeping=1,
         )
 
     def test_time_pipeline_stage(self) -> None:

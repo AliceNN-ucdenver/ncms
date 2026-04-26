@@ -18,12 +18,12 @@ import re
 import time
 from datetime import UTC, datetime
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -149,7 +149,11 @@ async def _create_ncms_instance(
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
         intent_slot=intent_slot,
     )
     await svc.start_index_pool()
@@ -175,10 +179,7 @@ async def _ingest_sessions(
     dates = haystack_dates or []
 
     for s_idx, session in enumerate(sessions):
-        session_observed = (
-            _parse_lme_date(dates[s_idx])
-            if s_idx < len(dates) else None
-        )
+        session_observed = _parse_lme_date(dates[s_idx]) if s_idx < len(dates) else None
         for turn in session.turns:
             if not turn.content.strip():
                 continue
@@ -294,7 +295,9 @@ async def evaluate_question(
         # LLM judge with type-specific prompt
         judge_type = _get_judge_type(cat, question.question_id)
         judge_ok = await llm_judge(
-            question.question, question.answer, prediction,
+            question.question,
+            question.answer,
+            prediction,
             judge_type=judge_type,
             model=judge_model,
             api_base=judge_api_base,
@@ -384,7 +387,8 @@ async def run_longmemeval_benchmark(
 
         if not q_sessions:
             logger.warning(
-                "Question %s has no sessions, skipping", q.question_id,
+                "Question %s has no sessions, skipping",
+                q.question_id,
             )
             continue
 
@@ -402,7 +406,8 @@ async def run_longmemeval_benchmark(
             # observed_at with the session's haystack_date so temporal
             # scoring matches on the event's true time.
             mem_ids = await _ingest_sessions(
-                svc, q_sessions,
+                svc,
+                q_sessions,
                 haystack_dates=q.haystack_dates,
             )
             total_memories += len(mem_ids)
@@ -410,11 +415,14 @@ async def run_longmemeval_benchmark(
 
             # Wait for background indexing to finish before searching
             from benchmarks.core.runner import wait_for_indexing
+
             await wait_for_indexing(svc, run_logger=logger)
 
             # Evaluate
             scores = await evaluate_question(
-                svc, q, top_k=top_k,
+                svc,
+                q,
+                top_k=top_k,
                 use_rag=use_rag,
                 answer_model=answer_model,
                 answer_api_base=answer_api_base,
@@ -448,9 +456,7 @@ async def run_longmemeval_benchmark(
                 f"{sum(recall_scores) / len(recall_scores):.4f}"
             )
             if use_rag and judge_scores:
-                log_msg += (
-                    f"  Judge: {sum(judge_scores) / len(judge_scores):.4f}"
-                )
+                log_msg += f"  Judge: {sum(judge_scores) / len(judge_scores):.4f}"
             logger.info(log_msg)
 
     elapsed = time.perf_counter() - t0
@@ -489,13 +495,8 @@ async def run_longmemeval_benchmark(
         f"  Contains={metrics['Contains']:.4f}  F1={metrics['F1']:.4f}"
     )
     if use_rag and "QA_F1" in metrics:
-        log_msg += (
-            f"  QA_F1={metrics['QA_F1']:.4f}"
-            f"  Judge={metrics['Judge_Accuracy']:.4f}"
-        )
-    log_msg += (
-        f"  ({int(metrics['num_questions'])} questions, {elapsed:.1f}s)"
-    )
+        log_msg += f"  QA_F1={metrics['QA_F1']:.4f}  Judge={metrics['Judge_Accuracy']:.4f}"
+    log_msg += f"  ({int(metrics['num_questions'])} questions, {elapsed:.1f}s)"
     logger.info(log_msg)
 
     # Log per-category results

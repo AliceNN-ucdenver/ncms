@@ -42,12 +42,14 @@ def _insight_response(
     key_entities: list[str] | None = None,
 ) -> MagicMock:
     """Create a mock response for insight synthesis."""
-    return _mock_llm_response({
-        "insight": insight,
-        "pattern_type": pattern_type,
-        "confidence": confidence,
-        "key_entities": key_entities or [],
-    })
+    return _mock_llm_response(
+        {
+            "insight": insight,
+            "pattern_type": pattern_type,
+            "confidence": confidence,
+            "key_entities": key_entities or [],
+        }
+    )
 
 
 async def _create_services(
@@ -77,7 +79,10 @@ async def _create_services(
 
     memory_svc = MemoryService(store=store, index=index, graph=graph, config=config)
     consolidation_svc = ConsolidationService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
 
     return memory_svc, consolidation_svc, store
@@ -165,9 +170,7 @@ class TestConsolidationKnowledge:
             # Search for the insight via BM25
             results = await svc.search("authentication pipeline JWT session")
             result_types = {r.memory.type for r in results}
-            assert "insight" in result_types, (
-                "Insight should be discoverable via BM25 search"
-            )
+            assert "insight" in result_types, "Insight should be discoverable via BM25 search"
 
         finally:
             await store.close()
@@ -285,9 +288,7 @@ class TestConsolidationKnowledge:
             assert first_count >= 1
 
             # Reset last_run so second pass sees all memories
-            await store.set_consolidation_value(
-                "last_knowledge_consolidation", ""
-            )
+            await store.set_consolidation_value("last_knowledge_consolidation", "")
 
             # Add more memories to meet min_cluster_size again
             await _store_related_memories(svc, count=4, domain="db")
@@ -310,9 +311,7 @@ class TestConsolidationKnowledge:
                     # No insight should be a source of another insight
                     insight_ids = {i.id for i in insights}
                     overlap = set(source_ids) & insight_ids
-                    assert len(overlap) == 0, (
-                        "Insights should not be sources for other insights"
-                    )
+                    assert len(overlap) == 0, "Insights should not be sources for other insights"
 
         finally:
             await store.close()

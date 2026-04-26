@@ -29,21 +29,25 @@ class A2AClient:
         if self._session is None:
             try:
                 import httpx
+
                 self._session = httpx.AsyncClient(timeout=30.0)
             except ImportError:
                 import aiohttp
+
                 self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
 
     async def get_agent_card(self) -> dict[str, Any] | None:
         """Discover an external agent's capabilities."""
         await self._ensure_session()
         try:
-            response = await self._request({
-                "jsonrpc": "2.0",
-                "id": str(uuid.uuid4()),
-                "method": "agent/card",
-                "params": {},
-            })
+            response = await self._request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": str(uuid.uuid4()),
+                    "method": "agent/card",
+                    "params": {},
+                }
+            )
             return response.get("result")
         except Exception as e:
             logger.warning("Failed to get agent card from %s: %s", self.endpoint, e)
@@ -69,16 +73,18 @@ class A2AClient:
         task_id = task_id or str(uuid.uuid4())
 
         try:
-            response = await self._request({
-                "jsonrpc": "2.0",
-                "id": str(uuid.uuid4()),
-                "method": "tasks/send",
-                "params": {
-                    "id": task_id,
-                    "skill": skill,
-                    "parameters": parameters,
-                },
-            })
+            response = await self._request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": str(uuid.uuid4()),
+                    "method": "tasks/send",
+                    "params": {
+                        "id": task_id,
+                        "skill": skill,
+                        "parameters": parameters,
+                    },
+                }
+            )
             return response.get("result")
         except Exception as e:
             logger.warning("A2A task failed (%s → %s): %s", skill, self.endpoint, e)
@@ -87,7 +93,7 @@ class A2AClient:
     async def _request(self, payload: dict) -> dict:
         """Send a JSON-RPC 2.0 request."""
         assert self._session is not None, "_ensure_session() must be called first"
-        if hasattr(self._session, 'post'):
+        if hasattr(self._session, "post"):
             # httpx
             resp = await self._session.post(  # type: ignore[union-attr]
                 self.endpoint,
@@ -113,7 +119,7 @@ class A2AClient:
     async def close(self) -> None:
         """Close the HTTP session."""
         if self._session is not None:
-            if hasattr(self._session, 'aclose'):
+            if hasattr(self._session, "aclose"):
                 await self._session.aclose()
             else:
                 await self._session.close()

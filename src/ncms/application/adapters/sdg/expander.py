@@ -63,7 +63,8 @@ from ncms.application.adapters.sdg.templates import (
 
 
 def _pools_for_slot(
-    vocab: DomainTemplates, slot_name: str,
+    vocab: DomainTemplates,
+    slot_name: str,
 ) -> tuple[SlotPool, ...]:
     """Pools whose ``slot_name`` matches; empty tuple when none."""
     return tuple(p for p in vocab.slot_pools if p.slot_name == slot_name)
@@ -100,8 +101,10 @@ def _draw_auxiliary(
     pattern = template.pattern
     if "{verb}" in pattern:
         pool = (
-            vocab.positive_verbs if template.intent == "positive"
-            else vocab.negative_verbs if template.intent == "negative"
+            vocab.positive_verbs
+            if template.intent == "positive"
+            else vocab.negative_verbs
+            if template.intent == "negative"
             else vocab.positive_verbs  # fallback
         )
         if pool:
@@ -133,7 +136,9 @@ def _draw_auxiliary(
 
 
 def _label_role_spans(
-    text: str, slots: dict[str, str], domain: Domain,
+    text: str,
+    slots: dict[str, str],
+    domain: Domain,
 ) -> list[RoleSpan]:
     """Post-render gazetteer pass → role-labeled spans.
 
@@ -156,9 +161,7 @@ def _label_role_spans(
     """
     gaz = detect_spans(text, domain=domain)
     # Normalise slot values to lowercase canonicals for comparison.
-    slot_values_lower = {
-        k: v.lower().strip() for k, v in slots.items() if v
-    }
+    slot_values_lower = {k: v.lower().strip() for k, v in slots.items() if v}
     alt_value = slot_values_lower.get("alternative")
     out: list[RoleSpan] = []
     for span in gaz:
@@ -169,15 +172,17 @@ def _label_role_spans(
             role = "primary"
         else:
             role = "not_relevant"
-        out.append(RoleSpan(
-            char_start=span.char_start,
-            char_end=span.char_end,
-            surface=span.surface,
-            canonical=span.canonical,
-            slot=span.slot,
-            role=role,  # type: ignore[arg-type]
-            source="sdg-template",
-        ))
+        out.append(
+            RoleSpan(
+                char_start=span.char_start,
+                char_end=span.char_end,
+                surface=span.surface,
+                canonical=span.canonical,
+                slot=span.slot,
+                role=role,  # type: ignore[arg-type]
+                source="sdg-template",
+            )
+        )
     return out
 
 
@@ -245,6 +250,52 @@ def _bucketize(
     return buckets
 
 
+def _resolve_share_targets(
+    *,
+    target: int,
+    has_preferences: bool,
+    has_declaration: bool,
+    has_retirement: bool,
+) -> tuple[int, int, int, int]:
+    """Return (pref, none, declaration, retirement) absolute counts."""
+    pref_share = 0.50
+    none_share = 0.35
+    decl_share = 0.075
+    ret_share = 0.075
+    if not has_preferences:
+        none_share += pref_share
+        pref_share = 0.0
+    if not has_declaration:
+        none_share += decl_share
+        decl_share = 0.0
+    if not has_retirement:
+        none_share += ret_share
+        ret_share = 0.0
+    return (
+        int(target * pref_share),
+        int(target * none_share),
+        int(target * decl_share),
+        int(target * ret_share),
+    )
+
+
+def _draw_from_bucket(
+    *,
+    rng: random.Random,
+    domain: Domain,
+    templates: list[SlotTemplate],
+    vocab: DomainTemplates,
+    n: int,
+    out: list[GoldExample],
+) -> None:
+    if n <= 0 or not templates:
+        return
+    for _ in range(n):
+        ex = _render(rng, domain, rng.choice(templates), vocab)
+        if ex is not None:
+            out.append(ex)
+
+
 def expand_domain(
     domain: Domain,
     *,
@@ -266,64 +317,42 @@ def expand_domain(
     rng = random.Random(seed)
     vocab = TEMPLATE_REGISTRY[domain]
     buckets = _bucketize(vocab.templates)
+    preference_keys = [k for k in buckets if k.startswith("pref_")]
 
-    pref_share = 0.50
-    none_share = 0.35
-    decl_share = 0.075
-    ret_share = 0.075
-
-    # Preference intents — split evenly across the five preference
-    # buckets that exist in this domain.
-    preference_keys = [
-        k for k in buckets if k.startswith("pref_")
-    ]
-    if not preference_keys:
-        pref_share = 0.0
-    if "declaration" not in buckets:
-        none_share += decl_share
-        decl_share = 0.0
-    if "retirement" not in buckets:
-        none_share += ret_share
-        ret_share = 0.0
-
-    pref_target = int(target * pref_share)
-    none_target = int(target * none_share)
-    decl_target = int(target * decl_share)
-    ret_target = int(target * ret_share)
+    pref_target, none_target, decl_target, ret_target = _resolve_share_targets(
+        target=target,
+        has_preferences=bool(preference_keys),
+        has_declaration="declaration" in buckets,
+        has_retirement="retirement" in buckets,
+    )
 
     out: list[GoldExample] = []
 
-    # ── preference buckets ───────────────────────────────────────
     if preference_keys:
         per_bucket = max(1, pref_target // len(preference_keys))
         for key in preference_keys:
-            for _ in range(per_bucket):
-                tmpl = rng.choice(buckets[key])
-                ex = _render(rng, domain, tmpl, vocab)
-                if ex is not None:
-                    out.append(ex)
+            _draw_from_bucket(
+                rng=rng,
+                domain=domain,
+                templates=buckets[key],
+                vocab=vocab,
+                n=per_bucket,
+                out=out,
+            )
 
-    # ── neutral / none ───────────────────────────────────────────
-    if "none" in buckets and none_target > 0:
-        for _ in range(none_target):
-            tmpl = rng.choice(buckets["none"])
-            ex = _render(rng, domain, tmpl, vocab)
-            if ex is not None:
-                out.append(ex)
-
-    # ── declaration / retirement ─────────────────────────────────
-    if "declaration" in buckets and decl_target > 0:
-        for _ in range(decl_target):
-            tmpl = rng.choice(buckets["declaration"])
-            ex = _render(rng, domain, tmpl, vocab)
-            if ex is not None:
-                out.append(ex)
-    if "retirement" in buckets and ret_target > 0:
-        for _ in range(ret_target):
-            tmpl = rng.choice(buckets["retirement"])
-            ex = _render(rng, domain, tmpl, vocab)
-            if ex is not None:
-                out.append(ex)
+    for bucket_name, n in (
+        ("none", none_target),
+        ("declaration", decl_target),
+        ("retirement", ret_target),
+    ):
+        _draw_from_bucket(
+            rng=rng,
+            domain=domain,
+            templates=buckets.get(bucket_name, []),
+            vocab=vocab,
+            n=n,
+            out=out,
+        )
 
     return out
 
@@ -345,12 +374,16 @@ def main() -> None:
     )
     parser.add_argument("--domain", required=True, choices=DOMAINS)
     parser.add_argument(
-        "--target", type=int, default=2000,
+        "--target",
+        type=int,
+        default=2000,
         help="Target pre-dedup example count (default: 2000).",
     )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
-        "--output", type=Path, required=True,
+        "--output",
+        type=Path,
+        required=True,
         help="JSONL output path.",
     )
     args = parser.parse_args()

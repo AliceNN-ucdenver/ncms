@@ -134,12 +134,14 @@ class IndexWorkerPool:
         self._shutting_down = False
         for i in range(self._num_workers):
             task = asyncio.create_task(
-                self._worker_loop(i), name=f"index-worker-{i}",
+                self._worker_loop(i),
+                name=f"index-worker-{i}",
             )
             self._workers.append(task)
         logger.info(
             "IndexWorkerPool started: %d workers, queue capacity %d",
-            self._num_workers, self._queue_capacity,
+            self._num_workers,
+            self._queue_capacity,
         )
 
     async def shutdown(self, timeout: float | None = None) -> None:
@@ -161,7 +163,8 @@ class IndexWorkerPool:
         # Wait for workers to finish
         if self._workers:
             done, pending = await asyncio.wait(
-                self._workers, timeout=timeout,
+                self._workers,
+                timeout=timeout,
             )
             for task in pending:
                 task.cancel()
@@ -172,7 +175,8 @@ class IndexWorkerPool:
         self._running = False
         logger.info(
             "IndexWorkerPool shut down. processed=%d failed=%d",
-            self._processed_total, self._failed_total,
+            self._processed_total,
+            self._failed_total,
         )
 
     def enqueue(self, task: IndexTask) -> bool:
@@ -186,7 +190,9 @@ class IndexWorkerPool:
         except asyncio.QueueFull:
             logger.warning(
                 "Index queue full (%d/%d), task %s must run inline",
-                self._queue.qsize(), self._queue_capacity, task.task_id,
+                self._queue.qsize(),
+                self._queue_capacity,
+                task.task_id,
             )
             return False
 
@@ -231,7 +237,8 @@ class IndexWorkerPool:
                 # Wait for a task (with timeout so we can check _running)
                 try:
                     task = await asyncio.wait_for(
-                        self._queue.get(), timeout=1.0,
+                        self._queue.get(),
+                        timeout=1.0,
                     )
                 except TimeoutError:
                     continue
@@ -251,7 +258,8 @@ class IndexWorkerPool:
                 break
             except Exception:
                 logger.error(
-                    "index-worker-%d unexpected error", worker_id,
+                    "index-worker-%d unexpected error",
+                    worker_id,
                     exc_info=True,
                 )
 
@@ -265,17 +273,24 @@ class IndexWorkerPool:
 
         def _emit(stage: str, duration_ms: float, data: dict | None = None) -> None:
             self._svc._event_log.pipeline_stage(
-                pipeline_id=pipeline_id, pipeline_type="index",
-                stage=stage, duration_ms=duration_ms,
-                data=data, agent_id=task.source_agent,
+                pipeline_id=pipeline_id,
+                pipeline_type="index",
+                stage=stage,
+                duration_ms=duration_ms,
+                data=data,
+                agent_id=task.source_agent,
                 memory_id=task.memory_id,
             )
 
-        _emit("started", 0.0, {
-            "worker_id": worker_id,
-            "attempt": task.attempt,
-            "queue_depth": self._queue.qsize(),
-        })
+        _emit(
+            "started",
+            0.0,
+            {
+                "worker_id": worker_id,
+                "attempt": task.attempt,
+                "queue_depth": self._queue.qsize(),
+            },
+        )
 
         try:
             # Retrieve the memory from SQLite (already persisted)
@@ -297,8 +312,10 @@ class IndexWorkerPool:
             # graph clean on trained-domain deployments.
             t1 = time.perf_counter()
             if task.slot_entities_present:
+
                 async def _noop_gliner() -> tuple[list[dict[str, str]], float]:
                     return [], 0.0
+
                 bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
                     self._do_bm25(memory),
                     self._do_splade(memory),
@@ -312,12 +329,16 @@ class IndexWorkerPool:
                 )
             parallel_ms = (time.perf_counter() - t1) * 1000
 
-            _emit("parallel_indexing", parallel_ms, {
-                "bm25_ms": round(bm25_ms, 1),
-                "splade_ms": round(splade_ms, 1),
-                "gliner_ms": round(extract_ms, 1),
-                "entity_count": len(auto_entities),
-            })
+            _emit(
+                "parallel_indexing",
+                parallel_ms,
+                {
+                    "bm25_ms": round(bm25_ms, 1),
+                    "splade_ms": round(splade_ms, 1),
+                    "gliner_ms": round(extract_ms, 1),
+                    "entity_count": len(auto_entities),
+                },
+            )
 
             # Merge manual + auto entities
             manual = list(task.entities_manual)
@@ -329,15 +350,25 @@ class IndexWorkerPool:
             # ── Stage 2: Entity linking + co-occurrence ──────────────
             t2 = time.perf_counter()
             linked_entity_ids = await self._link_entities(
-                memory, all_entities, pipeline_id, task.source_agent,
+                memory,
+                all_entities,
+                pipeline_id,
+                task.source_agent,
             )
             self._build_cooccurrence_edges(
-                memory, linked_entity_ids, pipeline_id, task.source_agent,
+                memory,
+                linked_entity_ids,
+                pipeline_id,
+                task.source_agent,
             )
             link_ms = (time.perf_counter() - t2) * 1000
-            _emit("entity_linking", link_ms, {
-                "entities_linked": len(linked_entity_ids),
-            })
+            _emit(
+                "entity_linking",
+                link_ms,
+                {
+                    "entities_linked": len(linked_entity_ids),
+                },
+            )
 
             # ── Stage 3: Memory nodes + reconciliation + episodes ────
             t3 = time.perf_counter()
@@ -357,6 +388,7 @@ class IndexWorkerPool:
             # ── Stage 4: Process relationships ───────────────────────
             if task.relationships:
                 from ncms.domain.models import Relationship
+
                 for r_data in task.relationships:
                     rel = Relationship(
                         source_entity_id=r_data["source"],
@@ -380,6 +412,7 @@ class IndexWorkerPool:
 
             # ── Log access + emit completion ─────────────────────────
             from ncms.domain.models import AccessRecord
+
             await self._svc._store.log_access(
                 AccessRecord(memory_id=memory.id, accessing_agent=task.source_agent),
             )
@@ -391,12 +424,16 @@ class IndexWorkerPool:
             if len(self._process_times) > 100:
                 self._process_times = self._process_times[-100:]
 
-            _emit("complete", total_ms, {
-                "entity_count": len(all_entities),
-                "parallel_ms": round(parallel_ms, 1),
-                "link_ms": round(link_ms, 1),
-                "nodes_ms": round(nodes_ms, 1),
-            })
+            _emit(
+                "complete",
+                total_ms,
+                {
+                    "entity_count": len(all_entities),
+                    "parallel_ms": round(parallel_ms, 1),
+                    "link_ms": round(link_ms, 1),
+                    "nodes_ms": round(nodes_ms, 1),
+                },
+            )
 
             self._svc._event_log.memory_stored(
                 memory_id=memory.id,
@@ -409,7 +446,10 @@ class IndexWorkerPool:
 
             logger.info(
                 "Indexed memory %s: %.0fms (worker-%d, attempt %d)",
-                memory.id, total_ms, worker_id, task.attempt,
+                memory.id,
+                total_ms,
+                worker_id,
+                task.attempt,
             )
 
         except Exception as e:
@@ -425,13 +465,21 @@ class IndexWorkerPool:
 
                 logger.warning(
                     "IndexTask %s failed (attempt %d/%d), retrying in %.0fs: %s",
-                    task.task_id, task.attempt, task.max_attempts, backoff, e,
+                    task.task_id,
+                    task.attempt,
+                    task.max_attempts,
+                    backoff,
+                    e,
                 )
-                _emit("retry", total_ms, {
-                    "attempt": task.attempt,
-                    "backoff_seconds": backoff,
-                    "error": str(e),
-                })
+                _emit(
+                    "retry",
+                    total_ms,
+                    {
+                        "attempt": task.attempt,
+                        "backoff_seconds": backoff,
+                        "error": str(e),
+                    },
+                )
 
                 await asyncio.sleep(backoff)
                 # Re-enqueue (best effort)
@@ -449,12 +497,19 @@ class IndexWorkerPool:
 
                 logger.error(
                     "IndexTask %s failed permanently after %d attempts: %s",
-                    task.task_id, task.max_attempts, e, exc_info=True,
+                    task.task_id,
+                    task.max_attempts,
+                    e,
+                    exc_info=True,
                 )
-                _emit("failed", total_ms, {
-                    "attempt": task.attempt,
-                    "error": str(e),
-                })
+                _emit(
+                    "failed",
+                    total_ms,
+                    {
+                        "attempt": task.attempt,
+                        "error": str(e),
+                    },
+                )
 
     # ── Indexing sub-stages ─────────────────────────────────────────
 
@@ -471,13 +526,16 @@ class IndexWorkerPool:
             await asyncio.to_thread(self._svc._splade.index_memory, memory)
         except Exception:
             logger.warning(
-                "SPLADE indexing failed for %s, continuing", memory.id,
+                "SPLADE indexing failed for %s, continuing",
+                memory.id,
                 exc_info=True,
             )
         return (time.perf_counter() - t) * 1000
 
     async def _do_gliner(
-        self, memory: Any, domains: list[str],
+        self,
+        memory: Any,
+        domains: list[str],
     ) -> tuple[list[dict[str, str]], float]:
         from ncms.application.label_cache import load_cached_labels
         from ncms.domain.entity_extraction import resolve_labels
@@ -530,21 +588,25 @@ class IndexWorkerPool:
         if len(linked_entity_ids) <= 1:  # Co-occurrence always on
             return
 
-        cooc_ids = linked_entity_ids[:config.cooccurrence_max_entities]
+        cooc_ids = linked_entity_ids[: config.cooccurrence_max_entities]
         for i, a in enumerate(cooc_ids):
-            for b in cooc_ids[i + 1:]:
+            for b in cooc_ids[i + 1 :]:
                 existing_count = self._svc._graph.get_edge_cooccurrence(a, b)
                 if existing_count > 0:
                     self._svc._graph.increment_edge_cooccurrence(a, b)
                     self._svc._graph.increment_edge_cooccurrence(b, a)
                 else:
                     rel_ab = Relationship(
-                        source_entity_id=a, target_entity_id=b,
-                        type="co_occurs", source_memory_id=memory.id,
+                        source_entity_id=a,
+                        target_entity_id=b,
+                        type="co_occurs",
+                        source_memory_id=memory.id,
                     )
                     rel_ba = Relationship(
-                        source_entity_id=b, target_entity_id=a,
-                        type="co_occurs", source_memory_id=memory.id,
+                        source_entity_id=b,
+                        target_entity_id=a,
+                        type="co_occurs",
+                        source_memory_id=memory.id,
                     )
                     self._svc._graph.add_relationship(rel_ab)
                     self._svc._graph.add_relationship(rel_ba)
@@ -568,10 +630,7 @@ class IndexWorkerPool:
         _should_create_node = (
             admission_route == "persist"
             or admission_route is None
-            or (
-                config.temporal_enabled
-                and self._svc._episode is not None
-            )
+            or (config.temporal_enabled and self._svc._episode is not None)
         )
         if not _should_create_node:
             return
@@ -587,21 +646,19 @@ class IndexWorkerPool:
 
         # L2: entity_state if state change detected OR caller asserted subject
         await self._detect_and_create_l2_node(
-            memory, all_entities, admission_features, l1_node,
+            memory,
+            all_entities,
+            admission_features,
+            l1_node,
             subject=subject,
         )
 
         # Episode formation
         await self._run_episode_formation(
-            memory, l1_node, linked_entity_ids,
+            memory,
+            l1_node,
+            linked_entity_ids,
         )
-
-    # Section content types skip L2 creation — structural document
-    # content triggers false positives on state-declaration regexes.
-    _SECTION_CONTENT_TYPES = frozenset({
-        "document_section", "document_chunk",
-        "section_index", "document",
-    })
 
     async def _detect_and_create_l2_node(
         self,
@@ -613,181 +670,35 @@ class IndexWorkerPool:
     ) -> None:
         """Async-indexing-path L2 entity_state creation.
 
-        Mirrors the synchronous path in
-        ``IngestionPipeline._detect_and_create_l2_node``: dispatch
-        on the ``subject`` kwarg, then either the caller-asserted-
-        subject path (SLM-confident state change required) or the
-        SLM-first state-detection path (regex fallback only when
-        LoRA didn't run).  Section content (document_chunk /
-        document_section / document) skips L2 unconditionally to
-        avoid false-positives on structural content.
+        Delegates to the canonical helper at
+        :mod:`ncms.application.ingestion.l2_detection` so the inline
+        and async paths share one implementation.  The async path
+        opts into ``SECTION_CONTENT_TYPES`` skip + tail-runs its own
+        reconciliation + TLG cache invalidation.
         """
-        slm_label = (memory.structured or {}).get("intent_slot") or {}
-        if subject:
-            await self._bg_create_l2_with_subject(
-                memory=memory, l1_node=l1_node,
-                slm_label=slm_label, subject=subject,
-            )
-            return
-        if memory.type in self._SECTION_CONTENT_TYPES:
-            return
-        await self._bg_create_l2_via_state_detection(
+        from ncms.application.ingestion.l2_detection import (
+            SECTION_CONTENT_TYPES,
+            detect_and_create_l2_node,
+        )
+
+        l2_node = await detect_and_create_l2_node(
+            store=self._svc._store,
+            config=self._svc._config,
+            extract_entity_state_meta_fn=self._svc._ingestion.extract_entity_state_meta,
             memory=memory,
+            content=memory.content,
             all_entities=all_entities,
             l1_node=l1_node,
             admission_features=admission_features,
-            slm_label=slm_label,
+            subject=subject,
+            skip_section_memory_types=SECTION_CONTENT_TYPES,
         )
-
-    async def _bg_create_l2_with_subject(
-        self,
-        *,
-        memory: Any,
-        l1_node: MemoryNode,
-        slm_label: dict,
-        subject: str,
-    ) -> None:
-        """L2 path 1 — caller-asserted subject + SLM-confident state change.
-
-        Subject kwarg alone is NOT enough — L2 creation requires the
-        state_change head to fire declaration/retirement above the
-        confidence floor.  Without that gate we'd create one L2 per
-        memory (measured on MSEB mini: 186 L2 from 186 memories,
-        which floods reconciliation).  Subject entity is already
-        linked upstream; that's enough for TLG vocabulary seeding.
-        """
-        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
-
-        slm_state = slm_label.get("state_change")
-        slm_state_conf = slm_label.get("state_change_confidence") or 0.0
-        confident = (
-            slm_state in {"declaration", "retirement"}
-            and slm_state_conf
-            >= self._svc._config.slm_confidence_threshold
-        )
-        if not confident:
-            return  # subject linked upstream is enough
-
-        snippet = memory.content.strip()[:200] or "(empty)"
-        node_metadata = {
-            "entity_id": subject,
-            "state_key": "status",
-            "state_value": snippet,
-            "source": "caller_subject_slm_state_change",
-            "slm_state_change": slm_state,
-        }
-        l2_node = MemoryNode(
-            memory_id=memory.id,
-            node_type=NodeType.ENTITY_STATE,
-            importance=memory.importance,
-            metadata=node_metadata,
-        )
-        await self._svc._store.save_memory_node(l2_node)
-        await self._svc._store.save_graph_edge(GraphEdge(
-            source_id=l2_node.id,
-            target_id=l1_node.id,
-            edge_type=EdgeType.DERIVED_FROM,
-        ))
-        await self._bg_reconcile_and_invalidate(l2_node)
-
-    async def _bg_create_l2_via_state_detection(
-        self,
-        *,
-        memory: Any,
-        all_entities: list[dict],
-        l1_node: MemoryNode,
-        admission_features: object | None,
-        slm_label: dict,
-    ) -> None:
-        """L2 path 2 — SLM-first state detection (regex fallback when SLM absent).
-
-        Reuses the IngestionPipeline.extract_entity_state_meta
-        helper for canonical state_value sourcing from role_spans.
-        """
-        from ncms.domain.models import EdgeType, GraphEdge, MemoryNode, NodeType
-
-        if not self._bg_state_change_detected(
-            slm_label=slm_label,
-            content=memory.content,
-            admission_features=admission_features,
-        ):
-            return
-
-        node_metadata = self._svc._ingestion.extract_entity_state_meta(
-            memory.content, all_entities, slm_label=slm_label or None,
-        )
-        if not node_metadata:
-            return
-        if node_metadata.get("source") != "slm_role_span":
-            entity_names_lower = {
-                e["name"].lower() for e in all_entities
-            }
-            detected = node_metadata.get("entity_id", "")
-            if detected.lower() not in entity_names_lower:
-                return  # suppress L2 — entity not in GLiNER set
-
-        l2_node = MemoryNode(
-            memory_id=memory.id,
-            node_type=NodeType.ENTITY_STATE,
-            importance=memory.importance,
-            metadata=node_metadata,
-        )
-        await self._svc._store.save_memory_node(l2_node)
-        await self._svc._store.save_graph_edge(GraphEdge(
-            source_id=l2_node.id,
-            target_id=l1_node.id,
-            edge_type=EdgeType.DERIVED_FROM,
-        ))
-        await self._bg_reconcile_and_invalidate(l2_node)
-
-    def _bg_state_change_detected(
-        self,
-        *,
-        slm_label: dict,
-        content: str,
-        admission_features: object | None,
-    ) -> bool:
-        """Decide whether L2 detection should fire on this memory.
-
-        Phase I.2 — SLM-first via the shared
-        ``slm_state_change_decision`` helper.  The regex block fires
-        only on cold-start deployments without an adapter loaded.
-        """
-        import re
-
-        from ncms.domain.intent_slot_taxonomy import slm_state_change_decision
-
-        decision = slm_state_change_decision(
-            slm_label,
-            threshold=self._svc._config.slm_confidence_threshold,
-        )
-        if decision is not None:
-            has_state_change, has_state_declaration = decision
-            return has_state_change or has_state_declaration
-
-        # Cold-start fallback — LoRA adapter missing.
-        has_state_change = (
-            admission_features is not None
-            and hasattr(admission_features, "state_change_signal")
-            and admission_features.state_change_signal >= 0.35
-        )
-        has_state_declaration = bool(
-            re.search(
-                r"^[a-zA-Z0-9_\-]+\s*:\s*[a-zA-Z0-9_\-]+\s*=\s*.+$",
-                content, re.MULTILINE,
-            )
-            or re.search(
-                r"(?:^|\n)##?\s*[Ss]tatus\s*[\n:]\s*\w+", content,
-            )
-            or re.search(
-                r"^\s*status\s*:\s*\w+",
-                content, re.MULTILINE | re.IGNORECASE,
-            )
-        )
-        return has_state_change or has_state_declaration
+        if l2_node is not None:
+            await self._bg_reconcile_and_invalidate(l2_node)
 
     async def _bg_reconcile_and_invalidate(
-        self, l2_node: MemoryNode,
+        self,
+        l2_node: MemoryNode,
     ) -> None:
         """Reconciliation + TLG vocabulary invalidation tail.
 
@@ -801,13 +712,16 @@ class IndexWorkerPool:
             from ncms.application.reconciliation_service import (
                 ReconciliationService,
             )
+
             recon = ReconciliationService(
-                store=self._svc._store, config=config,
+                store=self._svc._store,
+                config=config,
             )
             await recon.reconcile(l2_node)
         except Exception:
             logger.warning(
-                "Reconciliation failed for %s", l2_node.id,
+                "Reconciliation failed for %s",
+                l2_node.id,
                 exc_info=True,
             )
         self._svc.invalidate_tlg_vocabulary()
@@ -820,20 +734,15 @@ class IndexWorkerPool:
     ) -> None:
         """Assign memory to an episode and check for closure."""
         config = self._svc._config
-        if (
-            self._svc._episode is None
-            or not config.temporal_enabled
-        ):
+        if self._svc._episode is None or not config.temporal_enabled:
             return
 
         try:
             pool = self._svc._index_pool
-            episode_node = (
-                await self._svc._episode.assign_or_create(
-                    fragment_node=l1_node,
-                    fragment_memory=memory,
-                    entity_ids=linked_entity_ids,
-                )
+            episode_node = await self._svc._episode.assign_or_create(
+                fragment_node=l1_node,
+                fragment_memory=memory,
+                entity_ids=linked_entity_ids,
             )
             if episode_node is not None:
                 if pool is not None:
@@ -841,15 +750,15 @@ class IndexWorkerPool:
                         episode_node.id,
                     )
                     async with lock:
-                        await self._svc._episode \
-                            .check_resolution_closure(
-                                memory.content, episode_node,
-                            )
-                else:
-                    await self._svc._episode \
-                        .check_resolution_closure(
-                            memory.content, episode_node,
+                        await self._svc._episode.check_resolution_closure(
+                            memory.content,
+                            episode_node,
                         )
+                else:
+                    await self._svc._episode.check_resolution_closure(
+                        memory.content,
+                        episode_node,
+                    )
         except Exception:
             logger.warning(
                 "Episode formation failed for node %s",

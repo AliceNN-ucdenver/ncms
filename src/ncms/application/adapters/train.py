@@ -56,6 +56,7 @@ from pathlib import Path
 
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -77,6 +78,15 @@ from ncms.application.adapters.sdg.expander import (
     _dedupe,
     expand_domain,
 )
+from ncms.application.adapters.training.adversarial import (
+    generate_adversarial,
+)
+from ncms.application.adapters.training.gate import (
+    GateThresholds,
+    _dump_outcome_json,
+    run_gate,
+    write_eval_report,
+)
 
 
 def _corpus_hash(examples: list[GoldExample]) -> str:
@@ -90,25 +100,20 @@ def _corpus_hash(examples: list[GoldExample]) -> str:
     """
     h = hashlib.sha256()
     for ex in examples:
-        row = json.dumps({
-            "text": ex.text,
-            "intent": ex.intent,
-            "slots": ex.slots,
-            "topic": ex.topic,
-            "admission": ex.admission,
-            "state_change": ex.state_change,
-        }, sort_keys=True).encode("utf-8")
+        row = json.dumps(
+            {
+                "text": ex.text,
+                "intent": ex.intent,
+                "slots": ex.slots,
+                "topic": ex.topic,
+                "admission": ex.admission,
+                "state_change": ex.state_change,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
         h.update(row)
     return h.hexdigest()[:16]
-from ncms.application.adapters.training.adversarial import (
-    generate_adversarial,
-)
-from ncms.application.adapters.training.gate import (
-    GateThresholds,
-    _dump_outcome_json,
-    run_gate,
-    write_eval_report,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -174,9 +179,7 @@ def _evaluate_heldout(
         _record_head("state_change", ex.state_change, pred.state_change)
 
     metrics: dict[str, float] = {
-        f"heldout_{head}_acc": hits[head] / labeled[head]
-        for head in labeled
-        if labeled[head] > 0
+        f"heldout_{head}_acc": hits[head] / labeled[head] for head in labeled if labeled[head] > 0
     }
     for head, per_class in class_tpfpfn.items():
         f1s: list[float] = []
@@ -192,7 +195,8 @@ def _evaluate_heldout(
             f1s.append(f1)
         if f1s:
             metrics[f"heldout_{head}_f1_macro"] = round(
-                sum(f1s) / len(f1s), 4,
+                sum(f1s) / len(f1s),
+                4,
             )
     metrics["heldout_n"] = float(n)
 
@@ -201,9 +205,10 @@ def _evaluate_heldout(
         json.dumps(metrics, indent=2, sort_keys=True),
     )
     manifest = AdapterManifest.load(adapter_dir / "manifest.json")
-    manifest.gate_metrics = {**manifest.gate_metrics, **{
-        k: round(v, 4) for k, v in metrics.items()
-    }}
+    manifest.gate_metrics = {
+        **manifest.gate_metrics,
+        **{k: round(v, 4) for k, v in metrics.items()},
+    }
     manifest.save(adapter_dir / "manifest.json")
 
     logger.info(
@@ -230,7 +235,8 @@ def _evaluate_heldout(
 
 
 def phase1_bootstrap(
-    domain: Domain, corpus_dir: Path,
+    domain: Domain,
+    corpus_dir: Path,
 ) -> list[GoldExample]:
     """Load training-corpus rows for ``domain``.
 
@@ -248,11 +254,12 @@ def phase1_bootstrap(
     ``shape_intent`` and v8 ``cue_tags`` fields if present on
     legacy rows.
     """
-    gold = [ex for ex in load_all(corpus_dir, split="gold")
-            if ex.domain == domain]
+    gold = [ex for ex in load_all(corpus_dir, split="gold") if ex.domain == domain]
     if gold:
         logger.info(
-            "[phase1] domain=%s gold_rows=%d", domain, len(gold),
+            "[phase1] domain=%s gold_rows=%d",
+            domain,
+            len(gold),
         )
         return gold
 
@@ -261,14 +268,14 @@ def phase1_bootstrap(
     # gives honest per-head metrics even without a separate gold
     # set; downstream Phase B-prime.6 work will hand-curate gold
     # to replace this fallback.
-    sdg_as_gold = [ex for ex in load_all(corpus_dir, split="sdg")
-                   if ex.domain == domain]
+    sdg_as_gold = [ex for ex in load_all(corpus_dir, split="sdg") if ex.domain == domain]
     if sdg_as_gold:
         logger.info(
             "[phase1] domain=%s no gold rows; using %d SDG rows as "
             "training source (v9 first-training mode — held-out 80/20 "
             "split provides honest per-head eval)",
-            domain, len(sdg_as_gold),
+            domain,
+            len(sdg_as_gold),
         )
         return sdg_as_gold
 
@@ -305,7 +312,10 @@ def phase2_expand(
     dump_jsonl(deduped, output_path)
     logger.info(
         "[phase2] domain=%s raw=%d deduped=%d → %s",
-        domain, len(raw), len(deduped), output_path,
+        domain,
+        len(raw),
+        len(deduped),
+        output_path,
     )
     return deduped
 
@@ -334,6 +344,7 @@ def phase3_adversarial(
     from ncms.application.adapters.training.adversarial import (
         _primary,
     )
+
     seeds_with_primary = [s for s in seeds if _primary(s) is not None]
     if not seeds_with_primary:
         logger.warning(
@@ -343,7 +354,9 @@ def phase3_adversarial(
         )
         return []
     out = generate_adversarial(
-        seeds_with_primary, target=target, seed=seed,
+        seeds_with_primary,
+        target=target,
+        seed=seed,
     )
     dump_jsonl(out, output_path)
     modes: dict[str, int] = {}
@@ -351,7 +364,10 @@ def phase3_adversarial(
         modes[ex.note or "?"] = modes.get(ex.note or "?", 0) + 1
     logger.info(
         "[phase3] domain=%s generated=%d modes=%s → %s",
-        domain, len(out), modes, output_path,
+        domain,
+        len(out),
+        modes,
+        output_path,
     )
     return out
 
@@ -416,15 +432,13 @@ def phase4_finetune_and_gate(
     # that don't match the v9 corpora — using them would cause every
     # row's topic label to fall outside the head's vocabulary).
     if domain_topics:
-        if (
-            taxonomy.get("topic_labels")
-            and set(taxonomy["topic_labels"]) != set(domain_topics)
-        ):
+        if taxonomy.get("topic_labels") and set(taxonomy["topic_labels"]) != set(domain_topics):
             logger.warning(
                 "[phase4] taxonomy YAML topic_labels=%s differs from "
                 "DomainSpec topics=%s; using DomainSpec (the v9 "
                 "authoritative source) and ignoring the YAML",
-                taxonomy["topic_labels"], list(domain_topics),
+                taxonomy["topic_labels"],
+                list(domain_topics),
             )
         taxonomy["topic_labels"] = list(domain_topics)
 
@@ -438,12 +452,10 @@ def phase4_finetune_and_gate(
         encoder=encoder,
         topic_labels=taxonomy.get("topic_labels"),
         admission_labels=(
-            taxonomy["admission_labels"]
-            if taxonomy.get("admission_labels") else None
+            taxonomy["admission_labels"] if taxonomy.get("admission_labels") else None
         ),
         state_change_labels=(
-            taxonomy["state_change_labels"]
-            if taxonomy.get("state_change_labels") else None
+            taxonomy["state_change_labels"] if taxonomy.get("state_change_labels") else None
         ),
         lora_r=lora_r,
         lora_alpha=lora_alpha,
@@ -471,8 +483,10 @@ def phase4_finetune_and_gate(
         logger.info(
             "[phase4] held-out split: %d gold rows (%.0f%%) held out "
             "for post-train evaluation (seed=%d); %d rows used for training",
-            len(heldout_gold), heldout_fraction * 100,
-            holdout_seed, len(train_gold),
+            len(heldout_gold),
+            heldout_fraction * 100,
+            holdout_seed,
+            len(train_gold),
         )
 
     # Upsample — repeat gold / adversarial rows in the training mix
@@ -481,11 +495,7 @@ def phase4_finetune_and_gate(
     # ratios; held-out rows are excluded from the hash so re-training
     # with a different seed produces the same hash.
     hash_input = train_gold + sdg + adversarial_train
-    combined = (
-        train_gold * gold_upsample
-        + sdg
-        + adversarial_train * adversarial_upsample
-    )
+    combined = train_gold * gold_upsample + sdg + adversarial_train * adversarial_upsample
     manifest.corpus_hash = _corpus_hash(hash_input)
     manifest.trained_at = _dt.datetime.now(_dt.UTC).isoformat()
 
@@ -494,10 +504,17 @@ def phase4_finetune_and_gate(
         "(train_gold×%d + sdg + adversarial×%d) n_heldout=%d "
         "topic_labels=%d role_labels=%d epochs=%d lora_r=%d "
         "lora_alpha=%d",
-        domain, len(hash_input), len(combined),
-        gold_upsample, adversarial_upsample, len(heldout_gold),
-        len(manifest.topic_labels), len(manifest.role_labels),
-        epochs, lora_r, lora_alpha,
+        domain,
+        len(hash_input),
+        len(combined),
+        gold_upsample,
+        adversarial_upsample,
+        len(heldout_gold),
+        len(manifest.topic_labels),
+        len(manifest.role_labels),
+        epochs,
+        lora_r,
+        lora_alpha,
     )
     train(
         combined,
@@ -515,13 +532,17 @@ def phase4_finetune_and_gate(
     # hash in manifest.corpus_hash pins the split contract.
     if heldout_gold:
         from ncms.application.adapters.corpus.loader import dump_jsonl
+
         dump_jsonl(heldout_gold, adapter_dir / "heldout_gold.jsonl")
         logger.info(
             "[phase4] wrote held-out corpus to %s",
             adapter_dir / "heldout_gold.jsonl",
         )
         _evaluate_heldout(
-            adapter_dir, heldout_gold, domain=domain, device=device,
+            adapter_dir,
+            heldout_gold,
+            domain=domain,
+            device=device,
         )
 
     # Gate
@@ -535,7 +556,9 @@ def phase4_finetune_and_gate(
         baseline_adapter_dir=baseline_adapter_dir,
     )
     write_eval_report(
-        outcome, thresholds, adapter_dir / "eval_report.md",
+        outcome,
+        thresholds,
+        adapter_dir / "eval_report.md",
     )
     _dump_outcome_json(outcome, adapter_dir / "eval_outcome.json")
 
@@ -557,34 +580,40 @@ def phase4_finetune_and_gate(
 
 def main() -> None:
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
     )
     parser = argparse.ArgumentParser(
         description=(
-            "Four-phase train-adapter pipeline: "
-            "bootstrap → expand → adversarial → train + gate"
+            "Four-phase train-adapter pipeline: bootstrap → expand → adversarial → train + gate"
         ),
     )
     parser.add_argument("--domain", required=True, choices=list(DOMAINS))
     parser.add_argument("--adapter-dir", type=Path, required=True)
     parser.add_argument("--taxonomy", type=Path, default=None)
     parser.add_argument(
-        "--corpus-dir", type=Path,
+        "--corpus-dir",
+        type=Path,
         default=Path(__file__).parent / "corpus",
     )
-    parser.add_argument("--target-size", type=int, default=500,
-                        help="SDG pre-dedup target (phase 2).")
-    parser.add_argument("--adversarial-size", type=int, default=200,
-                        help="Adversarial training examples (phase 3).")
     parser.add_argument(
-        "--sdg-output", type=Path, default=None,
+        "--target-size", type=int, default=500, help="SDG pre-dedup target (phase 2)."
+    )
+    parser.add_argument(
+        "--adversarial-size", type=int, default=200, help="Adversarial training examples (phase 3)."
+    )
+    parser.add_argument(
+        "--sdg-output",
+        type=Path,
+        default=None,
         help="SDG JSONL path (default: corpus/sdg_<domain>.jsonl).",
     )
     parser.add_argument(
-        "--adversarial-output", type=Path, default=None,
+        "--adversarial-output",
+        type=Path,
+        default=None,
         help=(
-            "Adversarial training JSONL path "
-            "(default: corpus/adversarial_train_<domain>.jsonl)."
+            "Adversarial training JSONL path (default: corpus/adversarial_train_<domain>.jsonl)."
         ),
     )
     parser.add_argument("--seed", type=int, default=42)
@@ -593,7 +622,9 @@ def main() -> None:
     parser.add_argument("--encoder", default="bert-base-uncased")
     parser.add_argument("--version", default="v1")
     parser.add_argument(
-        "--epochs", type=int, default=10,
+        "--epochs",
+        type=int,
+        default=10,
         help=(
             "Training epochs (default 10).  v9 default raised from "
             "6 → 10 after the B-prime.6 ablation showed clinical "
@@ -605,16 +636,18 @@ def main() -> None:
     )
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=5e-4)
-    parser.add_argument("--lora-r", type=int, default=16,
-                        help="LoRA rank (v9 default: 16).")
-    parser.add_argument("--lora-alpha", type=int, default=32,
-                        help="LoRA alpha (v9 default: 32 = 2×rank).")
+    parser.add_argument("--lora-r", type=int, default=16, help="LoRA rank (v9 default: 16).")
+    parser.add_argument(
+        "--lora-alpha", type=int, default=32, help="LoRA alpha (v9 default: 32 = 2×rank)."
+    )
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-targets", default="query,value")
     parser.add_argument("--max-length", type=int, default=128)
     parser.add_argument("--device", default=None)
     parser.add_argument(
-        "--heldout-fraction", type=float, default=0.2,
+        "--heldout-fraction",
+        type=float,
+        default=0.2,
         help=(
             "Fraction of gold rows to hold out of training for honest "
             "per-head evaluation.  Default 0.2 (80/20 split).  Set to "
@@ -622,7 +655,9 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--holdout-seed", type=int, default=42,
+        "--holdout-seed",
+        type=int,
+        default=42,
         help="RNG seed for the held-out shuffle (stable splits).",
     )
 
@@ -633,19 +668,24 @@ def main() -> None:
     parser.add_argument("--regression-tolerance", type=float, default=0.02)
     parser.add_argument("--latency-p95-soft-limit", type=float, default=200.0)
     parser.add_argument(
-        "--eval-splits", default="gold,adversarial",
+        "--eval-splits",
+        default="gold,adversarial",
         help="Comma-separated eval splits for the gate.",
     )
     parser.add_argument(
-        "--baseline-adapter-dir", type=Path, default=None,
+        "--baseline-adapter-dir",
+        type=Path,
+        default=None,
         help="Optional baseline for regression comparison.",
     )
     parser.add_argument(
-        "--skip-adversarial", action="store_true",
+        "--skip-adversarial",
+        action="store_true",
         help="Skip phase 3 (useful for smoke tests).",
     )
     parser.add_argument(
-        "--skip-sdg", action="store_true",
+        "--skip-sdg",
+        action="store_true",
         help=(
             "Skip phase 2 (template-SDG expansion).  Appropriate when "
             "the gold corpus is already large enough to train without "
@@ -653,7 +693,9 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--gold-upsample", type=int, default=1,
+        "--gold-upsample",
+        type=int,
+        default=1,
         help=(
             "How many times to repeat gold rows in the training mix.  "
             "Counteracts SDG-dilution on slot F1 when the SDG corpus is "
@@ -662,14 +704,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--adversarial-upsample", type=int, default=1,
+        "--adversarial-upsample",
+        type=int,
+        default=1,
         help="Upsample factor for adversarial training rows.",
     )
     args = parser.parse_args()
 
-    sdg_output = args.sdg_output or (
-        args.corpus_dir / f"sdg_{args.domain}.jsonl"
-    )
+    sdg_output = args.sdg_output or (args.corpus_dir / f"sdg_{args.domain}.jsonl")
     adversarial_output = args.adversarial_output or (
         args.corpus_dir / f"adversarial_train_{args.domain}.jsonl"
     )
@@ -680,6 +722,7 @@ def main() -> None:
         from ncms.application.adapters.schemas import (
             get_domain_manifest,
         )
+
         m = get_domain_manifest(args.domain)  # type: ignore[arg-type]
         logger.info("=" * 72)
         logger.info("train_adapter: DOMAIN MANIFEST")
@@ -741,9 +784,7 @@ def main() -> None:
         regression_tolerance=args.regression_tolerance,
         latency_p95_ms_soft_limit=args.latency_p95_soft_limit,
     )
-    eval_splits = [
-        s.strip() for s in args.eval_splits.split(",") if s.strip()
-    ]
+    eval_splits = [s.strip() for s in args.eval_splits.split(",") if s.strip()]
 
     # Resolve v9 DomainSpec topics (preferred over legacy taxonomy
     # YAML).  Falls back to None when the v9 plugin directory isn't
@@ -769,22 +810,24 @@ def main() -> None:
     if v9_dir is not None:
         try:
             from ncms.application.adapters.domain_loader import load_domain
+
             spec = load_domain(v9_dir)
             domain_topics = spec.topics
             logger.info(
                 "[phase4] v9 DomainSpec loaded for %s — topics=%s",
-                args.domain, list(domain_topics),
+                args.domain,
+                list(domain_topics),
             )
         except Exception as exc:  # noqa: BLE001 — non-fatal
             logger.warning(
                 "[phase4] could not load v9 DomainSpec at %s (%s); "
                 "falling back to legacy taxonomy YAML",
-                v9_dir, exc,
+                v9_dir,
+                exc,
             )
     else:
         logger.info(
-            "[phase4] no v9 DomainSpec for %s — using legacy "
-            "taxonomy YAML",
+            "[phase4] no v9 DomainSpec for %s — using legacy taxonomy YAML",
             args.domain,
         )
 
@@ -805,9 +848,7 @@ def main() -> None:
         lora_r=args.lora_r,
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
-        lora_targets=[
-            t.strip() for t in args.lora_targets.split(",") if t.strip()
-        ],
+        lora_targets=[t.strip() for t in args.lora_targets.split(",") if t.strip()],
         max_length=args.max_length,
         corpus_dir=args.corpus_dir,
         thresholds=thresholds,
@@ -822,8 +863,7 @@ def main() -> None:
 
     elapsed = time.perf_counter() - t0
     print(
-        f"[train-adapter] total elapsed {elapsed:.1f}s  "
-        f"verdict={'PASS' if passed else 'FAIL'}",
+        f"[train-adapter] total elapsed {elapsed:.1f}s  verdict={'PASS' if passed else 'FAIL'}",
     )
     sys.exit(0 if passed else 1)
 
@@ -854,13 +894,20 @@ def run_training(
 
     argv = [
         "ncms-adapters-train",
-        "--domain", domain,
-        "--adapter-dir", str(adapter_dir),
-        "--corpus-dir", str(manifest.gold_jsonl.parent),
-        "--taxonomy", str(manifest.taxonomy_yaml),
-        "--version", version,
-        "--target-size", str(target_size),
-        "--adversarial-size", str(adversarial_size),
+        "--domain",
+        domain,
+        "--adapter-dir",
+        str(adapter_dir),
+        "--corpus-dir",
+        str(manifest.gold_jsonl.parent),
+        "--taxonomy",
+        str(manifest.taxonomy_yaml),
+        "--version",
+        version,
+        "--target-size",
+        str(target_size),
+        "--adversarial-size",
+        str(adversarial_size),
     ]
     if epochs is not None:
         argv += ["--epochs", str(epochs)]

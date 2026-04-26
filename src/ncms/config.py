@@ -59,8 +59,8 @@ class NCMSConfig(BaseSettings):
     # Retrieval pipeline
     tier1_candidates: int = 50
     tier2_candidates: int = 20
-    scoring_weight_bm25: float = 0.6   # Tuned: grid search on SciFact (2026-03-14)
-    scoring_weight_actr: float = 0.0   # Tuned: ACT-R hurts on cold corpora (no access history)
+    scoring_weight_bm25: float = 0.6  # Tuned: grid search on SciFact (2026-03-14)
+    scoring_weight_actr: float = 0.0  # Tuned: ACT-R hurts on cold corpora (no access history)
     scoring_weight_graph: float = 0.3  # Restored: graph signal helps baseline (+10% AR)
 
     # Graph expansion (always on)
@@ -71,11 +71,11 @@ class NCMSConfig(BaseSettings):
     cooccurrence_max_entities: int = 12  # Reduced from 20 to cap clique inflation
 
     # Graph spreading activation (PPR, always on)
-    graph_hop_decay: float = 0.5       # Activation multiplier per hop
+    graph_hop_decay: float = 0.5  # Activation multiplier per hop
     graph_spreading_max_hops: int = 2  # Maximum hops for graph traversal
 
     # Recency scoring
-    scoring_weight_recency: float = 0.0   # Additive recency weight (0 = disabled)
+    scoring_weight_recency: float = 0.0  # Additive recency weight (0 = disabled)
     recency_half_life_days: float = 30.0  # Half-life for exponential recency decay
 
     # Model cache directory (for GLiNER / SPLADE / sentence-transformers downloads)
@@ -98,7 +98,11 @@ class NCMSConfig(BaseSettings):
 
     # Consolidation
     consolidation_importance_threshold: float = 50.0
-    consolidation_enabled: bool = True
+    # Note: a top-level ``consolidation_enabled`` flag was retired —
+    # the per-pass flags (``consolidation_knowledge_enabled``,
+    # ``episode_consolidation_enabled``, ``trajectory_consolidation_enabled``,
+    # ``pattern_consolidation_enabled``, ``dream_cycle_enabled``)
+    # are the real switches; an umbrella was redundant.
 
     # Knowledge consolidation (Phase 4)
     consolidation_knowledge_enabled: bool = False
@@ -117,13 +121,13 @@ class NCMSConfig(BaseSettings):
     reconciliation_conflict_penalty: float = 0.15
 
     # Episode formation (Phase 3) — gated by ``temporal_enabled``.
-    episode_window_minutes: int = 1440   # T_window for temporal proximity signal
-    episode_close_minutes: int = 1440    # T_close for auto-closure
+    episode_window_minutes: int = 1440  # T_window for temporal proximity signal
+    episode_close_minutes: int = 1440  # T_close for auto-closure
     episode_match_threshold: float = 0.30  # Weighted score threshold for joining
-    episode_create_min_entities: int = 2   # Min entities to create new episode
-    episode_candidate_limit: int = 10      # BM25/SPLADE candidate limit
+    episode_create_min_entities: int = 2  # Min entities to create new episode
+    episode_candidate_limit: int = 10  # BM25/SPLADE candidate limit
     episode_weight_bm25: float = 0.20
-    episode_weight_splade: float = 0.20    # Redistributed when SPLADE disabled
+    episode_weight_splade: float = 0.20  # Redistributed when SPLADE disabled
     episode_weight_entity_overlap: float = 0.25
     episode_weight_domain: float = 0.15
     episode_weight_temporal: float = 0.10
@@ -131,10 +135,10 @@ class NCMSConfig(BaseSettings):
     episode_weight_anchor: float = 0.05
 
     # Intent-aware retrieval (Phase 4) — gated by ``temporal_enabled``.
-    intent_confidence_threshold: float = 0.6   # Below → fall back to fact_lookup
-    intent_hierarchy_bonus: float = 0.5        # Raw bonus before weight
-    scoring_weight_hierarchy: float = 0.0      # Additive weight (0 = no effect)
-    intent_supplement_max: int = 20            # Max supplementary candidates per intent
+    intent_confidence_threshold: float = 0.6  # Below → fall back to fact_lookup
+    intent_hierarchy_bonus: float = 0.5  # Raw bonus before weight
+    scoring_weight_hierarchy: float = 0.0  # Additive weight (0 = no effect)
+    intent_supplement_max: int = 20  # Max supplementary candidates per intent
     intent_llm_fallback_enabled: bool = False  # LLM fallback when BM25 confidence low
 
     # Phase H.3 — role-grounding bonus.  The 5-head SLM emits a
@@ -192,15 +196,15 @@ class NCMSConfig(BaseSettings):
     episode_llm_fallback_enabled: bool = False  # LLM fallback when no episode matches
 
     # Hierarchical consolidation (Phase 5)
-    episode_consolidation_enabled: bool = False      # 5A: Episode summary generation
-    trajectory_consolidation_enabled: bool = False   # 5B: State trajectory narratives
-    pattern_consolidation_enabled: bool = False      # 5C: Recurring pattern detection
-    trajectory_min_transitions: int = 3              # Min state transitions for trajectory
-    pattern_min_episodes: int = 3                    # Min episodes for pattern cluster
-    pattern_entity_overlap_threshold: float = 0.3    # Jaccard threshold for clustering
-    pattern_stability_threshold: float = 0.7         # Promote to strategic_insight above this
-    abstract_refresh_days: int = 7                   # Staleness window for re-synthesis
-    consolidation_max_abstracts_per_run: int = 10    # Cap per consolidation pass
+    episode_consolidation_enabled: bool = False  # 5A: Episode summary generation
+    trajectory_consolidation_enabled: bool = False  # 5B: State trajectory narratives
+    pattern_consolidation_enabled: bool = False  # 5C: Recurring pattern detection
+    trajectory_min_transitions: int = 3  # Min state transitions for trajectory
+    pattern_min_episodes: int = 3  # Min episodes for pattern cluster
+    pattern_entity_overlap_threshold: float = 0.3  # Jaccard threshold for clustering
+    pattern_stability_threshold: float = 0.7  # Promote to strategic_insight above this
+    abstract_refresh_days: int = 7  # Staleness window for re-synthesis
+    consolidation_max_abstracts_per_run: int = 10  # Cap per consolidation pass
 
     # ── Master temporal reasoning flag ────────────────────────────────
     # When True, the retrieval pipeline runs the full temporal stack:
@@ -218,22 +222,12 @@ class NCMSConfig(BaseSettings):
     temporal_enabled: bool = False
     scoring_weight_temporal: float = 0.2  # Weight of the temporal signal when temporal_enabled=True
 
-    # CTLG (Causal-Temporal Linguistic Geometry) LLM fallback.
-    # The TLG dispatcher composes cue_tags from the SLM's cue head
-    # into a structured ``TLGQuery``.  When the rules-first
-    # synthesizer (``domain/tlg/grammar.py``) doesn't recognise a
-    # composition (cue pattern outside the trained taxonomy), we
-    # have two options: drop to BM25 (current behavior; preserves
-    # the "never confidently wrong" invariant) or invoke an LLM
-    # fallback that produces a structured query the dispatcher can
-    # consume.  This flag enables option 2.  Default ``False`` —
-    # LLM fallback adds latency + cost and the cue head isn't
-    # trained yet (v9 ships ``cue: 0``), so the path is dark today
-    # regardless of this flag.  Wires in once the cue head is
-    # producing real ``cue_tags`` at ingest.  See
-    # ``docs/research/ctlg-design.md`` §4 (LLM fallback design) +
-    # CLAUDE.md §29.
-    tlg_llm_fallback_enabled: bool = False
+    # Note: a ``tlg_llm_fallback_enabled`` flag was reserved here for
+    # CTLG LLM-fallback wiring but never read in code (v9 ships
+    # ``cue: 0`` so no cue tags reach the dispatcher).  Retired in
+    # the Phase F flag cleanup; re-introduce when the CTLG sibling
+    # adapter ships and the dispatcher actually has an LLM fallback
+    # to gate.  See ``docs/research/ctlg-design.md`` §4.
 
     # P1-temporal-experiment: GLiNER-extracted date ranges + hard-filter
     # retrieval.  See docs/retired/p1-temporal-experiment.md (historical).
@@ -300,23 +294,23 @@ class NCMSConfig(BaseSettings):
 
     # Level-first retrieval & synthesis (Phase 5)
     level_first_enabled: bool = False
-    level_first_overfetch_factor: int = 3   # Over-fetch multiplier before node-type filter
+    level_first_overfetch_factor: int = 3  # Over-fetch multiplier before node-type filter
     synthesis_enabled: bool = False
     synthesis_model: str = "openai/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
     synthesis_api_base: str = "http://spark-ee7d.local:8000/v1"
-    synthesis_token_budget: int = 4000      # Max tokens in synthesized output
+    synthesis_token_budget: int = 4000  # Max tokens in synthesized output
     topic_map_enabled: bool = False
-    topic_map_min_abstracts: int = 3        # Min abstracts to form a topic cluster
-    topic_map_entity_overlap: float = 0.3   # Jaccard threshold for clustering
+    topic_map_min_abstracts: int = 3  # Min abstracts to form a topic cluster
+    topic_map_entity_overlap: float = 0.3  # Jaccard threshold for clustering
 
     # Phase 6: Export & Feedback
-    search_feedback_enabled: bool = False    # Track search→access correlation
+    search_feedback_enabled: bool = False  # Track search→access correlation
     bus_heartbeat_interval_seconds: int = 30  # Heartbeat ping interval
-    bus_heartbeat_timeout_seconds: int = 90   # Mark offline after this silence
+    bus_heartbeat_timeout_seconds: int = 90  # Mark offline after this silence
     auto_snapshot_on_disconnect: bool = False  # Publish snapshot when heartbeat fails
-    scale_aware_flags_enabled: bool = False   # Auto-disable expensive features by corpus size
+    scale_aware_flags_enabled: bool = False  # Auto-disable expensive features by corpus size
     scale_reranker_max_memories: int = 10000  # Disable reranker above this corpus size
-    scale_intent_max_memories: int = 50000    # Disable intent classification above this
+    scale_intent_max_memories: int = 50000  # Disable intent classification above this
 
     # Per-intent signal weights (Phase 9 — RouteRAG-style).
     # Gated by ``temporal_enabled``; tunables remain independent.
@@ -330,7 +324,7 @@ class NCMSConfig(BaseSettings):
 
     # Dream query expansion (Phase 9 — REM phase)
     dream_query_expansion_enabled: bool = False
-    dream_expansion_max_terms: int = 20   # Tuned up from 5: more terms = more BM25 recall
+    dream_expansion_max_terms: int = 20  # Tuned up from 5: more terms = more BM25 recall
     dream_expansion_min_pmi: float = 0.1
 
     # Active forgetting (Phase 9 — SleepGate-inspired)
@@ -341,22 +335,22 @@ class NCMSConfig(BaseSettings):
 
     # Dream cycles (Phase 8)
     dream_cycle_enabled: bool = False
-    dream_rehearsal_fraction: float = 0.10       # Top fraction of memories to rehearse
-    dream_staleness_days: int = 7                # Memory considered stale after N days
-    dream_min_access_count: int = 3              # Minimum accesses before eligible
+    dream_rehearsal_fraction: float = 0.10  # Top fraction of memories to rehearse
+    dream_staleness_days: int = 7  # Memory considered stale after N days
+    dream_min_access_count: int = 3  # Minimum accesses before eligible
     dream_rehearsal_weight_centrality: float = 0.40
     dream_rehearsal_weight_staleness: float = 0.30
     dream_rehearsal_weight_importance: float = 0.20
     dream_rehearsal_weight_access_count: float = 0.05
     dream_rehearsal_weight_recency: float = 0.05
     dream_importance_drift_window_days: int = 14  # Window for access rate comparison
-    dream_importance_drift_rate: float = 0.1      # Max importance adjustment per cycle
+    dream_importance_drift_rate: float = 0.1  # Max importance adjustment per cycle
 
     # Cross-encoder reranking (Phase 10)
     reranker_enabled: bool = False
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    reranker_top_k: int = 50       # Rerank this many RRF candidates
-    reranker_output_k: int = 20    # Keep this many after reranking
+    reranker_top_k: int = 50  # Rerank this many RRF candidates
+    reranker_output_k: int = 20  # Keep this many after reranking
     scoring_weight_ce: float = 0.7  # Cross-encoder weight when reranker active
 
     # Background indexing (always on)
@@ -381,12 +375,11 @@ class NCMSConfig(BaseSettings):
 
     # Maintenance scheduler
     maintenance_enabled: bool = False
-    maintenance_consolidation_interval_minutes: int = 360   # 6 hours
-    maintenance_dream_interval_minutes: int = 1440          # 24 hours
-    maintenance_episode_close_interval_minutes: int = 60    # 1 hour
-    maintenance_decay_interval_minutes: int = 720           # 12 hours
+    maintenance_consolidation_interval_minutes: int = 360  # 6 hours
+    maintenance_dream_interval_minutes: int = 1440  # 24 hours
+    maintenance_episode_close_interval_minutes: int = 60  # 1 hour
+    maintenance_decay_interval_minutes: int = 720  # 12 hours
     # TLG L2 marker induction — runs under the master ``temporal_enabled``
     # flag.  Default 6 hours; induction is cheap (bounded by
     # |transition edges|) so higher-frequency re-runs are safe.
-    maintenance_tlg_induction_interval_minutes: int = 360   # 6 hours
-
+    maintenance_tlg_induction_interval_minutes: int = 360  # 6 hours

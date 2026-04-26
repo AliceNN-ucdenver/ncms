@@ -100,14 +100,10 @@ class ScoringPipeline:
         output.  ``None`` → role grounding is skipped (no signal).
         """
         # Load graph-derived context (association strengths, IDF, PPR)
-        assoc_strengths, entity_idf, ppr_scores = (
-            await self._load_graph_context(context_entity_ids)
-        )
+        assoc_strengths, entity_idf, ppr_scores = await self._load_graph_context(context_entity_ids)
 
         # Resolve signal weights (globally or per-intent)
-        w_bm25, w_actr, w_splade, w_graph, w_recency = (
-            self._resolve_weights(intent_result)
-        )
+        w_bm25, w_actr, w_splade, w_graph, w_recency = self._resolve_weights(intent_result)
 
         # Batch preload memories + access times
         t0 = time.perf_counter()
@@ -116,8 +112,7 @@ class ScoringPipeline:
             candidate_ids,
         )
         access_times_batch = (
-            await self._store.get_access_times_batch(candidate_ids)
-            if w_actr > 0 else {}
+            await self._store.get_access_times_batch(candidate_ids) if w_actr > 0 else {}
         )
 
         # Pass 1: collect raw signals
@@ -146,30 +141,36 @@ class ScoringPipeline:
             ce_scores=ce_scores,
             intent_result=intent_result,
             temporal_ref=temporal_ref,
-            w_bm25=w_bm25, w_actr=w_actr, w_splade=w_splade,
-            w_graph=w_graph, w_recency=w_recency,
+            w_bm25=w_bm25,
+            w_actr=w_actr,
+            w_splade=w_splade,
+            w_graph=w_graph,
+            w_recency=w_recency,
         )
 
-        emit_stage("actr_scoring", (time.perf_counter() - t0) * 1000, {
-            "candidates_scored": len(raw_candidates),
-            "passed_threshold": len(scored),
-            "filtered_below_threshold": (
-                len(raw_candidates) - len(scored)
-            ),
-            "top_activation": round(
-                max(
-                    (s.total_activation for s in scored),
-                    default=0.0,
+        emit_stage(
+            "actr_scoring",
+            (time.perf_counter() - t0) * 1000,
+            {
+                "candidates_scored": len(raw_candidates),
+                "passed_threshold": len(scored),
+                "filtered_below_threshold": (len(raw_candidates) - len(scored)),
+                "top_activation": round(
+                    max(
+                        (s.total_activation for s in scored),
+                        default=0.0,
+                    ),
+                    3,
                 ),
-                3,
-            ),
-        })
+            },
+        )
 
         self._emit_debug_candidates(scored, intent_result)
         return scored
 
     async def _load_graph_context(
-        self, context_entity_ids: list[str],
+        self,
+        context_entity_ids: list[str],
     ) -> tuple[
         dict[tuple[str, str], float] | None,
         dict[str, float] | None,
@@ -183,9 +184,7 @@ class ScoringPipeline:
         assoc_strengths: dict[tuple[str, str], float] | None = None
         if self._config.dream_cycle_enabled:
             try:
-                assoc_strengths = (
-                    await self._store.get_association_strengths()
-                )
+                assoc_strengths = await self._store.get_association_strengths()
                 if not assoc_strengths:
                     assoc_strengths = None
             except Exception:
@@ -205,7 +204,8 @@ class ScoringPipeline:
                 }
             except Exception:
                 logger.debug(
-                    "Failed to compute entity IDF", exc_info=True,
+                    "Failed to compute entity IDF",
+                    exc_info=True,
                 )
 
         ppr_scores: dict[str, float] = {}
@@ -213,23 +213,20 @@ class ScoringPipeline:
             try:
                 seed = {eid: 1.0 for eid in context_entity_ids}
                 ppr_scores = self._graph.personalized_pagerank(seed)
-                max_ppr = (
-                    max(ppr_scores.values()) if ppr_scores else 0.0
-                )
+                max_ppr = max(ppr_scores.values()) if ppr_scores else 0.0
                 if max_ppr > 0:
-                    ppr_scores = {
-                        k: v / max_ppr
-                        for k, v in ppr_scores.items()
-                    }
+                    ppr_scores = {k: v / max_ppr for k, v in ppr_scores.items()}
             except Exception:
                 logger.debug(
-                    "PPR failed, falling back to BFS", exc_info=True,
+                    "PPR failed, falling back to BFS",
+                    exc_info=True,
                 )
 
         return assoc_strengths, entity_idf, ppr_scores
 
     def _resolve_weights(
-        self, intent_result: IntentResult | None,
+        self,
+        intent_result: IntentResult | None,
     ) -> tuple[float, float, float, float, float]:
         """Resolve ``(w_bm25, w_actr, w_splade, w_graph, w_recency)``.
 
@@ -243,8 +240,8 @@ class ScoringPipeline:
         w_recency = self._config.scoring_weight_recency
         if self._config.temporal_enabled and intent_result:
             with contextlib.suppress(Exception):
-                w_bm25, w_splade, w_graph, w_recency = (
-                    self._get_intent_weights(intent_result.intent)
+                w_bm25, w_splade, w_graph, w_recency = self._get_intent_weights(
+                    intent_result.intent
                 )
         return w_bm25, w_actr, w_splade, w_graph, w_recency
 
@@ -256,23 +253,28 @@ class ScoringPipeline:
         """Emit per-candidate scoring diagnostics in pipeline-debug mode."""
         if not (self._config.pipeline_debug and scored):
             return
-        intent_label = (
-            intent_result.intent.value if intent_result else "unknown"
-        )
+        intent_label = intent_result.intent.value if intent_result else "unknown"
         self._event_log.retrieval_debug(
-            query="", intent=intent_label,
-            candidates=[{
-                "id": s.memory.id, "type": s.memory.type,
-                "content": s.memory.content[:120],
-                "bm25": round(s.bm25_score, 4),
-                "splade": round(s.splade_score, 4),
-                "graph": round(s.spreading, 4),
-                "actr": round(s.total_activation, 4),
-            } for s in sorted(
-                scored, key=lambda x: x.total_activation,
-                reverse=True,
-            )[:20]],
-            scores={}, agent_id=None,
+            query="",
+            intent=intent_label,
+            candidates=[
+                {
+                    "id": s.memory.id,
+                    "type": s.memory.type,
+                    "content": s.memory.content[:120],
+                    "bm25": round(s.bm25_score, 4),
+                    "splade": round(s.splade_score, 4),
+                    "graph": round(s.spreading, 4),
+                    "actr": round(s.total_activation, 4),
+                }
+                for s in sorted(
+                    scored,
+                    key=lambda x: x.total_activation,
+                    reverse=True,
+                )[:20]
+            ],
+            scores={},
+            agent_id=None,
         )
 
     # ── Pass 1: Raw Signals ──────────────────────────────────────────────
@@ -298,6 +300,7 @@ class ScoringPipeline:
         query_canonicals: set[str] | frozenset[str] | None = None,
     ) -> list[dict]:
         """Pass 1: compute raw scoring signals for each candidate."""
+
         def _neighbor_fn(eid: str) -> list[tuple[str, float]]:
             return self._graph.get_neighbors_with_weights(eid)
 
@@ -312,14 +315,17 @@ class ScoringPipeline:
                 continue
 
             # Domain filter
-            if domain and domain not in memory.domains and not any(
-                d.startswith(domain) for d in memory.domains
+            if (
+                domain
+                and domain not in memory.domains
+                and not any(d.startswith(domain) for d in memory.domains)
             ):
                 continue
 
             access_ages = access_times_batch.get(memory_id, [])
             bl = base_level_activation(
-                access_ages, decay=self._config.actr_decay,
+                access_ages,
+                decay=self._config.actr_decay,
             )
             memory_entities = self._graph.get_entity_ids_for_memory(
                 memory_id,
@@ -337,13 +343,15 @@ class ScoringPipeline:
             if ppr_scores:
                 graph_spread = ppr_graph_score(
                     memory_entity_ids=memory_entities,
-                    ppr_scores=ppr_scores, entity_idf=entity_idf,
+                    ppr_scores=ppr_scores,
+                    entity_idf=entity_idf,
                 )
             else:
                 graph_spread = graph_spreading_activation(
                     memory_entity_ids=memory_entities,
                     context_entity_ids=context_entity_ids,
-                    neighbor_fn=_neighbor_fn, entity_idf=entity_idf,
+                    neighbor_fn=_neighbor_fn,
+                    entity_idf=entity_idf,
                     hop_decay=self._config.graph_hop_decay,
                     max_hops=self._config.graph_spreading_max_hops,
                     source_activation=self._config.actr_max_spread,
@@ -363,17 +371,17 @@ class ScoringPipeline:
             # state_change=declaration labels, more memories ended up
             # on supersession chains, and the indiscriminately-applied
             # penalty pushed the gold answer below its replacement.
-            penalty, is_superseded, has_conflicts = (
-                await self._compute_reconciliation_penalty(
-                    nodes, intent_result=intent_result,
-                )
+            penalty, is_superseded, has_conflicts = await self._compute_reconciliation_penalty(
+                nodes,
+                intent_result=intent_result,
             )
 
             # Hierarchy bonus
             h_bonus = 0.0
             if intent_result and node_types:
                 h_bonus = hierarchy_match_bonus(
-                    node_types, intent_result.target_node_types,
+                    node_types,
+                    intent_result.target_node_types,
                     bonus=self._config.intent_hierarchy_bonus,
                 )
 
@@ -390,13 +398,17 @@ class ScoringPipeline:
             )
 
             act = total_activation(
-                bl, spread, noise, mismatch_penalty=0.0,
+                bl,
+                spread,
+                noise,
+                mismatch_penalty=0.0,
             )
 
             # Recency
             rec_score = 0.0
             if w_recency > 0 and memory.created_at:
                 from datetime import UTC, datetime
+
                 age_s = max(
                     0.0,
                     (datetime.now(UTC) - memory.created_at).total_seconds(),
@@ -412,31 +424,37 @@ class ScoringPipeline:
                 event_time = self._resolve_event_time(memory, nodes)
                 if event_time is not None:
                     temporal_raw = compute_temporal_proximity(
-                        event_time, temporal_ref,
+                        event_time,
+                        temporal_ref,
                     )
 
-            raw_candidates.append({
-                "memory": memory, "memory_id": memory_id,
-                "bm25_raw": bm25_scores.get(memory_id, 0.0),
-                "splade_raw": splade_scores.get(memory_id, 0.0),
-                "graph_raw": graph_spread, "temporal_raw": temporal_raw,
-                "act": act, "bl": bl, "spread": spread, "noise": noise,
-                "penalty": penalty, "h_bonus": h_bonus,
-                "ia_bonus": ia_bonus,
-                "sc_bonus": sc_bonus,
-                "rg_bonus": rg_bonus,
-                "rec_score": rec_score,
-                "is_superseded": is_superseded,
-                "has_conflicts": has_conflicts,
-                "superseded_by": next(
-                    (
-                        mn.metadata.get("superseded_by")
-                        for mn in nodes if not mn.is_current
+            raw_candidates.append(
+                {
+                    "memory": memory,
+                    "memory_id": memory_id,
+                    "bm25_raw": bm25_scores.get(memory_id, 0.0),
+                    "splade_raw": splade_scores.get(memory_id, 0.0),
+                    "graph_raw": graph_spread,
+                    "temporal_raw": temporal_raw,
+                    "act": act,
+                    "bl": bl,
+                    "spread": spread,
+                    "noise": noise,
+                    "penalty": penalty,
+                    "h_bonus": h_bonus,
+                    "ia_bonus": ia_bonus,
+                    "sc_bonus": sc_bonus,
+                    "rg_bonus": rg_bonus,
+                    "rec_score": rec_score,
+                    "is_superseded": is_superseded,
+                    "has_conflicts": has_conflicts,
+                    "superseded_by": next(
+                        (mn.metadata.get("superseded_by") for mn in nodes if not mn.is_current),
+                        None,
                     ),
-                    None,
-                ),
-                "node_types": node_types,
-            })
+                    "node_types": node_types,
+                }
+            )
 
         return raw_candidates
 
@@ -469,9 +487,11 @@ class ScoringPipeline:
     # pattern / strategic, change detection) the OLDER memory IS often
     # the answer, so penalising it hurts retrieval.  See Phase G
     # ablation B + the docs/v9-mseb-slm-lift-findings.md writeup.
-    _RECONCILIATION_PENALTY_INTENTS = frozenset({
-        QueryIntent.CURRENT_STATE_LOOKUP,
-    })
+    _RECONCILIATION_PENALTY_INTENTS = frozenset(
+        {
+            QueryIntent.CURRENT_STATE_LOOKUP,
+        }
+    )
 
     # Phase H.1 — QueryIntent → set of per-memory intent labels that
     # are a clean semantic match.  The 5-head SLM emits one label per
@@ -605,7 +625,8 @@ class ScoringPipeline:
                 if not mn.is_current:
                     is_superseded = True
                 conflict_edges = await self._store.get_graph_edges(
-                    mn.id, EdgeType.CONFLICTS_WITH,
+                    mn.id,
+                    EdgeType.CONFLICTS_WITH,
                 )
                 if conflict_edges:
                     has_conflicts = True
@@ -708,10 +729,7 @@ class ScoringPipeline:
         extracted entities.  No-op on heuristic-fallback memories
         (empty role_spans) and queries with no entities.
         """
-        if not (
-            self._config.scoring_weight_role_grounding > 0
-            and query_canonicals
-        ):
+        if not (self._config.scoring_weight_role_grounding > 0 and query_canonicals):
             return 0.0
         return role_grounding_bonus(
             role_spans=self._memory_role_spans(memory),
@@ -728,8 +746,11 @@ class ScoringPipeline:
         ce_scores: dict[str, float],
         intent_result: IntentResult | None,
         temporal_ref: object | None,
-        w_bm25: float, w_actr: float, w_splade: float,
-        w_graph: float, w_recency: float,
+        w_bm25: float,
+        w_actr: float,
+        w_splade: float,
+        w_graph: float,
+        w_recency: float,
     ) -> list[ScoredMemory]:
         """Pass 2: min-max normalize signals and compute combined scores."""
         if not raw_candidates:
@@ -737,25 +758,16 @@ class ScoringPipeline:
 
         maxes = {
             "bm25": max(c["bm25_raw"] for c in raw_candidates) or 1.0,
-            "splade": (
-                max(c["splade_raw"] for c in raw_candidates) or 1.0
-            ),
+            "splade": (max(c["splade_raw"] for c in raw_candidates) or 1.0),
             "graph": max(c["graph_raw"] for c in raw_candidates) or 1.0,
-            "temporal": (
-                max(c["temporal_raw"] for c in raw_candidates) or 1.0
-            ),
+            "temporal": (max(c["temporal_raw"] for c in raw_candidates) or 1.0),
         }
 
         w_hierarchy = self._config.scoring_weight_hierarchy
         w_intent_align = self._config.scoring_weight_intent_alignment
-        w_state_change_align = (
-            self._config.scoring_weight_state_change_alignment
-        )
+        w_state_change_align = self._config.scoring_weight_state_change_alignment
         w_role_ground = self._config.scoring_weight_role_grounding
-        w_temporal = (
-            self._config.scoring_weight_temporal
-            if temporal_ref is not None else 0.0
-        )
+        w_temporal = self._config.scoring_weight_temporal if temporal_ref is not None else 0.0
         w_ce = self._config.scoring_weight_ce if ce_scores else 0.0
         actr_enabled = w_actr > 0
 
@@ -764,16 +776,23 @@ class ScoringPipeline:
         scored: list[ScoredMemory] = []
         for c in raw_candidates:
             sm = self._score_one_candidate(
-                c=c, maxes=maxes, ce_scores=ce_scores,
-                min_ce=min_ce, ce_range=ce_range,
-                w_bm25=w_bm25, w_actr=w_actr, w_splade=w_splade,
-                w_graph=w_graph, w_recency=w_recency,
+                c=c,
+                maxes=maxes,
+                ce_scores=ce_scores,
+                min_ce=min_ce,
+                ce_range=ce_range,
+                w_bm25=w_bm25,
+                w_actr=w_actr,
+                w_splade=w_splade,
+                w_graph=w_graph,
+                w_recency=w_recency,
                 w_hierarchy=w_hierarchy,
                 w_intent_align=w_intent_align,
                 w_state_change_align=w_state_change_align,
                 w_role_ground=w_role_ground,
                 w_temporal=w_temporal,
-                w_ce=w_ce, actr_enabled=actr_enabled,
+                w_ce=w_ce,
+                actr_enabled=actr_enabled,
                 intent_result=intent_result,
             )
             if sm is not None:
@@ -789,14 +808,9 @@ class ScoringPipeline:
         """Min-max normalization constants for cross-encoder scores."""
         if not ce_scores:
             return 0.0, 1.0
-        ce_vals = [
-            ce_scores.get(c["memory_id"], 0.0) for c in raw_candidates
-        ]
+        ce_vals = [ce_scores.get(c["memory_id"], 0.0) for c in raw_candidates]
         min_ce = min(ce_vals) if ce_vals else 0.0
-        ce_range = (
-            (max(ce_vals) - min_ce)
-            if ce_vals and max(ce_vals) > min_ce else 1.0
-        )
+        ce_range = (max(ce_vals) - min_ce) if ce_vals and max(ce_vals) > min_ce else 1.0
         return min_ce, ce_range
 
     def _score_one_candidate(
@@ -807,14 +821,18 @@ class ScoringPipeline:
         ce_scores: dict[str, float],
         min_ce: float,
         ce_range: float,
-        w_bm25: float, w_actr: float, w_splade: float,
-        w_graph: float, w_recency: float,
+        w_bm25: float,
+        w_actr: float,
+        w_splade: float,
+        w_graph: float,
+        w_recency: float,
         w_hierarchy: float,
         w_intent_align: float,
         w_state_change_align: float,
         w_role_ground: float,
         w_temporal: float,
-        w_ce: float, actr_enabled: bool,
+        w_ce: float,
+        actr_enabled: bool,
         intent_result: IntentResult | None,
     ) -> ScoredMemory | None:
         """Normalize signals for one candidate and build ScoredMemory.
@@ -840,31 +858,37 @@ class ScoringPipeline:
         rg_contrib = c.get("rg_bonus", 0.0) * w_role_ground
 
         if ce_scores:
-            ce_norm = (
-                (ce_scores.get(c["memory_id"], min_ce) - min_ce)
-                / ce_range
-            )
+            ce_norm = (ce_scores.get(c["memory_id"], min_ce) - min_ce) / ce_range
             combined = (
                 ce_norm * w_ce
                 + bm25_n * (1.0 - w_ce) * 0.67
                 + splade_n * (1.0 - w_ce) * 0.33
-                + temporal_contrib - c["penalty"]
-                + ia_contrib + sc_contrib + rg_contrib
+                + temporal_contrib
+                - c["penalty"]
+                + ia_contrib
+                + sc_contrib
+                + rg_contrib
             )
         else:
             combined = (
-                bm25_n * w_bm25 + c["act"] * w_actr
-                + splade_n * w_splade + graph_n * w_graph
+                bm25_n * w_bm25
+                + c["act"] * w_actr
+                + splade_n * w_splade
+                + graph_n * w_graph
                 + c["h_bonus"] * w_hierarchy
                 + c["rec_score"] * w_recency
-                + temporal_contrib - c["penalty"]
-                + ia_contrib + sc_contrib + rg_contrib
+                + temporal_contrib
+                - c["penalty"]
+                + ia_contrib
+                + sc_contrib
+                + rg_contrib
             )
 
         # ACT-R threshold filter
         if actr_enabled:
             ret_prob = retrieval_probability(
-                c["act"], threshold=self._config.actr_threshold,
+                c["act"],
+                threshold=self._config.actr_threshold,
                 tau=self._config.actr_temperature,
             )
             if ret_prob < 0.05:
@@ -873,17 +897,18 @@ class ScoringPipeline:
             ret_prob = 1.0
 
         return ScoredMemory(
-            memory=c["memory"], bm25_score=c["bm25_raw"],
-            splade_score=c["splade_raw"], base_level=c["bl"],
-            spreading=c["graph_raw"], total_activation=combined,
+            memory=c["memory"],
+            bm25_score=c["bm25_raw"],
+            splade_score=c["splade_raw"],
+            base_level=c["bl"],
+            spreading=c["graph_raw"],
+            total_activation=combined,
             retrieval_prob=ret_prob,
             is_superseded=c["is_superseded"],
             has_conflicts=c["has_conflicts"],
             superseded_by=c["superseded_by"],
             node_types=c["node_types"],
-            intent=(
-                intent_result.intent.value if intent_result else None
-            ),
+            intent=(intent_result.intent.value if intent_result else None),
             hierarchy_bonus=c["h_bonus"],
             temporal_score=temporal_contrib,
             # Phase H signal contributions (post-weight, the actual
@@ -904,7 +929,8 @@ class ScoringPipeline:
     # ── Per-Intent Weight Routing ────────────────────────────────────────
 
     def _get_intent_weights(
-        self, intent: QueryIntent,
+        self,
+        intent: QueryIntent,
     ) -> tuple[float, float, float, float]:
         """Resolve (w_bm25, w_splade, w_graph, w_recency) for the intent.
 
@@ -930,7 +956,9 @@ class ScoringPipeline:
             return (parts[0], parts[1], parts[2], parts[3])
         except (ValueError, TypeError):
             logger.warning(
-                "Invalid intent weights for %s: %r", intent_key, raw,
+                "Invalid intent weights for %s: %r",
+                intent_key,
+                raw,
             )
             return (
                 self._config.scoring_weight_bm25,

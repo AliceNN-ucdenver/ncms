@@ -32,12 +32,10 @@ class BusService:
         self,
         bus: KnowledgeBusTransport,
         snapshot_service: SnapshotService,
-        surrogate_enabled: bool = True,
         event_log: EventLog | NullEventLog | None = None,
     ):
         self._bus = bus
         self._snapshot = snapshot_service
-        self._surrogate_enabled = surrogate_enabled
         self._event_log: EventLog | NullEventLog = event_log or NullEventLog()
 
     @property
@@ -99,10 +97,7 @@ class BusService:
                 return response
 
         # Fallback: surrogate response from snapshots
-        if self._surrogate_enabled:
-            return await self._try_surrogate(ask)
-
-        return None
+        return await self._try_surrogate(ask)
 
     async def _try_surrogate(self, ask: KnowledgeAsk) -> KnowledgeResponse | None:
         """Try to generate a surrogate response from agent snapshots."""
@@ -241,14 +236,18 @@ class BusService:
         """
         self._heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(
-                interval_seconds, timeout_seconds,
-                auto_snapshot, snapshot_callback,
+                interval_seconds,
+                timeout_seconds,
+                auto_snapshot,
+                snapshot_callback,
             ),
             name="bus-heartbeat-monitor",
         )
         logger.info(
             "[heartbeat] Monitor started: interval=%ds timeout=%ds auto_snapshot=%s",
-            interval_seconds, timeout_seconds, auto_snapshot,
+            interval_seconds,
+            timeout_seconds,
+            auto_snapshot,
         )
 
     async def stop_heartbeat_monitor(self) -> None:
@@ -289,23 +288,28 @@ class BusService:
                         logger.warning(
                             "[heartbeat] Agent %s timed out "
                             "(last_seen %.0fs ago, timeout=%ds) — marking offline",
-                            agent.agent_id, age_seconds, timeout,
+                            agent.agent_id,
+                            age_seconds,
+                            timeout,
                         )
 
                         # Emit event before status change
-                        self._event_log.emit(DashboardEvent(
-                            type="agent.heartbeat_timeout",
-                            agent_id=agent.agent_id,
-                            data={
-                                "last_seen_seconds_ago": round(age_seconds),
-                                "timeout_seconds": timeout,
-                                "auto_snapshot": auto_snapshot,
-                            },
-                        ))
+                        self._event_log.emit(
+                            DashboardEvent(
+                                type="agent.heartbeat_timeout",
+                                agent_id=agent.agent_id,
+                                data={
+                                    "last_seen_seconds_ago": round(age_seconds),
+                                    "timeout_seconds": timeout,
+                                    "auto_snapshot": auto_snapshot,
+                                },
+                            )
+                        )
 
                         # Mark offline
                         await self._bus.update_availability(
-                            agent.agent_id, "offline",
+                            agent.agent_id,
+                            "offline",
                         )
 
                         # Auto-snapshot
@@ -316,23 +320,26 @@ class BusService:
                                     "[heartbeat] Auto-snapshot published for %s",
                                     agent.agent_id,
                                 )
-                                self._event_log.emit(DashboardEvent(
-                                    type="agent.auto_snapshot",
-                                    agent_id=agent.agent_id,
-                                    data={"reason": "heartbeat_timeout"},
-                                ))
+                                self._event_log.emit(
+                                    DashboardEvent(
+                                        type="agent.auto_snapshot",
+                                        agent_id=agent.agent_id,
+                                        data={"reason": "heartbeat_timeout"},
+                                    )
+                                )
                             except Exception as exc:
                                 logger.error(
                                     "[heartbeat] Auto-snapshot failed for %s: %s",
-                                    agent.agent_id, exc,
+                                    agent.agent_id,
+                                    exc,
                                 )
 
-                        # Try surrogate mode
-                        if self._surrogate_enabled:
-                            logger.info(
-                                "[heartbeat] Surrogate mode activated for %s",
-                                agent.agent_id,
-                            )
+                        # Surrogate mode is always on (the false branch
+                        # was retired in Phase F flag cleanup).
+                        logger.info(
+                            "[heartbeat] Surrogate mode activated for %s",
+                            agent.agent_id,
+                        )
 
             except asyncio.CancelledError:
                 break

@@ -49,10 +49,10 @@ logger = logging.getLogger("mseb_convo.gold_from_lmeval")
 # ---------------------------------------------------------------------------
 
 _QTYPE_TO_SHAPE: dict[str, str] = {
-    "knowledge-update":          "retirement",
-    "multi-session":             "causal_chain",
-    "single-session-user":       "current_state",
-    "single-session-assistant":  "origin",
+    "knowledge-update": "retirement",
+    "multi-session": "causal_chain",
+    "single-session-user": "current_state",
+    "single-session-assistant": "origin",
     "single-session-preference": "current_state",
 }
 
@@ -61,7 +61,7 @@ _QTYPE_TO_SHAPE: dict[str, str] = {
 # map to the most specific shape available.
 _ORDER_CUES = re.compile(r"(?i)\border\b")
 _FIRST_CUES = re.compile(r"(?i)\b(first|earlier|initial(?:ly)?|original)\b")
-_LAST_CUES  = re.compile(r"(?i)\b(last|recent|most\s+recent|latest|final)\b")
+_LAST_CUES = re.compile(r"(?i)\b(last|recent|most\s+recent|latest|final)\b")
 
 
 def _shape_for_temporal(question: str) -> str:
@@ -115,15 +115,19 @@ def _load_labeled_by_subject(
             subj = row["subject"]
             out.setdefault(subj, []).append(row)
     for subj in out:
-        out[subj].sort(key=lambda r: (
-            r.get("metadata", {}).get("session_id", ""),
-            r.get("metadata", {}).get("turn_index", 0),
-        ))
+        out[subj].sort(
+            key=lambda r: (
+                r.get("metadata", {}).get("session_id", ""),
+                r.get("metadata", {}).get("turn_index", 0),
+            )
+        )
     return out
 
 
 def pick_gold_memory(
-    chain: list[dict], answer_session_ids: list[str], qtype: str,
+    chain: list[dict],
+    answer_session_ids: list[str],
+    qtype: str,
 ) -> tuple[str, list[str]]:
     """Pick (gold_mid, gold_alt_list) for one LMEval question.
 
@@ -136,7 +140,8 @@ def pick_gold_memory(
         return "", []
     answer_set = set(answer_session_ids)
     user_turns = [
-        m for m in chain
+        m
+        for m in chain
         if m.get("metadata", {}).get("session_id") in answer_set
         and m.get("metadata", {}).get("role") == "user"
     ]
@@ -149,8 +154,7 @@ def pick_gold_memory(
         alts = [m["mid"] for m in user_turns[1:3]]
         return gold, alts
     # Fall back to first turn in answer session.
-    any_turns = [m for m in chain
-                 if m.get("metadata", {}).get("session_id") in answer_set]
+    any_turns = [m for m in chain if m.get("metadata", {}).get("session_id") in answer_set]
     if any_turns:
         return any_turns[0]["mid"], [m["mid"] for m in any_turns[1:3]]
     return "", []
@@ -162,7 +166,9 @@ def pick_gold_memory(
 
 
 def build_gold(
-    questions_path: Path, labeled_dir: Path, out_path: Path,
+    questions_path: Path,
+    labeled_dir: Path,
+    out_path: Path,
 ) -> dict:
     by_subject = _load_labeled_by_subject(labeled_dir)
     rows: list[dict] = []
@@ -170,9 +176,7 @@ def build_gold(
     per_preference: dict[str, int] = {}
     missing_gold = 0
 
-    for line_no, line in enumerate(
-        questions_path.read_text(encoding="utf-8").split("\n"), start=1,
-    ):
+    for line in questions_path.read_text(encoding="utf-8").split("\n"):
         line = line.strip()
         if not line:
             continue
@@ -191,23 +195,27 @@ def build_gold(
         pref = preference_for_question(qtype, answer)
 
         gold_mid, gold_alt = pick_gold_memory(
-            by_subject[subject], answer_sessions, qtype,
+            by_subject[subject],
+            answer_sessions,
+            qtype,
         )
         if not gold_mid:
             missing_gold += 1
             continue
 
-        qid = f"convo-{shape}-{len(rows)+1:04d}"
-        rows.append({
-            "qid": qid,
-            "shape": shape,
-            "text": qtext,
-            "subject": subject,
-            "gold_mid": gold_mid,
-            "gold_alt": gold_alt,
-            "preference": pref,
-            "note": f"lmeval:{qtype}",
-        })
+        qid = f"convo-{shape}-{len(rows) + 1:04d}"
+        rows.append(
+            {
+                "qid": qid,
+                "shape": shape,
+                "text": qtext,
+                "subject": subject,
+                "gold_mid": gold_mid,
+                "gold_alt": gold_alt,
+                "preference": pref,
+                "note": f"lmeval:{qtype}",
+            }
+        )
         per_shape[shape] = per_shape.get(shape, 0) + 1
         per_preference[pref] = per_preference.get(pref, 0) + 1
 
@@ -226,20 +234,23 @@ def build_gold(
         "Who discovered the penicillium mold?",
     ]
     for i, t in enumerate(noise_texts, start=1):
-        rows.append({
-            "qid": f"convo-noise-{i:03d}",
-            "shape": "noise",
-            "text": t,
-            "subject": "",
-            "gold_mid": "",
-            "gold_alt": [],
-            "preference": "none",
-            "note": "adversarial / off-topic",
-        })
+        rows.append(
+            {
+                "qid": f"convo-noise-{i:03d}",
+                "shape": "noise",
+                "text": t,
+                "subject": "",
+                "gold_mid": "",
+                "gold_alt": [],
+                "preference": "none",
+                "note": "adversarial / off-topic",
+            }
+        )
 
     # YAML dump
     try:
         import yaml
+
         body = yaml.safe_dump(rows, sort_keys=False, allow_unicode=True)
     except ImportError:
         body = json.dumps(rows, indent=2, ensure_ascii=False)
@@ -268,12 +279,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s  %(message)s",
     )
     ap = argparse.ArgumentParser()
-    ap.add_argument("--questions", type=Path,
-                    default=Path("benchmarks/mseb_convo/raw/_questions.jsonl"))
-    ap.add_argument("--labeled-dir", type=Path,
-                    default=Path("benchmarks/mseb_convo/raw_labeled"))
-    ap.add_argument("--out", type=Path,
-                    default=Path("benchmarks/mseb_convo/gold.yaml"))
+    ap.add_argument(
+        "--questions", type=Path, default=Path("benchmarks/mseb_convo/raw/_questions.jsonl")
+    )
+    ap.add_argument("--labeled-dir", type=Path, default=Path("benchmarks/mseb_convo/raw_labeled"))
+    ap.add_argument("--out", type=Path, default=Path("benchmarks/mseb_convo/gold.yaml"))
     args = ap.parse_args()
     stats = build_gold(args.questions, args.labeled_dir, args.out)
     print(json.dumps(stats, indent=2, sort_keys=True))

@@ -30,9 +30,7 @@ class DashboardEvent:
     """A single observable event in the NCMS system."""
 
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     type: str = ""  # e.g. "agent.registered", "bus.ask", "memory.stored"
     agent_id: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
@@ -218,14 +216,16 @@ class EventLog:
                 data = json.loads(data_str) if data_str else {}
             except (json.JSONDecodeError, TypeError):
                 data = {}
-            results.append({
-                "seq": seq,
-                "id": eid,
-                "timestamp": ts,
-                "type": etype,
-                "agent_id": agent_id,
-                "data": data,
-            })
+            results.append(
+                {
+                    "seq": seq,
+                    "id": eid,
+                    "timestamp": ts,
+                    "type": etype,
+                    "agent_id": agent_id,
+                    "data": data,
+                }
+            )
         return results
 
     async def query_time_range(
@@ -251,14 +251,16 @@ class EventLog:
                 data = json.loads(data_str) if data_str else {}
             except (json.JSONDecodeError, TypeError):
                 data = {}
-            results.append({
-                "seq": seq,
-                "id": eid,
-                "timestamp": ts,
-                "type": etype,
-                "agent_id": agent_id,
-                "data": data,
-            })
+            results.append(
+                {
+                    "seq": seq,
+                    "id": eid,
+                    "timestamp": ts,
+                    "type": etype,
+                    "agent_id": agent_id,
+                    "data": data,
+                }
+            )
         return results
 
     async def query_agent_events(
@@ -266,8 +268,9 @@ class EventLog:
         agent_id: str,
         limit: int = 25,
         exclude_prefixes: tuple[str, ...] = (
-            "agent.status", "agent.heartbeat_timeout",
-            "pipeline.",   # all pipeline.* events are internal noise
+            "agent.status",
+            "agent.heartbeat_timeout",
+            "pipeline.",  # all pipeline.* events are internal noise
             "admission.",  # admission scoring is internal
         ),
     ) -> list[dict[str, Any]]:
@@ -281,13 +284,8 @@ class EventLog:
         if not self._db:
             return []
         # Build WHERE clause: agent_id match + exclude prefixes via NOT LIKE
-        like_clauses = " AND ".join(
-            "type NOT LIKE ?" for _ in exclude_prefixes
-        )
-        like_params = tuple(
-            f"{p}%" if p.endswith(".") else p
-            for p in exclude_prefixes
-        )
+        like_clauses = " AND ".join("type NOT LIKE ?" for _ in exclude_prefixes)
+        like_params = tuple(f"{p}%" if p.endswith(".") else p for p in exclude_prefixes)
         cursor = await self._db.execute(
             f"SELECT seq, id, timestamp, type, agent_id, data"
             f" FROM dashboard_events"
@@ -303,23 +301,23 @@ class EventLog:
                 data = json.loads(data_str) if data_str else {}
             except (json.JSONDecodeError, TypeError):
                 data = {}
-            results.append({
-                "seq": seq,
-                "id": eid,
-                "timestamp": ts,
-                "type": etype,
-                "agent_id": aid,
-                "data": data,
-            })
+            results.append(
+                {
+                    "seq": seq,
+                    "id": eid,
+                    "timestamp": ts,
+                    "type": etype,
+                    "agent_id": aid,
+                    "data": data,
+                }
+            )
         return results
 
     async def event_count_persisted(self) -> int:
         """Return total number of persisted events."""
         if not self._db:
             return 0
-        cursor = await self._db.execute(
-            "SELECT COUNT(*) FROM dashboard_events"
-        )
+        cursor = await self._db.execute("SELECT COUNT(*) FROM dashboard_events")
         row = await cursor.fetchone()
         return row[0] if row else 0
 
@@ -330,6 +328,7 @@ class EventLog:
         cutoff = datetime.now(UTC).isoformat()
         # Simple approach: delete by timestamp comparison
         from datetime import timedelta
+
         cutoff_dt = datetime.now(UTC) - timedelta(hours=retention_hours)
         cutoff = cutoff_dt.isoformat()
         cursor = await self._db.execute(
@@ -342,26 +341,34 @@ class EventLog:
     # ── Convenience emitters ──────────────────────────────────────────────
 
     def agent_registered(
-        self, agent_id: str, domains: list[str],
+        self,
+        agent_id: str,
+        domains: list[str],
     ) -> None:
-        self.emit(DashboardEvent(
-            type="agent.registered",
-            agent_id=agent_id,
-            data={"domains": domains},
-        ))
+        self.emit(
+            DashboardEvent(
+                type="agent.registered",
+                agent_id=agent_id,
+                data={"domains": domains},
+            )
+        )
 
     def agent_deregistered(self, agent_id: str) -> None:
-        self.emit(DashboardEvent(
-            type="agent.deregistered",
-            agent_id=agent_id,
-        ))
+        self.emit(
+            DashboardEvent(
+                type="agent.deregistered",
+                agent_id=agent_id,
+            )
+        )
 
     def agent_status(self, agent_id: str, status: str) -> None:
-        self.emit(DashboardEvent(
-            type="agent.status",
-            agent_id=agent_id,
-            data={"status": status},
-        ))
+        self.emit(
+            DashboardEvent(
+                type="agent.status",
+                agent_id=agent_id,
+                data={"status": status},
+            )
+        )
 
     def bus_ask(
         self,
@@ -371,16 +378,18 @@ class EventLog:
         domains: list[str],
         targets: list[str],
     ) -> None:
-        self.emit(DashboardEvent(
-            type="bus.ask",
-            agent_id=from_agent,
-            data={
-                "ask_id": ask_id,
-                "question": question[:200],
-                "domains": domains,
-                "targets": targets,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="bus.ask",
+                agent_id=from_agent,
+                data={
+                    "ask_id": ask_id,
+                    "question": question[:200],
+                    "domains": domains,
+                    "targets": targets,
+                },
+            )
+        )
 
     def bus_response(
         self,
@@ -390,16 +399,18 @@ class EventLog:
         confidence: float,
         answer: str = "",
     ) -> None:
-        self.emit(DashboardEvent(
-            type="bus.response",
-            agent_id=from_agent,
-            data={
-                "ask_id": ask_id,
-                "source_mode": source_mode,
-                "confidence": round(confidence, 3),
-                "answer": answer[:200],
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="bus.response",
+                agent_id=from_agent,
+                data={
+                    "ask_id": ask_id,
+                    "source_mode": source_mode,
+                    "confidence": round(confidence, 3),
+                    "answer": answer[:200],
+                },
+            )
+        )
 
     def bus_announce(
         self,
@@ -411,18 +422,20 @@ class EventLog:
         recipients: list[str],
         content: str = "",
     ) -> None:
-        self.emit(DashboardEvent(
-            type="bus.announce",
-            agent_id=from_agent,
-            data={
-                "announce_id": announce_id,
-                "event": event,
-                "domains": domains,
-                "severity": severity,
-                "recipients": recipients,
-                "content": content[:200],
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="bus.announce",
+                agent_id=from_agent,
+                data={
+                    "announce_id": announce_id,
+                    "event": event,
+                    "domains": domains,
+                    "severity": severity,
+                    "recipients": recipients,
+                    "content": content[:200],
+                },
+            )
+        )
 
     def bus_surrogate(
         self,
@@ -432,16 +445,18 @@ class EventLog:
         snapshot_age_seconds: float | None,
         answer: str = "",
     ) -> None:
-        self.emit(DashboardEvent(
-            type="bus.surrogate",
-            agent_id=from_agent,
-            data={
-                "ask_id": ask_id,
-                "confidence": round(confidence, 3),
-                "snapshot_age_seconds": snapshot_age_seconds,
-                "answer": answer[:200],
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="bus.surrogate",
+                agent_id=from_agent,
+                data={
+                    "ask_id": ask_id,
+                    "confidence": round(confidence, 3),
+                    "snapshot_age_seconds": snapshot_age_seconds,
+                    "answer": answer[:200],
+                },
+            )
+        )
 
     def memory_stored(
         self,
@@ -452,17 +467,19 @@ class EventLog:
         entity_count: int,
         agent_id: str | None = None,
     ) -> None:
-        self.emit(DashboardEvent(
-            type="memory.stored",
-            agent_id=agent_id,
-            data={
-                "memory_id": memory_id,
-                "content": content_preview[:120],
-                "type": memory_type,
-                "domains": domains,
-                "entity_count": entity_count,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="memory.stored",
+                agent_id=agent_id,
+                data={
+                    "memory_id": memory_id,
+                    "content": content_preview[:120],
+                    "type": memory_type,
+                    "domains": domains,
+                    "entity_count": entity_count,
+                },
+            )
+        )
 
     def pipeline_stage(
         self,
@@ -485,11 +502,13 @@ class EventLog:
             event_data["memory_id"] = memory_id
         if data:
             event_data.update(data)
-        self.emit(DashboardEvent(
-            type=f"pipeline.{pipeline_type}.{stage}",
-            agent_id=agent_id,
-            data=event_data,
-        ))
+        self.emit(
+            DashboardEvent(
+                type=f"pipeline.{pipeline_type}.{stage}",
+                agent_id=agent_id,
+                data=event_data,
+            )
+        )
 
     def admission_scored(
         self,
@@ -500,16 +519,18 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit an admission scoring event for dashboard observability."""
-        self.emit(DashboardEvent(
-            type="admission.scored",
-            agent_id=agent_id,
-            data={
-                "memory_id": memory_id,
-                "score": round(score, 3),
-                "route": route,
-                "features": {k: round(v, 3) for k, v in features.items()},
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="admission.scored",
+                agent_id=agent_id,
+                data={
+                    "memory_id": memory_id,
+                    "score": round(score, 3),
+                    "route": route,
+                    "features": {k: round(v, 3) for k, v in features.items()},
+                },
+            )
+        )
 
     def reconciliation_applied(
         self,
@@ -519,15 +540,17 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit a reconciliation event when entity states are classified."""
-        self.emit(DashboardEvent(
-            type="reconciliation.applied",
-            agent_id=agent_id,
-            data={
-                "new_node_id": new_node_id,
-                "existing_node_id": existing_node_id,
-                "relation": relation,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="reconciliation.applied",
+                agent_id=agent_id,
+                data={
+                    "new_node_id": new_node_id,
+                    "existing_node_id": existing_node_id,
+                    "relation": relation,
+                },
+            )
+        )
 
     def grammar_dispatched(
         self,
@@ -548,19 +571,21 @@ class EventLog:
         confidence distribution (zero-confidently-wrong invariant
         audit).
         """
-        self.emit(DashboardEvent(
-            type=f"grammar.{intent or 'none'}",
-            agent_id=agent_id,
-            data={
-                "query_preview": query[:120],
-                "intent": intent,
-                "subject": subject,
-                "entity": entity,
-                "confidence": confidence,
-                "grammar_answer": grammar_answer,
-                "proof_preview": (proof or "")[:200],
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type=f"grammar.{intent or 'none'}",
+                agent_id=agent_id,
+                data={
+                    "query_preview": query[:120],
+                    "intent": intent,
+                    "subject": subject,
+                    "entity": entity,
+                    "confidence": confidence,
+                    "grammar_answer": grammar_answer,
+                    "proof_preview": (proof or "")[:200],
+                },
+            )
+        )
 
     def grammar_composed(
         self,
@@ -582,19 +607,21 @@ class EventLog:
         / ``LOW`` (those leave BM25 unchanged — the composition is
         a no-op).
         """
-        self.emit(DashboardEvent(
-            type="grammar.composed",
-            agent_id=agent_id,
-            data={
-                "query_preview": query[:120],
-                "intent": intent,
-                "confidence": confidence,
-                "grammar_answer_memory_id": grammar_answer_memory_id,
-                "zone_context_count": zone_context_count,
-                "bm25_count_before": bm25_count_before,
-                "composed_count": composed_count,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="grammar.composed",
+                agent_id=agent_id,
+                data={
+                    "query_preview": query[:120],
+                    "intent": intent,
+                    "confidence": confidence,
+                    "grammar_answer_memory_id": grammar_answer_memory_id,
+                    "zone_context_count": zone_context_count,
+                    "bm25_count_before": bm25_count_before,
+                    "composed_count": composed_count,
+                },
+            )
+        )
 
     def intent_slot_extracted(
         self,
@@ -621,28 +648,34 @@ class EventLog:
         intent = getattr(label, "intent", None)
         method = getattr(label, "method", None) or "heuristic"
         event_type = f"intent_slot.{intent or 'none'}"
-        self.emit(DashboardEvent(
-            type=event_type,
-            agent_id=agent_id,
-            data={
-                "memory_id": memory_id,
-                "intent": intent,
-                "intent_confidence": getattr(label, "intent_confidence", 0.0),
-                "topic": getattr(label, "topic", None),
-                "topic_confidence": getattr(label, "topic_confidence", None),
-                "admission": getattr(label, "admission", None),
-                "admission_confidence": getattr(
-                    label, "admission_confidence", None,
-                ),
-                "state_change": getattr(label, "state_change", None),
-                "state_change_confidence": getattr(
-                    label, "state_change_confidence", None,
-                ),
-                "slots": dict(getattr(label, "slots", {}) or {}),
-                "method": method,
-                "latency_ms": getattr(label, "latency_ms", 0.0),
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type=event_type,
+                agent_id=agent_id,
+                data={
+                    "memory_id": memory_id,
+                    "intent": intent,
+                    "intent_confidence": getattr(label, "intent_confidence", 0.0),
+                    "topic": getattr(label, "topic", None),
+                    "topic_confidence": getattr(label, "topic_confidence", None),
+                    "admission": getattr(label, "admission", None),
+                    "admission_confidence": getattr(
+                        label,
+                        "admission_confidence",
+                        None,
+                    ),
+                    "state_change": getattr(label, "state_change", None),
+                    "state_change_confidence": getattr(
+                        label,
+                        "state_change_confidence",
+                        None,
+                    ),
+                    "slots": dict(getattr(label, "slots", {}) or {}),
+                    "method": method,
+                    "latency_ms": getattr(label, "latency_ms", 0.0),
+                },
+            )
+        )
 
     def episode_created(
         self,
@@ -652,15 +685,17 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit an episode creation event."""
-        self.emit(DashboardEvent(
-            type="episode.created",
-            agent_id=agent_id,
-            data={
-                "episode_id": episode_id,
-                "title": title[:200],
-                "anchor_type": anchor_type,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="episode.created",
+                agent_id=agent_id,
+                data={
+                    "episode_id": episode_id,
+                    "title": title[:200],
+                    "anchor_type": anchor_type,
+                },
+            )
+        )
 
     def episode_assigned(
         self,
@@ -671,16 +706,18 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit an episode fragment assignment event."""
-        self.emit(DashboardEvent(
-            type="episode.assigned",
-            agent_id=agent_id,
-            data={
-                "episode_id": episode_id,
-                "fragment_id": fragment_id,
-                "signals_count": signals_count,
-                "match_score": round(match_score, 3),
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="episode.assigned",
+                agent_id=agent_id,
+                data={
+                    "episode_id": episode_id,
+                    "fragment_id": fragment_id,
+                    "signals_count": signals_count,
+                    "match_score": round(match_score, 3),
+                },
+            )
+        )
 
     def episode_closed(
         self,
@@ -690,15 +727,17 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit an episode closure event."""
-        self.emit(DashboardEvent(
-            type="episode.closed",
-            agent_id=agent_id,
-            data={
-                "episode_id": episode_id,
-                "reason": reason,
-                "member_count": member_count,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="episode.closed",
+                agent_id=agent_id,
+                data={
+                    "episode_id": episode_id,
+                    "reason": reason,
+                    "member_count": member_count,
+                },
+            )
+        )
 
     def consolidation_abstract_created(
         self,
@@ -707,34 +746,40 @@ class EventLog:
         source_count: int,
     ) -> None:
         """Emit an event when a consolidation abstract is created."""
-        self.emit(DashboardEvent(
-            type="consolidation.abstract_created",
-            data={
-                "abstract_type": abstract_type,
-                "node_id": node_id,
-                "source_count": source_count,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="consolidation.abstract_created",
+                data={
+                    "abstract_type": abstract_type,
+                    "node_id": node_id,
+                    "source_count": source_count,
+                },
+            )
+        )
 
     def consolidation_pass_complete(
         self,
         results: dict[str, int],
     ) -> None:
         """Emit a summary event when a consolidation pass finishes."""
-        self.emit(DashboardEvent(
-            type="consolidation.pass_complete",
-            data=results,
-        ))
+        self.emit(
+            DashboardEvent(
+                type="consolidation.pass_complete",
+                data=results,
+            )
+        )
 
     def dream_cycle_complete(
         self,
         results: dict[str, int],
     ) -> None:
         """Emit a summary event when a dream cycle finishes."""
-        self.emit(DashboardEvent(
-            type="dream.cycle_complete",
-            data=results,
-        ))
+        self.emit(
+            DashboardEvent(
+                type="dream.cycle_complete",
+                data=results,
+            )
+        )
 
     # ── Filesystem Watch Events ──────────────────────────────────────────
 
@@ -745,14 +790,16 @@ class EventLog:
         source: str,
     ) -> None:
         """Emit when a file change is detected by the watcher."""
-        self.emit(DashboardEvent(
-            type="watch.file_detected",
-            data={
-                "path": path,
-                "domain": domain,
-                "classification_source": source,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="watch.file_detected",
+                data={
+                    "path": path,
+                    "domain": domain,
+                    "classification_source": source,
+                },
+            )
+        )
 
     def watch_file_ingested(
         self,
@@ -761,14 +808,16 @@ class EventLog:
         memories_created: int,
     ) -> None:
         """Emit after a watched file is successfully ingested."""
-        self.emit(DashboardEvent(
-            type="watch.file_ingested",
-            data={
-                "path": path,
-                "domain": domain,
-                "memories_created": memories_created,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="watch.file_ingested",
+                data={
+                    "path": path,
+                    "domain": domain,
+                    "memories_created": memories_created,
+                },
+            )
+        )
 
     def watch_file_skipped(
         self,
@@ -776,13 +825,15 @@ class EventLog:
         reason: str,
     ) -> None:
         """Emit when a watched file is skipped (unchanged, unsupported, etc.)."""
-        self.emit(DashboardEvent(
-            type="watch.file_skipped",
-            data={
-                "path": path,
-                "reason": reason,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="watch.file_skipped",
+                data={
+                    "path": path,
+                    "reason": reason,
+                },
+            )
+        )
 
     def memory_searched(
         self,
@@ -791,15 +842,17 @@ class EventLog:
         top_score: float | None,
         agent_id: str | None = None,
     ) -> None:
-        self.emit(DashboardEvent(
-            type="memory.searched",
-            agent_id=agent_id,
-            data={
-                "query": query[:200],
-                "result_count": result_count,
-                "top_score": round(top_score, 3) if top_score else None,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="memory.searched",
+                agent_id=agent_id,
+                data={
+                    "query": query[:200],
+                    "result_count": result_count,
+                    "top_score": round(top_score, 3) if top_score else None,
+                },
+            )
+        )
 
     # ── Phase 6: Retrieval Debug Diagnostics ────────────────────────────
 
@@ -823,17 +876,19 @@ class EventLog:
             scores: Normalization ranges (max_bm25, max_splade, etc).
             agent_id: Requesting agent.
         """
-        self.emit(DashboardEvent(
-            type="retrieval.debug",
-            agent_id=agent_id,
-            data={
-                "query": query[:200],
-                "intent": intent,
-                "candidate_count": len(candidates),
-                "normalization": scores,
-                "top_candidates": candidates[:20],
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="retrieval.debug",
+                agent_id=agent_id,
+                data={
+                    "query": query[:200],
+                    "intent": intent,
+                    "candidate_count": len(candidates),
+                    "normalization": scores,
+                    "top_candidates": candidates[:20],
+                },
+            )
+        )
 
     def query_diagnostic(
         self,
@@ -899,32 +954,32 @@ class EventLog:
         diagnostic-driven debugging methodology that motivated this
         event.
         """
-        self.emit(DashboardEvent(
-            type="query.diagnostic",
-            agent_id=agent_id,
-            data={
-                "query": query[:200],
-                "intent": intent,
-                "intent_confidence": (
-                    round(intent_confidence, 3)
-                    if intent_confidence is not None else None
-                ),
-                "query_entities": query_entities[:20],
-                "resolved_entity_ids": resolved_entity_ids[:20],
-                "temporal_ref": temporal_ref,
-                "grammar_composed": grammar_composed,
-                "grammar_confidence": (
-                    round(grammar_confidence, 3)
-                    if grammar_confidence is not None else None
-                ),
-                "candidate_counts": candidate_counts,
-                "signal_coverage": signal_coverage,
-                "htmg_subject_stats": htmg_subject_stats,
-                "top_breakdown": top_breakdown,
-                "result_count": result_count,
-                "total_ms": round(total_ms, 1),
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="query.diagnostic",
+                agent_id=agent_id,
+                data={
+                    "query": query[:200],
+                    "intent": intent,
+                    "intent_confidence": (
+                        round(intent_confidence, 3) if intent_confidence is not None else None
+                    ),
+                    "query_entities": query_entities[:20],
+                    "resolved_entity_ids": resolved_entity_ids[:20],
+                    "temporal_ref": temporal_ref,
+                    "grammar_composed": grammar_composed,
+                    "grammar_confidence": (
+                        round(grammar_confidence, 3) if grammar_confidence is not None else None
+                    ),
+                    "candidate_counts": candidate_counts,
+                    "signal_coverage": signal_coverage,
+                    "htmg_subject_stats": htmg_subject_stats,
+                    "top_breakdown": top_breakdown,
+                    "result_count": result_count,
+                    "total_ms": round(total_ms, 1),
+                },
+            )
+        )
 
     def search_feedback(
         self,
@@ -935,16 +990,18 @@ class EventLog:
         agent_id: str | None = None,
     ) -> None:
         """Emit search feedback event (user/agent selected a result)."""
-        self.emit(DashboardEvent(
-            type="search.feedback",
-            agent_id=agent_id,
-            data={
-                "query": query[:200],
-                "selected_memory_id": selected_memory_id,
-                "position": position,
-                "result_count": result_count,
-            },
-        ))
+        self.emit(
+            DashboardEvent(
+                type="search.feedback",
+                agent_id=agent_id,
+                data={
+                    "query": query[:200],
+                    "selected_memory_id": selected_memory_id,
+                    "position": position,
+                    "result_count": result_count,
+                },
+            )
+        )
 
     # ── Query ─────────────────────────────────────────────────────────────
 

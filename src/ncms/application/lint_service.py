@@ -63,11 +63,13 @@ class LintService:
                 all_issues.extend(issues)
             except Exception:
                 logger.exception("Lint check %s failed", check.__name__)
-                all_issues.append(LintIssue(
-                    severity="error",
-                    category="internal",
-                    message=f"Check {check.__name__} raised an exception",
-                ))
+                all_issues.append(
+                    LintIssue(
+                        severity="error",
+                        category="internal",
+                        message=f"Check {check.__name__} raised an exception",
+                    )
+                )
 
         elapsed = (time.monotonic() - t0) * 1000
         counts: dict[str, int] = Counter(i.category for i in all_issues)
@@ -88,28 +90,32 @@ class LintService:
         for entity in entities:
             # Short name check
             if len(entity.name.strip()) < 2:
-                issues.append(LintIssue(
-                    severity="warning",
-                    category="junk_entity",
-                    message=(
-                        f"Entity '{entity.name}' (type={entity.type}) "
-                        f"has name shorter than 2 characters"
-                    ),
-                    entity_id=entity.id,
-                ))
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        category="junk_entity",
+                        message=(
+                            f"Entity '{entity.name}' (type={entity.type}) "
+                            f"has name shorter than 2 characters"
+                        ),
+                        entity_id=entity.id,
+                    )
+                )
 
             # No linked memories check (via graph engine reverse lookup)
             linked = self._graph.get_memory_ids_for_entity(entity.id)
             if not linked:
-                issues.append(LintIssue(
-                    severity="info",
-                    category="junk_entity",
-                    message=(
-                        f"Entity '{entity.name}' (type={entity.type}) "
-                        f"has no linked memories in graph"
-                    ),
-                    entity_id=entity.id,
-                ))
+                issues.append(
+                    LintIssue(
+                        severity="info",
+                        category="junk_entity",
+                        message=(
+                            f"Entity '{entity.name}' (type={entity.type}) "
+                            f"has no linked memories in graph"
+                        ),
+                        entity_id=entity.id,
+                    )
+                )
 
         return issues
 
@@ -130,14 +136,16 @@ class LintService:
 
         for content_hash, ids in hash_groups.items():
             if len(ids) > 1:
-                issues.append(LintIssue(
-                    severity="warning",
-                    category="duplicate",
-                    message=(
-                        f"{len(ids)} memories share content_hash "
-                        f"{content_hash[:16]}...: {', '.join(ids[:5])}"
-                    ),
-                ))
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        category="duplicate",
+                        message=(
+                            f"{len(ids)} memories share content_hash "
+                            f"{content_hash[:16]}...: {', '.join(ids[:5])}"
+                        ),
+                    )
+                )
 
         return issues
 
@@ -162,37 +170,42 @@ class LintService:
             linked_entity_ids = await self._store.get_memory_entities(mem.id)
             for eid in linked_entity_ids:
                 if eid not in entity_ids:
-                    issues.append(LintIssue(
-                        severity="error",
-                        category="dangling_ref",
-                        message=(
-                            f"Memory {mem.id[:16]}... links to "
-                            f"non-existent entity {eid[:16]}..."
-                        ),
-                        memory_id=mem.id,
-                        entity_id=eid,
-                    ))
+                    issues.append(
+                        LintIssue(
+                            severity="error",
+                            category="dangling_ref",
+                            message=(
+                                f"Memory {mem.id[:16]}... links to "
+                                f"non-existent entity {eid[:16]}..."
+                            ),
+                            memory_id=mem.id,
+                            entity_id=eid,
+                        )
+                    )
 
         # For each entity, check that its linked memories exist
         for entity in entities:
             linked_memory_ids = self._graph.get_memory_ids_for_entity(entity.id)
             for mid in linked_memory_ids:
                 if mid not in memory_ids:
-                    issues.append(LintIssue(
-                        severity="error",
-                        category="dangling_ref",
-                        message=(
-                            f"Entity '{entity.name}' ({entity.id[:16]}...) "
-                            f"links to non-existent memory {mid[:16]}..."
-                        ),
-                        entity_id=entity.id,
-                        memory_id=mid,
-                    ))
+                    issues.append(
+                        LintIssue(
+                            severity="error",
+                            category="dangling_ref",
+                            message=(
+                                f"Entity '{entity.name}' ({entity.id[:16]}...) "
+                                f"links to non-existent memory {mid[:16]}..."
+                            ),
+                            entity_id=entity.id,
+                            memory_id=mid,
+                        )
+                    )
 
         return issues
 
     async def check_stale_episodes(
-        self, stale_hours: int = 72,
+        self,
+        stale_hours: int = 72,
     ) -> list[LintIssue]:
         """Find open episodes with no recent member activity.
 
@@ -207,15 +220,17 @@ class LintService:
             members = await self._store.get_episode_members(ep.id)
             if not members:
                 # Open episode with zero members
-                issues.append(LintIssue(
-                    severity="warning",
-                    category="stale_episode",
-                    message=(
-                        f"Open episode {ep.id[:16]}... "
-                        f"('{ep.metadata.get('episode_title', '')}') "
-                        f"has no members"
-                    ),
-                ))
+                issues.append(
+                    LintIssue(
+                        severity="warning",
+                        category="stale_episode",
+                        message=(
+                            f"Open episode {ep.id[:16]}... "
+                            f"('{ep.metadata.get('episode_title', '')}') "
+                            f"has no members"
+                        ),
+                    )
+                )
                 continue
 
             # Find the most recent member timestamp
@@ -225,16 +240,18 @@ class LintService:
             )
             if latest and latest < cutoff:
                 hours_ago = int((datetime.now(UTC) - latest).total_seconds() / 3600)
-                issues.append(LintIssue(
-                    severity="info",
-                    category="stale_episode",
-                    message=(
-                        f"Open episode {ep.id[:16]}... "
-                        f"('{ep.metadata.get('episode_title', '')}') "
-                        f"last activity {hours_ago}h ago "
-                        f"({len(members)} members)"
-                    ),
-                ))
+                issues.append(
+                    LintIssue(
+                        severity="info",
+                        category="stale_episode",
+                        message=(
+                            f"Open episode {ep.id[:16]}... "
+                            f"('{ep.metadata.get('episode_title', '')}') "
+                            f"last activity {hours_ago}h ago "
+                            f"({len(members)} members)"
+                        ),
+                    )
+                )
 
         return issues
 
@@ -249,15 +266,17 @@ class LintService:
             nodes = await self._store.get_memory_nodes_by_type(node_type.value)
             for node in nodes:
                 if node.memory_id not in memory_ids:
-                    issues.append(LintIssue(
-                        severity="error",
-                        category="orphan",
-                        message=(
-                            f"{node_type.value} node {node.id[:16]}... "
-                            f"references non-existent memory "
-                            f"{node.memory_id[:16]}..."
-                        ),
-                        memory_id=node.memory_id,
-                    ))
+                    issues.append(
+                        LintIssue(
+                            severity="error",
+                            category="orphan",
+                            message=(
+                                f"{node_type.value} node {node.id[:16]}... "
+                                f"references non-existent memory "
+                                f"{node.memory_id[:16]}..."
+                            ),
+                            memory_id=node.memory_id,
+                        )
+                    )
 
         return issues

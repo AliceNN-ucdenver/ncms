@@ -86,20 +86,15 @@ def test_no_d_plus_complexity(py_file: Path) -> None:
         grade = cc_rank(block.complexity)
         if grade not in ("D", "E", "F"):
             continue
-        name = (
-            f"{block.classname}.{block.name}"
-            if block.classname else block.name
-        )
+        name = f"{block.classname}.{block.name}" if block.classname else block.name
         if (suffix, name) in ALLOWLIST:
             continue
         offenders.append(
-            f"{suffix}:{block.lineno} {name} — "
-            f"{grade} ({block.complexity})",
+            f"{suffix}:{block.lineno} {name} — {grade} ({block.complexity})",
         )
 
     assert not offenders, (
         "Methods regressed to D+ complexity.\n"
         "Refactor the offenders or add a justified entry to ALLOWLIST "
-        "in tests/architecture/test_complexity_gate.py.\n\n"
-        + "\n".join(offenders)
+        "in tests/architecture/test_complexity_gate.py.\n\n" + "\n".join(offenders)
     )

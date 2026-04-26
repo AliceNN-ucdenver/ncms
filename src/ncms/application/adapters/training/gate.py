@@ -34,6 +34,7 @@ from pathlib import Path
 
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -89,7 +90,9 @@ class GateOutcome:
 
 
 def _load_eval_split(
-    domain: Domain, split: str, corpus_dir: Path,
+    domain: Domain,
+    split: str,
+    corpus_dir: Path,
 ) -> list[GoldExample]:
     """Load evaluation examples for ``domain`` × ``split``.
 
@@ -104,10 +107,7 @@ def _load_eval_split(
         if not held_out.exists():
             return []
         return [ex for ex in load_jsonl(held_out) if ex.domain == domain]
-    return [
-        ex for ex in load_all(corpus_dir, split=split)
-        if ex.domain == domain
-    ]
+    return [ex for ex in load_all(corpus_dir, split=split) if ex.domain == domain]
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,10 @@ def run_gate(
             outcome.warnings.append(f"eval split {split!r} is empty — skipped")
             continue
         result = _evaluate_method_on_split(
-            extractor, examples, domain, split,
+            extractor,
+            examples,
+            domain,
+            split,
         )
         outcome.metrics[split] = result
 
@@ -166,10 +169,7 @@ def run_gate(
                     f"slot_f1_macro {result.slot_f1_macro:.3f} < "
                     f"threshold {thresholds.slot_f1_min:.3f} on {split}",
                 )
-            if (
-                result.confidently_wrong_rate
-                > thresholds.confidently_wrong_max
-            ):
+            if result.confidently_wrong_rate > thresholds.confidently_wrong_max:
                 outcome.passed = False
                 outcome.failures.append(
                     f"confidently_wrong_rate "
@@ -194,17 +194,17 @@ def run_gate(
             if not examples:
                 continue
             base_result = _evaluate_method_on_split(
-                baseline, examples, domain, split,
+                baseline,
+                examples,
+                domain,
+                split,
             )
             outcome.baseline_metrics[split] = base_result
             current = outcome.metrics.get(split)
             if current is None:
                 continue
             tol = thresholds.regression_tolerance
-            if (
-                current.intent_f1_macro + tol
-                < base_result.intent_f1_macro
-            ):
+            if current.intent_f1_macro + tol < base_result.intent_f1_macro:
                 outcome.passed = False
                 outcome.failures.append(
                     f"intent_f1 regression on {split}: "
@@ -256,30 +256,34 @@ def write_eval_report(
         for reason in outcome.warnings:
             lines.append(f"- {reason}")
         lines.append("")
-    lines.extend([
-        "## Thresholds",
-        "",
-        f"- intent_f1_min: **{thresholds.intent_f1_min:.3f}**",
-        f"- slot_f1_min: **{thresholds.slot_f1_min:.3f}**",
-        f"- confidently_wrong_max: **{thresholds.confidently_wrong_max:.3f}**",
-        f"- regression_tolerance: **{thresholds.regression_tolerance:.3f}**",
-        f"- latency_p95_soft_limit: **{thresholds.latency_p95_ms_soft_limit:.1f} ms**",
-        "",
-        "## Metrics",
-        "",
-        (
-            "| Split | N | Intent F1 | Slot F1 | Joint | Topic F1 (N) "
-            "| Admission F1 (N) | State F1 (N) | p95 ms | Conf-wrong % |"
-        ),
-        (
-            "|:------|--:|---------:|--------:|------:|-------------:"
-            "|-----------------:|-------------:|-------:|-------------:|"
-        ),
-    ])
+    lines.extend(
+        [
+            "## Thresholds",
+            "",
+            f"- intent_f1_min: **{thresholds.intent_f1_min:.3f}**",
+            f"- slot_f1_min: **{thresholds.slot_f1_min:.3f}**",
+            f"- confidently_wrong_max: **{thresholds.confidently_wrong_max:.3f}**",
+            f"- regression_tolerance: **{thresholds.regression_tolerance:.3f}**",
+            f"- latency_p95_soft_limit: **{thresholds.latency_p95_ms_soft_limit:.1f} ms**",
+            "",
+            "## Metrics",
+            "",
+            (
+                "| Split | N | Intent F1 | Slot F1 | Joint | Topic F1 (N) "
+                "| Admission F1 (N) | State F1 (N) | p95 ms | Conf-wrong % |"
+            ),
+            (
+                "|:------|--:|---------:|--------:|------:|-------------:"
+                "|-----------------:|-------------:|-------:|-------------:|"
+            ),
+        ]
+    )
+
     def _fmt_head(f1: float | None, n: int) -> str:
         if f1 is None or n == 0:
             return "—"
         return f"{f1:.3f} ({n})"
+
     for split, r in outcome.metrics.items():
         lines.append(
             f"| {split} | {r.n_examples} | {r.intent_f1_macro:.3f} "
@@ -328,12 +332,8 @@ def _dump_outcome_json(outcome: GateOutcome, path: Path) -> None:
         "domain": outcome.domain,
         "failures": outcome.failures,
         "warnings": outcome.warnings,
-        "metrics": {
-            split: asdict(r) for split, r in outcome.metrics.items()
-        },
-        "baseline_metrics": {
-            split: asdict(r) for split, r in outcome.baseline_metrics.items()
-        },
+        "metrics": {split: asdict(r) for split, r in outcome.metrics.items()},
+        "baseline_metrics": {split: asdict(r) for split, r in outcome.baseline_metrics.items()},
     }
     path.write_text(json.dumps(data, indent=2))
 
@@ -345,7 +345,8 @@ def _dump_outcome_json(outcome: GateOutcome, path: Path) -> None:
 
 def main() -> None:
     logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
     )
     parser = argparse.ArgumentParser(
         description="Evaluate an adapter + gate promotion",
@@ -353,25 +354,33 @@ def main() -> None:
     parser.add_argument("--adapter-dir", type=Path, required=True)
     parser.add_argument("--domain", required=True, choices=list(DOMAINS))
     parser.add_argument(
-        "--corpus-dir", type=Path,
+        "--corpus-dir",
+        type=Path,
         default=Path(__file__).parent.parent / "corpus",
     )
     parser.add_argument(
-        "--eval-splits", default="gold,adversarial",
+        "--eval-splits",
+        default="gold,adversarial",
         help="Comma-separated eval splits (default: gold,adversarial).",
     )
     parser.add_argument(
-        "--baseline-adapter-dir", type=Path, default=None,
+        "--baseline-adapter-dir",
+        type=Path,
+        default=None,
         help="Optional baseline adapter for regression check.",
     )
     parser.add_argument(
-        "--intent-f1-min", type=float, default=0.70,
+        "--intent-f1-min",
+        type=float,
+        default=0.70,
     )
     parser.add_argument("--slot-f1-min", type=float, default=0.75)
     parser.add_argument("--conf-wrong-max", type=float, default=0.10)
     parser.add_argument("--regression-tolerance", type=float, default=0.02)
     parser.add_argument(
-        "--latency-p95-soft-limit", type=float, default=200.0,
+        "--latency-p95-soft-limit",
+        type=float,
+        default=200.0,
     )
     args = parser.parse_args()
 

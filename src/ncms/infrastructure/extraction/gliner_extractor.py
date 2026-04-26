@@ -43,13 +43,13 @@ _CHUNK_OVERLAP: int = 100
 
 # Post-extraction quality filter: reject noise entities from structured content
 _ENTITY_REJECT_PATTERNS = [
-    re.compile(r"^\d+(\.\d+)?%?$"),        # Pure numeric: "85%", "25789"
-    re.compile(r"^\d+ \w+\(s\)$"),          # Count patterns: "1 item(s)"
-    re.compile(r"^\d+ chars$"),             # Size patterns: "2783 chars"
-    re.compile(r"^[a-f0-9]{8,}$"),          # Hex IDs: "6f01603fe96a"
-    re.compile(r"^Document: "),             # Prefixed IDs
-    re.compile(r"^[A-Z]\d+$"),              # Citation labels: "S5", "S6"
-    re.compile(r"^avg \d"),                 # Aggregate labels: "avg 85%"
+    re.compile(r"^\d+(\.\d+)?%?$"),  # Pure numeric: "85%", "25789"
+    re.compile(r"^\d+ \w+\(s\)$"),  # Count patterns: "1 item(s)"
+    re.compile(r"^\d+ chars$"),  # Size patterns: "2783 chars"
+    re.compile(r"^[a-f0-9]{8,}$"),  # Hex IDs: "6f01603fe96a"
+    re.compile(r"^Document: "),  # Prefixed IDs
+    re.compile(r"^[A-Z]\d+$"),  # Citation labels: "S5", "S6"
+    re.compile(r"^avg \d"),  # Aggregate labels: "avg 85%"
 ]
 
 
@@ -68,6 +68,7 @@ def _resolve_device() -> str:
     wrapper so historical import sites continue to work.
     """
     from ncms.infrastructure.hardware import resolve_device
+
     return resolve_device("NCMS_GLINER_DEVICE")
 
 
@@ -97,7 +98,9 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
 
         device = _resolve_device()
         logger.info(
-            "[GLiNER] Loading model: %s on %s (first call only)", model_name, device,
+            "[GLiNER] Loading model: %s on %s (first call only)",
+            model_name,
+            device,
         )
         kwargs: dict[str, object] = {}
         if cache_dir:
@@ -111,6 +114,7 @@ def _get_model(model_name: str, cache_dir: str | None = None) -> object:
             _model = GLiNER.from_pretrained(model_name, **kwargs)
             try:
                 import torch
+
                 _model.model = _model.model.to(torch.device("mps"))  # type: ignore[union-attr,attr-defined]
             except Exception:
                 logger.warning("Failed to move GLiNER to MPS, using CPU")
@@ -192,17 +196,21 @@ def extract_entities_gliner(
             if key in seen:
                 continue
             seen.add(key)
-            entities.append({
-                "name": name,
-                "type": label,
-                "char_start": int(ent.get("start", 0)),
-                "char_end": int(ent.get("end", 0)),
-            })
+            entities.append(
+                {
+                    "name": name,
+                    "type": label,
+                    "char_start": int(ent.get("start", 0)),
+                    "char_end": int(ent.get("end", 0)),
+                }
+            )
 
     if len(chunks) > 1:
         logger.debug(
             "GLiNER chunked %d chars into %d chunks, extracted %d entities",
-            len(text), len(chunks), len(entities),
+            len(text),
+            len(chunks),
+            len(entities),
         )
 
     return entities[:MAX_ENTITIES]
@@ -249,8 +257,10 @@ def extract_with_label_budget(
     """
     if len(labels) <= max_labels_per_call:
         return extract_entities_gliner(
-            text, labels=labels,
-            model_name=model_name, threshold=threshold,
+            text,
+            labels=labels,
+            model_name=model_name,
+            threshold=threshold,
             cache_dir=cache_dir,
         )
     temporal_set = {t.lower() for t in TEMPORAL_LABELS}
@@ -260,18 +270,24 @@ def extract_with_label_budget(
         # Degenerate: all labels are on one side.  Splitting would do
         # nothing — just run the single combined call.
         return extract_entities_gliner(
-            text, labels=labels,
-            model_name=model_name, threshold=threshold,
+            text,
+            labels=labels,
+            model_name=model_name,
+            threshold=threshold,
             cache_dir=cache_dir,
         )
     entity_out = extract_entities_gliner(
-        text, labels=entity,
-        model_name=model_name, threshold=threshold,
+        text,
+        labels=entity,
+        model_name=model_name,
+        threshold=threshold,
         cache_dir=cache_dir,
     )
     temporal_out = extract_entities_gliner(
-        text, labels=temporal,
-        model_name=model_name, threshold=threshold,
+        text,
+        labels=temporal,
+        model_name=model_name,
+        threshold=threshold,
         cache_dir=cache_dir,
     )
     # Concatenate; caller's splitter deduplicates by (text, label).

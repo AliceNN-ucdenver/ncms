@@ -45,17 +45,88 @@ from typing import Protocol
 
 from ncms.domain.tlg.markers import VERB_PHRASE_SHAPES
 
-_STOPWORDS: frozenset[str] = frozenset({
-    "the", "a", "an", "and", "or", "but", "for", "with", "of", "to",
-    "in", "on", "at", "by", "from", "as", "is", "are", "was", "were",
-    "be", "been", "being", "have", "has", "had", "do", "does", "did",
-    "this", "that", "these", "those", "i", "we", "you", "they", "he",
-    "she", "it", "our", "their", "its", "his", "her", "my", "your",
-    "not", "no", "now", "also", "then", "than", "so", "such", "more",
-    "most", "other", "some", "any", "all", "each", "both", "will",
-    "would", "could", "should", "may", "might", "must", "shall",
-    "can", "first", "second", "third", "new", "old", "same",
-})
+_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "for",
+        "with",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "by",
+        "from",
+        "as",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "we",
+        "you",
+        "they",
+        "he",
+        "she",
+        "it",
+        "our",
+        "their",
+        "its",
+        "his",
+        "her",
+        "my",
+        "your",
+        "not",
+        "no",
+        "now",
+        "also",
+        "then",
+        "than",
+        "so",
+        "such",
+        "more",
+        "most",
+        "other",
+        "some",
+        "any",
+        "all",
+        "each",
+        "both",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "can",
+        "first",
+        "second",
+        "third",
+        "new",
+        "old",
+        "same",
+    }
+)
 
 
 _WORD_RE = re.compile(r"\b[a-z][a-z'-]{2,}\b")
@@ -191,12 +262,16 @@ def induce_content_markers(
     mid_counts = _word_counts(memories_list, middle_ids)
 
     current_cands = _filter_by_purity(
-        term_counts, mid_counts + root_counts,
-        min_support=min_support, purity_ratio=purity_ratio,
+        term_counts,
+        mid_counts + root_counts,
+        min_support=min_support,
+        purity_ratio=purity_ratio,
     )
     origin_cands = _filter_by_purity(
-        root_counts, mid_counts + term_counts,
-        min_support=min_support, purity_ratio=purity_ratio,
+        root_counts,
+        mid_counts + term_counts,
+        min_support=min_support,
+        purity_ratio=purity_ratio,
     )
     # Strip seed markers — we only surface what the corpus TAUGHT us.
     current_cands = frozenset(current_cands - seed_current)
@@ -210,11 +285,9 @@ def induce_content_markers(
 def summary(induced: InducedContentMarkers) -> str:
     lines = ["Content-induced markers", "=" * 40]
     lines.append(
-        f"[current]  ({len(induced.current_candidates)}): "
-        f"{sorted(induced.current_candidates)}"
+        f"[current]  ({len(induced.current_candidates)}): {sorted(induced.current_candidates)}"
     )
     lines.append(
-        f"[origin]   ({len(induced.origin_candidates)}): "
-        f"{sorted(induced.origin_candidates)}"
+        f"[origin]   ({len(induced.origin_candidates)}): {sorted(induced.origin_candidates)}"
     )
     return "\n".join(lines)

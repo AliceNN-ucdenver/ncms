@@ -49,9 +49,7 @@ class SimpleAgent(KnowledgeAgent):
 
 class TestSnapshotFlow:
     @pytest.mark.asyncio
-    async def test_sleep_publishes_snapshot(
-        self, bus_service, memory_service, snapshot_service
-    ):
+    async def test_sleep_publishes_snapshot(self, bus_service, memory_service, snapshot_service):
         """Sleeping should publish a snapshot containing the agent's knowledge."""
         agent = SimpleAgent("test", ["api"], bus_service, memory_service, snapshot_service)
         await agent.start()
@@ -92,13 +90,13 @@ class TestSnapshotFlow:
         assert response is not None
         assert response.source_mode == "warm"
         # Response should contain content from the sleeping agent's snapshot
-        assert knowledge_content.lower() in response.knowledge.content.lower() or \
-            "users" in response.knowledge.content.lower()
+        assert (
+            knowledge_content.lower() in response.knowledge.content.lower()
+            or "users" in response.knowledge.content.lower()
+        )
 
     @pytest.mark.asyncio
-    async def test_wake_restores_agent(
-        self, bus_service, memory_service, snapshot_service
-    ):
+    async def test_wake_restores_agent(self, bus_service, memory_service, snapshot_service):
         """Waking should restore the agent to online status."""
         agent = SimpleAgent("test", ["api"], bus_service, memory_service, snapshot_service)
         await agent.start()
@@ -111,9 +109,7 @@ class TestSnapshotFlow:
         assert bus_service.is_agent_online(agent.agent_id)
 
     @pytest.mark.asyncio
-    async def test_live_response_after_wake(
-        self, bus_service, memory_service, snapshot_service
-    ):
+    async def test_live_response_after_wake(self, bus_service, memory_service, snapshot_service):
         """After waking, agent should respond live (not surrogate)."""
         knowledge_content = "GET /users returns list"
         agent = SimpleAgent("api", ["api"], bus_service, memory_service, snapshot_service)
@@ -123,9 +119,7 @@ class TestSnapshotFlow:
         await agent.sleep()
         await agent.wake()
 
-        requester = SimpleAgent(
-            "req", ["frontend"], bus_service, memory_service, snapshot_service
-        )
+        requester = SimpleAgent("req", ["frontend"], bus_service, memory_service, snapshot_service)
         await requester.start()
 
         response = await requester.ask_knowledge(
@@ -188,9 +182,7 @@ class TestSnapshotFlow:
         assert response.confidence == pytest.approx(expected_confidence, abs=0.01)
 
     @pytest.mark.asyncio
-    async def test_sleep_makes_agent_offline(
-        self, bus_service, memory_service, snapshot_service
-    ):
+    async def test_sleep_makes_agent_offline(self, bus_service, memory_service, snapshot_service):
         """After sleeping, agent should no longer be online."""
         agent = SimpleAgent("offline-test", ["api"], bus_service, memory_service, snapshot_service)
         await agent.start()

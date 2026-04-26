@@ -43,7 +43,9 @@ def index():
     new_callable=AsyncMock,
 )
 async def test_episode_summary_searchable_after_consolidation(
-    mock_llm, store, index,
+    mock_llm,
+    store,
+    index,
 ) -> None:
     """End-to-end: closed episode → consolidate → summary searchable via BM25."""
     mock_llm.return_value = {
@@ -78,7 +80,9 @@ async def test_episode_summary_searchable_after_consolidation(
         await store.save_memory(m)
         index.index_memory(m)
         member = MemoryNode(
-            memory_id=m.id, node_type=NodeType.ATOMIC, parent_id=ep_node.id,
+            memory_id=m.id,
+            node_type=NodeType.ATOMIC,
+            parent_id=ep_node.id,
         )
         await store.save_memory_node(member)
 
@@ -109,7 +113,9 @@ async def test_episode_summary_searchable_after_consolidation(
     new_callable=AsyncMock,
 )
 async def test_summarizes_and_derived_from_edges_present(
-    mock_llm, store, index,
+    mock_llm,
+    store,
+    index,
 ) -> None:
     """Verify SUMMARIZES and DERIVED_FROM edges are correctly created."""
     mock_llm.return_value = {
@@ -135,7 +141,9 @@ async def test_summarizes_and_derived_from_edges_present(
         m = Memory(content=f"auth fragment {i}", type="fact")
         await store.save_memory(m)
         member = MemoryNode(
-            memory_id=m.id, node_type=NodeType.ATOMIC, parent_id=ep_node.id,
+            memory_id=m.id,
+            node_type=NodeType.ATOMIC,
+            parent_id=ep_node.id,
         )
         await store.save_memory_node(member)
         members.append(member)
@@ -171,7 +179,9 @@ async def test_summarizes_and_derived_from_edges_present(
     new_callable=AsyncMock,
 )
 async def test_full_consolidation_pass_runs_all_subtasks(
-    mock_llm, store, index,
+    mock_llm,
+    store,
+    index,
 ) -> None:
     """run_consolidation_pass runs all subtasks and returns counts dict."""
     config = NCMSConfig(

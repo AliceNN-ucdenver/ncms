@@ -74,9 +74,7 @@ async def _seed_state(
     return node
 
 
-async def _auth_chain(store: SQLiteStore) -> tuple[
-    MemoryNode, MemoryNode, MemoryNode
-]:
+async def _auth_chain(store: SQLiteStore) -> tuple[MemoryNode, MemoryNode, MemoryNode]:
     """v1 (cookies) → v2 (OAuth) → v3 (passkeys), reconciled."""
     config = NCMSConfig(
         db_path=":memory:",
@@ -88,7 +86,8 @@ async def _auth_chain(store: SQLiteStore) -> tuple[
     v1 = await _seed_state(
         store,
         content="Auth uses session cookies.",
-        entity_id="auth-svc", state_key="auth_method",
+        entity_id="auth-svc",
+        state_key="auth_method",
         state_value="session cookies",
         linked_entity_ids=["session cookies", "authentication"],
         observed_at=base,
@@ -96,7 +95,8 @@ async def _auth_chain(store: SQLiteStore) -> tuple[
     v2 = await _seed_state(
         store,
         content="Retire session cookies; adopt OAuth.",
-        entity_id="auth-svc", state_key="auth_method",
+        entity_id="auth-svc",
+        state_key="auth_method",
         state_value="OAuth",
         linked_entity_ids=["OAuth", "authentication"],
         observed_at=base + timedelta(days=30),
@@ -106,7 +106,8 @@ async def _auth_chain(store: SQLiteStore) -> tuple[
     v3 = await _seed_state(
         store,
         content="Retire OAuth; adopt passkeys.",
-        entity_id="auth-svc", state_key="auth_method",
+        entity_id="auth-svc",
+        state_key="auth_method",
         state_value="passkeys",
         linked_entity_ids=["passkeys", "authentication"],
         observed_at=base + timedelta(days=120),
@@ -119,9 +120,7 @@ async def _auth_chain(store: SQLiteStore) -> tuple[
 
 
 class TestSequence:
-    async def test_what_came_after_resolves_successor(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_what_came_after_resolves_successor(self, store: SQLiteStore) -> None:
         _, v2, v3 = await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -135,9 +134,7 @@ class TestSequence:
         # OAuth (v2) is superseded by passkeys (v3).
         assert trace.grammar_answer == v3.id
 
-    async def test_no_successor_abstains(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_no_successor_abstains(self, store: SQLiteStore) -> None:
         _, _, _ = await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -151,9 +148,7 @@ class TestSequence:
 
 
 class TestPredecessor:
-    async def test_what_came_before_resolves_predecessor(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_what_came_before_resolves_predecessor(self, store: SQLiteStore) -> None:
         v1, v2, _ = await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -200,16 +195,14 @@ class TestInterval:
         assert trace.grammar_answer == v2.id
 
 
-
 # NOTE: ``TestRange`` was removed in the v6 cleanup — the
 # dispatcher it exercised is no longer reachable via the SLM
 # ``shape_intent_head`` taxonomy.  See docs for the v6 deletion
 # rationale.
 
+
 class TestTransitiveCause:
-    async def test_eventually_led_to_walks_ancestors(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_eventually_led_to_walks_ancestors(self, store: SQLiteStore) -> None:
         v1, _, _ = await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -229,11 +222,13 @@ class TestConcurrent:
         v1, v2, v3 = await _auth_chain(store)
         # Add a sibling in the same subject within v2's window.
         from datetime import datetime
+
         base = datetime(2024, 1, 31, tzinfo=UTC)
         await _seed_state(
             store,
             content="Audit logs enabled for auth.",
-            entity_id="auth-svc", state_key="audit",
+            entity_id="auth-svc",
+            state_key="audit",
             state_value="enabled",
             linked_entity_ids=["audit-logs", "authentication"],
             observed_at=base,
@@ -251,9 +246,7 @@ class TestConcurrent:
 
 
 class TestRetirement:
-    async def test_retire_imperative_finds_retirement_edge(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_retire_imperative_finds_retirement_edge(self, store: SQLiteStore) -> None:
         _, v2, v3 = await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -269,9 +262,7 @@ class TestRetirement:
 
 
 class TestUnresolvedEntity:
-    async def test_sequence_on_unknown_entity_abstains(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_sequence_on_unknown_entity_abstains(self, store: SQLiteStore) -> None:
         await _auth_chain(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(

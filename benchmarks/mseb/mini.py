@@ -78,18 +78,24 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s  %(message)s",
     )
     ap = argparse.ArgumentParser(description="MSEB mini-subset builder")
-    ap.add_argument("--src", type=Path, required=True,
-                    help="Source build dir (contains corpus.jsonl + queries.jsonl)")
-    ap.add_argument("--out", type=Path, required=True,
-                    help="Output mini build dir")
-    ap.add_argument("--subjects", type=int, default=50,
-                    help="Number of subjects to sample (default 50)")
+    ap.add_argument(
+        "--src",
+        type=Path,
+        required=True,
+        help="Source build dir (contains corpus.jsonl + queries.jsonl)",
+    )
+    ap.add_argument("--out", type=Path, required=True, help="Output mini build dir")
+    ap.add_argument(
+        "--subjects", type=int, default=50, help="Number of subjects to sample (default 50)"
+    )
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     stats = build_mini(
-        src=args.src, out=args.out,
-        n_subjects=args.subjects, seed=args.seed,
+        src=args.src,
+        out=args.out,
+        n_subjects=args.subjects,
+        seed=args.seed,
     )
     print(json.dumps(stats, indent=2, sort_keys=True))
 

@@ -141,7 +141,8 @@ class ReindexService:
                 indexed += 1
             except Exception:
                 logger.warning(
-                    "SPLADE indexing failed for %s, skipping", memory.id,
+                    "SPLADE indexing failed for %s, skipping",
+                    memory.id,
                     exc_info=True,
                 )
             if progress_callback:
@@ -180,7 +181,8 @@ class ReindexService:
             try:
                 # Resolve labels for this memory's domains
                 cached = await load_cached_labels(
-                    self._store, memory.domains,
+                    self._store,
+                    memory.domains,
                 )
                 labels = resolve_labels(memory.domains, cached_labels=cached)
 
@@ -207,7 +209,8 @@ class ReindexService:
 
             except Exception:
                 logger.warning(
-                    "Entity extraction failed for %s, skipping", memory.id,
+                    "Entity extraction failed for %s, skipping",
+                    memory.id,
                     exc_info=True,
                 )
 
@@ -216,7 +219,8 @@ class ReindexService:
 
         logger.info(
             "Entity reindex complete: %d entities from %d memories",
-            total_entities, total,
+            total_entities,
+            total,
         )
         return total_entities
 
@@ -304,17 +308,22 @@ class ReindexService:
 
         result.duration_ms = (time.perf_counter() - t0) * 1000
         logger.info(
-            "Reindex complete in %.0fms: bm25=%d splade=%d entities=%d "
-            "graph=%s errors=%d",
-            result.duration_ms, result.bm25_indexed, result.splade_indexed,
-            result.entities_extracted, result.graph_rebuilt, result.errors,
+            "Reindex complete in %.0fms: bm25=%d splade=%d entities=%d graph=%s errors=%d",
+            result.duration_ms,
+            result.bm25_indexed,
+            result.splade_indexed,
+            result.entities_extracted,
+            result.graph_rebuilt,
+            result.errors,
         )
         return result
 
     # ── Helpers ─────────────────────────────────────────────────────
 
     async def _find_or_create_entity(
-        self, name: str, entity_type: str,
+        self,
+        name: str,
+        entity_type: str,
     ) -> Entity:
         """Find existing entity by name, or create a new one."""
         existing = await self._store.find_entity_by_name(name)

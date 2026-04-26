@@ -52,18 +52,21 @@ class CrossEncoderReranker:
                     kwargs["device"] = device
                     logger.info(
                         "[CrossEncoder] Loading model: %s on %s",
-                        self._model_name, device,
+                        self._model_name,
+                        device,
                     )
                     t0 = _time.perf_counter()
                     self._model = CrossEncoder(self._model_name, **kwargs)
                     load_ms = (_time.perf_counter() - t0) * 1000
                     logger.info(
                         "[CrossEncoder] Model loaded on %s (%.0fms)",
-                        device, load_ms,
+                        device,
+                        load_ms,
                     )
                 except Exception as e:
                     logger.warning(
-                        "[CrossEncoder] Load failed (reranking disabled): %s", e,
+                        "[CrossEncoder] Load failed (reranking disabled): %s",
+                        e,
                     )
                     self._load_failed = True
         elif self._model is not None:
@@ -97,10 +100,12 @@ class CrossEncoderReranker:
         pairs = [(query, content[:2000]) for _, content in candidates]
         scores = self._model.predict(pairs, batch_size=32, show_progress_bar=False)
 
-        scored = list(zip(
-            [mid for mid, _ in candidates],
-            scores.tolist(),
-            strict=True,
-        ))
+        scored = list(
+            zip(
+                [mid for mid, _ in candidates],
+                scores.tolist(),
+                strict=True,
+            )
+        )
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:top_k]

@@ -48,8 +48,15 @@ class _AsyncEventHandler(FileSystemEventHandler if _HAS_WATCHDOG else object):  
         self._queue = queue
         self._loop = loop
         self._exclude_patterns = exclude_patterns or [
-            "*.pyc", "__pycache__", ".git", ".DS_Store", "*.swp", "*.swo",
-            "*~", "*.tmp", ".#*",
+            "*.pyc",
+            "__pycache__",
+            ".git",
+            ".DS_Store",
+            "*.swp",
+            "*.swo",
+            "*~",
+            "*.tmp",
+            ".#*",
         ]
 
     def _is_excluded(self, path: str) -> bool:
@@ -131,7 +138,9 @@ class FilesystemWatcher:
         self._queue = asyncio.Queue()
 
         handler = _AsyncEventHandler(
-            self._queue, loop, self._exclude_patterns,
+            self._queue,
+            loop,
+            self._exclude_patterns,
         )
 
         self._observer = Observer()
@@ -193,7 +202,8 @@ class FilesystemWatcher:
                     # Wait for next event with timeout
                     try:
                         path, change_type, ts = await asyncio.wait_for(
-                            self._queue.get(), timeout=1.0,
+                            self._queue.get(),
+                            timeout=1.0,
                         )
                         pending[path] = (change_type, ts)
                     except TimeoutError:
@@ -213,7 +223,8 @@ class FilesystemWatcher:
                 # Process all debounced events
                 now = time.monotonic()
                 ready = {
-                    p: (ct, t) for p, (ct, t) in pending.items()
+                    p: (ct, t)
+                    for p, (ct, t) in pending.items()
                     if now - t >= self._debounce_seconds
                 }
 
@@ -222,7 +233,8 @@ class FilesystemWatcher:
                     event = FileChangeEvent(
                         path=path,
                         change_type=(
-                            FileChangeType.CREATED if change_type == "created"
+                            FileChangeType.CREATED
+                            if change_type == "created"
                             else FileChangeType.MODIFIED
                         ),
                         timestamp=datetime.now(UTC),
@@ -239,7 +251,8 @@ class FilesystemWatcher:
                             continue
 
                     await self._watch_service.handle_file_event(
-                        event, watch_root=watch_root,
+                        event,
+                        watch_root=watch_root,
                     )
 
                 # Persist hashes periodically

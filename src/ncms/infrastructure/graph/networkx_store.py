@@ -179,8 +179,7 @@ class NetworkXGraph:
                 new_rank: dict[str, float] = {}
                 # Dangling node mass (nodes with no outgoing edges)
                 dangling_sum = sum(
-                    rank[node] for node in nodes
-                    if self._graph.out_degree(node) == 0
+                    rank[node] for node in nodes if self._graph.out_degree(node) == 0
                 )
 
                 for node in nodes:
@@ -235,7 +234,8 @@ class NetworkXGraph:
         return result
 
     def get_neighbors_with_weights(
-        self, entity_id: str,
+        self,
+        entity_id: str,
     ) -> list[tuple[str, float]]:
         """Return (neighbor_id, edge_weight) for all neighbors of an entity."""
         with self._lock:
@@ -256,7 +256,9 @@ class NetworkXGraph:
             return neighbors
 
     def increment_edge_cooccurrence(
-        self, source_id: str, target_id: str,
+        self,
+        source_id: str,
+        target_id: str,
     ) -> int:
         """Increment co-occurrence count on an edge. Returns new count.
 
@@ -287,10 +289,7 @@ class NetworkXGraph:
         with self._lock:
             if entity_id not in self._graph:
                 return 0
-            return (
-                self._graph.in_degree(entity_id)
-                + self._graph.out_degree(entity_id)
-            )
+            return self._graph.in_degree(entity_id) + self._graph.out_degree(entity_id)
 
     # ── Phase 9: Personalized PageRank ────────────────────────────────
 
@@ -323,8 +322,7 @@ class NetworkXGraph:
 
             # Filter seeds to only entities present in the graph
             valid_seeds = {
-                eid: w for eid, w in seed_entities.items()
-                if eid in self._graph and w > 0
+                eid: w for eid, w in seed_entities.items() if eid in self._graph and w > 0
             }
             if not valid_seeds:
                 return {}

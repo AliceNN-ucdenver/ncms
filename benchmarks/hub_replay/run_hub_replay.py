@@ -78,7 +78,8 @@ def main() -> None:
         help="Directory for result files (default: benchmarks/results/hub_replay)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable debug logging",
     )

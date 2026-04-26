@@ -117,8 +117,12 @@ def verify_adapter_dir(adapter_dir: Path) -> AdapterManifest:
     logger.info(
         "[intent_slot] adapter verified: %s domain=%s version=%s "
         "encoder=%s manifest_hash=%s corpus_hash=%s",
-        adapter_dir, manifest.domain, manifest.version,
-        manifest.encoder, short_hash, manifest.corpus_hash,
+        adapter_dir,
+        manifest.domain,
+        manifest.version,
+        manifest.encoder,
+        short_hash,
+        manifest.corpus_hash,
     )
     return manifest
 

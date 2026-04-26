@@ -63,14 +63,12 @@ def score_overlap(query_tokens: list[str], doc_tokens: list[str]) -> float:
     if not query_tokens or not doc_tokens:
         return 0.0
     dcount = Counter(doc_tokens)
-    return sum(
-        math.log1p(dcount.get(t, 0))
-        for t in query_tokens
-    )
+    return sum(math.log1p(dcount.get(t, 0)) for t in query_tokens)
 
 
 def rank_chain(
-    query: str, chain: list[dict],
+    query: str,
+    chain: list[dict],
 ) -> list[tuple[float, dict]]:
     """Rank a chain by lexical overlap with the query."""
     qtok = tokenize(query)
@@ -167,7 +165,8 @@ def validate(
                 break
         top_score = ranked[0][0] if ranked else 0.0
         gold_score = next(
-            (s for s, m in ranked if m["mid"] in accept), 0.0,
+            (s for s, m in ranked if m["mid"] in accept),
+            0.0,
         )
         verdict["gold_rank_in_chain"] = rank
         verdict["lexical_score_gold"] = gold_score
@@ -239,8 +238,7 @@ def summarize(verdicts: list[dict]) -> dict:
                 "valid": by_shape_valid[shape],
                 "total": by_shape_total[shape],
                 "rate": (
-                    by_shape_valid[shape] / by_shape_total[shape]
-                    if by_shape_total[shape] else 0.0
+                    by_shape_valid[shape] / by_shape_total[shape] if by_shape_total[shape] else 0.0
                 ),
                 "difficulty": dict(by_shape_difficulty[shape]),
             }
@@ -258,6 +256,7 @@ def summarize(verdicts: list[dict]) -> dict:
 def _load_gold_yaml(path: Path) -> list[dict]:
     try:
         import yaml
+
         return list(yaml.safe_load(path.read_text()) or [])
     except ImportError:
         return json.loads(path.read_text())
@@ -266,6 +265,7 @@ def _load_gold_yaml(path: Path) -> list[dict]:
 def _dump_gold_yaml(rows: list[dict], path: Path) -> None:
     try:
         import yaml
+
         body = yaml.safe_dump(rows, sort_keys=False, allow_unicode=True)
     except ImportError:
         body = json.dumps(rows, indent=2, ensure_ascii=False)
@@ -280,13 +280,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="MSEB gold validator")
     ap.add_argument("--labeled-dir", type=Path, required=True)
     ap.add_argument("--gold", type=Path, required=True)
-    ap.add_argument("--out", type=Path, required=True,
-                    help="Per-query verdict JSON")
-    ap.add_argument("--drop-invalid", action="store_true",
-                    help="Write a cleaned gold.yaml (invalid queries removed)")
-    ap.add_argument("--out-yaml", type=Path, default=None,
-                    help="Where to write the cleaned gold.yaml "
-                         "(default: <gold>.validated.yaml next to --gold)")
+    ap.add_argument("--out", type=Path, required=True, help="Per-query verdict JSON")
+    ap.add_argument(
+        "--drop-invalid",
+        action="store_true",
+        help="Write a cleaned gold.yaml (invalid queries removed)",
+    )
+    ap.add_argument(
+        "--out-yaml",
+        type=Path,
+        default=None,
+        help="Where to write the cleaned gold.yaml (default: <gold>.validated.yaml next to --gold)",
+    )
     args = ap.parse_args()
 
     by_subject = load_labeled_grouped(args.labeled_dir)
@@ -295,10 +300,15 @@ def main() -> None:
     summary = summarize(verdicts)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps({
-        "summary": summary,
-        "per_query": verdicts,
-    }, indent=2))
+    args.out.write_text(
+        json.dumps(
+            {
+                "summary": summary,
+                "per_query": verdicts,
+            },
+            indent=2,
+        )
+    )
 
     print(json.dumps(summary, indent=2, sort_keys=True))
 
@@ -309,7 +319,9 @@ def main() -> None:
         _dump_gold_yaml(cleaned, out_yaml)
         logger.info(
             "wrote cleaned gold with %d/%d queries to %s",
-            len(cleaned), len(rows), out_yaml,
+            len(cleaned),
+            len(rows),
+            out_yaml,
         )
 
 

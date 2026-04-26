@@ -312,8 +312,7 @@ def aggregate(
         "latency_p50_ms": _pct(latencies, 0.50),
         "latency_p95_ms": _pct(latencies, 0.95),
         "confidently_wrong": (
-            confidently_wrong / confidently_wrong_denom
-            if confidently_wrong_denom else 0.0
+            confidently_wrong / confidently_wrong_denom if confidently_wrong_denom else 0.0
         ),
         "confidently_wrong_denominator": confidently_wrong_denom,
     }

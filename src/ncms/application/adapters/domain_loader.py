@@ -79,11 +79,11 @@ class DiversityNode:
       can't land in the ``object`` slot).
     """
 
-    path: tuple[str, ...]               # ("foods", "cuisines")
+    path: tuple[str, ...]  # ("foods", "cuisines")
     description: str
     topic_hint: str
-    source: str                         # "inline" | "gazetteer"
-    examples: tuple[str, ...] = ()      # populated when source=inline
+    source: str  # "inline" | "gazetteer"
+    examples: tuple[str, ...] = ()  # populated when source=inline
     filter_slots: tuple[str, ...] = ()  # required for gazetteer; optional for inline
     n_examples_per_batch: int = 8
 
@@ -129,13 +129,9 @@ class DiversityTaxonomy:
         if node.source == "inline":
             return node.examples
         if node.source == "gazetteer":
-            return tuple(
-                e.canonical for e in gazetteer
-                if e.slot in node.filter_slots
-            )
+            return tuple(e.canonical for e in gazetteer if e.slot in node.filter_slots)
         raise DomainValidationError(
-            f"diversity node {node.qualified_name!r}: "
-            f"unknown source {node.source!r}",
+            f"diversity node {node.qualified_name!r}: unknown source {node.source!r}",
         )
 
 
@@ -160,15 +156,15 @@ class DomainSpec:
       elsewhere)
     """
 
-    name: str                                 # e.g. "software_dev"
+    name: str  # e.g. "software_dev"
     description: str
     intended_content: str
-    speaker_voice: str                        # SDG-prompt constraint
+    speaker_voice: str  # SDG-prompt constraint
 
-    slots: tuple[str, ...]                    # domain's slot taxonomy
-    topics: tuple[str, ...]                   # topic head vocabulary
+    slots: tuple[str, ...]  # domain's slot taxonomy
+    topics: tuple[str, ...]  # topic head vocabulary
 
-    gazetteer: tuple[CatalogEntry, ...]       # empty when no gazetteer
+    gazetteer: tuple[CatalogEntry, ...]  # empty when no gazetteer
     diversity: DiversityTaxonomy
     archetypes: tuple[ArchetypeSpec, ...]
 
@@ -228,7 +224,9 @@ def _opt_str(data: dict, field_name: str, default: str = "") -> str:
 
 
 def _require_list_of_str(
-    data: Any, field_name: str, path: Path,
+    data: Any,
+    field_name: str,
+    path: Path,
 ) -> tuple[str, ...]:
     val = data.get(field_name) if isinstance(data, dict) else None
     if not isinstance(val, list) or not val:
@@ -238,8 +236,7 @@ def _require_list_of_str(
     for item in val:
         if not isinstance(item, str) or not item.strip():
             raise DomainValidationError(
-                f"{path}: {field_name!r} entries must be non-empty strings "
-                f"(got {item!r})",
+                f"{path}: {field_name!r} entries must be non-empty strings (got {item!r})",
             )
     return tuple(val)
 
@@ -250,7 +247,8 @@ def _require_list_of_str(
 
 
 def _load_gazetteer(
-    path: Path, allowed_slots: tuple[str, ...],
+    path: Path,
+    allowed_slots: tuple[str, ...],
 ) -> tuple[CatalogEntry, ...]:
     data = _read_yaml(path)
     if not isinstance(data, dict):
@@ -286,26 +284,159 @@ def _load_gazetteer(
         aliases_raw = raw.get("aliases") or []
         if not isinstance(aliases_raw, list):
             raise DomainValidationError(
-                f"{path}: entry[{i}] {canonical!r}: "
-                f"aliases must be a list",
+                f"{path}: entry[{i}] {canonical!r}: aliases must be a list",
             )
-        aliases: tuple[str, ...] = tuple(
-            str(a).strip() for a in aliases_raw if str(a).strip()
+        aliases: tuple[str, ...] = tuple(str(a).strip() for a in aliases_raw if str(a).strip())
+        entries.append(
+            CatalogEntry(
+                canonical=canonical,
+                slot=slot,
+                topic=topic,
+                aliases=aliases,
+                source=_opt_str(raw, "source"),
+                notes=_opt_str(raw, "notes"),
+            )
         )
-        entries.append(CatalogEntry(
-            canonical=canonical,
-            slot=slot,
-            topic=topic,
-            aliases=aliases,
-            source=_opt_str(raw, "source"),
-            notes=_opt_str(raw, "notes"),
-        ))
     return tuple(entries)
 
 
 # ---------------------------------------------------------------------------
 # Diversity taxonomy loader
 # ---------------------------------------------------------------------------
+
+
+def _validate_filter_slots(
+    *,
+    yaml_path: Path,
+    path: tuple[str, ...],
+    raw: object,
+    allowed_slots: set[str],
+    require_non_empty: bool,
+    description: str,
+) -> tuple[str, ...]:
+    raw_list = raw or []
+    if not isinstance(raw_list, list):
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} {description}",
+        )
+    if require_non_empty and not raw_list:
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} {description}",
+        )
+    for s in raw_list:
+        if not isinstance(s, str) or s not in allowed_slots:
+            raise DomainValidationError(
+                f"{yaml_path}: {'.'.join(path)} filter_slots "
+                f"{s!r} not in domain.slots {sorted(allowed_slots)}",
+            )
+    return tuple(raw_list)
+
+
+def _build_inline_diversity_node(
+    *,
+    yaml_path: Path,
+    path: tuple[str, ...],
+    node: dict,
+    topic_hint: str,
+    description: str | None,
+    n_batch: int,
+    allowed_slots: set[str],
+) -> DiversityNode:
+    examples_raw = node.get("examples")
+    if not isinstance(examples_raw, list) or not examples_raw:
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} source=inline requires non-empty 'examples' list",
+        )
+    examples = tuple(
+        str(x).strip() for x in examples_raw if isinstance(x, (str, int, float)) and str(x).strip()
+    )
+    # Optional ``filter_slots`` on inline nodes = "this node's
+    # examples are only valid for these slots".  Empty = universal.
+    fs = _validate_filter_slots(
+        yaml_path=yaml_path,
+        path=path,
+        raw=node.get("filter_slots"),
+        allowed_slots=allowed_slots,
+        require_non_empty=False,
+        description="'filter_slots' must be a list when present",
+    )
+    return DiversityNode(
+        path=path,
+        description=description,
+        topic_hint=topic_hint,
+        source="inline",
+        examples=examples,
+        filter_slots=fs,
+        n_examples_per_batch=n_batch,
+    )
+
+
+def _build_gazetteer_diversity_node(
+    *,
+    yaml_path: Path,
+    path: tuple[str, ...],
+    node: dict,
+    topic_hint: str,
+    description: str | None,
+    n_batch: int,
+    allowed_slots: set[str],
+) -> DiversityNode:
+    fs = _validate_filter_slots(
+        yaml_path=yaml_path,
+        path=path,
+        raw=node.get("filter_slots"),
+        allowed_slots=allowed_slots,
+        require_non_empty=True,
+        description="source=gazetteer requires non-empty 'filter_slots'",
+    )
+    return DiversityNode(
+        path=path,
+        description=description,
+        topic_hint=topic_hint,
+        source="gazetteer",
+        filter_slots=fs,
+        n_examples_per_batch=n_batch,
+    )
+
+
+def _build_leaf_diversity(
+    *,
+    yaml_path: Path,
+    path: tuple[str, ...],
+    node: dict,
+    allowed_topics: set[str],
+    allowed_slots: set[str],
+) -> DiversityNode:
+    source = node["source"]
+    if source not in ("inline", "gazetteer"):
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} has source={source!r}; must be 'inline' or 'gazetteer'",
+        )
+    topic_hint = _require_str(node, "topic_hint", yaml_path)
+    if topic_hint not in allowed_topics:
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} topic_hint "
+            f"{topic_hint!r} not in domain.topics "
+            f"{sorted(allowed_topics)}",
+        )
+    description = _opt_str(node, "description")
+    n_batch = node.get("n_examples_per_batch", 8)
+    if not isinstance(n_batch, int) or n_batch < 1:
+        raise DomainValidationError(
+            f"{yaml_path}: {'.'.join(path)} n_examples_per_batch must be a positive int",
+        )
+    builder = (
+        _build_inline_diversity_node if source == "inline" else _build_gazetteer_diversity_node
+    )
+    return builder(
+        yaml_path=yaml_path,
+        path=path,
+        node=node,
+        topic_hint=topic_hint,
+        description=description,
+        n_batch=n_batch,
+        allowed_slots=allowed_slots,
+    )
 
 
 def _walk_diversity(
@@ -325,103 +456,32 @@ def _walk_diversity(
     """
     if not isinstance(node, dict):
         raise DomainValidationError(
-            f"{yaml_path}: node at {'.'.join(path) or '<root>'} "
-            "must be a mapping",
+            f"{yaml_path}: node at {'.'.join(path) or '<root>'} must be a mapping",
         )
     if "source" in node:
-        # Leaf node.
-        source = node["source"]
-        if source not in ("inline", "gazetteer"):
-            raise DomainValidationError(
-                f"{yaml_path}: {'.'.join(path)} has source={source!r}; "
-                "must be 'inline' or 'gazetteer'",
-            )
-        topic_hint = _require_str(node, "topic_hint", yaml_path)
-        if topic_hint not in allowed_topics:
-            raise DomainValidationError(
-                f"{yaml_path}: {'.'.join(path)} topic_hint "
-                f"{topic_hint!r} not in domain.topics "
-                f"{sorted(allowed_topics)}",
-            )
-        description = _opt_str(node, "description")
-        n_batch = node.get("n_examples_per_batch", 8)
-        if not isinstance(n_batch, int) or n_batch < 1:
-            raise DomainValidationError(
-                f"{yaml_path}: {'.'.join(path)} "
-                f"n_examples_per_batch must be a positive int",
-            )
-        if source == "inline":
-            examples_raw = node.get("examples")
-            if not isinstance(examples_raw, list) or not examples_raw:
-                raise DomainValidationError(
-                    f"{yaml_path}: {'.'.join(path)} "
-                    "source=inline requires non-empty 'examples' list",
-                )
-            examples = tuple(
-                str(x).strip() for x in examples_raw
-                if isinstance(x, (str, int, float)) and str(x).strip()
-            )
-            # Optional ``filter_slots`` on inline nodes = "this node's
-            # examples are only valid for these slots".  Empty = universal
-            # (valid for any open-vocab slot).  Caught the "in the
-            # afternoon" sampled as an `object` slot bug in B'.4.
-            inline_fs_raw = node.get("filter_slots") or []
-            if not isinstance(inline_fs_raw, list):
-                raise DomainValidationError(
-                    f"{yaml_path}: {'.'.join(path)} 'filter_slots' "
-                    "must be a list when present",
-                )
-            for s in inline_fs_raw:
-                if not isinstance(s, str) or s not in allowed_slots:
-                    raise DomainValidationError(
-                        f"{yaml_path}: {'.'.join(path)} filter_slots "
-                        f"{s!r} not in domain.slots "
-                        f"{sorted(allowed_slots)}",
-                    )
-            out.append(DiversityNode(
+        out.append(
+            _build_leaf_diversity(
+                yaml_path=yaml_path,
                 path=path,
-                description=description,
-                topic_hint=topic_hint,
-                source="inline",
-                examples=examples,
-                filter_slots=tuple(inline_fs_raw),
-                n_examples_per_batch=n_batch,
-            ))
-            return
-        # source == "gazetteer"
-        fs_raw = node.get("filter_slots") or []
-        if not isinstance(fs_raw, list) or not fs_raw:
-            raise DomainValidationError(
-                f"{yaml_path}: {'.'.join(path)} "
-                "source=gazetteer requires non-empty 'filter_slots'",
+                node=node,
+                allowed_topics=allowed_topics,
+                allowed_slots=allowed_slots,
             )
-        for s in fs_raw:
-            if not isinstance(s, str) or s not in allowed_slots:
-                raise DomainValidationError(
-                    f"{yaml_path}: {'.'.join(path)} filter_slots "
-                    f"{s!r} not in domain.slots {sorted(allowed_slots)}",
-                )
-        out.append(DiversityNode(
-            path=path,
-            description=description,
-            topic_hint=topic_hint,
-            source="gazetteer",
-            filter_slots=tuple(fs_raw),
-            n_examples_per_batch=n_batch,
-        ))
+        )
         return
     # Non-leaf: recurse.
     for key, child in node.items():
         if not isinstance(key, str):
             raise DomainValidationError(
-                f"{yaml_path}: non-string key {key!r} at "
-                f"{'.'.join(path) or '<root>'}",
+                f"{yaml_path}: non-string key {key!r} at {'.'.join(path) or '<root>'}",
             )
         _walk_diversity(
-            child, path=path + (key,),
+            child,
+            path=path + (key,),
             allowed_topics=allowed_topics,
             allowed_slots=allowed_slots,
-            yaml_path=yaml_path, out=out,
+            yaml_path=yaml_path,
+            out=out,
         )
 
 
@@ -433,10 +493,12 @@ def _load_diversity(
     data = _read_yaml(path)
     out: list[DiversityNode] = []
     _walk_diversity(
-        data, path=(),
+        data,
+        path=(),
         allowed_topics=set(allowed_topics),
         allowed_slots=set(allowed_slots),
-        yaml_path=path, out=out,
+        yaml_path=path,
+        out=out,
     )
     if not out:
         raise DomainValidationError(
@@ -449,6 +511,170 @@ def _load_diversity(
 # ---------------------------------------------------------------------------
 # Archetypes loader
 # ---------------------------------------------------------------------------
+
+
+def _validate_archetype_topic(
+    *, path: Path, name: str, topic: object, topic_set: set[str]
+) -> str | None:
+    if topic is None:
+        return None
+    if not isinstance(topic, str) or topic not in topic_set:
+        raise DomainValidationError(
+            f"{path}: archetype {name!r} topic {topic!r} not in domain.topics {sorted(topic_set)}",
+        )
+    return topic
+
+
+def _parse_role_specs(
+    *, path: Path, name: str, raw_specs: object, slot_set: set[str]
+) -> list[RoleSpec]:
+    if raw_specs is None:
+        return []
+    if not isinstance(raw_specs, list):
+        raise DomainValidationError(
+            f"{path}: archetype {name!r}: role_spans must be a list",
+        )
+    out: list[RoleSpec] = []
+    for j, rs in enumerate(raw_specs):
+        if not isinstance(rs, dict):
+            raise DomainValidationError(
+                f"{path}: archetype {name!r} role_spans[{j}] must be a mapping",
+            )
+        role = _require_str(rs, "role", path)
+        slot = _require_str(rs, "slot", path)
+        count = rs.get("count", 1)
+        if role not in ROLE_LABELS:
+            raise DomainValidationError(
+                f"{path}: archetype {name!r}: unknown role {role!r}",
+            )
+        if slot not in slot_set:
+            raise DomainValidationError(
+                f"{path}: archetype {name!r}: slot {slot!r} not in domain.slots {sorted(slot_set)}",
+            )
+        if not isinstance(count, int) or count < 0:
+            raise DomainValidationError(
+                f"{path}: archetype {name!r}: role_spans[{j}].count must be a non-negative int",
+            )
+        out.append(RoleSpec(role=role, slot=slot, count=count))  # type: ignore[arg-type]
+    return out
+
+
+def _parse_str_list(*, path: Path, name: str, raw: object, field: str) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise DomainValidationError(
+            f"{path}: archetype {name!r}: {field} must be a list",
+        )
+    return tuple(str(x) for x in raw if isinstance(x, str))
+
+
+def _resolve_phrasings(*, path: Path, name: str, raw: dict) -> tuple[str, ...]:
+    phrasings = _parse_str_list(path=path, name=name, raw=raw.get("phrasings"), field="phrasings")
+    phrasings_path = raw.get("phrasings_path")
+    if not (isinstance(phrasings_path, str) and phrasings_path.strip()):
+        return phrasings
+    ppath = path.parent / phrasings_path
+    if not ppath.is_file():
+        return phrasings
+    extra = tuple(
+        line.strip()
+        for line in ppath.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+    return phrasings + extra
+
+
+def _build_archetype_spec(
+    *,
+    path: Path,
+    domain: str,
+    raw: dict,
+    name: str,
+    intent: str,
+    admission: str,
+    state_change: str,
+    description: str,
+    topic: str | None,
+    role_specs: list[RoleSpec],
+    example_utterances: tuple[str, ...],
+    phrasings: tuple[str, ...],
+) -> ArchetypeSpec:
+    try:
+        return ArchetypeSpec(
+            name=name,
+            domain=domain,  # type: ignore[arg-type]
+            intent=intent,  # type: ignore[arg-type]
+            admission=admission,  # type: ignore[arg-type]
+            state_change=state_change,  # type: ignore[arg-type]
+            topic=topic,
+            role_spans=tuple(role_specs),
+            n_gold=int(raw.get("n_gold", 30)),
+            n_sdg=int(raw.get("n_sdg", 150)),
+            target_min_chars=int(raw.get("target_min_chars", 20)),
+            target_max_chars=int(raw.get("target_max_chars", 200)),
+            batch_size=int(raw.get("batch_size", 10)),
+            description=description,
+            example_utterances=example_utterances,
+            phrasings=phrasings,
+        )
+    except ValueError as exc:
+        raise DomainValidationError(
+            f"{path}: archetype {name!r}: {exc}",
+        ) from exc
+
+
+def _load_one_archetype(
+    *,
+    path: Path,
+    domain: str,
+    i: int,
+    raw: object,
+    seen_names: set[str],
+    slot_set: set[str],
+    topic_set: set[str],
+) -> ArchetypeSpec:
+    if not isinstance(raw, dict):
+        raise DomainValidationError(
+            f"{path}: archetypes[{i}] must be a mapping",
+        )
+    name = _require_str(raw, "name", path)
+    if name in seen_names:
+        raise DomainValidationError(
+            f"{path}: duplicate archetype name {name!r}",
+        )
+    seen_names.add(name)
+    intent = _require_str(raw, "intent", path)
+    admission = _require_str(raw, "admission", path)
+    state_change = _require_str(raw, "state_change", path)
+    description = _require_str(raw, "description", path)
+    topic = _validate_archetype_topic(
+        path=path, name=name, topic=raw.get("topic"), topic_set=topic_set
+    )
+    role_specs = _parse_role_specs(
+        path=path, name=name, raw_specs=raw.get("role_spans"), slot_set=slot_set
+    )
+    example_utterances = _parse_str_list(
+        path=path,
+        name=name,
+        raw=raw.get("example_utterances"),
+        field="example_utterances",
+    )
+    phrasings = _resolve_phrasings(path=path, name=name, raw=raw)
+    return _build_archetype_spec(
+        path=path,
+        domain=domain,
+        raw=raw,
+        name=name,
+        intent=intent,
+        admission=admission,
+        state_change=state_change,
+        description=description,
+        topic=topic,
+        role_specs=role_specs,
+        example_utterances=example_utterances,
+        phrasings=phrasings,
+    )
 
 
 def _load_archetypes(
@@ -467,115 +693,18 @@ def _load_archetypes(
     slot_set = set(allowed_slots)
     topic_set = set(allowed_topics)
     seen_names: set[str] = set()
-    out: list[ArchetypeSpec] = []
-    for i, raw in enumerate(raw_list):
-        if not isinstance(raw, dict):
-            raise DomainValidationError(
-                f"{path}: archetypes[{i}] must be a mapping",
-            )
-        name = _require_str(raw, "name", path)
-        if name in seen_names:
-            raise DomainValidationError(
-                f"{path}: duplicate archetype name {name!r}",
-            )
-        seen_names.add(name)
-        intent = _require_str(raw, "intent", path)
-        admission = _require_str(raw, "admission", path)
-        state_change = _require_str(raw, "state_change", path)
-        description = _require_str(raw, "description", path)
-
-        topic = raw.get("topic")
-        if topic is not None and (
-            not isinstance(topic, str) or topic not in topic_set
-        ):
-            raise DomainValidationError(
-                f"{path}: archetype {name!r} topic {topic!r} not in "
-                f"domain.topics {sorted(topic_set)}",
-            )
-
-        role_specs_raw = raw.get("role_spans") or []
-        if not isinstance(role_specs_raw, list):
-            raise DomainValidationError(
-                f"{path}: archetype {name!r}: role_spans must be a list",
-            )
-        role_specs: list[RoleSpec] = []
-        for j, rs in enumerate(role_specs_raw):
-            if not isinstance(rs, dict):
-                raise DomainValidationError(
-                    f"{path}: archetype {name!r} "
-                    f"role_spans[{j}] must be a mapping",
-                )
-            role = _require_str(rs, "role", path)
-            slot = _require_str(rs, "slot", path)
-            count = rs.get("count", 1)
-            if role not in ROLE_LABELS:
-                raise DomainValidationError(
-                    f"{path}: archetype {name!r}: unknown role {role!r}",
-                )
-            if slot not in slot_set:
-                raise DomainValidationError(
-                    f"{path}: archetype {name!r}: slot {slot!r} not "
-                    f"in domain.slots {sorted(slot_set)}",
-                )
-            if not isinstance(count, int) or count < 0:
-                raise DomainValidationError(
-                    f"{path}: archetype {name!r}: "
-                    f"role_spans[{j}].count must be a non-negative int",
-                )
-            role_specs.append(RoleSpec(role=role, slot=slot, count=count))  # type: ignore[arg-type]
-
-        example_utterances = raw.get("example_utterances") or []
-        if not isinstance(example_utterances, list):
-            raise DomainValidationError(
-                f"{path}: archetype {name!r}: example_utterances must be a list",
-            )
-        example_utterances_t = tuple(
-            str(x) for x in example_utterances if isinstance(x, str)
+    return tuple(
+        _load_one_archetype(
+            path=path,
+            domain=domain,
+            i=i,
+            raw=raw,
+            seen_names=seen_names,
+            slot_set=slot_set,
+            topic_set=topic_set,
         )
-        phrasings_raw = raw.get("phrasings") or []
-        if not isinstance(phrasings_raw, list):
-            raise DomainValidationError(
-                f"{path}: archetype {name!r}: phrasings must be a list",
-            )
-        phrasings = tuple(
-            str(x) for x in phrasings_raw if isinstance(x, str)
-        )
-        # Allow phrasings_path override for external files:
-        phrasings_path = raw.get("phrasings_path")
-        if isinstance(phrasings_path, str) and phrasings_path.strip():
-            ppath = path.parent / phrasings_path
-            if ppath.is_file():
-                lines = tuple(
-                    line.strip()
-                    for line in ppath.read_text(encoding="utf-8").splitlines()
-                    if line.strip() and not line.strip().startswith("#")
-                )
-                phrasings = phrasings + lines
-
-        try:
-            spec = ArchetypeSpec(
-                name=name,
-                domain=domain,  # type: ignore[arg-type]
-                intent=intent,  # type: ignore[arg-type]
-                admission=admission,  # type: ignore[arg-type]
-                state_change=state_change,  # type: ignore[arg-type]
-                topic=topic,
-                role_spans=tuple(role_specs),
-                n_gold=int(raw.get("n_gold", 30)),
-                n_sdg=int(raw.get("n_sdg", 150)),
-                target_min_chars=int(raw.get("target_min_chars", 20)),
-                target_max_chars=int(raw.get("target_max_chars", 200)),
-                batch_size=int(raw.get("batch_size", 10)),
-                description=description,
-                example_utterances=example_utterances_t,
-                phrasings=phrasings,
-            )
-        except ValueError as exc:
-            raise DomainValidationError(
-                f"{path}: archetype {name!r}: {exc}",
-            ) from exc
-        out.append(spec)
-    return tuple(out)
+        for i, raw in enumerate(raw_list)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -622,8 +751,7 @@ def load_domain(
     name = _require_str(manifest, "name", manifest_path)
     if name != domain_dir.name:
         raise DomainValidationError(
-            f"{manifest_path}: name={name!r} != directory name "
-            f"{domain_dir.name!r}",
+            f"{manifest_path}: name={name!r} != directory name {domain_dir.name!r}",
         )
     description = _opt_str(manifest, "description")
     intended_content = _opt_str(manifest, "intended_content")
@@ -633,7 +761,8 @@ def load_domain(
     # by the gpt-4o cross-judge in B'.7).  Falls back to a generic
     # phrasing when absent.
     speaker_voice = _opt_str(
-        manifest, "speaker_voice",
+        manifest,
+        "speaker_voice",
         "an unspecified speaker (use natural prose for the domain)",
     )
     slots = _require_list_of_str(manifest, "slots", manifest_path)
@@ -642,10 +771,7 @@ def load_domain(
     # ── gazetteer (optional) ──────────────────────────────────────
     gaz_path_name = _opt_str(manifest, "gazetteer_path", "gazetteer.yaml")
     gaz_path = domain_dir / gaz_path_name
-    if gaz_path.is_file():
-        gazetteer = _load_gazetteer(gaz_path, slots)
-    else:
-        gazetteer = ()
+    gazetteer = _load_gazetteer(gaz_path, slots) if gaz_path.is_file() else ()
 
     # Every gazetteer entry's topic should appear in the topic vocab
     # — check now so the error references the gazetteer location.
@@ -668,9 +794,7 @@ def load_domain(
     for node in diversity.nodes:
         if node.source != "gazetteer":
             continue
-        matching = [
-            e for e in gazetteer if e.slot in node.filter_slots
-        ]
+        matching = [e for e in gazetteer if e.slot in node.filter_slots]
         if not matching:
             raise DomainValidationError(
                 f"{div_path}: diversity node {node.qualified_name!r} "
@@ -681,11 +805,16 @@ def load_domain(
 
     # ── archetypes (required) ─────────────────────────────────────
     arch_path_name = _opt_str(
-        manifest, "archetypes_path", "archetypes.yaml",
+        manifest,
+        "archetypes_path",
+        "archetypes.yaml",
     )
     arch_path = domain_dir / arch_path_name
     archetypes = _load_archetypes(
-        arch_path, domain=name, allowed_slots=slots, allowed_topics=topics,
+        arch_path,
+        domain=name,
+        allowed_slots=slots,
+        allowed_topics=topics,
     )
 
     # ── Paths (with defaults) ─────────────────────────────────────
@@ -694,9 +823,7 @@ def load_domain(
     adapter_checkpoint_root = adapter_checkpoint_root or (
         _repo_root / "adapters/checkpoints" / name
     )
-    adapter_deployed_root = adapter_deployed_root or (
-        Path.home() / ".ncms/adapters" / name
-    )
+    adapter_deployed_root = adapter_deployed_root or (Path.home() / ".ncms/adapters" / name)
 
     paths_block = manifest.get("paths") or {}
     if not isinstance(paths_block, dict):
@@ -722,13 +849,17 @@ def load_domain(
             f"{manifest_path}: 'adapter' must be a mapping if present",
         )
     out_root = _resolve_path(
-        adapter_block.get("output_root"), adapter_checkpoint_root,
+        adapter_block.get("output_root"),
+        adapter_checkpoint_root,
     )
     deployed_root = _resolve_path(
-        adapter_block.get("deployed_root"), adapter_deployed_root,
+        adapter_block.get("deployed_root"),
+        adapter_deployed_root,
     )
     default_version = _opt_str(adapter_block, "default_version", "v9") or _opt_str(
-        manifest, "default_adapter_version", "v9",
+        manifest,
+        "default_adapter_version",
+        "v9",
     )
 
     spec = DomainSpec(
@@ -840,9 +971,7 @@ def _validate_archetype_entity_sources(spec: DomainSpec) -> None:
     it can't fulfill.
     """
     slots_with_gaz = {e.slot for e in spec.gazetteer}
-    has_inline = any(
-        n.source == "inline" for n in spec.diversity.nodes
-    )
+    has_inline = any(n.source == "inline" for n in spec.diversity.nodes)
     gaps: list[str] = []
     for a in spec.archetypes:
         for rs in a.role_spans:
@@ -856,8 +985,7 @@ def _validate_archetype_entity_sources(spec: DomainSpec) -> None:
                 # slot.  Good enough for open-vocab domains.
                 continue
             gaps.append(
-                f"archetype {a.name!r} needs role={rs.role!r} "
-                f"slot={rs.slot!r}",
+                f"archetype {a.name!r} needs role={rs.role!r} slot={rs.slot!r}",
             )
     if gaps:
         raise DomainValidationError(

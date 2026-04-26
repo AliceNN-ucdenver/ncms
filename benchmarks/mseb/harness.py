@@ -43,6 +43,7 @@ from pathlib import Path
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -111,12 +112,14 @@ class FeatureSet:
         """
         ov: dict[str, object] = {}
         if not self.temporal:
-            ov.update({
-                "temporal_enabled": False,
-                "scoring_weight_temporal": 0.0,
-                "scoring_weight_hierarchy": 0.0,
-                "scoring_weight_recency": 0.0,
-            })
+            ov.update(
+                {
+                    "temporal_enabled": False,
+                    "scoring_weight_temporal": 0.0,
+                    "scoring_weight_hierarchy": 0.0,
+                    "scoring_weight_recency": 0.0,
+                }
+            )
         return ov
 
 
@@ -141,7 +144,10 @@ def _parse_feature_set(args: argparse.Namespace) -> FeatureSet:
 
 
 async def _run_queries(
-    backend, queries: list[GoldQuery], *, top_k: int = 10,
+    backend,
+    queries: list[GoldQuery],
+    *,
+    top_k: int = 10,
 ) -> list[Prediction]:
     """Run each gold query through the backend's search and capture
     per-head SLM classification for forensic analysis.
@@ -170,11 +176,14 @@ async def _run_queries(
         try:
             if search_with_stages is not None:
                 rankings, stages = await search_with_stages(
-                    query=q.text, limit=top_k, capture_stages=True,
+                    query=q.text,
+                    limit=top_k,
+                    capture_stages=True,
                 )
             else:
                 rankings = await backend.search(
-                    query=q.text, limit=top_k,
+                    query=q.text,
+                    limit=top_k,
                 )
         except Exception as exc:  # pragma: no cover — surface in log
             logger.warning("qid=%s search failed: %s", q.qid, exc)
@@ -186,7 +195,9 @@ async def _run_queries(
                 head_outputs = classify(q.text) or {}
             except Exception as exc:  # pragma: no cover — forensic path
                 logger.debug(
-                    "qid=%s classify_query failed: %s", q.qid, exc,
+                    "qid=%s classify_query failed: %s",
+                    q.qid,
+                    exc,
                 )
         intent_conf = head_outputs.get("intent_conf")
 
@@ -209,22 +220,23 @@ async def _run_queries(
                 return None
             return bool(set(ids[:_k]) & _gold)
 
-        preds.append(Prediction(
-            qid=q.qid,
-            ranked_mids=[r.mid for r in rankings],
-            latency_ms=latency_ms,
-            head_outputs=head_outputs,
-            intent_confidence=(
-                float(intent_conf) if isinstance(intent_conf, (int, float))
-                else None
-            ),
-            gold_in_bm25=_gold_in_stage("bm25"),
-            gold_in_splade=_gold_in_stage("splade"),
-            gold_in_rrf_fused=_gold_in_stage("rrf_fused"),
-            gold_in_expanded=_gold_in_stage("expanded"),
-            gold_in_scored=_gold_in_stage("scored"),
-            stage_recall_top_k=stage_recall_top_k,
-        ))
+        preds.append(
+            Prediction(
+                qid=q.qid,
+                ranked_mids=[r.mid for r in rankings],
+                latency_ms=latency_ms,
+                head_outputs=head_outputs,
+                intent_confidence=(
+                    float(intent_conf) if isinstance(intent_conf, (int, float)) else None
+                ),
+                gold_in_bm25=_gold_in_stage("bm25"),
+                gold_in_splade=_gold_in_stage("splade"),
+                gold_in_rrf_fused=_gold_in_stage("rrf_fused"),
+                gold_in_expanded=_gold_in_stage("expanded"),
+                gold_in_scored=_gold_in_stage("scored"),
+                stage_recall_top_k=stage_recall_top_k,
+            )
+        )
     return preds
 
 
@@ -257,18 +269,24 @@ async def run(cfg: RunConfig) -> dict[str, object]:
     )
     logger.info(
         "MSEB RUN START  domain=%s backend=%s adapter=%s",
-        cfg.domain, cfg.backend, cfg.adapter_domain,
+        cfg.domain,
+        cfg.backend,
+        cfg.adapter_domain,
     )
     logger.info(
         "MSEB RUN corpus=%d memories  queries=%d  top_k=%d",
-        len(corpus), len(queries), cfg.top_k,
+        len(corpus),
+        len(queries),
+        cfg.top_k,
     )
     logger.info(
-        "MSEB RUN feature_set=%s", cfg.feature_set.to_dict(),
+        "MSEB RUN feature_set=%s",
+        cfg.feature_set.to_dict(),
     )
     logger.info(
         "MSEB RUN backend_kwargs=%s run_id=%s",
-        cfg.backend_kwargs, cfg.run_id,
+        cfg.backend_kwargs,
+        cfg.run_id,
     )
     logger.info(
         "=" * 72,
@@ -319,21 +337,26 @@ async def run(cfg: RunConfig) -> dict[str, object]:
     preds_path = cfg.out_dir / f"{cfg.run_id}.predictions.jsonl"
     with preds_path.open("w", encoding="utf-8") as fh:
         for p in preds:
-            fh.write(json.dumps({
-                "qid": p.qid,
-                "ranked_mids": p.ranked_mids,
-                "latency_ms": p.latency_ms,
-                "intent_confidence": p.intent_confidence,
-                "head_outputs": p.head_outputs,
-                # Per-stage gold-recall (None when backend doesn't
-                # expose per-stage candidates -- e.g. mem0 baseline).
-                "gold_in_bm25": p.gold_in_bm25,
-                "gold_in_splade": p.gold_in_splade,
-                "gold_in_rrf_fused": p.gold_in_rrf_fused,
-                "gold_in_expanded": p.gold_in_expanded,
-                "gold_in_scored": p.gold_in_scored,
-                "stage_recall_top_k": p.stage_recall_top_k,
-            }, ensure_ascii=False))
+            fh.write(
+                json.dumps(
+                    {
+                        "qid": p.qid,
+                        "ranked_mids": p.ranked_mids,
+                        "latency_ms": p.latency_ms,
+                        "intent_confidence": p.intent_confidence,
+                        "head_outputs": p.head_outputs,
+                        # Per-stage gold-recall (None when backend doesn't
+                        # expose per-stage candidates -- e.g. mem0 baseline).
+                        "gold_in_bm25": p.gold_in_bm25,
+                        "gold_in_splade": p.gold_in_splade,
+                        "gold_in_rrf_fused": p.gold_in_rrf_fused,
+                        "gold_in_expanded": p.gold_in_expanded,
+                        "gold_in_scored": p.gold_in_scored,
+                        "stage_recall_top_k": p.stage_recall_top_k,
+                    },
+                    ensure_ascii=False,
+                )
+            )
             fh.write("\n")
 
     # Aggregate per-stage gold recall into the results.json + summary.
@@ -352,16 +375,21 @@ async def run(cfg: RunConfig) -> dict[str, object]:
         }
 
     stage_recall_block = {
-        f"gold_in_bm25@{preds[0].stage_recall_top_k if preds else 50}":
-            _stage_recall("gold_in_bm25"),
-        f"gold_in_splade@{preds[0].stage_recall_top_k if preds else 50}":
-            _stage_recall("gold_in_splade"),
-        f"gold_in_rrf_fused@{preds[0].stage_recall_top_k if preds else 50}":
-            _stage_recall("gold_in_rrf_fused"),
-        f"gold_in_expanded@{preds[0].stage_recall_top_k if preds else 50}":
-            _stage_recall("gold_in_expanded"),
-        f"gold_in_scored@{preds[0].stage_recall_top_k if preds else 50}":
-            _stage_recall("gold_in_scored"),
+        f"gold_in_bm25@{preds[0].stage_recall_top_k if preds else 50}": _stage_recall(
+            "gold_in_bm25"
+        ),
+        f"gold_in_splade@{preds[0].stage_recall_top_k if preds else 50}": _stage_recall(
+            "gold_in_splade"
+        ),
+        f"gold_in_rrf_fused@{preds[0].stage_recall_top_k if preds else 50}": _stage_recall(
+            "gold_in_rrf_fused"
+        ),
+        f"gold_in_expanded@{preds[0].stage_recall_top_k if preds else 50}": _stage_recall(
+            "gold_in_expanded"
+        ),
+        f"gold_in_scored@{preds[0].stage_recall_top_k if preds else 50}": _stage_recall(
+            "gold_in_scored"
+        ),
     }
     if any(v is not None for v in stage_recall_block.values()):
         # Re-write results.json with the stage-recall block injected
@@ -405,73 +433,103 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s  %(message)s",
     )
     ap = argparse.ArgumentParser(description="MSEB harness: run one domain")
-    ap.add_argument("--domain", required=True,
-                    help="Domain identifier, e.g. mseb_swe / mseb_clinical / mseb_convo")
-    ap.add_argument("--build-dir", type=Path, required=True,
-                    help="Directory containing corpus.jsonl + queries.jsonl")
-    ap.add_argument("--adapter-domain", default=None,
-                    help="LoRA adapter domain (software_dev / clinical / conversational).  "
-                         "Required when SLM is on (NCMS backend only).")
-    ap.add_argument("--out-dir", type=Path, default=None,
-                    help="Where to write results (default: benchmarks/results/mseb/<domain>/)")
+    ap.add_argument(
+        "--domain",
+        required=True,
+        help="Domain identifier, e.g. mseb_swe / mseb_clinical / mseb_convo",
+    )
+    ap.add_argument(
+        "--build-dir",
+        type=Path,
+        required=True,
+        help="Directory containing corpus.jsonl + queries.jsonl",
+    )
+    ap.add_argument(
+        "--adapter-domain",
+        default=None,
+        help="LoRA adapter domain (software_dev / clinical / conversational).  "
+        "Required when SLM is on (NCMS backend only).",
+    )
+    ap.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="Where to write results (default: benchmarks/results/mseb/<domain>/)",
+    )
     ap.add_argument("--top-k", type=int, default=10)
 
     # Backend selection — ``ncms`` is the reference; ``mem0`` is the
     # competitor.  Additional backends register themselves in
     # ``benchmarks/mseb/backends/__init__.py``.
     ap.add_argument(
-        "--backend", default="ncms", choices=sorted(BACKENDS),
+        "--backend",
+        default="ncms",
+        choices=sorted(BACKENDS),
         help="Which memory backend to evaluate (default: ncms)",
     )
     # mem0-specific knobs — ignored by other backends.
     ap.add_argument(
-        "--mem0-infer", action="store_true",
+        "--mem0-infer",
+        action="store_true",
         help="mem0 only: enable LLM fact extraction on add() "
-             "(default: off, stores content verbatim)",
+        "(default: off, stores content verbatim)",
     )
     ap.add_argument(
-        "--mem0-rerank", action="store_true",
-        help="mem0 only: enable mem0's LLM reranker on search "
-             "(default: off)",
+        "--mem0-rerank",
+        action="store_true",
+        help="mem0 only: enable mem0's LLM reranker on search (default: off)",
     )
     # NCMS scoring-weight overrides (for ablation sweeps without
     # editing the backend each time).
     ap.add_argument(
-        "--temporal-weight", type=float, default=None,
+        "--temporal-weight",
+        type=float,
+        default=None,
         help="Override scoring_weight_temporal (default from NCMSConfig is 0.2).",
     )
     ap.add_argument(
-        "--hierarchy-weight", type=float, default=None,
+        "--hierarchy-weight",
+        type=float,
+        default=None,
         help="Override scoring_weight_hierarchy (default via backend is 0.5).",
     )
     ap.add_argument(
-        "--graph-weight", type=float, default=None,
+        "--graph-weight",
+        type=float,
+        default=None,
         help="Override scoring_weight_graph (default 0.3).",
     )
     ap.add_argument(
-        "--bm25-weight", type=float, default=None,
+        "--bm25-weight",
+        type=float,
+        default=None,
         help="Override scoring_weight_bm25 (default 0.6).",
     )
     ap.add_argument(
-        "--splade-weight", type=float, default=None,
+        "--splade-weight",
+        type=float,
+        default=None,
         help="Override scoring_weight_splade (default 0.3).",
     )
 
     # Ablation flags — two master toggles mirroring NCMSConfig.
     ap.add_argument(
-        "--temporal-off", action="store_true",
+        "--temporal-off",
+        action="store_true",
         help="Disable the temporal reasoning stack (temporal_enabled=False): "
-             "TLG grammar, reconciliation, episodes, intent classifier, "
-             "intent routing, temporal + hierarchy scoring weights.",
+        "TLG grammar, reconciliation, episodes, intent classifier, "
+        "intent routing, temporal + hierarchy scoring weights.",
     )
     ap.add_argument(
-        "--slm-off", action="store_true",
+        "--slm-off",
+        action="store_true",
         help="Disable the 5-head LoRA classifier (intent_slot=None at "
-             "MemoryService construction).  Ingest falls back to the "
-             "regex/heuristic chain.",
+        "MemoryService construction).  Ingest falls back to the "
+        "regex/heuristic chain.",
     )
     ap.add_argument(
-        "--head", default=None,
+        "--head",
+        default=None,
         choices=["admission", "state_change", "topic", "intent", "slot"],
         help="Evaluate ONE head in isolation.",
     )
@@ -482,55 +540,65 @@ def main() -> None:
     # ONE downstream consequence of the SLM's classification while
     # leaving the SLM itself enabled and producing labels.
     ap.add_argument(
-        "--no-populate-domains", action="store_true",
+        "--no-populate-domains",
+        action="store_true",
         help="[Phase G ablation] Set slm_populate_domains=False — "
-             "disables auto-appending the topic head's prediction "
-             "to Memory.domains.  Hypothesis: domain auto-expansion "
-             "widens the domain-filter surface area and adds noise "
-             "to retrieval.",
+        "disables auto-appending the topic head's prediction "
+        "to Memory.domains.  Hypothesis: domain auto-expansion "
+        "widens the domain-filter surface area and adds noise "
+        "to retrieval.",
     )
     ap.add_argument(
-        "--no-reconciliation-penalty", action="store_true",
+        "--no-reconciliation-penalty",
+        action="store_true",
         help="[Phase G ablation] Zero out reconciliation supersession "
-             "+ conflict penalties.  Hypothesis: SLM-driven state "
-             "labels create more supersession edges; the per-result "
-             "penalty pushes correct memories below their replacements.",
+        "+ conflict penalties.  Hypothesis: SLM-driven state "
+        "labels create more supersession edges; the per-result "
+        "penalty pushes correct memories below their replacements.",
     )
     ap.add_argument(
-        "--slm-confidence-threshold", type=float, default=None,
+        "--slm-confidence-threshold",
+        type=float,
+        default=None,
         help="[Phase G ablation] Override slm_confidence_threshold "
-             "(default 0.3).  Use 0.7 to revert to the v6/v7-era "
-             "floor — tests whether the lowered threshold admits "
-             "low-confidence labels that perturb retrieval.",
+        "(default 0.3).  Use 0.7 to revert to the v6/v7-era "
+        "floor — tests whether the lowered threshold admits "
+        "low-confidence labels that perturb retrieval.",
     )
     ap.add_argument(
-        "--intent-alignment-weight", type=float, default=None,
+        "--intent-alignment-weight",
+        type=float,
+        default=None,
         help="[Phase H.1 ablation] Override "
-             "scoring_weight_intent_alignment (default 0.5).  Use "
-             "0.0 to disable the per-memory intent × QueryIntent "
-             "alignment bonus — tests whether the SLM's preference-"
-             "intent label adds retrieval lift on PATTERN_LOOKUP / "
-             "STRATEGIC_REFLECTION queries.",
+        "scoring_weight_intent_alignment (default 0.5).  Use "
+        "0.0 to disable the per-memory intent × QueryIntent "
+        "alignment bonus — tests whether the SLM's preference-"
+        "intent label adds retrieval lift on PATTERN_LOOKUP / "
+        "STRATEGIC_REFLECTION queries.",
     )
     ap.add_argument(
-        "--role-grounding-weight", type=float, default=None,
+        "--role-grounding-weight",
+        type=float,
+        default=None,
         help="[Phase H.3 ablation] Override "
-             "scoring_weight_role_grounding (default 0.5).  Use "
-             "0.0 to disable the role-grounding bonus.  Tests "
-             "whether boosting memories where the query entity has "
-             "role=primary in the SLM's per-span output (vs "
-             "casual/not_relevant) lifts retrieval across all "
-             "query intent classes.",
+        "scoring_weight_role_grounding (default 0.5).  Use "
+        "0.0 to disable the role-grounding bonus.  Tests "
+        "whether boosting memories where the query entity has "
+        "role=primary in the SLM's per-span output (vs "
+        "casual/not_relevant) lifts retrieval across all "
+        "query intent classes.",
     )
     ap.add_argument(
-        "--state-change-alignment-weight", type=float, default=None,
+        "--state-change-alignment-weight",
+        type=float,
+        default=None,
         help="[Phase H.2 ablation] Override "
-             "scoring_weight_state_change_alignment (default 0.5).  "
-             "Use 0.0 to disable the per-memory state_change × "
-             "QueryIntent alignment bonus.  Tests whether boosting "
-             "memories tagged state_change=declaration or "
-             "state_change=retirement on CHANGE_DETECTION queries "
-             "lifts retrieval (small MSEB surface: 5 queries).",
+        "scoring_weight_state_change_alignment (default 0.5).  "
+        "Use 0.0 to disable the per-memory state_change × "
+        "QueryIntent alignment bonus.  Tests whether boosting "
+        "memories tagged state_change=declaration or "
+        "state_change=retirement on CHANGE_DETECTION queries "
+        "lifts retrieval (small MSEB surface: 5 queries).",
     )
 
     args = ap.parse_args()
@@ -568,13 +636,9 @@ def main() -> None:
         if args.slm_confidence_threshold is not None:
             weight_overrides["slm_confidence_threshold"] = args.slm_confidence_threshold
         if args.intent_alignment_weight is not None:
-            weight_overrides["scoring_weight_intent_alignment"] = (
-                args.intent_alignment_weight
-            )
+            weight_overrides["scoring_weight_intent_alignment"] = args.intent_alignment_weight
         if args.role_grounding_weight is not None:
-            weight_overrides["scoring_weight_role_grounding"] = (
-                args.role_grounding_weight
-            )
+            weight_overrides["scoring_weight_role_grounding"] = args.role_grounding_weight
         if args.state_change_alignment_weight is not None:
             weight_overrides["scoring_weight_state_change_alignment"] = (
                 args.state_change_alignment_weight
@@ -594,12 +658,18 @@ def main() -> None:
         backend_kwargs=backend_kwargs,
     )
     result = asyncio.run(run(cfg))
-    print(json.dumps({
-        "run_id": run_id,
-        "total_queries": result["total_queries"],
-        "overall": result["overall"],
-        "out_dir": str(out_dir),
-    }, indent=2), flush=True)
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "total_queries": result["total_queries"],
+                "overall": result["overall"],
+                "out_dir": str(out_dir),
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
 
     # Hard-exit to bypass asyncio cleanup hang at full corpus scale.
     # NCMS's GLiNER/SPLADE threadpools + sentence-transformers tokenizer
@@ -608,6 +678,7 @@ def main() -> None:
     # after results.json / summary.md have been written.  We've
     # persisted everything we care about, so fast-exit is safe.
     import os as _os
+
     _os.sys.stdout.flush()
     _os.sys.stderr.flush()
     _os._exit(0)

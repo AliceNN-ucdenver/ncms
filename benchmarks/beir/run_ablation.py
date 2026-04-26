@@ -53,7 +53,8 @@ def parse_args() -> argparse.Namespace:
         help="Output directory for results (default: benchmarks/results)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -117,7 +118,9 @@ def _get_git_sha() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -142,18 +145,22 @@ def _setup_logging(output_dir: str, verbose: bool) -> Path:
     # File handler: full ISO timestamps for durable review
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
 
     # Console handler: shorter timestamps for readability
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    console_handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    console_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-7s %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
 
     logging.basicConfig(level=level, handlers=[file_handler, console_handler])
 
@@ -187,6 +194,7 @@ def _log_run_header(dataset_names: list[str], output_dir: str, log_file: Path) -
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 
     args = parse_args()

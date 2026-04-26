@@ -622,29 +622,29 @@ class TemporalArithmeticResult(BaseModel):
 class TraversalMode(StrEnum):
     """Traversal strategy for hierarchical memory navigation."""
 
-    TOP_DOWN = "top_down"          # Abstract → episodes → atomic
-    BOTTOM_UP = "bottom_up"        # Atomic → episode → abstract
-    TEMPORAL = "temporal"          # Entity state timeline
-    LATERAL = "lateral"            # Episode siblings + related episodes
+    TOP_DOWN = "top_down"  # Abstract → episodes → atomic
+    BOTTOM_UP = "bottom_up"  # Atomic → episode → abstract
+    TEMPORAL = "temporal"  # Entity state timeline
+    LATERAL = "lateral"  # Episode siblings + related episodes
 
 
 class SynthesisMode(StrEnum):
     """Synthesis output mode — controls how retrieved memories are combined."""
 
-    SUMMARY = "summary"            # Brief overview of key points
-    DETAIL = "detail"              # Exhaustive context with evidence
-    TIMELINE = "timeline"          # Chronological narrative
-    COMPARISON = "comparison"      # Before/after or multi-perspective
-    EVIDENCE = "evidence"          # Fact-backed claims with citations
+    SUMMARY = "summary"  # Brief overview of key points
+    DETAIL = "detail"  # Exhaustive context with evidence
+    TIMELINE = "timeline"  # Chronological narrative
+    COMPARISON = "comparison"  # Before/after or multi-perspective
+    EVIDENCE = "evidence"  # Fact-backed claims with citations
 
 
 class TraversalResult(BaseModel):
     """Result of hierarchical traversal from a seed node."""
 
-    seed_id: str                   # Starting memory/node ID
+    seed_id: str  # Starting memory/node ID
     traversal_mode: TraversalMode
     results: list[RecallResult] = Field(default_factory=list)
-    levels_traversed: int = 0      # How many hierarchy levels covered
+    levels_traversed: int = 0  # How many hierarchy levels covered
     path: list[str] = Field(default_factory=list)  # Node IDs in traversal order
 
 
@@ -652,11 +652,11 @@ class TopicCluster(BaseModel):
     """Emergent topic cluster from L4 abstract grouping."""
 
     topic_id: str = Field(default_factory=_uuid)
-    label: str = ""                 # Human-readable topic label (from top entities)
+    label: str = ""  # Human-readable topic label (from top entities)
     entity_keys: list[str] = Field(default_factory=list)  # Shared entities
     abstract_ids: list[str] = Field(default_factory=list)  # Abstract memory IDs
-    episode_ids: list[str] = Field(default_factory=list)   # Contributing episodes
-    confidence: float = 0.0         # Cluster quality score
+    episode_ids: list[str] = Field(default_factory=list)  # Contributing episodes
+    confidence: float = 0.0  # Cluster quality score
     member_count: int = 0
 
 
@@ -665,14 +665,14 @@ class SynthesizedResponse(BaseModel):
 
     query: str
     mode: SynthesisMode
-    content: str                    # The synthesized text
+    content: str  # The synthesized text
     sources: list[str] = Field(default_factory=list)  # Memory IDs used
     source_count: int = 0
-    token_budget: int = 0           # Configured budget
-    tokens_used: int = 0            # Approximate tokens in content
+    token_budget: int = 0  # Configured budget
+    tokens_used: int = 0  # Approximate tokens in content
     traversal: TraversalMode | None = None  # If traversal was used
     topic_cluster: TopicCluster | None = None  # If topic-scoped
-    intent: str = "fact_lookup"     # Classified intent
+    intent: str = "fact_lookup"  # Classified intent
 
 
 # ---------------------------------------------------------------------------
@@ -710,10 +710,10 @@ class DocLinkType(StrEnum):
     """Typed relationships between documents."""
 
     DERIVED_FROM = "derived_from"  # PRD derived from Research, Design from PRD
-    REVIEWS = "reviews"            # Review report reviews a Design
-    SUPERSEDES = "supersedes"      # Design v2 supersedes v1
-    CITES = "cites"                # Document cites another as reference
-    APPROVED_BY = "approved_by"    # Human approval linked to document
+    REVIEWS = "reviews"  # Review report reviews a Design
+    SUPERSEDES = "supersedes"  # Design v2 supersedes v1
+    CITES = "cites"  # Document cites another as reference
+    APPROVED_BY = "approved_by"  # Human approval linked to document
 
 
 class User(BaseModel):
@@ -912,7 +912,12 @@ class PipelineEvent(BaseModel):
 
 
 IntentLabel = Literal[
-    "positive", "negative", "habitual", "difficulty", "choice", "none",
+    "positive",
+    "negative",
+    "habitual",
+    "difficulty",
+    "choice",
+    "none",
 ]
 
 AdmissionDecision = Literal["persist", "ephemeral", "discard"]
@@ -989,26 +994,19 @@ class ExtractedLabel(BaseModel):
     # cue_tags as "no CTLG signal".
     cue_tags: list[dict] = Field(default_factory=list)
 
-    method: str = ""           # backend name that produced this label
-    latency_ms: float = 0.0    # inference wall-time (populated by caller)
+    method: str = ""  # backend name that produced this label
+    latency_ms: float = 0.0  # inference wall-time (populated by caller)
 
     def is_intent_confident(self, threshold: float = 0.7) -> bool:
         return self.intent_confidence >= threshold
 
     def is_topic_confident(self, threshold: float = 0.7) -> bool:
-        return (
-            self.topic_confidence is not None
-            and self.topic_confidence >= threshold
-        )
+        return self.topic_confidence is not None and self.topic_confidence >= threshold
 
     def is_admission_confident(self, threshold: float = 0.7) -> bool:
-        return (
-            self.admission_confidence is not None
-            and self.admission_confidence >= threshold
-        )
+        return self.admission_confidence is not None and self.admission_confidence >= threshold
 
     def is_state_change_confident(self, threshold: float = 0.7) -> bool:
         return (
-            self.state_change_confidence is not None
-            and self.state_change_confidence >= threshold
+            self.state_change_confidence is not None and self.state_change_confidence >= threshold
         )

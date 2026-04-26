@@ -24,12 +24,12 @@ import logging
 import sys
 from pathlib import Path
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -47,13 +47,15 @@ def load_predictions(path: Path) -> list[Prediction]:
         if not line:
             continue
         row = json.loads(line)
-        out.append(Prediction(
-            qid=row["qid"],
-            ranked_mids=row.get("ranked_mids") or [],
-            latency_ms=float(row.get("latency_ms") or 0),
-            head_outputs=row.get("head_outputs") or {},
-            intent_confidence=row.get("intent_confidence"),
-        ))
+        out.append(
+            Prediction(
+                qid=row["qid"],
+                ranked_mids=row.get("ranked_mids") or [],
+                latency_ms=float(row.get("latency_ms") or 0),
+                head_outputs=row.get("head_outputs") or {},
+                intent_confidence=row.get("intent_confidence"),
+            )
+        )
     return out
 
 
@@ -72,21 +74,32 @@ def main() -> None:
     queries = load_queries(args.queries)
 
     result = aggregate(preds, queries)
-    args.out.write_text(json.dumps(
-        result, indent=2, sort_keys=True, default=str,
-    ))
+    args.out.write_text(
+        json.dumps(
+            result,
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
     md = args.out.with_suffix(".md")
     md.write_text(markdown_summary(result, run_id=args.preds.stem))
     logger.info("wrote %s + %s", args.out, md)
     # Short summary to stdout
-    print(json.dumps({
-        "overall": result["overall"],
-        "per_class": {
-            k: {"n": v["n"], "r@1": v["r@1"], "r@5": v["r@5"]}
-            for k, v in result.get("per_class", {}).items()
-            if v["n"]
-        },
-    }, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "overall": result["overall"],
+                "per_class": {
+                    k: {"n": v["n"], "r@1": v["r@1"], "r@5": v["r@5"]}
+                    for k, v in result.get("per_class", {}).items()
+                    if v["n"]
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

@@ -208,9 +208,7 @@ def _required_entities_block(ex: GoldExample) -> str:
         return "(no required entities — judge purely on scenario fit)"
     lines = []
     for rs in required:
-        lines.append(
-            f"  - {rs.surface!r} (role={rs.role}, slot={rs.slot})"
-        )
+        lines.append(f"  - {rs.surface!r} (role={rs.role}, slot={rs.slot})")
     return "\n".join(lines)
 
 
@@ -225,13 +223,14 @@ def _archetype_of(ex: GoldExample) -> str:
     idx = src.find(marker)
     if idx < 0:
         return src or "unknown"
-    tail = src[idx + len(marker):]
+    tail = src[idx + len(marker) :]
     end = tail.find(" ")
     return tail if end < 0 else tail[:end]
 
 
 def _archetype_for_row(
-    ex: GoldExample, archetype_lookup: dict,
+    ex: GoldExample,
+    archetype_lookup: dict,
 ) -> ArchetypeSpec | None:
     """Resolve the row's :class:`ArchetypeSpec` from its source string.
 
@@ -282,18 +281,23 @@ async def _judge_one(
     )
     try:
         result = await call_llm_json(
-            prompt=prompt, model=model, api_base=api_base,
-            max_tokens=400, temperature=0.0,
+            prompt=prompt,
+            model=model,
+            api_base=api_base,
+            max_tokens=400,
+            temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 — judge non-fatal
         logger.warning(
             "v9 judge failed on text[:60]=%r: %s",
-            ex.text[:60], exc,
+            ex.text[:60],
+            exc,
         )
         return None
     if not isinstance(result, dict):
         logger.warning(
-            "v9 judge returned non-dict: %r", type(result).__name__,
+            "v9 judge returned non-dict: %r",
+            type(result).__name__,
         )
         return None
     verdict = str(result.get("verdict") or "").lower()
@@ -301,7 +305,8 @@ async def _judge_one(
         # Unclassifiable → treat as unfaithful (conservative).
         verdict = "unfaithful"
     failed_checks = [
-        str(c).lower() for c in (result.get("failed_checks") or [])
+        str(c).lower()
+        for c in (result.get("failed_checks") or [])
         if isinstance(c, str) and str(c).lower() in _VALID_CHECKS
     ]
     return {
@@ -364,7 +369,9 @@ async def judge_corpus(
     rows = [r for r in rows if r.text.strip()]
     if not rows:
         return DomainJudgeResult(
-            domain=domain, n_sampled=0, pct_faithful=0.0,
+            domain=domain,
+            n_sampled=0,
+            pct_faithful=0.0,
         )
 
     rng = random.Random(seed)
@@ -386,7 +393,8 @@ async def judge_corpus(
         sample = rng.sample(rows, min(n_samples, len(rows)))
 
     result = DomainJudgeResult(
-        domain=domain, n_sampled=len(sample),
+        domain=domain,
+        n_sampled=len(sample),
     )
     result.verdicts = {v: 0 for v in _VALID_VERDICTS}
 
@@ -397,8 +405,10 @@ async def judge_corpus(
             {**{v: 0 for v in _VALID_VERDICTS}, "failed": 0},
         )
         j = await _judge_one(
-            ex, archetype_lookup=archetype_lookup,
-            model=model, api_base=api_base,
+            ex,
+            archetype_lookup=archetype_lookup,
+            model=model,
+            api_base=api_base,
         )
         if j is None:
             # Judge LLM unavailable / unknown archetype — count as
@@ -411,29 +421,32 @@ async def judge_corpus(
         result.verdicts[j["verdict"]] += 1
         arch_bucket[j["verdict"]] += 1
         for c in j["failed_checks"]:
-            result.failed_check_counts[c] = (
-                result.failed_check_counts.get(c, 0) + 1
-            )
+            result.failed_check_counts[c] = result.failed_check_counts.get(c, 0) + 1
         if j["verdict"] != "faithful":
-            result.failures.append({
-                "text": ex.text[:200],
-                "archetype": arch_name,
-                "labels": {
-                    "intent": ex.intent,
-                    "admission": ex.admission,
-                    "state_change": ex.state_change,
-                    "topic": ex.topic,
-                    "slots": ex.slots,
-                    "role_spans": _role_spans_summary_from_ex(ex),
-                },
-                "verdict": j["verdict"],
-                "issues": j["issues"],
-                "failed_checks": j["failed_checks"],
-            })
+            result.failures.append(
+                {
+                    "text": ex.text[:200],
+                    "archetype": arch_name,
+                    "labels": {
+                        "intent": ex.intent,
+                        "admission": ex.admission,
+                        "state_change": ex.state_change,
+                        "topic": ex.topic,
+                        "slots": ex.slots,
+                        "role_spans": _role_spans_summary_from_ex(ex),
+                    },
+                    "verdict": j["verdict"],
+                    "issues": j["issues"],
+                    "failed_checks": j["failed_checks"],
+                }
+            )
         if i % 20 == 0:
             logger.info(
                 "[v9 judge] %s: judged %d/%d (faithful=%d)",
-                domain, i, len(sample), result.verdicts["faithful"],
+                domain,
+                i,
+                len(sample),
+                result.verdicts["faithful"],
             )
 
     total = sum(result.verdicts.values()) or 1
@@ -445,9 +458,7 @@ def _role_spans_summary_from_ex(ex: GoldExample) -> str:
     """Compact role-spans repr for the failures list (cosmetic)."""
     if not ex.role_spans:
         return "(none)"
-    return "[" + ", ".join(
-        f"{rs.role}:{rs.slot}={rs.canonical!r}" for rs in ex.role_spans
-    ) + "]"
+    return "[" + ", ".join(f"{rs.role}:{rs.slot}={rs.canonical!r}" for rs in ex.role_spans) + "]"
 
 
 def sync_judge_corpus(**kwargs) -> DomainJudgeResult:
@@ -458,10 +469,7 @@ def sync_judge_corpus(**kwargs) -> DomainJudgeResult:
 def format_report(result: DomainJudgeResult) -> str:
     """Render a short human-readable report of ``result``."""
     lines: list[str] = []
-    lines.append(
-        f"=== v9 judge: domain={result.domain} "
-        f"sampled={result.n_sampled} ==="
-    )
+    lines.append(f"=== v9 judge: domain={result.domain} sampled={result.n_sampled} ===")
     lines.append(f"  pct_faithful: {result.pct_faithful:.1f}%")
     lines.append(f"  verdicts:     {result.verdicts}")
     if result.failed_check_counts:
@@ -474,18 +482,15 @@ def format_report(result: DomainJudgeResult) -> str:
         total_arch = sum(counts.values()) or 1
         pct = 100.0 * counts.get("faithful", 0) / total_arch
         lines.append(
-            f"    · {arch:40s} faithful={pct:5.1f}%  "
-            f"{counts}",
+            f"    · {arch:40s} faithful={pct:5.1f}%  {counts}",
         )
     if result.failures:
         lines.append(
-            f"  sample failures ({len(result.failures)} total, "
-            "showing first 5):",
+            f"  sample failures ({len(result.failures)} total, showing first 5):",
         )
         for f in result.failures[:5]:
             lines.append(
-                f"    [{f['verdict']}] {f['archetype']}: "
-                f"{f['text'][:100]}…",
+                f"    [{f['verdict']}] {f['archetype']}: {f['text'][:100]}…",
             )
             if f["issues"]:
                 lines.append(f"      issues: {f['issues']}")

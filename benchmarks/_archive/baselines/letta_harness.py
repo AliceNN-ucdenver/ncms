@@ -96,13 +96,17 @@ def ingest_letta(
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed if elapsed > 0 else 0
             logger.info(
-                "Ingested %d/%d docs (%.1f docs/sec)", i + 1, total, rate,
+                "Ingested %d/%d docs (%.1f docs/sec)",
+                i + 1,
+                total,
+                rate,
             )
 
     elapsed = time.time() - t0
     logger.info(
         "Letta ingestion complete: %d docs mapped in %.1fs",
-        len(doc_to_mem), elapsed,
+        len(doc_to_mem),
+        elapsed,
     )
 
     return client, agent_state, doc_to_mem, mem_to_doc
@@ -193,9 +197,7 @@ def measure_ttl(
     """Measure Test-Time Learning (TTL)."""
     from benchmarks.core.metrics import classification_accuracy
 
-    train_lookup: dict[str, Any] = {
-        inst.instance_id: inst for inst in train_instances
-    }
+    train_lookup: dict[str, Any] = {inst.instance_id: inst for inst in train_instances}
 
     predictions: dict[str, str] = {}
     for inst in test_instances:
@@ -291,7 +293,8 @@ def run_letta_experiment(
     # Ingest
     logger.info("Ingesting %d docs into Letta archival memory...", len(train))
     client, agent_state, doc_to_mem, mem_to_doc = ingest_letta(
-        train, embedding_model,
+        train,
+        embedding_model,
     )
     ingest_time = time.time() - t0
     agent_id = agent_state.id
@@ -313,7 +316,9 @@ def run_letta_experiment(
     ar = measure_ar(client, agent_id, mem_to_doc, ar_queries, ar_qrels)
     logger.info(
         "  AR nDCG@10=%.4f  MRR@10=%.4f  (%.1fs)",
-        ar["nDCG@10"], ar["MRR@10"], time.time() - t1,
+        ar["nDCG@10"],
+        ar["MRR@10"],
+        time.time() - t1,
     )
     results["metrics"]["ar"] = ar
 
@@ -321,7 +326,12 @@ def run_letta_experiment(
     logger.info("Measuring TTL (Test-Time Learning)...")
     t1 = time.time()
     ttl = measure_ttl(
-        client, agent_id, mem_to_doc, test, train, ttl_labels,
+        client,
+        agent_id,
+        mem_to_doc,
+        test,
+        train,
+        ttl_labels,
     )
     logger.info("  TTL accuracy=%.4f  (%.1fs)", ttl["accuracy"], time.time() - t1)
     results["metrics"]["ttl"] = ttl
@@ -331,7 +341,9 @@ def run_letta_experiment(
     t1 = time.time()
     cr = measure_cr(client, agent_id, mem_to_doc, cr_queries, cr_qrels)
     logger.info(
-        "  CR temporal_mrr=%.4f  (%.1fs)", cr["temporal_mrr"], time.time() - t1,
+        "  CR temporal_mrr=%.4f  (%.1fs)",
+        cr["temporal_mrr"],
+        time.time() - t1,
     )
     results["metrics"]["cr"] = cr
 
@@ -340,7 +352,9 @@ def run_letta_experiment(
     t1 = time.time()
     lru = measure_lru(client, agent_id, mem_to_doc, lru_queries, lru_qrels)
     logger.info(
-        "  LRU nDCG@10=%.4f  (%.1fs)", lru["nDCG@10"], time.time() - t1,
+        "  LRU nDCG@10=%.4f  (%.1fs)",
+        lru["nDCG@10"],
+        time.time() - t1,
     )
     results["metrics"]["lru"] = lru
 
@@ -355,7 +369,10 @@ def run_letta_experiment(
 
     logger.info(
         "Letta experiment complete: AR=%.4f  TTL=%.4f  CR=%.4f  LRU=%.4f  (%.1fs)",
-        ar["nDCG@10"], ttl["accuracy"], cr["temporal_mrr"], lru["nDCG@10"],
+        ar["nDCG@10"],
+        ttl["accuracy"],
+        cr["temporal_mrr"],
+        lru["nDCG@10"],
         results["total_seconds"],
     )
 
@@ -385,6 +402,7 @@ def main() -> None:
     # Load env
     try:
         from benchmarks.env import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass

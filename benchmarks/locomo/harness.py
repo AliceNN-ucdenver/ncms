@@ -145,12 +145,8 @@ class BackendSnapshot:
         self._graph_data = {
             "digraph": nx.node_link_data(nx_graph._graph),
             "name_index": dict(nx_graph._name_index),
-            "memory_entities": {
-                k: set(v) for k, v in nx_graph._memory_entities.items()
-            },
-            "entity_memories": {
-                k: set(v) for k, v in nx_graph._entity_memories.items()
-            },
+            "memory_entities": {k: set(v) for k, v in nx_graph._memory_entities.items()},
+            "entity_memories": {k: set(v) for k, v in nx_graph._entity_memories.items()},
         }
 
         # SPLADE: deep copy the vectors dict (model stays shared / lazy-loaded)
@@ -179,7 +175,8 @@ class BackendSnapshot:
         store = SQLiteStore(db_path=":memory:")
         await store.initialize()
         await store.db._execute(
-            store.db._conn.deserialize, self._sqlite_bytes,
+            store.db._conn.deserialize,
+            self._sqlite_bytes,
         )
 
         # Tantivy: copy the snapshot dir to a new temp dir, open index there
@@ -197,19 +194,19 @@ class BackendSnapshot:
         graph = NetworkXGraph()
         graph._graph = nx.node_link_graph(self._graph_data["digraph"])
         graph._name_index = dict(self._graph_data["name_index"])
-        graph._memory_entities = {
-            k: set(v) for k, v in self._graph_data["memory_entities"].items()
-        }
-        graph._entity_memories = {
-            k: set(v) for k, v in self._graph_data["entity_memories"].items()
-        }
+        graph._memory_entities = {k: set(v) for k, v in self._graph_data["memory_entities"].items()}
+        graph._entity_memories = {k: set(v) for k, v in self._graph_data["entity_memories"].items()}
 
         # SPLADE: create engine with copied vectors (shares the model singleton)
         splade = SpladeEngine()
         splade._vectors = copy.deepcopy(self._splade_vectors_snapshot)  # type: ignore[assignment]
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
+            splade=splade,
         )
 
         return ConversationState(
@@ -289,7 +286,11 @@ async def replay_conversation(
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
     )
     await svc.start_index_pool()
 
@@ -322,6 +323,7 @@ async def replay_conversation(
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     return ConversationState(
@@ -415,8 +417,7 @@ async def evaluate_qa(
             eval_question = q.question
             if cat == "temporal":
                 eval_question = (
-                    q.question
-                    + " Use the date of the conversation to "
+                    q.question + " Use the date of the conversation to "
                     "answer with an approximate date."
                 )
 
@@ -463,12 +464,18 @@ async def evaluate_qa(
             if cat == "adversarial":
                 judge_ok = 1.0 if qa_f1 == 1.0 else 0.0
             else:
-                judge_ok = 1.0 if await llm_judge(
-                    q.question, q.answer, prediction,
-                    judge_type="temporal" if cat == "temporal" else "default",
-                    model=judge_model,
-                    api_base=judge_api_base,
-                ) else 0.0
+                judge_ok = (
+                    1.0
+                    if await llm_judge(
+                        q.question,
+                        q.answer,
+                        prediction,
+                        judge_type="temporal" if cat == "temporal" else "default",
+                        model=judge_model,
+                        api_base=judge_api_base,
+                    )
+                    else 0.0
+                )
             judge_scores.append(judge_ok)
 
             # Per-category RAG metrics
@@ -564,7 +571,8 @@ async def run_locomo_benchmark(
         conv_questions = questions_by_conv.get(conv.conversation_id, [])
         if not conv_questions:
             logger.warning(
-                "No questions for conversation %s, skipping", conv.conversation_id,
+                "No questions for conversation %s, skipping",
+                conv.conversation_id,
             )
             continue
 
@@ -578,7 +586,9 @@ async def run_locomo_benchmark(
         state = await replay_conversation(conv)
         try:
             metrics = await evaluate_qa(
-                state, conv_questions, top_k=top_k,
+                state,
+                conv_questions,
+                top_k=top_k,
                 use_rag=use_rag,
                 answer_model=answer_model,
                 answer_api_base=answer_api_base,
@@ -605,10 +615,7 @@ async def run_locomo_benchmark(
             f"  Contains={metrics['Contains']:.4f}  F1={metrics['F1']:.4f}"
         )
         if use_rag and "QA_F1" in metrics:
-            log_msg += (
-                f"  QA_F1={metrics['QA_F1']:.4f}"
-                f"  Judge={metrics['Judge_Accuracy']:.4f}"
-            )
+            log_msg += f"  QA_F1={metrics['QA_F1']:.4f}  Judge={metrics['Judge_Accuracy']:.4f}"
         log_msg += f"  ({n} questions)"
         logger.info(log_msg)
 
@@ -633,10 +640,7 @@ async def run_locomo_benchmark(
         f"  Contains={overall['Contains']:.4f}  F1={overall['F1']:.4f}"
     )
     if use_rag and "QA_F1" in overall:
-        log_msg += (
-            f"  QA_F1={overall['QA_F1']:.4f}"
-            f"  Judge={overall['Judge_Accuracy']:.4f}"
-        )
+        log_msg += f"  QA_F1={overall['QA_F1']:.4f}  Judge={overall['Judge_Accuracy']:.4f}"
     log_msg += f"  ({len(all_recall)} questions)"
     logger.info(log_msg)
     logger.info("=" * 60)
@@ -652,9 +656,19 @@ async def run_locomo_benchmark(
 # ---------------------------------------------------------------------------
 
 _WORD_NUMS = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-    "eleven": 11, "twelve": 12, "several": 4,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "several": 4,
 }
 
 _TIME_GAP_RE = re.compile(
@@ -714,12 +728,14 @@ def _extract_raw_sessions(raw_conv: dict) -> list[dict]:
         if key not in raw_conv:
             break
         dt_str = raw_conv.get(f"session_{idx}_date_time", "")
-        sessions.append({
-            "session_num": idx,
-            "date_time": dt_str,
-            "parsed_date": _parse_session_date(dt_str),
-            "turns": raw_conv[key],
-        })
+        sessions.append(
+            {
+                "session_num": idx,
+                "date_time": dt_str,
+                "parsed_date": _parse_session_date(dt_str),
+                "turns": raw_conv[key],
+            }
+        )
         idx += 1
     return sessions
 
@@ -923,7 +939,11 @@ async def _replay_stitched_conversation(
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
     )
 
     memory_ids: list[str] = []
@@ -1031,7 +1051,11 @@ async def _replay_base_sessions(
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
     )
 
     # Extract raw sessions (reuse _extract_raw_sessions)
@@ -1220,25 +1244,29 @@ async def run_locomo_plus_benchmark(
         if raw_conv is None:
             logger.warning(
                 "No raw conversation at index %d for %d Plus questions, skipping",
-                conv_idx, len(conv_questions),
+                conv_idx,
+                len(conv_questions),
             )
             continue
 
         conv_id = f"conv_{conv_idx}"
         logger.info(
-            "Processing conversation idx=%d (%d Plus questions, "
-            "snapshot/restore optimization)",
-            conv_idx, len(conv_questions),
+            "Processing conversation idx=%d (%d Plus questions, snapshot/restore optimization)",
+            conv_idx,
+            len(conv_questions),
         )
 
         # ── Ingest the base conversation ONCE, then snapshot ──────────
         base_state = await _replay_base_sessions(
-            raw_conv, conversation_id=conv_id,
+            raw_conv,
+            conversation_id=conv_id,
         )
         snapshot = BackendSnapshot()
         await snapshot.capture(
-            base_state.store, base_state.index,
-            base_state.graph, base_state.splade,
+            base_state.store,
+            base_state.index,
+            base_state.graph,
+            base_state.splade,
         )
         # Close the base state — we only need the snapshot from here
         await base_state.store.close()  # type: ignore[union-attr]
@@ -1257,7 +1285,9 @@ async def run_locomo_plus_benchmark(
             try:
                 # Add ONLY the cue turns (2-3 lines) to the restored state
                 cue_ids = await _add_cue_turns(
-                    state, raw_conv, q.cue_dialogue,
+                    state,
+                    raw_conv,
+                    q.cue_dialogue,
                     conversation_id=state.conversation_id,
                 )
 
@@ -1271,7 +1301,9 @@ async def run_locomo_plus_benchmark(
 
                 # Score against the cue dialogue (ground truth)
                 recall = recall_at_k_qa(
-                    retrieved_contents, q.ground_truth, k=top_k,
+                    retrieved_contents,
+                    q.ground_truth,
+                    k=top_k,
                 )
                 conv_recall.append(recall)
 
@@ -1290,8 +1322,11 @@ async def run_locomo_plus_benchmark(
                 elapsed_q = time.perf_counter() - t_q
                 logger.debug(
                     "  %s [%d/%d]: restore+cue(%d)+search in %.1fs",
-                    q.question_id, qi + 1, len(conv_questions),
-                    len(cue_ids), elapsed_q,
+                    q.question_id,
+                    qi + 1,
+                    len(conv_questions),
+                    len(cue_ids),
+                    elapsed_q,
                 )
             finally:
                 await state.store.close()  # type: ignore[union-attr]
@@ -1350,7 +1385,8 @@ async def run_locomo_plus_benchmark(
     # Optional LLM cognitive judge
     if use_llm_judge and llm_model and llm_api_base:
         logger.info(
-            "Running cognitive LLM judge on %d questions...", len(all_predictions),
+            "Running cognitive LLM judge on %d questions...",
+            len(all_predictions),
         )
         import asyncio
 
@@ -1372,13 +1408,19 @@ async def run_locomo_plus_benchmark(
     logger.info("=" * 60)
     logger.info(
         "LoCoMo-Plus Overall: Recall@%d=%.4f  F1=%.4f  Contains=%.4f  (%d questions)",
-        top_k, overall[f"Recall@{top_k}"], overall["F1"],
-        overall["Contains"], len(all_recall),
+        top_k,
+        overall[f"Recall@{top_k}"],
+        overall["F1"],
+        overall["Contains"],
+        len(all_recall),
     )
     for qtype, tm in type_metrics.items():
         logger.info(
             "  %s: Recall@%d=%.4f  (%d questions)",
-            qtype, top_k, tm[f"Recall@{top_k}"], int(tm["num_questions"]),
+            qtype,
+            top_k,
+            tm[f"Recall@{top_k}"],
+            int(tm["num_questions"]),
         )
     logger.info("=" * 60)
 

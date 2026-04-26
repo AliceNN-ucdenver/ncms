@@ -56,8 +56,7 @@ class LLMBackend(Protocol):
     empty lists, so the caller can decide whether to abort.
     """
 
-    def generate(self, prompt: str, *, n: int, rng: random.Random) -> list[str]:
-        ...
+    def generate(self, prompt: str, *, n: int, rng: random.Random) -> list[str]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +141,9 @@ _FREE_TEXT_FILLERS: dict[str, tuple[str, ...]] = {
 
 
 def _fill_free_text(
-    template: str, rng: random.Random, seen_filled: dict[str, str],
+    template: str,
+    rng: random.Random,
+    seen_filled: dict[str, str],
 ) -> str:
     """Replace every ``{name}`` placeholder not already in ``seen_filled``.
 
@@ -188,7 +189,11 @@ class TemplateBackend:
     phrasings: tuple[str, ...] = ()
 
     def generate(
-        self, prompt: str, *, n: int, rng: random.Random,  # noqa: ARG002
+        self,
+        prompt: str,
+        *,
+        n: int,
+        rng: random.Random,  # noqa: ARG002
     ) -> list[str]:
         if not self.phrasings:
             return []
@@ -261,7 +266,11 @@ class SparkBackend:
     extra_kwargs: dict[str, object] = field(default_factory=dict)
 
     def generate(
-        self, prompt: str, *, n: int, rng: random.Random,  # noqa: ARG002
+        self,
+        prompt: str,
+        *,
+        n: int,
+        rng: random.Random,  # noqa: ARG002
     ) -> list[str]:
         """Return up to ``n`` text rows from the LLM, with retries.
 
@@ -281,15 +290,16 @@ class SparkBackend:
                 if attempt < self.max_attempts:
                     delay = self.backoff_base_seconds * (2 ** (attempt - 1))
                     logger.warning(
-                        "SparkBackend attempt %d/%d failed (%s); "
-                        "retrying in %.1fs",
-                        attempt, self.max_attempts, exc, delay,
+                        "SparkBackend attempt %d/%d failed (%s); retrying in %.1fs",
+                        attempt,
+                        self.max_attempts,
+                        exc,
+                        delay,
                     )
                     time.sleep(delay)
                     continue
                 raise RuntimeError(
-                    f"SparkBackend: all {self.max_attempts} attempts "
-                    f"failed; last error: {exc}",
+                    f"SparkBackend: all {self.max_attempts} attempts failed; last error: {exc}",
                 ) from exc
             # Success path — coerce + return.
             if not isinstance(parsed, list):
@@ -300,26 +310,29 @@ class SparkBackend:
                 if attempt < self.max_attempts:
                     delay = self.backoff_base_seconds * (2 ** (attempt - 1))
                     logger.warning(
-                        "SparkBackend attempt %d/%d malformed (%s); "
-                        "retrying in %.1fs",
-                        attempt, self.max_attempts, last_err, delay,
+                        "SparkBackend attempt %d/%d malformed (%s); retrying in %.1fs",
+                        attempt,
+                        self.max_attempts,
+                        last_err,
+                        delay,
                     )
                     time.sleep(delay)
                     continue
                 raise RuntimeError(
-                    f"SparkBackend: all {self.max_attempts} attempts "
-                    f"malformed; last: {last_err}",
+                    f"SparkBackend: all {self.max_attempts} attempts malformed; last: {last_err}",
                 )
             # Keep only textual rows; drop anything non-scalar.
             rows = [
-                str(r).strip() for r in parsed
+                str(r).strip()
+                for r in parsed
                 if isinstance(r, (str, int, float)) and str(r).strip()
             ]
             if len(rows) < n:
                 logger.warning(
-                    "SparkBackend short-count: asked for %d, got %d "
-                    "(model=%s)",
-                    n, len(rows), self.model,
+                    "SparkBackend short-count: asked for %d, got %d (model=%s)",
+                    n,
+                    len(rows),
+                    self.model,
                 )
             # Cap — the model occasionally overshoots our ask.
             return rows[:n]

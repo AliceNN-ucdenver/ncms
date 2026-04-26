@@ -67,18 +67,22 @@ def setup_logging(
     # File handler: full ISO timestamps for durable review
     file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
 
     # Console handler: shorter timestamps for readability
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    console_handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)-7s %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    console_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-7s %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
 
     logging.basicConfig(level=level, handlers=[file_handler, console_handler])
 
@@ -147,7 +151,8 @@ async def wait_for_indexing(svc: Any, run_logger: logging.Logger | None = None) 
         if poll_count % 10 == 0:  # ~1s intervals
             log.info(
                 "  queue=%d busy=%d processed=%d (%.0fms)",
-                stats.queue_depth, stats.workers_busy,
+                stats.queue_depth,
+                stats.workers_busy,
                 stats.processed_total,
                 (_time.perf_counter() - t_wait) * 1000,
             )
@@ -157,8 +162,11 @@ async def wait_for_indexing(svc: Any, run_logger: logging.Logger | None = None) 
     final = pool.stats()
     log.info(
         "Indexing complete in %.0fms — processed=%d failed=%d retried=%d avg=%.0fms",
-        wait_ms, final.processed_total, final.failed_total,
-        final.retried_total, final.avg_process_ms,
+        wait_ms,
+        final.processed_total,
+        final.failed_total,
+        final.retried_total,
+        final.avg_process_ms,
     )
 
 

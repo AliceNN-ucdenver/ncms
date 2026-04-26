@@ -51,12 +51,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 # Load HF_TOKEN etc. before any ncms/sentence-transformers import
 # (SPLADE v3 is gated on HuggingFace and falls back to an
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -123,7 +123,7 @@ PATTERNS: dict[str, Pattern] = {
     "AGE_OF_EVENT": Pattern(
         id="AGE_OF_EVENT",
         description='"how many {days|weeks|months} ago did I X"',
-        needs_rerank=True,        # need correct event memory
+        needs_rerank=True,  # need correct event memory
         arithmetic_ceiling=True,  # answer (e.g. "3 weeks") not in memories
     ),
     "ORDER_OF_EVENTS": Pattern(
@@ -219,10 +219,12 @@ _RX_TIME_OF_EVENT = re.compile(
 )
 _RX_WHICH = re.compile(r"\bwhich\b", re.I)
 _RX_FIRST = re.compile(
-    r"\b(first|earliest|initial|original)\b", re.I,
+    r"\b(first|earliest|initial|original)\b",
+    re.I,
 )
 _RX_LAST = re.compile(
-    r"\b(last|latest|most\s+recent(?:ly)?|newest)\b", re.I,
+    r"\b(last|latest|most\s+recent(?:ly)?|newest)\b",
+    re.I,
 )
 _RX_RANGE_MONTH = re.compile(
     r"\b(in|during|since|from)\s+"
@@ -294,7 +296,7 @@ class QuestionResult:
     answer: str
     pattern: str
     answer_in_any_haystack: bool  # False = arithmetic-only ceiling
-    answer_at_depth: int | None   # smallest k with recall=1, or None
+    answer_at_depth: int | None  # smallest k with recall=1, or None
     recall_at_5: float
     recall_at_20: float
     recall_at_50: float
@@ -309,7 +311,7 @@ def _answer_deepest_position(
     the answer, or None if not found.
     """
     for i in range(len(retrieved_contents)):
-        if recall_at_k_qa(retrieved_contents[:i + 1], answer, k=i + 1):
+        if recall_at_k_qa(retrieved_contents[: i + 1], answer, k=i + 1):
             return i + 1
     return None
 
@@ -323,9 +325,14 @@ def _answer_in_full_haystack(
     False means the question is arithmetic-only — no retrieval
     improvement can score it under Recall@K, only RAG mode can.
     """
-    return recall_at_k_qa(
-        haystack_contents, answer, k=len(haystack_contents),
-    ) > 0.0
+    return (
+        recall_at_k_qa(
+            haystack_contents,
+            answer,
+            k=len(haystack_contents),
+        )
+        > 0.0
+    )
 
 
 async def evaluate_question_at_depth(
@@ -354,7 +361,8 @@ async def evaluate_question_at_depth(
         answer=question.answer,
         pattern=classify_pattern(question.question),
         answer_in_any_haystack=_answer_in_full_haystack(
-            haystack_contents, question.answer,
+            haystack_contents,
+            question.answer,
         ),
         answer_at_depth=depth,
         recall_at_5=recall_at_k_qa(contents, question.answer, k=5),
@@ -397,14 +405,15 @@ def _bucket_row(results: list[QuestionResult], pattern: str) -> dict:
 
 
 def _format_markdown(
-    buckets: list[dict], total_questions: int, elapsed_s: float,
+    buckets: list[dict],
+    total_questions: int,
+    elapsed_s: float,
 ) -> str:
     lines: list[str] = []
     lines.append("# Temporal-Reasoning Diagnostic")
     lines.append("")
     lines.append(
-        f"**Questions analyzed:** {total_questions} "
-        f"(LongMemEval temporal-reasoning category)"
+        f"**Questions analyzed:** {total_questions} (LongMemEval temporal-reasoning category)"
     )
     lines.append(f"**Elapsed:** {elapsed_s:.1f} s")
     lines.append("**Retrieval depth:** top-50")
@@ -413,12 +422,9 @@ def _format_markdown(
     lines.append("## Pattern Distribution & Recall")
     lines.append("")
     lines.append(
-        "| Pattern | # | R@5 | R@20 | R@50 | "
-        "Upside (20\\5) | Upside (50\\5) | Arith ceiling |"
+        "| Pattern | # | R@5 | R@20 | R@50 | Upside (20\\5) | Upside (50\\5) | Arith ceiling |"
     )
-    lines.append(
-        "|---|---:|---:|---:|---:|---:|---:|---:|"
-    )
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|")
     for b in buckets:
         if b["count"] == 0:
             continue
@@ -468,36 +474,41 @@ async def _run(args: argparse.Namespace) -> None:
 
     logger.info("Loading LongMemEval dataset...")
     sessions_by_q, questions = load_longmemeval_dataset(
-        cache_dir=cache_dir, dataset_file=args.dataset,
+        cache_dir=cache_dir,
+        dataset_file=args.dataset,
     )
-    temporal_qs = [
-        q for q in questions if q.category == "temporal-reasoning"
-    ]
+    temporal_qs = [q for q in questions if q.category == "temporal-reasoning"]
     logger.info(
         "Loaded %d total, filtering to %d temporal-reasoning",
-        len(questions), len(temporal_qs),
+        len(questions),
+        len(temporal_qs),
     )
 
     if args.limit:
-        temporal_qs = temporal_qs[:args.limit]
+        temporal_qs = temporal_qs[: args.limit]
 
     # Features-on bundle, same as the benchmark
     config = NCMSConfig(
-        db_path=":memory:", actr_noise=0.0,
+        db_path=":memory:",
+        actr_noise=0.0,
         splade_enabled=True,
-        scoring_weight_bm25=0.6, scoring_weight_actr=0.0,
-        scoring_weight_splade=0.3, scoring_weight_graph=0.3,
+        scoring_weight_bm25=0.6,
+        scoring_weight_actr=0.0,
+        scoring_weight_splade=0.3,
+        scoring_weight_graph=0.3,
         admission_enabled=True,
         temporal_enabled=True,
         scoring_weight_hierarchy=0.1,
-        level_first_enabled=True, topic_map_enabled=True,
+        level_first_enabled=True,
+        topic_map_enabled=True,
         dream_query_expansion_enabled=True,
         reranker_enabled=True,
         # P1-temporal-experiment Phase B — activates the full stack:
         # ordinal primitive, explicit-range filter, metadata-fallback
         # content_range at ingest, and the intent-routed dispatch.
         temporal_range_filter_enabled=True,
-        scoring_weight_recency=0.1, recency_half_life_days=30.0,
+        scoring_weight_recency=0.1,
+        recency_half_life_days=30.0,
         contradiction_detection_enabled=False,
         consolidation_knowledge_enabled=False,
         episode_consolidation_enabled=False,
@@ -508,6 +519,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     # Shared SPLADE across questions to avoid reload cost
     from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
     shared_splade = SpladeEngine()
     logger.info("Shared SPLADE engine created")
 
@@ -520,27 +532,27 @@ async def _run(args: argparse.Namespace) -> None:
             continue
 
         shared_splade._vectors = {}
-        store, _index, _graph, _splade, _cfg, svc = (
-            await _create_ncms_instance(
-                config=config, shared_splade=shared_splade,
-            )
+        store, _index, _graph, _splade, _cfg, svc = await _create_ncms_instance(
+            config=config,
+            shared_splade=shared_splade,
         )
 
         try:
             await _ingest_sessions(
-                svc, q_sessions, haystack_dates=q.haystack_dates,
+                svc,
+                q_sessions,
+                haystack_dates=q.haystack_dates,
             )
             await wait_for_indexing(svc, run_logger=logger)
 
             # Full-haystack content for the "arithmetic ceiling" check
-            haystack_contents = [
-                turn.content
-                for sess in q_sessions
-                for turn in sess.turns
-            ]
+            haystack_contents = [turn.content for sess in q_sessions for turn in sess.turns]
 
             result = await evaluate_question_at_depth(
-                svc, q, haystack_contents, top_k=50,
+                svc,
+                q,
+                haystack_contents,
+                top_k=50,
             )
             results.append(result)
         finally:
@@ -551,7 +563,10 @@ async def _run(args: argparse.Namespace) -> None:
             r5 = sum(1 for r in results if r.recall_at_5 > 0) / len(results)
             logger.info(
                 "[%d/%d] %.0fs  running R@5=%.3f",
-                qi + 1, len(temporal_qs), elapsed, r5,
+                qi + 1,
+                len(temporal_qs),
+                elapsed,
+                r5,
             )
 
     elapsed = time.perf_counter() - t0
@@ -566,25 +581,29 @@ async def _run(args: argparse.Namespace) -> None:
     ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
     json_path = output_dir / f"temporal_diagnostic_{ts}.json"
     with open(json_path, "w") as f:
-        json.dump({
-            "total_questions": len(results),
-            "elapsed_seconds": round(elapsed, 1),
-            "buckets": buckets,
-            "per_question": [
-                {
-                    "question_id": r.question_id,
-                    "question": r.question,
-                    "answer": r.answer,
-                    "pattern": r.pattern,
-                    "answer_in_any_haystack": r.answer_in_any_haystack,
-                    "answer_at_depth": r.answer_at_depth,
-                    "recall_at_5": r.recall_at_5,
-                    "recall_at_20": r.recall_at_20,
-                    "recall_at_50": r.recall_at_50,
-                }
-                for r in results
-            ],
-        }, f, indent=2)
+        json.dump(
+            {
+                "total_questions": len(results),
+                "elapsed_seconds": round(elapsed, 1),
+                "buckets": buckets,
+                "per_question": [
+                    {
+                        "question_id": r.question_id,
+                        "question": r.question,
+                        "answer": r.answer,
+                        "pattern": r.pattern,
+                        "answer_in_any_haystack": r.answer_in_any_haystack,
+                        "answer_at_depth": r.answer_at_depth,
+                        "recall_at_5": r.recall_at_5,
+                        "recall_at_20": r.recall_at_20,
+                        "recall_at_50": r.recall_at_50,
+                    }
+                    for r in results
+                ],
+            },
+            f,
+            indent=2,
+        )
     logger.info("JSON: %s", json_path)
 
     # Symlink latest
@@ -618,22 +637,31 @@ def main() -> None:
         description="LongMemEval temporal-reasoning diagnostic",
     )
     parser.add_argument(
-        "--cache-dir", type=str, default=None,
+        "--cache-dir",
+        type=str,
+        default=None,
         help="LongMemEval cache dir (default: auto)",
     )
     parser.add_argument(
-        "--output-dir", type=str,
+        "--output-dir",
+        type=str,
         default="benchmarks/results/temporal_diagnostic",
     )
     parser.add_argument(
-        "--dataset", type=str, default="longmemeval_oracle.json",
+        "--dataset",
+        type=str,
+        default="longmemeval_oracle.json",
     )
     parser.add_argument(
-        "--limit", type=int, default=0,
+        "--limit",
+        type=int,
+        default=0,
         help="Cap number of questions (for quick iteration, 0 = all)",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
     )
     args = parser.parse_args()
 
@@ -641,12 +669,16 @@ def main() -> None:
     setup_logging("temporal_diagnostic", output_dir, verbose=args.verbose)
 
     for name in (
-        "sentence_transformers", "transformers", "torch", "httpx",
+        "sentence_transformers",
+        "transformers",
+        "torch",
+        "httpx",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     log_run_header(
-        "LongMemEval Temporal-Reasoning Diagnostic", logger,
+        "LongMemEval Temporal-Reasoning Diagnostic",
+        logger,
     )
     run_async(_run(args), "Temporal diagnostic")
 

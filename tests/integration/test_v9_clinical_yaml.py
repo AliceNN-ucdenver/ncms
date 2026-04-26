@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-
 _REPO = Path(__file__).resolve().parents[2]
 _DOMAIN = _REPO / "adapters/domains/clinical"
 
@@ -18,6 +17,7 @@ _DOMAIN = _REPO / "adapters/domains/clinical"
 @pytest.fixture(scope="module")
 def spec():
     from ncms.application.adapters.domain_loader import load_domain
+
     if not _DOMAIN.is_dir():
         pytest.skip(f"clinical domain not present at {_DOMAIN}")
     return load_domain(_DOMAIN)
@@ -33,9 +33,7 @@ class TestClinicalYAMLDomain:
 
     def test_gazetteer_has_sufficient_coverage(self, spec):
         """Starter gazetteer should cover common outpatient vocabulary."""
-        assert len(spec.gazetteer) >= 400, (
-            f"clinical gazetteer is too small: {len(spec.gazetteer)}"
-        )
+        assert len(spec.gazetteer) >= 400, f"clinical gazetteer is too small: {len(spec.gazetteer)}"
         by_slot = spec.gazetteer_by_slot
         assert len(by_slot.get("medication", ())) >= 150, (
             f"medication count too low: {len(by_slot.get('medication', ()))}"
@@ -60,30 +58,35 @@ class TestClinicalYAMLDomain:
             slots_covered.add(n.filter_slots[0])
         # All six clinical slots represented.
         assert slots_covered == {
-            "medication", "procedure", "symptom",
-            "severity", "frequency", "alternative",
+            "medication",
+            "procedure",
+            "symptom",
+            "severity",
+            "frequency",
+            "alternative",
         }
 
     def test_medication_pool_is_large(self, spec):
         """The medication diversity node should return the full pool;
         specialty filtering is an archetype concern, not a filter."""
-        med_node = next(
-            n for n in spec.diversity.nodes
-            if n.filter_slots == ("medication",)
-        )
+        med_node = next(n for n in spec.diversity.nodes if n.filter_slots == ("medication",))
         pool = spec.diversity.resolve_examples(med_node, spec.gazetteer)
-        assert len(pool) >= 150, (
-            f"medication pool too small: {len(pool)}"
-        )
+        assert len(pool) >= 150, f"medication pool too small: {len(pool)}"
 
     def test_common_medications_present(self, spec):
         """Spot check — sentinel entries should be in the gazetteer."""
         canonicals = {e.canonical for e in spec.gazetteer}
         # A mix of acute / chronic / common meds.
         for sentinel in [
-            "metformin", "atorvastatin", "lisinopril",
-            "sertraline", "amoxicillin", "ibuprofen",
-            "levothyroxine", "albuterol", "omeprazole",
+            "metformin",
+            "atorvastatin",
+            "lisinopril",
+            "sertraline",
+            "amoxicillin",
+            "ibuprofen",
+            "levothyroxine",
+            "albuterol",
+            "omeprazole",
         ]:
             assert sentinel in canonicals, (
                 f"expected common medication {sentinel!r} missing from gazetteer"
@@ -92,22 +95,26 @@ class TestClinicalYAMLDomain:
     def test_common_procedures_present(self, spec):
         canonicals = {e.canonical for e in spec.gazetteer}
         for sentinel in [
-            "ekg", "colonoscopy", "mammogram", "mri brain",
-            "chest x-ray", "physical therapy",
+            "ekg",
+            "colonoscopy",
+            "mammogram",
+            "mri brain",
+            "chest x-ray",
+            "physical therapy",
         ]:
-            assert sentinel in canonicals, (
-                f"expected procedure {sentinel!r} missing"
-            )
+            assert sentinel in canonicals, f"expected procedure {sentinel!r} missing"
 
     def test_common_symptoms_present(self, spec):
         canonicals = {e.canonical for e in spec.gazetteer}
         for sentinel in [
-            "headache", "chest pain", "nausea", "cough",
-            "shortness of breath", "dizziness",
+            "headache",
+            "chest pain",
+            "nausea",
+            "cough",
+            "shortness of breath",
+            "dizziness",
         ]:
-            assert sentinel in canonicals, (
-                f"expected symptom {sentinel!r} missing"
-            )
+            assert sentinel in canonicals, f"expected symptom {sentinel!r} missing"
 
     def test_archetypes_starter_set_present(self, spec):
         names = {a.name for a in spec.archetypes}
@@ -119,9 +126,7 @@ class TestClinicalYAMLDomain:
             "neutral_procedure_outcome",
             "difficulty_symptom_persistence",
         }
-        assert expected.issubset(names), (
-            f"missing starter archetypes: {expected - names}"
-        )
+        assert expected.issubset(names), f"missing starter archetypes: {expected - names}"
 
     def test_archetype_role_spans_reference_valid_slots(self, spec):
         slot_set = set(spec.slots)

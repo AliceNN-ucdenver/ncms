@@ -79,8 +79,11 @@ async def create_ncms_services(
         from ncms.application.episode_service import EpisodeService
 
         episode = EpisodeService(
-            store=store, index=index, config=config,
-            event_log=event_log, splade=splade,
+            store=store,
+            index=index,
+            config=config,
+            event_log=event_log,
+            splade=splade,
         )
         logger.info("Episode formation enabled")
 
@@ -98,7 +101,10 @@ async def create_ncms_services(
     from ncms.application.consolidation_service import ConsolidationService
 
     consolidation_svc = ConsolidationService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
         event_log=event_log,
         splade=splade,
     )
@@ -134,16 +140,20 @@ async def create_ncms_services(
         )
     else:
         logger.info(
-            "SLM chain inactive (default_adapter_domain=%r) "
-            "— ingestion uses heuristic fallback",
+            "SLM chain inactive (default_adapter_domain=%r) — ingestion uses heuristic fallback",
             config.default_adapter_domain,
         )
 
     # Application services
     memory_svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
-        splade=splade, admission=admission,
-        reconciliation=reconciliation, episode=episode,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
+        admission=admission,
+        reconciliation=reconciliation,
+        episode=episode,
         intent_classifier=intent_classifier,
         reranker=reranker,
         intent_slot=intent_slot,
@@ -157,7 +167,9 @@ async def create_ncms_services(
         from ncms.application.section_service import SectionService
 
         section_svc = SectionService(
-            memory_service=memory_svc, config=config, document_service=None,
+            memory_service=memory_svc,
+            config=config,
+            document_service=None,
         )
         memory_svc._section_svc = section_svc
         logger.info("Content classification + section extraction enabled")
@@ -166,11 +178,7 @@ async def create_ncms_services(
         max_entries=config.snapshot_max_entries,
         ttl_hours=config.snapshot_ttl_hours,
     )
-    bus_svc = BusService(
-        bus=bus,
-        snapshot_service=snapshot_svc,
-        surrogate_enabled=True,  # Always on (retired flag)
-    )
+    bus_svc = BusService(bus=bus, snapshot_service=snapshot_svc)
 
     # Rebuild in-memory graph from persistent store (rehydrate after restart)
     graph_svc = GraphService(store=store, graph=graph)
@@ -230,8 +238,8 @@ def create_mcp_server(
 
 async def run_server(config: NCMSConfig | None = None) -> None:
     """Create and run the NCMS MCP server."""
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = (
-        await create_ncms_services(config)
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc, _scheduler = await create_ncms_services(
+        config
     )
     mcp = create_mcp_server(memory_svc, bus_svc, snapshot_svc, consolidation_svc)
     await mcp.run_stdio_async()

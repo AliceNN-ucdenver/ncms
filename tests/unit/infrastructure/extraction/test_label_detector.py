@@ -32,11 +32,7 @@ class TestDetectLabels:
 
         mock_response = MagicMock()
         mock_response.choices = [
-            MagicMock(
-                message=MagicMock(
-                    content='```json\n["endpoint", "service"]\n```'
-                )
-            )
+            MagicMock(message=MagicMock(content='```json\n["endpoint", "service"]\n```'))
         ]
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
@@ -52,11 +48,7 @@ class TestDetectLabels:
         many_labels = [f"label_{i}" for i in range(25)]
         mock_response = MagicMock()
         mock_response.choices = [
-            MagicMock(
-                message=MagicMock(
-                    content=str(many_labels).replace("'", '"')
-                )
-            )
+            MagicMock(message=MagicMock(content=str(many_labels).replace("'", '"')))
         ]
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
@@ -92,9 +84,7 @@ class TestDetectLabels:
         from ncms.infrastructure.extraction.label_detector import detect_labels
 
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="not valid json at all"))
-        ]
+        mock_response.choices = [MagicMock(message=MagicMock(content="not valid json at all"))]
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
             labels = await detect_labels("api", ["Sample text"])
@@ -108,9 +98,7 @@ class TestDetectLabels:
 
         mock_response = MagicMock()
         mock_response.choices = [
-            MagicMock(
-                message=MagicMock(content='["endpoint", 42, null, "service"]')
-            )
+            MagicMock(message=MagicMock(content='["endpoint", 42, null, "service"]'))
         ]
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
@@ -125,11 +113,7 @@ class TestDetectLabels:
 
         mock_response = MagicMock()
         mock_response.choices = [
-            MagicMock(
-                message=MagicMock(
-                    content='["endpoint", "' + "x" * 60 + '", "service"]'
-                )
-            )
+            MagicMock(message=MagicMock(content='["endpoint", "' + "x" * 60 + '", "service"]'))
         ]
 
         with patch("litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
@@ -143,16 +127,12 @@ class TestDetectLabels:
         from ncms.infrastructure.extraction.label_detector import detect_labels
 
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content='["endpoint"]'))
-        ]
+        mock_response.choices = [MagicMock(message=MagicMock(content='["endpoint"]'))]
 
         with patch(
             "litellm.acompletion", new_callable=AsyncMock, return_value=mock_response
         ) as mock_completion:
-            await detect_labels(
-                "api", ["Sample text"], model="ollama_chat/qwen3.5:35b-a3b"
-            )
+            await detect_labels("api", ["Sample text"], model="ollama_chat/qwen3.5:35b-a3b")
 
         call_kwargs = mock_completion.call_args
         assert call_kwargs.kwargs.get("think") is False or (

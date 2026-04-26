@@ -551,8 +551,7 @@ async def run_migrations(db: object) -> None:
     assert isinstance(db, aiosqlite.Connection)
 
     cursor = await db.execute(
-        "SELECT name FROM sqlite_master "
-        "WHERE type='table' AND name='schema_version'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
     )
     has_version_table = await cursor.fetchone() is not None
 

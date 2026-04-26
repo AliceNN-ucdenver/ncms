@@ -79,11 +79,11 @@ class GenerationStats:
     them in place; callers read after the run completes.
     """
 
-    requested: int = 0            # how many rows were asked for
-    generated: int = 0            # how many raw rows the backend produced
-    accepted: int = 0             # rows that passed validation
+    requested: int = 0  # how many rows were asked for
+    generated: int = 0  # how many raw rows the backend produced
+    accepted: int = 0  # rows that passed validation
     rejections: dict[RejectionReason, int] = field(default_factory=dict)
-    duplicates: int = 0           # text-level dedup rejections
+    duplicates: int = 0  # text-level dedup rejections
 
     def note_rejection(self, reason: RejectionReason) -> None:
         self.rejections[reason] = self.rejections.get(reason, 0) + 1
@@ -140,9 +140,7 @@ def _sample_entities(
     is drawn from the remaining pool so the two surfaces differ.
     """
     gaz_by_slot = spec.gazetteer_by_slot
-    inline_nodes = tuple(
-        n for n in spec.diversity.nodes if n.source == "inline"
-    )
+    inline_nodes = tuple(n for n in spec.diversity.nodes if n.source == "inline")
 
     out: dict[tuple[str, str], str] = {}
     used_per_slot: dict[str, set[str]] = {}
@@ -164,9 +162,7 @@ def _sample_entities(
             # "hot chocolate over Kyoto" (food vs city) and
             # "Tesla Model 3 over Filson" (car vs clothing) that
             # gpt-4o flagged as unfaithful in B-prime.7.
-            must_match_topic = (
-                primary_source_topic if rs.role == "alternative" else None
-            )
+            must_match_topic = primary_source_topic if rs.role == "alternative" else None
             draw = _draw_one(
                 slot=rs.slot,
                 gaz_by_slot=gaz_by_slot,
@@ -214,11 +210,67 @@ def _sample_entities(
     return out, topic
 
 
+def _draw_from_gazetteer(
+    *,
+    gaz_entries: tuple,
+    already_used: set[str],
+    must_match_topic: str | None,
+    rng: random.Random,
+) -> tuple[str, str | None] | None:
+    usable = [e for e in gaz_entries if e.canonical.lower() not in already_used]
+    if not usable:
+        return None
+    # Same-topic filter for alternative draws.  Prefer matching
+    # entries; fall back to the full pool when no match exists.
+    if must_match_topic is not None:
+        preferred = [e for e in usable if e.topic == must_match_topic]
+        if preferred:
+            usable = preferred
+    picked = rng.choice(usable)
+    return picked.canonical, picked.topic
+
+
+def _select_inline_pool(
+    *,
+    slot_compatible: list[DiversityNode],
+    archetype: ArchetypeSpec,
+    must_match_topic: str | None,
+) -> list[DiversityNode]:
+    """Topic-preference cascade — most-specific first, fall back."""
+    pools: list[list[DiversityNode]] = []
+    if must_match_topic is not None:
+        pools.append([n for n in slot_compatible if n.topic_hint == must_match_topic])
+    if archetype.topic is not None:
+        pools.append([n for n in slot_compatible if n.topic_hint == archetype.topic])
+    pools.append(slot_compatible)
+    return next((p for p in pools if p), slot_compatible)
+
+
+def _draw_from_inline_pool(
+    *,
+    matching: list[DiversityNode],
+    already_used: set[str],
+    rng: random.Random,
+) -> tuple[str, str | None] | None:
+    """Sample uniformly across candidate nodes; retry on exhausted nodes."""
+    node = rng.choice(matching)
+    candidates = [ex for ex in node.examples if ex.lower() not in already_used]
+    if candidates:
+        return rng.choice(candidates), node.topic_hint
+    for n in matching:
+        if n is node:
+            continue
+        candidates = [ex for ex in n.examples if ex.lower() not in already_used]
+        if candidates:
+            return rng.choice(candidates), n.topic_hint
+    return None
+
+
 def _draw_one(
     *,
     slot: str,
-    gaz_by_slot: "dict[str, tuple]",
-    inline_nodes: "tuple[DiversityNode, ...]",
+    gaz_by_slot: dict[str, tuple],
+    inline_nodes: tuple[DiversityNode, ...],
     archetype: ArchetypeSpec,
     already_used: set[str],
     rng: random.Random,
@@ -242,80 +294,28 @@ def _draw_one(
     exists in the requested topic — preserves yield at the cost
     of an occasional cross-topic pair.
     """
-    # Gazetteer path.
     gaz_entries = gaz_by_slot.get(slot, ())
     if gaz_entries:
-        usable = [
-            e for e in gaz_entries
-            if e.canonical.lower() not in already_used
-        ]
-        if not usable:
-            return None
-        # Same-topic filter for alternative draws.  Prefer matching
-        # entries; fall back to the full pool if the topic is too
-        # narrow to satisfy the constraint AND avoid same-canonical.
-        if must_match_topic is not None:
-            preferred = [e for e in usable if e.topic == must_match_topic]
-            if preferred:
-                usable = preferred
-        picked = rng.choice(usable)
-        return picked.canonical, picked.topic
+        return _draw_from_gazetteer(
+            gaz_entries=gaz_entries,
+            already_used=already_used,
+            must_match_topic=must_match_topic,
+            rng=rng,
+        )
 
     # Open-vocab path: filter inline nodes by slot compatibility
-    # FIRST, then by topic_hint.  The slot filter uses
-    # ``DiversityNode.filter_slots``: a node participates when it
-    # either declares no filter (universal) or explicitly lists
-    # this slot.  Without this gate, a node whose vocabulary is
-    # time-phrases ("in the afternoon") can be sampled as an
-    # ``object`` slot entity, which is exactly the failure mode
-    # caught in B'.4 probing.
-    slot_compatible = [
-        n for n in inline_nodes
-        if not n.filter_slots or slot in n.filter_slots
-    ]
+    # FIRST, then by topic_hint.  Without this gate, a node whose
+    # vocabulary is time-phrases can be sampled as an ``object`` slot
+    # — the failure mode caught in B'.4 probing.
+    slot_compatible = [n for n in inline_nodes if not n.filter_slots or slot in n.filter_slots]
     if not slot_compatible:
         return None
-
-    # Topic preference order (most-specific to least):
-    #   1. ``must_match_topic`` (B'.8 same-topic-alternative — pinned
-    #      to the primary's topic when drawing alternatives).
-    #   2. archetype.topic (when declared on the archetype).
-    #   3. Any slot-compatible node (fallback).
-    #
-    # Each filter yields a STRICT subset; we walk down to the first
-    # non-empty pool.  This keeps yield high (no abrupt drop to zero
-    # when the strictest filter fails) while honouring the most-
-    # specific constraint that's satisfiable.
-    pools: list[list[DiversityNode]] = []
-    if must_match_topic is not None:
-        pools.append(
-            [n for n in slot_compatible if n.topic_hint == must_match_topic]
-        )
-    if archetype.topic is not None:
-        pools.append(
-            [n for n in slot_compatible if n.topic_hint == archetype.topic]
-        )
-    pools.append(slot_compatible)
-    matching = next((p for p in pools if p), slot_compatible)
-
-    # Sample uniformly across candidate nodes (not weighted by size —
-    # avoids dominant-category bias).
-    node = rng.choice(matching)
-    candidates = [
-        ex for ex in node.examples if ex.lower() not in already_used
-    ]
-    if candidates:
-        return rng.choice(candidates), node.topic_hint
-    # Try a different slot-compatible node if this one was exhausted.
-    for n in matching:
-        if n is node:
-            continue
-        candidates = [
-            ex for ex in n.examples if ex.lower() not in already_used
-        ]
-        if candidates:
-            return rng.choice(candidates), n.topic_hint
-    return None
+    matching = _select_inline_pool(
+        slot_compatible=slot_compatible,
+        archetype=archetype,
+        must_match_topic=must_match_topic,
+    )
+    return _draw_from_inline_pool(matching=matching, already_used=already_used, rng=rng)
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +399,8 @@ def generate_for_archetype(
             logger.warning(
                 "archetype %r: batch produced zero entity sets "
                 "(domain=%s); stopping this archetype",
-                archetype.name, spec.name,
+                archetype.name,
+                spec.name,
             )
             break
 
@@ -412,7 +413,9 @@ def generate_for_archetype(
                 phrasings = _prefill_phrasings(archetype, row_entities)
                 raw_rows.extend(
                     TemplateBackend(phrasings=phrasings).generate(
-                        prompt="", n=1, rng=rng,
+                        prompt="",
+                        n=1,
+                        rng=rng,
                     ),
                 )
         else:
@@ -423,7 +426,9 @@ def generate_for_archetype(
                 speaker_voice=spec.speaker_voice,
             )
             raw_rows = backend.generate(
-                prompt=prompt, n=batch_n, rng=rng,
+                prompt=prompt,
+                n=batch_n,
+                rng=rng,
             )
 
         stats.generated += len(raw_rows)
@@ -454,18 +459,20 @@ def generate_for_archetype(
                 stats.note_rejection(outcome.reason)
                 continue
             seen_texts.add(norm)
-            accepted.append(GoldExample(
-                text=norm,
-                domain=spec.name,  # type: ignore[arg-type]
-                intent=archetype.intent,
-                slots=_build_slots_from_entities(row_entities),
-                topic=row_topic,
-                admission=archetype.admission,
-                state_change=archetype.state_change,
-                role_spans=list(outcome.role_spans),
-                split=split,
-                source=f"sdg-v9 archetype={archetype.name} seed={seed}",
-            ))
+            accepted.append(
+                GoldExample(
+                    text=norm,
+                    domain=spec.name,  # type: ignore[arg-type]
+                    intent=archetype.intent,
+                    slots=_build_slots_from_entities(row_entities),
+                    topic=row_topic,
+                    admission=archetype.admission,
+                    state_change=archetype.state_change,
+                    role_spans=list(outcome.role_spans),
+                    split=split,
+                    source=f"sdg-v9 archetype={archetype.name} seed={seed}",
+                )
+            )
             stats.accepted += 1
             if len(accepted) >= n:
                 break
@@ -565,8 +572,10 @@ def generate_domain(
         # reshuffle earlier ones.
         arch_seed = seed + i * 101
         rows, stats = generate_for_archetype(
-            spec, archetype,
-            n=n, backend=backend,
+            spec,
+            archetype,
+            n=n,
+            backend=backend,
             split=split,  # type: ignore[arg-type]
             seed=arch_seed,
         )
@@ -575,8 +584,12 @@ def generate_domain(
         logger.info(
             "v9-gen domain=%s archetype=%s split=%s "
             "requested=%d accepted=%d yield=%.1f%% rejections=%s",
-            spec.name, archetype.name, split,
-            stats.requested, stats.accepted, stats.yield_rate * 100.0,
+            spec.name,
+            archetype.name,
+            split,
+            stats.requested,
+            stats.accepted,
+            stats.yield_rate * 100.0,
             stats.rejections,
         )
     return all_rows, stats_by_arch

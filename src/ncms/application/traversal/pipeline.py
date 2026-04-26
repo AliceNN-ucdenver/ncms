@@ -54,7 +54,10 @@ class TraversalPipeline:
     # ── Top-Down: Abstract → Episodes → Atomic ──────────────────────────
 
     async def traverse_top_down(
-        self, seed_memory: Memory, seed_nodes: list, limit: int,
+        self,
+        seed_memory: Memory,
+        seed_nodes: list,
+        limit: int,
     ) -> tuple[list, int, list]:
         """Abstract → episodes it summarizes → atomic members."""
         results: list[RecallResult] = []
@@ -67,9 +70,14 @@ class TraversalPipeline:
         for node in seed_nodes:
             edges = await self._store.get_graph_edges(node.id)
             for edge in edges:
-                if edge.edge_type in (
-                    EdgeType.SUMMARIZES, EdgeType.ABSTRACTS,
-                ) and edge.target_id not in seen:
+                if (
+                    edge.edge_type
+                    in (
+                        EdgeType.SUMMARIZES,
+                        EdgeType.ABSTRACTS,
+                    )
+                    and edge.target_id not in seen
+                ):
                     episode_node_ids.append(edge.target_id)
                     seen.add(edge.target_id)
 
@@ -82,11 +90,13 @@ class TraversalPipeline:
                     if mem and mem.id not in seen:
                         seen.add(mem.id)
                         path.append(mem.id)
-                        results.append(RecallResult(
-                            memory=ScoredMemory(memory=mem),
-                            context=RecallContext(),
-                            retrieval_path="top_down:episode",
-                        ))
+                        results.append(
+                            RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="top_down:episode",
+                            )
+                        )
 
         # Level 2: Atomic members of those episodes
         if episode_node_ids and len(results) < limit:
@@ -101,18 +111,23 @@ class TraversalPipeline:
                         mem = await self._store.get_memory(member.memory_id)
                         if mem:
                             path.append(mem.id)
-                            results.append(RecallResult(
-                                memory=ScoredMemory(memory=mem),
-                                context=RecallContext(),
-                                retrieval_path="top_down:atomic",
-                            ))
+                            results.append(
+                                RecallResult(
+                                    memory=ScoredMemory(memory=mem),
+                                    context=RecallContext(),
+                                    retrieval_path="top_down:atomic",
+                                )
+                            )
 
         return results, levels, path
 
     # ── Bottom-Up: Atomic → Episode → Abstract ──────────────────────────
 
     async def traverse_bottom_up(
-        self, seed_memory: Memory, seed_nodes: list, limit: int,
+        self,
+        seed_memory: Memory,
+        seed_nodes: list,
+        limit: int,
     ) -> tuple[list, int, list]:
         """Atomic → episode membership → abstract summaries."""
         results: list[RecallResult] = []
@@ -137,11 +152,13 @@ class TraversalPipeline:
                     mem = await self._store.get_memory(ep_node.memory_id)
                     if mem:
                         path.append(mem.id)
-                        results.append(RecallResult(
-                            memory=ScoredMemory(memory=mem),
-                            context=RecallContext(),
-                            retrieval_path="bottom_up:episode",
-                        ))
+                        results.append(
+                            RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="bottom_up:episode",
+                            )
+                        )
 
         # Level 2: Abstracts that summarize those episodes
         if episode_node_ids and len(results) < limit:
@@ -153,28 +170,30 @@ class TraversalPipeline:
                         abs_node = await self._store.get_memory_node(
                             edge.source_id,
                         )
-                        if (
-                            abs_node
-                            and abs_node.memory_id not in seen
-                        ):
+                        if abs_node and abs_node.memory_id not in seen:
                             seen.add(abs_node.memory_id)
                             mem = await self._store.get_memory(
                                 abs_node.memory_id,
                             )
                             if mem:
                                 path.append(mem.id)
-                                results.append(RecallResult(
-                                    memory=ScoredMemory(memory=mem),
-                                    context=RecallContext(),
-                                    retrieval_path="bottom_up:abstract",
-                                ))
+                                results.append(
+                                    RecallResult(
+                                        memory=ScoredMemory(memory=mem),
+                                        context=RecallContext(),
+                                        retrieval_path="bottom_up:abstract",
+                                    )
+                                )
 
         return results, levels, path
 
     # ── Temporal: Entity State Timeline ─────────────────────────────────
 
     async def traverse_temporal(
-        self, seed_memory: Memory, seed_nodes: list, limit: int,
+        self,
+        seed_memory: Memory,
+        seed_nodes: list,
+        limit: int,
     ) -> tuple[list, int, list]:
         """Entity state timeline for entities mentioned in the seed."""
         results: list[RecallResult] = []
@@ -185,9 +204,7 @@ class TraversalPipeline:
         entity_ids = self._graph.get_entity_ids_for_memory(seed_memory.id)
 
         for entity_id in entity_ids[:5]:  # Cap to avoid explosion
-            states = (
-                await self._store.get_entity_states_by_entity(entity_id)
-            )
+            states = await self._store.get_entity_states_by_entity(entity_id)
             # Sort by observed_at for timeline ordering
             states.sort(key=lambda s: s.observed_at or s.created_at)
             for state_node in states:
@@ -200,11 +217,13 @@ class TraversalPipeline:
                     )
                     if mem:
                         path.append(mem.id)
-                        results.append(RecallResult(
-                            memory=ScoredMemory(memory=mem),
-                            context=RecallContext(),
-                            retrieval_path="temporal:state_timeline",
-                        ))
+                        results.append(
+                            RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="temporal:state_timeline",
+                            )
+                        )
 
         levels = 1 if results else 0
         return results, levels, path
@@ -212,7 +231,10 @@ class TraversalPipeline:
     # ── Lateral: Episode Siblings + Related Episodes ────────────────────
 
     async def traverse_lateral(
-        self, seed_memory: Memory, seed_nodes: list, limit: int,
+        self,
+        seed_memory: Memory,
+        seed_nodes: list,
+        limit: int,
     ) -> tuple[list, int, list]:
         """Episode siblings + related episodes via shared entities."""
         results: list[RecallResult] = []
@@ -225,20 +247,29 @@ class TraversalPipeline:
         if episode_node_ids:
             levels += 1
             await self._collect_episode_siblings(
-                episode_node_ids, results, path, seen, limit,
+                episode_node_ids,
+                results,
+                path,
+                seen,
+                limit,
             )
 
         # Level 2: Related episodes via shared topic entities
         if episode_node_ids and len(results) < limit:
             levels += 1
             await self._collect_related_episodes(
-                episode_node_ids, results, path, seen, limit,
+                episode_node_ids,
+                results,
+                path,
+                seen,
+                limit,
             )
 
         return results, levels, path
 
     async def _collect_seed_episodes(
-        self, seed_nodes: list,
+        self,
+        seed_nodes: list,
     ) -> list[str]:
         episode_node_ids: list[str] = []
         for node in seed_nodes:
@@ -266,11 +297,13 @@ class TraversalPipeline:
                     mem = await self._store.get_memory(member.memory_id)
                     if mem:
                         path.append(mem.id)
-                        results.append(RecallResult(
-                            memory=ScoredMemory(memory=mem),
-                            context=RecallContext(),
-                            retrieval_path="lateral:sibling",
-                        ))
+                        results.append(
+                            RecallResult(
+                                memory=ScoredMemory(memory=mem),
+                                context=RecallContext(),
+                                retrieval_path="lateral:sibling",
+                            )
+                        )
 
     async def _collect_related_episodes(
         self,
@@ -304,11 +337,13 @@ class TraversalPipeline:
                 mem = await self._store.get_memory(ep.memory_id)
                 if mem:
                     path.append(mem.id)
-                    results.append(RecallResult(
-                        memory=ScoredMemory(memory=mem),
-                        context=RecallContext(),
-                        retrieval_path="lateral:related_episode",
-                    ))
+                    results.append(
+                        RecallResult(
+                            memory=ScoredMemory(memory=mem),
+                            context=RecallContext(),
+                            retrieval_path="lateral:related_episode",
+                        )
+                    )
                     if len(results) >= limit:
                         return
 
@@ -332,27 +367,25 @@ class TraversalPipeline:
         abstract_episodes: dict[str, list[str]] = {}
         for node in abstracts:
             meta = node.metadata or {}
-            entities = set(
-                meta.get("topic_entities", [])
-                or meta.get("key_entities", [])
-            )
+            entities = set(meta.get("topic_entities", []) or meta.get("key_entities", []))
             if entities:
                 abstract_entities[node.memory_id] = entities
                 src_eps = meta.get("source_episode_ids", [])
-                abstract_episodes[node.memory_id] = (
-                    src_eps if src_eps else []
-                )
+                abstract_episodes[node.memory_id] = src_eps if src_eps else []
 
         if not abstract_entities:
             return []
 
         clusters = self._cluster_abstracts_by_overlap(
-            abstract_entities, abstract_episodes, len(abstracts),
+            abstract_entities,
+            abstract_episodes,
+            len(abstracts),
         )
         clusters.sort(key=lambda c: c.member_count, reverse=True)
         logger.info(
             "[topic_map] Generated %d topic clusters from %d abstracts",
-            len(clusters), len(abstracts),
+            len(clusters),
+            len(abstracts),
         )
         return clusters
 
@@ -381,9 +414,7 @@ class TraversalPipeline:
                     e = abstract_entities[mid]
                     union = cluster_entities | e
                     overlap = cluster_entities & e
-                    jaccard = (
-                        len(overlap) / len(union) if union else 0
-                    )
+                    jaccard = len(overlap) / len(union) if union else 0
                     if jaccard >= threshold:
                         cluster_ids.append(mid)
                         cluster_entities |= e
@@ -395,7 +426,9 @@ class TraversalPipeline:
 
             clusters.append(
                 self._build_cluster(
-                    cluster_ids, abstract_entities, abstract_episodes,
+                    cluster_ids,
+                    abstract_entities,
+                    abstract_episodes,
                     total_abstracts,
                 ),
             )
@@ -418,13 +451,11 @@ class TraversalPipeline:
             all_episode_ids.extend(abstract_episodes.get(mid, []))
 
         top_entities = sorted(
-            entity_freq, key=entity_freq.get,  # type: ignore[arg-type]
+            entity_freq,
+            key=entity_freq.get,  # type: ignore[arg-type]
             reverse=True,
         )[:5]
-        label = (
-            " / ".join(top_entities) if top_entities
-            else "Unnamed Topic"
-        )
+        label = " / ".join(top_entities) if top_entities else "Unnamed Topic"
 
         return TopicCluster(
             label=label,

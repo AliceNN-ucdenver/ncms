@@ -126,8 +126,8 @@ class TestSpreadingActivation:
     def test_more_overlap_same_context_gives_more_activation(self):
         """With same context, more matching memory entities give higher activation."""
         # Same context ["a", "b"], but one memory has only 1 match vs 2 matches
-        fewer = spreading_activation(["a", "c"], ["a", "b"])   # 1 overlap out of 2 context
-        more = spreading_activation(["a", "b"], ["a", "b"])    # 2 overlaps out of 2 context
+        fewer = spreading_activation(["a", "c"], ["a", "b"])  # 1 overlap out of 2 context
+        more = spreading_activation(["a", "b"], ["a", "b"])  # 2 overlaps out of 2 context
         assert more > fewer
 
 
@@ -172,7 +172,10 @@ class TestTotalActivation:
         """All components should combine correctly."""
         base, spread, noise, penalty = 3.0, 1.5, 0.2, 0.7
         result = total_activation(
-            base_level=base, spreading=spread, noise=noise, mismatch_penalty=penalty,
+            base_level=base,
+            spreading=spread,
+            noise=noise,
+            mismatch_penalty=penalty,
         )
         expected = base + spread + noise - penalty
         assert result == pytest.approx(expected, abs=1e-9)

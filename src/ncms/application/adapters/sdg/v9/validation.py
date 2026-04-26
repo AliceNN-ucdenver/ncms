@@ -96,19 +96,22 @@ def validate_and_label(
 
     if len(clean) < archetype.target_min_chars:
         return ValidationOutcome(
-            ok=False, reason="too_short",
+            ok=False,
+            reason="too_short",
             detail=f"len={len(clean)} < {archetype.target_min_chars}",
         )
     if len(clean) > archetype.target_max_chars:
         return ValidationOutcome(
-            ok=False, reason="too_long",
+            ok=False,
+            reason="too_long",
             detail=f"len={len(clean)} > {archetype.target_max_chars}",
         )
 
     if _PLACEHOLDER_RE.search(clean):
         leaks = _PLACEHOLDER_RE.findall(clean)
         return ValidationOutcome(
-            ok=False, reason="placeholder_leak",
+            ok=False,
+            reason="placeholder_leak",
             detail=f"unfilled placeholders: {leaks}",
         )
 
@@ -122,7 +125,8 @@ def validate_and_label(
             missing.append(surface)
     if missing:
         return ValidationOutcome(
-            ok=False, reason="missing_entity",
+            ok=False,
+            reason="missing_entity",
             detail=f"entities absent from text: {missing}",
         )
 
@@ -143,7 +147,9 @@ def validate_and_label(
     composition_ok, detail = _check_role_composition(role_spans, archetype)
     if not composition_ok:
         return ValidationOutcome(
-            ok=False, reason="wrong_role_spans", detail=detail,
+            ok=False,
+            reason="wrong_role_spans",
+            detail=detail,
         )
 
     return ValidationOutcome(ok=True, role_spans=tuple(role_spans))
@@ -177,15 +183,17 @@ def _label_from_gazetteer(
     for span in gaz_spans:
         key = (span.canonical.lower().strip(), span.slot)
         role = signature_to_role.get(key, "not_relevant")
-        out.append(RoleSpan(
-            char_start=span.char_start,
-            char_end=span.char_end,
-            surface=span.surface,
-            canonical=span.canonical,
-            slot=span.slot,
-            role=role,  # type: ignore[arg-type]
-            source="sdg-v9",
-        ))
+        out.append(
+            RoleSpan(
+                char_start=span.char_start,
+                char_end=span.char_end,
+                surface=span.surface,
+                canonical=span.canonical,
+                slot=span.slot,
+                role=role,  # type: ignore[arg-type]
+                source="sdg-v9",
+            )
+        )
     return out
 
 
@@ -207,15 +215,17 @@ def _label_open_vocab(
         idx = text_lower.find(surface.lower())
         if idx < 0:
             continue
-        out.append(RoleSpan(
-            char_start=idx,
-            char_end=idx + len(surface),
-            surface=text[idx:idx + len(surface)],
-            canonical=surface,
-            slot=slot,
-            role=role,  # type: ignore[arg-type]
-            source="sdg-v9-openvocab",
-        ))
+        out.append(
+            RoleSpan(
+                char_start=idx,
+                char_end=idx + len(surface),
+                surface=text[idx : idx + len(surface)],
+                canonical=surface,
+                slot=slot,
+                role=role,  # type: ignore[arg-type]
+                source="sdg-v9-openvocab",
+            )
+        )
     return out
 
 

@@ -105,7 +105,8 @@ def find_adapter_dir(
 
 
 def list_available_adapters(
-    *, root: Path | None = None,
+    *,
+    root: Path | None = None,
 ) -> dict[str, list[str]]:
     """Enumerate adapters on disk.
 
@@ -120,9 +121,7 @@ def list_available_adapters(
     for domain_dir in sorted(root.iterdir()):
         if not domain_dir.is_dir():
             continue
-        versions = sorted(
-            p.name for p in domain_dir.iterdir() if p.is_dir()
-        )
+        versions = sorted(p.name for p in domain_dir.iterdir() if p.is_dir())
         if versions:
             out[domain_dir.name] = versions
     return out
@@ -183,7 +182,8 @@ def build_default_intent_slot_chain(
             "falling back to heuristic-only chain (memories will still "
             "ingest, but admission/state_change/topic/intent/slot heads "
             "will return None)",
-            domain, root or _default_adapter_root(),
+            domain,
+            root or _default_adapter_root(),
         )
 
     return build_extractor_chain(

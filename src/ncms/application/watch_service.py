@@ -240,7 +240,8 @@ class WatchService:
             self._stats.files_skipped_hash += 1
             if self._event_log:
                 self._event_log.watch_file_skipped(
-                    str(file_path), "unchanged (hash match)",
+                    str(file_path),
+                    "unchanged (hash match)",
                 )
             return False
 
@@ -303,7 +304,8 @@ class WatchService:
         """Persist file hashes to store."""
         try:
             await self._memory_svc.store.set_consolidation_value(
-                HASH_STORE_KEY, json.dumps(self._file_hashes),
+                HASH_STORE_KEY,
+                json.dumps(self._file_hashes),
             )
         except Exception:
             logger.debug("Failed to persist file hashes", exc_info=True)

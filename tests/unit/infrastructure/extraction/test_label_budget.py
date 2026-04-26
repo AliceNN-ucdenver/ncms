@@ -30,25 +30,29 @@ def spy_calls(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     calls: list[list[str]] = []
 
     def fake_extract(
-        text: str, *, labels=None, model_name=None,
-        threshold=None, cache_dir=None,
+        text: str,
+        *,
+        labels=None,
+        model_name=None,
+        threshold=None,
+        cache_dir=None,
     ) -> list[dict[str, object]]:
         calls.append(list(labels or []))
         # Emit one dummy entity per label so callers can dedupe by type.
         return [
-            {"name": f"ent_{label}", "type": label,
-             "char_start": 0, "char_end": 1}
+            {"name": f"ent_{label}", "type": label, "char_start": 0, "char_end": 1}
             for label in (labels or [])
         ]
 
     monkeypatch.setattr(
-        gliner_extractor, "extract_entities_gliner", fake_extract,
+        gliner_extractor,
+        "extract_entities_gliner",
+        fake_extract,
     )
     return calls
 
 
 class TestUnderBudget:
-
     def test_small_label_list_single_call(self, spy_calls) -> None:
         labels = ["person", "location", "date"]  # 3 labels
         out = extract_with_label_budget("hi", labels)
@@ -63,7 +67,6 @@ class TestUnderBudget:
 
 
 class TestOverBudget:
-
     def test_mixed_entity_and_temporal_splits(self, spy_calls) -> None:
         # 10 entity + 7 temporal = 17 labels, over budget.
         entity_labels = [f"e{i}" for i in range(10)]
@@ -97,19 +100,17 @@ class TestOverBudget:
         assert len(spy_calls) == 1
 
     def test_case_insensitive_temporal_classification(
-        self, spy_calls,
+        self,
+        spy_calls,
     ) -> None:
         """TEMPORAL_LABELS classification ignores case on both sides."""
-        labels = [f"e{i}" for i in range(10)] + [
-            t.upper() for t in TEMPORAL_LABELS[:3]
-        ]
+        labels = [f"e{i}" for i in range(10)] + [t.upper() for t in TEMPORAL_LABELS[:3]]
         extract_with_label_budget("hi", labels)
         # 13 total → over budget → should split
         assert len(spy_calls) == 2
 
 
 class TestCustomBudget:
-
     def test_explicit_budget_override(self, spy_calls) -> None:
         labels = [f"e{i}" for i in range(6)] + ["date", "duration"]
         # 8 total labels, default budget 10 → single call.

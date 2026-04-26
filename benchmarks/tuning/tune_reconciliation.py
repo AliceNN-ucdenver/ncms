@@ -187,7 +187,8 @@ async def evaluate_reconciliation() -> dict:
 
     try:
         sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
     except Exception:
         sha = "unknown"
@@ -208,8 +209,10 @@ async def evaluate_reconciliation() -> dict:
     }
 
     total_configs = len(supersession_penalties) * len(conflict_penalties)
-    print(f"Reconciliation tuning: {total_configs} configs, "
-          f"{len(STATE_TRANSITIONS)} transitions", flush=True)
+    print(
+        f"Reconciliation tuning: {total_configs} configs, {len(STATE_TRANSITIONS)} transitions",
+        flush=True,
+    )
 
     best_rate = -1.0
     best_cfg = None
@@ -234,13 +237,20 @@ async def evaluate_reconciliation() -> dict:
             )
 
             admission_svc = AdmissionService(
-                store=store, index=index, graph=graph, config=config,
+                store=store,
+                index=index,
+                graph=graph,
+                config=config,
             )
             reconciliation_svc = ReconciliationService(store=store, config=config)
             episode_svc = EpisodeService(store=store, index=index, config=config)
             svc = MemoryService(
-                store=store, index=index, graph=graph, config=config,
-                admission=admission_svc, reconciliation=reconciliation_svc,
+                store=store,
+                index=index,
+                graph=graph,
+                config=config,
+                admission=admission_svc,
+                reconciliation=reconciliation_svc,
                 episode=episode_svc,
             )
 
@@ -314,15 +324,19 @@ async def evaluate_reconciliation() -> dict:
     path = TUNING_DIR / "reconciliation_tuning.json"
     path.write_text(json.dumps(results, indent=2) + "\n")
     print(f"\nResults written to {path}", flush=True)
-    print(f"Best: sup_penalty={best_cfg['supersession_penalty']} "
-          f"con_penalty={best_cfg['conflict_penalty']} "
-          f"demotion_rate={best_cfg['demotion_rate']:.3f}", flush=True)
+    print(
+        f"Best: sup_penalty={best_cfg['supersession_penalty']} "
+        f"con_penalty={best_cfg['conflict_penalty']} "
+        f"demotion_rate={best_cfg['demotion_rate']:.3f}",
+        flush=True,
+    )
 
     return results
 
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     asyncio.run(evaluate_reconciliation())
 

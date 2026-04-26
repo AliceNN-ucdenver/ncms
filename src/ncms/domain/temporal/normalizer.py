@@ -78,9 +78,21 @@ _DURATION_RE = re.compile(
     re.IGNORECASE,
 )
 _NUMBER_WORDS: dict[str, int] = {
-    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4,
-    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-    "a couple of": 2, "a few": 3, "several": 3,
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "a couple of": 2,
+    "a few": 3,
+    "several": 3,
 }
 
 # Quarter pattern: "Q1 2024", "Q4/2023"
@@ -106,16 +118,16 @@ _CANONICAL_PHRASES: dict[str, tuple[int, int]] = {
     "tonight": (0, 1),
     "yesterday": (-1, 1),
     "tomorrow": (1, 1),
-    "this week": (0, 7),             # approx — refined in resolve
+    "this week": (0, 7),  # approx — refined in resolve
     "last week": (-7, 7),
     "next week": (7, 7),
-    "this month": (0, 30),           # refined to calendar month
+    "this month": (0, 30),  # refined to calendar month
     "last month": (-30, 30),
     "next month": (30, 30),
     "this year": (0, 365),
     "last year": (-365, 365),
     "next year": (365, 365),
-    "this weekend": (0, 2),          # approx
+    "this weekend": (0, 2),  # approx
     "last weekend": (-7, 2),
     "next weekend": (7, 2),
     "upcoming weekend": (7, 2),
@@ -137,11 +149,11 @@ class NormalizedInterval:
     """A resolved (start, end) interval with provenance."""
 
     start: datetime
-    end: datetime       # exclusive upper bound
+    end: datetime  # exclusive upper bound
     confidence: float
     source_span: RawSpan
     # Extra context for duration pairing / merging.
-    origin: str = ""    # "date" | "relative" | "duration+anchor" | ...
+    origin: str = ""  # "date" | "relative" | "duration+anchor" | ...
 
 
 @dataclass
@@ -220,7 +232,8 @@ def merge_intervals(
     end = max(i.end for i in intervals)
     best = max(intervals, key=lambda i: i.confidence)
     return NormalizedInterval(
-        start=start, end=end,
+        start=start,
+        end=end,
         confidence=best.confidence,
         source_span=best.source_span,
         origin="merged",
@@ -246,10 +259,7 @@ def _dedupe_by_position(spans: list[RawSpan]) -> list[RawSpan]:
         key = (s.char_start, s.char_end)
         if key == (0, 0) and s not in unposed:
             # No positions — keep the whole span as-is, dedup by text+label
-            if all(
-                not (u.text == s.text and u.label == s.label)
-                for u in unposed
-            ):
+            if all(not (u.text == s.text and u.label == s.label) for u in unposed):
                 unposed.append(s)
             continue
         prev = best_by_key.get(key)
@@ -263,7 +273,8 @@ def _priority(span: RawSpan) -> int:
 
 
 def _resolve_single(
-    span: RawSpan, ctx: _ResolutionContext,
+    span: RawSpan,
+    ctx: _ResolutionContext,
 ) -> NormalizedInterval | None:
     """Resolve one span, dispatching by label."""
     text = (span.text or "").strip()
@@ -291,7 +302,9 @@ def _resolve_single(
 
 
 def _resolve_date(
-    span: RawSpan, text: str, ctx: _ResolutionContext,
+    span: RawSpan,
+    text: str,
+    ctx: _ResolutionContext,
 ) -> NormalizedInterval | None:
     """Absolute dates: widen partials to the natural container."""
     # Year-only → [YYYY-01-01, YYYY+1-01-01)
@@ -301,8 +314,11 @@ def _resolve_date(
             start = datetime(year, 1, 1, tzinfo=UTC)
             end = datetime(year + 1, 1, 1, tzinfo=UTC)
             return NormalizedInterval(
-                start=start, end=end, confidence=0.95,
-                source_span=span, origin="date:year",
+                start=start,
+                end=end,
+                confidence=0.95,
+                source_span=span,
+                origin="date:year",
             )
         except ValueError:
             return None
@@ -314,8 +330,11 @@ def _resolve_date(
         start = datetime(parsed.year, parsed.month, 1, tzinfo=UTC)
         end = _add_month(start)
         return NormalizedInterval(
-            start=start, end=end, confidence=0.92,
-            source_span=span, origin="date:year-month",
+            start=start,
+            end=end,
+            confidence=0.92,
+            source_span=span,
+            origin="date:year-month",
         )
     # Quarter → [Q-start, next-Q start)
     qm = _QUARTER_RE.match(text)
@@ -324,11 +343,13 @@ def _resolve_date(
         year = int(qm.group(2))
         q_month = (q - 1) * 3 + 1  # 1, 4, 7, 10
         start = datetime(year, q_month, 1, tzinfo=UTC)
-        end = datetime(year + (1 if q == 4 else 0),
-                       (q_month + 3) if q != 4 else 1, 1, tzinfo=UTC)
+        end = datetime(year + (1 if q == 4 else 0), (q_month + 3) if q != 4 else 1, 1, tzinfo=UTC)
         return NormalizedInterval(
-            start=start, end=end, confidence=0.9,
-            source_span=span, origin="date:quarter",
+            start=start,
+            end=end,
+            confidence=0.9,
+            source_span=span,
+            origin="date:quarter",
         )
     # Fully-specified date.
     parsed = _dp_parse(text, ctx)
@@ -337,13 +358,18 @@ def _resolve_date(
     start = _to_utc_midnight(parsed)
     end = start + timedelta(days=1)
     return NormalizedInterval(
-        start=start, end=end, confidence=0.88,
-        source_span=span, origin="date:absolute",
+        start=start,
+        end=end,
+        confidence=0.88,
+        source_span=span,
+        origin="date:absolute",
     )
 
 
 def _resolve_relative(
-    span: RawSpan, text: str, ctx: _ResolutionContext,
+    span: RawSpan,
+    text: str,
+    ctx: _ResolutionContext,
 ) -> NormalizedInterval | None:
     """Relative expressions: canonical phrases first, then dateparser."""
     text_lc = text.lower().strip()
@@ -409,7 +435,8 @@ def _resolve_relative(
 
 
 def _resolve_duration_marker(
-    span: RawSpan, text: str,
+    span: RawSpan,
+    text: str,
 ) -> NormalizedInterval | None:
     """Parse a bare duration into a sentinel interval.
 
@@ -435,11 +462,16 @@ def _resolve_duration_marker(
 
 
 def _resolve_start_date(
-    span: RawSpan, text: str, ctx: _ResolutionContext,
+    span: RawSpan,
+    text: str,
+    ctx: _ResolutionContext,
 ) -> NormalizedInterval | None:
     """'since June 5' → [June 5, reference_time)."""
     clean = re.sub(
-        r"^(since|starting|from|as\s+of|after)\s+", "", text, flags=re.IGNORECASE,
+        r"^(since|starting|from|as\s+of|after)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
     ).strip()
     parsed = _dp_parse(clean, ctx)
     if parsed is None:
@@ -452,11 +484,16 @@ def _resolve_start_date(
 
 
 def _resolve_end_date(
-    span: RawSpan, text: str, ctx: _ResolutionContext,
+    span: RawSpan,
+    text: str,
+    ctx: _ResolutionContext,
 ) -> NormalizedInterval | None:
     """'until yesterday' → [MIN, yesterday+1)."""
     clean = re.sub(
-        r"^(until|through|by|before|to)\s+", "", text, flags=re.IGNORECASE,
+        r"^(until|through|by|before|to)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
     ).strip()
     parsed = _dp_parse(clean, ctx)
     if parsed is None:
@@ -522,7 +559,9 @@ def _pair_durations_with_anchors(
 
 
 def _dp_parse(
-    text: str, ctx: _ResolutionContext, direction: str | None = None,
+    text: str,
+    ctx: _ResolutionContext,
+    direction: str | None = None,
 ) -> datetime | None:
     """Single entry point to dateparser with NCMS-standard settings."""
     settings: dict[str, object] = {
@@ -578,7 +617,7 @@ def _parse_duration_to_days(text: str) -> int | None:
         if n is None:
             return None
     unit_to_days = {
-        "second": 0,   # degenerate — rejected downstream by end<=start
+        "second": 0,  # degenerate — rejected downstream by end<=start
         "minute": 0,
         "hour": 0,
         "day": 1,
@@ -602,6 +641,9 @@ def _mk(
     origin: str,
 ) -> NormalizedInterval:
     return NormalizedInterval(
-        start=start, end=end, confidence=confidence,
-        source_span=span, origin=origin,
+        start=start,
+        end=end,
+        confidence=confidence,
+        source_span=span,
+        origin=origin,
     )

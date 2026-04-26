@@ -71,7 +71,11 @@ class TestSPLADEPipeline:
         splade = MockSpladeEngine()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=splade_config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=splade_config,
+            splade=splade,
         )
 
         await svc.store_memory(
@@ -103,7 +107,11 @@ class TestSPLADEPipeline:
         splade = MockSpladeEngine()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=splade_config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=splade_config,
+            splade=splade,
         )
 
         # Store a memory with content that overlaps the query via SPLADE
@@ -152,7 +160,11 @@ class TestSPLADEPipeline:
         splade = MockSpladeEngine()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=splade_config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=splade_config,
+            splade=splade,
         )
 
         await svc.store_memory(
@@ -178,7 +190,11 @@ class TestSPLADEPipeline:
         splade = MockSpladeEngine()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=splade_config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=splade_config,
+            splade=splade,
         )
 
         mem = await svc.store_memory(
@@ -210,7 +226,11 @@ class TestSPLADEPipeline:
         splade = MockSpladeEngine()
 
         svc = MemoryService(
-            store=store, index=index, graph=graph, config=splade_config, splade=splade,
+            store=store,
+            index=index,
+            graph=graph,
+            config=splade_config,
+            splade=splade,
         )
 
         await svc.store_memory(content="Flask web framework", domains=["api"])

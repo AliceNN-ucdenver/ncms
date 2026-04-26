@@ -21,20 +21,20 @@ class FileChangeType(StrEnum):
 class DomainSource(StrEnum):
     """How a domain classification was determined."""
 
-    EXPLICIT = "explicit"          # User-specified via --domain flag
-    PATH_RULE = "path_rule"        # Matched a configured path pattern
+    EXPLICIT = "explicit"  # User-specified via --domain flag
+    PATH_RULE = "path_rule"  # Matched a configured path pattern
     DIRECTORY_NAME = "directory_name"  # Inferred from parent directory name
-    EXTENSION = "extension"        # Inferred from file extension
-    FALLBACK = "fallback"          # Used watch root directory name
+    EXTENSION = "extension"  # Inferred from file extension
+    FALLBACK = "fallback"  # Used watch root directory name
 
 
 @dataclass(frozen=True, slots=True)
 class WatchRule:
     """Maps a path glob pattern to a domain."""
 
-    pattern: str         # Glob pattern, e.g. "docs/api/**"
-    domain: str          # Target domain, e.g. "api"
-    priority: int = 0    # Higher = checked first
+    pattern: str  # Glob pattern, e.g. "docs/api/**"
+    domain: str  # Target domain, e.g. "api"
+    priority: int = 0  # Higher = checked first
 
 
 @dataclass(frozen=True, slots=True)

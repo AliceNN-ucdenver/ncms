@@ -62,12 +62,7 @@ class TestScoreAdmission:
             persistence=0.5,
             state_change_signal=0.4,
         )
-        expected = (
-            0.30 * 0.6
-            + 0.25 * 0.5
-            + 0.25 * 0.4
-            + 0.20 * 0.3
-        )
+        expected = 0.30 * 0.6 + 0.25 * 0.5 + 0.25 * 0.4 + 0.20 * 0.3
         assert score_admission(f) == pytest.approx(expected, abs=1e-9)
 
     def test_weights_sum_to_one(self):

@@ -36,6 +36,7 @@ The rule set follows the TLG grammar's production definitions:
   that caused Y".  Convo causal_chain is mostly AGGREGATION (
   "total amount spent", "how many days in total") — DROP.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,9 +46,7 @@ from pathlib import Path
 
 import yaml
 
-GOLD_PATH = Path(
-    "/Users/shawnmccarthy/ncms/benchmarks/mseb_convo/gold_locked.yaml"
-)
+GOLD_PATH = Path("/Users/shawnmccarthy/ncms/benchmarks/mseb_convo/gold_locked.yaml")
 OUT_JSONL = Path("/tmp/convo_gold_audit.jsonl")
 OUT_MD = Path("/tmp/convo_gold_audit.md")
 
@@ -300,13 +299,15 @@ def main() -> None:
     audits: list[dict] = []
     for row in rows:
         verdict, reason = classify(row["text"], row["shape"])
-        audits.append({
-            "qid": row["qid"],
-            "current_shape": row["shape"],
-            "text": row["text"],
-            "verdict": verdict,
-            "reason": reason,
-        })
+        audits.append(
+            {
+                "qid": row["qid"],
+                "current_shape": row["shape"],
+                "text": row["text"],
+                "verdict": verdict,
+                "reason": reason,
+            }
+        )
 
     OUT_JSONL.write_text(
         "\n".join(json.dumps(a) for a in audits) + "\n",
@@ -318,9 +319,7 @@ def main() -> None:
         verdict_bucket = a["verdict"]
         if verdict_bucket.startswith("remap:"):
             verdict_bucket = "remap"
-        by_verdict_and_shape.setdefault(a["current_shape"], Counter())[
-            verdict_bucket
-        ] += 1
+        by_verdict_and_shape.setdefault(a["current_shape"], Counter())[verdict_bucket] += 1
 
     lines: list[str] = [
         "# Convo Gold TLG-Semantic Audit\n",
@@ -346,9 +345,9 @@ def main() -> None:
     n = len(audits)
     lines.append(
         f"| **TOTAL** | **{n}** | "
-        f"**{overall['keep']} ({100*overall['keep']/n:.0f}%)** | "
-        f"**{overall['remap']} ({100*overall['remap']/n:.0f}%)** | "
-        f"**{overall['drop']} ({100*overall['drop']/n:.0f}%)** |"
+        f"**{overall['keep']} ({100 * overall['keep'] / n:.0f}%)** | "
+        f"**{overall['remap']} ({100 * overall['remap'] / n:.0f}%)** | "
+        f"**{overall['drop']} ({100 * overall['drop'] / n:.0f}%)** |"
     )
 
     # Remap distribution
@@ -364,17 +363,12 @@ def main() -> None:
     # Sample verdicts for each bucket
     lines.append("\n## Sample drops (5 per shape)\n")
     for shape in sorted(by_verdict_and_shape):
-        drops = [a for a in audits
-                 if a["current_shape"] == shape
-                 and a["verdict"] == "drop"]
+        drops = [a for a in audits if a["current_shape"] == shape and a["verdict"] == "drop"]
         if not drops:
             continue
         lines.append(f"\n### {shape} drops (showing 5 of {len(drops)})\n")
         for a in drops[:5]:
-            lines.append(
-                f"- `{a['qid']}` — {a['text'][:120]}\n"
-                f"  - reason: *{a['reason']}*"
-            )
+            lines.append(f"- `{a['qid']}` — {a['text'][:120]}\n  - reason: *{a['reason']}*")
 
     lines.append("\n## Sample remaps (3 per target)\n")
     for tgt in remaps:
@@ -388,8 +382,7 @@ def main() -> None:
 
     OUT_MD.write_text("\n".join(lines) + "\n")
     print(f"\nWrote audit to {OUT_MD} and {OUT_JSONL}")
-    print(f"\n{overall['keep']} keep, {overall['remap']} remap, "
-          f"{overall['drop']} drop ({n} total)")
+    print(f"\n{overall['keep']} keep, {overall['remap']} remap, {overall['drop']} drop ({n} total)")
 
 
 if __name__ == "__main__":

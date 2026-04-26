@@ -24,7 +24,8 @@ class TestGetMemoryNodesForMemories:
         assert result == {}
 
     async def test_returns_nodes_grouped_by_memory_id(
-        self, store: SQLiteStore,
+        self,
+        store: SQLiteStore,
     ) -> None:
         """Two memories with one node each → dict with two entries."""
         mem1 = Memory(content="first memory", domains=["test"])
@@ -57,7 +58,9 @@ class TestGetMemoryNodesForMemories:
 
         node1 = MemoryNode(memory_id=mem.id, node_type=NodeType.ATOMIC, importance=5.0)
         node2 = MemoryNode(
-            memory_id=mem.id, node_type=NodeType.ENTITY_STATE, importance=5.0,
+            memory_id=mem.id,
+            node_type=NodeType.ENTITY_STATE,
+            importance=5.0,
         )
         await store.save_memory_node(node1)
         await store.save_memory_node(node2)

@@ -92,7 +92,8 @@ class DemoAgent(KnowledgeAgent):
     async def collect_working_knowledge(self) -> list[SnapshotEntry]:
         """Export current domain knowledge for snapshot publication."""
         memories = await self._memory.list_memories(
-            domain=self.primary_domain, agent_id=self.agent_id,
+            domain=self.primary_domain,
+            agent_id=self.agent_id,
         )
 
         entries: list[SnapshotEntry] = []

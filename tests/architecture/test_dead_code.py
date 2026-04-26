@@ -26,7 +26,8 @@ def _vulture_available() -> bool:
     try:
         subprocess.run(
             [sys.executable, "-c", "import vulture"],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
@@ -41,11 +42,16 @@ def test_no_dead_code_in_src() -> None:
     """No new dead-code findings at vulture confidence >= 80%."""
     result = subprocess.run(
         [
-            sys.executable, "-m", "vulture",
-            str(SRC), str(WHITELIST),
-            "--min-confidence", "80",
+            sys.executable,
+            "-m",
+            "vulture",
+            str(SRC),
+            str(WHITELIST),
+            "--min-confidence",
+            "80",
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, (
         "Vulture found dead code in src/ncms/.\n"

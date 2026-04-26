@@ -58,7 +58,10 @@ async def recon_service(store, config):
 @pytest_asyncio.fixture
 async def memory_service(store, index, graph, config, recon_service):
     return MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
         reconciliation=recon_service,
     )
 
@@ -116,16 +119,22 @@ class TestSupersededStateRanksLower:
         """When searching, a superseded memory should score lower due to penalty."""
         # Create v1 (will be superseded)
         mem_v1, node_v1 = await _create_memory_with_entity_state(
-            store, index,
+            store,
+            index,
             "auth-service status is running in production",
-            "auth-service", "status", "running",
+            "auth-service",
+            "status",
+            "running",
         )
 
         # Create v2 (supersedes v1)
         mem_v2, node_v2 = await _create_memory_with_entity_state(
-            store, index,
+            store,
+            index,
             "auth-service status is stopped for maintenance",
-            "auth-service", "status", "stopped",
+            "auth-service",
+            "status",
+            "stopped",
         )
         await recon_service.reconcile(node_v2)
 
@@ -134,8 +143,18 @@ class TestSupersededStateRanksLower:
         assert v1_updated is not None
         assert v1_updated.is_current is False
 
-        # Search for auth-service status
-        results = await memory_service.search("auth-service status", limit=10)
+        # Search for auth-service status.  Phase G intent-gated
+        # reconciliation: the supersession penalty fires only when the
+        # query is classified as CURRENT_STATE_LOOKUP.  This fixture
+        # doesn't wire up an intent classifier, so we pin the intent
+        # explicitly via the override — the architectural contract
+        # this test validates ("current beats superseded") is the
+        # current-state-lookup behaviour, not the default fact lookup.
+        results = await memory_service.search(
+            "auth-service status",
+            limit=10,
+            intent_override="current_state_lookup",
+        )
         assert len(results) >= 2
 
         # Find the v1 and v2 results
@@ -163,9 +182,12 @@ class TestSupersededStateRanksLower:
     ) -> None:
         """ScoredMemory annotations reflect reconciliation state."""
         mem, node = await _create_memory_with_entity_state(
-            store, index,
+            store,
+            index,
             "database version is 3.2 on production cluster",
-            "db-main", "version", "3.2",
+            "db-main",
+            "version",
+            "3.2",
         )
 
         # Not superseded — annotations should be clean
@@ -187,17 +209,23 @@ class TestSupersededStateRanksLower:
     ) -> None:
         """Memories with CONFLICTS_WITH edges should be annotated."""
         mem_us, node_us = await _create_memory_with_entity_state(
-            store, index,
+            store,
+            index,
             "api-gateway status is running in us-east-1 region",
-            "api-gw", "status", "running",
+            "api-gw",
+            "status",
+            "running",
         )
         node_us.metadata["state_scope"] = "us-east-1"
         await store.update_memory_node(node_us)
 
         mem_eu, node_eu = await _create_memory_with_entity_state(
-            store, index,
+            store,
+            index,
             "api-gateway status is degraded in eu-west-1 region",
-            "api-gw", "status", "degraded",
+            "api-gw",
+            "status",
+            "degraded",
         )
         node_eu.metadata["state_scope"] = "eu-west-1"
         await store.update_memory_node(node_eu)

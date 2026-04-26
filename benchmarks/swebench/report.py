@@ -89,9 +89,7 @@ def generate_actr_table(results: dict[str, Any]) -> str:
                 best_ndcg = ndcg
                 best_weight = w
 
-        lines.append(
-            f"| {stage['display_name']} | {' | '.join(values)} | {best_weight} |"
-        )
+        lines.append(f"| {stage['display_name']} | {' | '.join(values)} | {best_weight} |")
 
     return "\n".join(lines)
 
@@ -100,8 +98,12 @@ def generate_comparison_table(results: dict[str, Any]) -> str:
     """Generate SciFact vs SWE-bench comparison table."""
     # SciFact observed values
     scifact = {
-        "entities": 51357, "edges": 0, "components": 51357,
-        "density": 0.0, "actr_best": 0.0, "dream_delta": "+0.04%",
+        "entities": 51357,
+        "edges": 0,
+        "components": 51357,
+        "density": 0.0,
+        "actr_best": 0.0,
+        "dream_delta": "+0.04%",
     }
 
     # Get SWE-bench final stage graph diagnostics

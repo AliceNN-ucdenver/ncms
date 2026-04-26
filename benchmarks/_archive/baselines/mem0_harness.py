@@ -98,13 +98,17 @@ def ingest_mem0(
             elapsed = time.time() - t0
             rate = (i + 1) / elapsed if elapsed > 0 else 0
             logger.info(
-                "Ingested %d/%d docs (%.1f docs/sec)", i + 1, total, rate,
+                "Ingested %d/%d docs (%.1f docs/sec)",
+                i + 1,
+                total,
+                rate,
             )
 
     elapsed = time.time() - t0
     logger.info(
         "Mem0 ingestion complete: %d docs mapped in %.1fs",
-        len(doc_to_mem), elapsed,
+        len(doc_to_mem),
+        elapsed,
     )
 
     return m, doc_to_mem, mem_to_doc
@@ -178,9 +182,7 @@ def measure_ttl(
     from benchmarks.core.metrics import classification_accuracy
 
     # Build train lookup
-    train_lookup: dict[str, Any] = {
-        inst.instance_id: inst for inst in train_instances
-    }
+    train_lookup: dict[str, Any] = {inst.instance_id: inst for inst in train_instances}
 
     predictions: dict[str, str] = {}
     for inst in test_instances:
@@ -293,7 +295,9 @@ def run_mem0_experiment(
     ar = measure_ar(m, mem_to_doc, ar_queries, ar_qrels)
     logger.info(
         "  AR nDCG@10=%.4f  MRR@10=%.4f  (%.1fs)",
-        ar["nDCG@10"], ar["MRR@10"], time.time() - t1,
+        ar["nDCG@10"],
+        ar["MRR@10"],
+        time.time() - t1,
     )
     results["metrics"]["ar"] = ar
 
@@ -322,7 +326,10 @@ def run_mem0_experiment(
 
     logger.info(
         "Mem0 experiment complete: AR=%.4f  TTL=%.4f  CR=%.4f  LRU=%.4f  (%.1fs)",
-        ar["nDCG@10"], ttl["accuracy"], cr["temporal_mrr"], lru["nDCG@10"],
+        ar["nDCG@10"],
+        ttl["accuracy"],
+        cr["temporal_mrr"],
+        lru["nDCG@10"],
         results["total_seconds"],
     )
 
@@ -352,6 +359,7 @@ def main() -> None:
     # Load env
     try:
         from benchmarks.env import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass

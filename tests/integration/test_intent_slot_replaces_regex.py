@@ -72,12 +72,18 @@ async def _build_slm_service(domain: str):
         admission_enabled=True,
     )
     admission = AdmissionService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     chain = _cached_chain(domain)
     svc = MemoryService(
-        store=store, index=index, graph=graph,
-        config=config, event_log=event_log,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        event_log=event_log,
         admission=admission,
         intent_slot=chain,
     )
@@ -100,23 +106,16 @@ async def test_admission_routing_comes_from_slm_not_regex():
     )
 
     # Pipeline events have type=pipeline.store.admission; find it.
-    admission_events = [
-        e for e in event_log.recent(200)
-        if e.type == "pipeline.store.admission"
-    ]
+    admission_events = [e for e in event_log.recent(200) if e.type == "pipeline.store.admission"]
     assert admission_events, (
         f"no pipeline.store.admission event emitted; "
         f"saw types: {sorted({e.type for e in event_log.recent(200)})}"
     )
-    route_sources = {
-        (e.data or {}).get("route_source")
-        for e in admission_events
-    }
+    route_sources = {(e.data or {}).get("route_source") for e in admission_events}
     # SLM-first: at least one admission event should be sourced from
     # the intent-slot classifier rather than the regex scorer.
     assert "intent_slot" in route_sources, (
-        f"admission route_source never came from SLM; "
-        f"route_sources seen = {route_sources}"
+        f"admission route_source never came from SLM; route_sources seen = {route_sources}"
     )
 
     # And the memory got stored (persist decision).
@@ -172,7 +171,4 @@ async def test_no_l2_node_when_slm_says_no_state_change():
     l2 = [n for n in nodes if n.node_type == NodeType.ENTITY_STATE]
     # Zero L2 is the expected outcome for pure preference content —
     # no state is being declared or retired.
-    assert not l2, (
-        f"expected no ENTITY_STATE L2 node for preference content, "
-        f"got {len(l2)}"
-    )
+    assert not l2, f"expected no ENTITY_STATE L2 node for preference content, got {len(l2)}"

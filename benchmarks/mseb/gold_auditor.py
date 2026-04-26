@@ -53,32 +53,142 @@ logger = logging.getLogger("mseb.gold_auditor")
 # ---------------------------------------------------------------------------
 
 _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*|[0-9]+")
-_STOPWORDS = frozenset({
-    "the", "a", "an", "of", "in", "on", "to", "for", "with", "at", "by",
-    "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "will", "would", "could", "should", "can", "may",
-    "what", "when", "where", "who", "which", "how", "why", "that", "this",
-    "these", "those", "and", "or", "but", "not", "no", "if", "then", "so",
-    "also", "than", "as", "from", "into", "about", "any", "some", "all",
-    "each", "every", "most", "more", "less", "much", "many", "few", "other",
-    "new", "old", "same", "different", "first", "last", "final", "initial",
-    "current", "latest", "earliest", "previous", "next", "before", "after",
-    "during", "while",
-    # Common verbs in questions
-    "report", "reported", "describe", "described", "discuss", "discussed",
-    "show", "tell", "find", "trace", "order", "reach", "make", "made",
-    "take", "took", "give", "gave",
-    # Pronouns
-    "it", "its", "they", "them", "their", "he", "she", "his", "her", "we",
-    "our", "you", "your", "us", "i", "me", "my",
-    # Possessives
-    "users", "user", "patient", "patients",
-})
+_STOPWORDS = frozenset(
+    {
+        "the",
+        "a",
+        "an",
+        "of",
+        "in",
+        "on",
+        "to",
+        "for",
+        "with",
+        "at",
+        "by",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "can",
+        "may",
+        "what",
+        "when",
+        "where",
+        "who",
+        "which",
+        "how",
+        "why",
+        "that",
+        "this",
+        "these",
+        "those",
+        "and",
+        "or",
+        "but",
+        "not",
+        "no",
+        "if",
+        "then",
+        "so",
+        "also",
+        "than",
+        "as",
+        "from",
+        "into",
+        "about",
+        "any",
+        "some",
+        "all",
+        "each",
+        "every",
+        "most",
+        "more",
+        "less",
+        "much",
+        "many",
+        "few",
+        "other",
+        "new",
+        "old",
+        "same",
+        "different",
+        "first",
+        "last",
+        "final",
+        "initial",
+        "current",
+        "latest",
+        "earliest",
+        "previous",
+        "next",
+        "before",
+        "after",
+        "during",
+        "while",
+        # Common verbs in questions
+        "report",
+        "reported",
+        "describe",
+        "described",
+        "discuss",
+        "discussed",
+        "show",
+        "tell",
+        "find",
+        "trace",
+        "order",
+        "reach",
+        "make",
+        "made",
+        "take",
+        "took",
+        "give",
+        "gave",
+        # Pronouns
+        "it",
+        "its",
+        "they",
+        "them",
+        "their",
+        "he",
+        "she",
+        "his",
+        "her",
+        "we",
+        "our",
+        "you",
+        "your",
+        "us",
+        "i",
+        "me",
+        "my",
+        # Possessives
+        "users",
+        "user",
+        "patient",
+        "patients",
+    }
+)
 
 
 def tokens(text: str) -> set[str]:
     return {
-        t.lower() for t in _TOKEN_RE.findall(text or "")
+        t.lower()
+        for t in _TOKEN_RE.findall(text or "")
         if t.lower() not in _STOPWORDS and len(t) > 2
     }
 
@@ -96,10 +206,15 @@ _TEMPORAL_VOCAB = re.compile(
     r"june|july|august|september|october|november|december))\b",
 )
 
-_TEMPORAL_SHAPES = frozenset({
-    "ordinal_first", "ordinal_last", "sequence", "predecessor",
-    "before_named",
-})
+_TEMPORAL_SHAPES = frozenset(
+    {
+        "ordinal_first",
+        "ordinal_last",
+        "sequence",
+        "predecessor",
+        "before_named",
+    }
+)
 
 _PREFERENCE_VOCAB = re.compile(
     r"(?i)\b(prefer|preference|love|hate|like|dislike|enjoy|avoid|"
@@ -122,14 +237,18 @@ def load_chains(labeled_dir: Path) -> dict[str, list[dict]]:
             row = json.loads(line)
             chains[row["subject"]].append(row)
     for s in chains:
-        chains[s].sort(key=lambda r: (
-            r.get("observed_at", ""), r.get("mid", ""),
-        ))
+        chains[s].sort(
+            key=lambda r: (
+                r.get("observed_at", ""),
+                r.get("mid", ""),
+            )
+        )
     return dict(chains)
 
 
 def compute_distinctive_terms(
-    chains: dict[str, list[dict]], max_df_ratio: float = 0.05,
+    chains: dict[str, list[dict]],
+    max_df_ratio: float = 0.05,
 ) -> set[str]:
     """Return the set of corpus-distinctive tokens (named entities /
     technical identifiers), meant to catch on-topic noise queries.
@@ -176,9 +295,7 @@ def compute_distinctive_terms(
         if not (2 <= c <= cutoff):
             continue
         forms = original_case.get(t, set())
-        has_capital = any(
-            any(ch.isupper() for ch in f) for f in forms
-        )
+        has_capital = any(any(ch.isupper() for ch in f) for f in forms)
         long_enough = len(t) >= 8
         if has_capital or long_enough:
             out.add(t)
@@ -189,6 +306,7 @@ def _temporal_parse_hits(text: str) -> bool:
     """Whether NCMS's temporal parser fires on the query."""
     try:
         from ncms.domain.temporal.parser import parse_temporal_reference
+
         ref = parse_temporal_reference(text, now=datetime.now(UTC))
         if ref is None:
             return False
@@ -198,7 +316,9 @@ def _temporal_parse_hits(text: str) -> bool:
 
 
 def check_general(
-    q: dict, chain: list[dict], corpus_tokens: set[str],
+    q: dict,
+    chain: list[dict],
+    corpus_tokens: set[str],
 ) -> tuple[bool, str]:
     """Strict general-class rule: query has >=1 token in the gold
     memory's content and NOT in any chain sibling.
@@ -233,14 +353,18 @@ def _token_multiset(text: str) -> Counter[str]:
     """Full term-frequency counter (tokens module-level tokenizer
     filters stopwords)."""
     return Counter(
-        t.lower() for t in _TOKEN_RE.findall(text or "")
+        t.lower()
+        for t in _TOKEN_RE.findall(text or "")
         if t.lower() not in _STOPWORDS and len(t) > 2
     )
 
 
 def check_general_tf_lift(
-    q: dict, chain: list[dict], corpus_tokens: set[str],
-    *, min_lift: float = 0.0,
+    q: dict,
+    chain: list[dict],
+    corpus_tokens: set[str],
+    *,
+    min_lift: float = 0.0,
 ) -> tuple[bool, str]:
     """Relaxed general-class rule using TF-lift rather than absolute
     chain-uniqueness.
@@ -283,8 +407,7 @@ def check_general_tf_lift(
             sibling_rate = 0.0
         else:
             sibling_rate = sum(
-                tf.get(t, 0) / n
-                for tf, n in zip(sibling_tfs, sibling_lens, strict=False)
+                tf.get(t, 0) / n for tf, n in zip(sibling_tfs, sibling_lens, strict=False)
             ) / len(sibling_tfs)
         if gold_rate > 0:
             has_any_overlap = True
@@ -298,8 +421,11 @@ def check_general_tf_lift(
 
 
 def check_temporal(
-    q: dict, chain: list[dict], corpus_tokens: set[str],
-    *, use_tf_lift: bool = False,
+    q: dict,
+    chain: list[dict],
+    corpus_tokens: set[str],
+    *,
+    use_tf_lift: bool = False,
 ) -> tuple[bool, str]:
     """(a) Temporal vocab OR temporal shape family, AND
     (b) general rule (strict or TF-lift variant)."""
@@ -316,8 +442,11 @@ def check_temporal(
 
 
 def check_preference(
-    q: dict, chain: list[dict], corpus_tokens: set[str],
-    *, use_tf_lift: bool = False,
+    q: dict,
+    chain: list[dict],
+    corpus_tokens: set[str],
+    *,
+    use_tf_lift: bool = False,
 ) -> tuple[bool, str]:
     """Query has preference vocab AND gold memory has a pref kind
     AND the chain-anchor rule (strict or TF-lift) holds."""
@@ -370,10 +499,10 @@ def check_noise(
 
 
 RULE_CHECKS = {
-    "general":    check_general,
-    "temporal":   check_temporal,
+    "general": check_general,
+    "temporal": check_temporal,
     "preference": check_preference,
-    "noise":      check_noise,
+    "noise": check_noise,
 }
 
 
@@ -383,12 +512,14 @@ RULE_CHECKS = {
 
 
 def audit(
-    gold_rows: list[dict], chains: dict[str, list[dict]],
-    *, rule_set: str = "strict",
+    gold_rows: list[dict],
+    chains: dict[str, list[dict]],
+    *,
+    rule_set: str = "strict",
 ) -> dict:
     # Corpus-wide token pool for anchor checks.
     corpus_tokens: set[str] = set()
-    for s, mems in chains.items():
+    for mems in chains.values():
         for m in mems:
             corpus_tokens |= tokens(m.get("content", ""))
     # Distinctive-term set for the noise check (v2 rule).
@@ -399,14 +530,16 @@ def audit(
     per_class_total: Counter[str] = Counter()
     per_class_failure: dict[str, Counter] = defaultdict(Counter)
 
-    use_tf_lift = (rule_set == "tf-lift")
+    use_tf_lift = rule_set == "tf-lift"
     for row in gold_rows:
         cls = row.get("query_class", "general")
         per_class_total[cls] += 1
         chain = chains.get(row.get("subject", "")) or []
         if cls == "noise":
             ok, reason = check_noise(
-                row, chain, corpus_tokens,
+                row,
+                chain,
+                corpus_tokens,
                 distinctive_terms=distinctive,
             )
         elif cls == "general":
@@ -414,11 +547,17 @@ def audit(
             ok, reason = fn(row, chain, corpus_tokens)
         elif cls == "temporal":
             ok, reason = check_temporal(
-                row, chain, corpus_tokens, use_tf_lift=use_tf_lift,
+                row,
+                chain,
+                corpus_tokens,
+                use_tf_lift=use_tf_lift,
             )
         elif cls == "preference":
             ok, reason = check_preference(
-                row, chain, corpus_tokens, use_tf_lift=use_tf_lift,
+                row,
+                chain,
+                corpus_tokens,
+                use_tf_lift=use_tf_lift,
             )
         else:
             ok, reason = check_general(row, chain, corpus_tokens)
@@ -426,27 +565,26 @@ def audit(
             per_class_pass[cls] += 1
         else:
             per_class_failure[cls][reason] += 1
-        verdicts.append({
-            "qid": row.get("qid", ""),
-            "query_class": cls,
-            "shape": row.get("shape", ""),
-            "passes_rule": ok,
-            "failure_reason": reason,
-        })
+        verdicts.append(
+            {
+                "qid": row.get("qid", ""),
+                "query_class": cls,
+                "shape": row.get("shape", ""),
+                "passes_rule": ok,
+                "failure_reason": reason,
+            }
+        )
 
     summary = {
         "total": sum(per_class_total.values()),
         "passed": sum(per_class_pass.values()),
-        "pass_rate": (
-            sum(per_class_pass.values()) / max(sum(per_class_total.values()), 1)
-        ),
+        "pass_rate": (sum(per_class_pass.values()) / max(sum(per_class_total.values()), 1)),
         "per_class": {
             cls: {
                 "total": per_class_total[cls],
                 "passed": per_class_pass[cls],
                 "rate": (
-                    per_class_pass[cls] / per_class_total[cls]
-                    if per_class_total[cls] else 0.0
+                    per_class_pass[cls] / per_class_total[cls] if per_class_total[cls] else 0.0
                 ),
                 "failures": dict(per_class_failure[cls].most_common()),
             }
@@ -465,17 +603,25 @@ def main() -> None:
     ap.add_argument("--labeled-dir", type=Path, required=True)
     ap.add_argument("--gold", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--emit-passing", type=Path, default=None,
-                    help="Optional: write a gold.yaml containing only passing "
-                         "queries — the lock-ready subset.")
-    ap.add_argument("--rule-set", choices=["strict", "tf-lift"], default="strict",
-                    help="strict = chain-unique-anchor (default, for SWE / "
-                         "Clinical / SoftwareDev); tf-lift = relative density "
-                         "(for Convo and other high-turn chains).")
+    ap.add_argument(
+        "--emit-passing",
+        type=Path,
+        default=None,
+        help="Optional: write a gold.yaml containing only passing queries — the lock-ready subset.",
+    )
+    ap.add_argument(
+        "--rule-set",
+        choices=["strict", "tf-lift"],
+        default="strict",
+        help="strict = chain-unique-anchor (default, for SWE / "
+        "Clinical / SoftwareDev); tf-lift = relative density "
+        "(for Convo and other high-turn chains).",
+    )
     args = ap.parse_args()
 
     try:
         import yaml
+
         rows = yaml.safe_load(args.gold.read_text(encoding="utf-8")) or []
     except ImportError:
         rows = json.loads(args.gold.read_text(encoding="utf-8"))
@@ -485,19 +631,19 @@ def main() -> None:
     args.out.write_text(json.dumps(report, indent=2))
 
     if args.emit_passing:
-        passing_qids = {
-            v["qid"] for v in report["per_query"] if v["passes_rule"]
-        }
+        passing_qids = {v["qid"] for v in report["per_query"] if v["passes_rule"]}
         passing_rows = [r for r in rows if r.get("qid") in passing_qids]
         try:
             import yaml
+
             body = yaml.safe_dump(
-                passing_rows, sort_keys=False, allow_unicode=True,
+                passing_rows,
+                sort_keys=False,
+                allow_unicode=True,
             )
             args.emit_passing.write_text(
                 "# Audited gold — only queries that pass the per-class rule survived.\n"
-                "# See benchmarks/mseb/gold_auditor.py for the rule table.\n\n"
-                + body,
+                "# See benchmarks/mseb/gold_auditor.py for the rule table.\n\n" + body,
                 encoding="utf-8",
             )
         except ImportError:

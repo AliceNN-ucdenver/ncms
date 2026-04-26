@@ -53,13 +53,17 @@ class MemoryBackend(Protocol):
     async def setup(self) -> None: ...
 
     async def ingest(
-        self, memories: list[CorpusMemory],
+        self,
+        memories: list[CorpusMemory],
     ) -> dict[str, str]:
         """Store all memories; return mapping ``corpus_mid → backend_id``."""
         ...
 
     async def search(
-        self, query: str, *, limit: int = 10,
+        self,
+        query: str,
+        *,
+        limit: int = 10,
     ) -> list[BackendRanking]:
         """Return the backend's top-``limit`` rankings for the query."""
         ...

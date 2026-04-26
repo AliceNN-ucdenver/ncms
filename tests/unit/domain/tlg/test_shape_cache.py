@@ -14,16 +14,18 @@ from ncms.domain.tlg.shape_cache import (
 
 
 def _vocab():
-    return induce_vocabulary([
-        SubjectMemory(
-            subject="auth",
-            entities=frozenset({"OAuth", "session cookies", "authentication"}),
-        ),
-        SubjectMemory(
-            subject="auth",
-            entities=frozenset({"JWT", "authentication"}),
-        ),
-    ])
+    return induce_vocabulary(
+        [
+            SubjectMemory(
+                subject="auth",
+                entities=frozenset({"OAuth", "session cookies", "authentication"}),
+            ),
+            SubjectMemory(
+                subject="auth",
+                entities=frozenset({"JWT", "authentication"}),
+            ),
+        ]
+    )
 
 
 class TestExtractSkeleton:
@@ -36,7 +38,8 @@ class TestExtractSkeleton:
     def test_multiple_entities_get_sequential_placeholders(self) -> None:
         v = _vocab()
         skel, slots = extract_skeleton(
-            "What happened between OAuth and JWT?", v,
+            "What happened between OAuth and JWT?",
+            v,
         )
         assert "<X>" in skel
         assert "<Y>" in skel
@@ -100,9 +103,17 @@ class TestQueryShapeCache:
         restored = QueryShapeCache.from_snapshot(dump)
         assert len(restored) == len(cache)
         # Lookups against the restored cache find both entries.
-        assert restored.lookup(
-            "What came after OAuth?", v,
-        )[0] == "sequence"
-        assert restored.lookup(
-            "what came before JWT?", v,
-        )[0] == "predecessor"
+        assert (
+            restored.lookup(
+                "What came after OAuth?",
+                v,
+            )[0]
+            == "sequence"
+        )
+        assert (
+            restored.lookup(
+                "what came before JWT?",
+                v,
+            )[0]
+            == "predecessor"
+        )

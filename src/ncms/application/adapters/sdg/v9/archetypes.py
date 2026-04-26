@@ -146,13 +146,11 @@ class ArchetypeSpec:
             )
         if self.admission not in ADMISSION_DECISIONS:
             raise ValueError(
-                f"archetype {self.name!r}: "
-                f"unknown admission {self.admission!r}",
+                f"archetype {self.name!r}: unknown admission {self.admission!r}",
             )
         if self.state_change not in STATE_CHANGES:
             raise ValueError(
-                f"archetype {self.name!r}: "
-                f"unknown state_change {self.state_change!r}",
+                f"archetype {self.name!r}: unknown state_change {self.state_change!r}",
             )
 
         # Size sanity.
@@ -160,8 +158,7 @@ class ArchetypeSpec:
             raise ValueError(f"archetype {self.name!r}: negative target count")
         if self.target_min_chars <= 0:
             raise ValueError(
-                f"archetype {self.name!r}: "
-                f"target_min_chars must be > 0",
+                f"archetype {self.name!r}: target_min_chars must be > 0",
             )
         if self.target_max_chars < self.target_min_chars:
             raise ValueError(
@@ -175,8 +172,7 @@ class ArchetypeSpec:
         # Prompt surface is required — we don't generate from empty prompts.
         if not self.description.strip():
             raise ValueError(
-                f"archetype {self.name!r}: empty description "
-                "(required for prompt + audit reports)",
+                f"archetype {self.name!r}: empty description (required for prompt + audit reports)",
             )
 
     # ── Convenience views ─────────────────────────────────────────
@@ -209,10 +205,7 @@ class CoverageGap:
     floor: int
 
     def __str__(self) -> str:
-        return (
-            f"{self.head}={self.cls!r}: "
-            f"archetype sum = {self.found} < floor {self.floor}"
-        )
+        return f"{self.head}={self.cls!r}: archetype sum = {self.found} < floor {self.floor}"
 
 
 def validate_archetype_coverage(
@@ -285,7 +278,10 @@ def validate_archetype_coverage(
         if found < state_change_floor:
             gaps.append(
                 CoverageGap(
-                    "state_change", cls, found, state_change_floor,
+                    "state_change",
+                    cls,
+                    found,
+                    state_change_floor,
                 ),
             )
     for cls in ROLE_LABELS:

@@ -45,21 +45,29 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 # dates.  Dates deliberately mixed up with relevance order so a
 # chronological rerank would produce a clearly-different ordering.
 _MEMORIES = [
-    ("MoMA visit with the family was a highlight of the spring.",
-     datetime(2024, 3, 15, tzinfo=UTC)),
-    ("Returned to MoMA for the retrospective; great exhibition.",
-     datetime(2024, 11, 2, tzinfo=UTC)),
-    ("The Metropolitan Museum has an impressive Egyptian wing.",
-     datetime(2024, 5, 20, tzinfo=UTC)),
-    ("Visited the Metropolitan Museum again to see the new Vermeer.",
-     datetime(2025, 2, 10, tzinfo=UTC)),
-    ("Central Park in autumn is beautiful, good walking routes.",
-     datetime(2024, 10, 1, tzinfo=UTC)),
+    (
+        "MoMA visit with the family was a highlight of the spring.",
+        datetime(2024, 3, 15, tzinfo=UTC),
+    ),
+    (
+        "Returned to MoMA for the retrospective; great exhibition.",
+        datetime(2024, 11, 2, tzinfo=UTC),
+    ),
+    ("The Metropolitan Museum has an impressive Egyptian wing.", datetime(2024, 5, 20, tzinfo=UTC)),
+    (
+        "Visited the Metropolitan Museum again to see the new Vermeer.",
+        datetime(2025, 2, 10, tzinfo=UTC),
+    ),
+    (
+        "Central Park in autumn is beautiful, good walking routes.",
+        datetime(2024, 10, 1, tzinfo=UTC),
+    ),
 ]
 
 
 async def _make_service(
-    *, temporal_range_filter_enabled: bool,
+    *,
+    temporal_range_filter_enabled: bool,
 ) -> MemoryService:
     """Build a MemoryService with the exact knobs we're testing."""
     store = SQLiteStore(db_path=":memory:")
@@ -70,7 +78,8 @@ async def _make_service(
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        splade_enabled=False, scoring_weight_splade=0.0,
+        splade_enabled=False,
+        scoring_weight_splade=0.0,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_graph=0.0,
@@ -80,11 +89,16 @@ async def _make_service(
         temporal_range_filter_enabled=temporal_range_filter_enabled,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     for content, when in _MEMORIES:
         await svc.store_memory(
-            content=content, memory_type="fact", observed_at=when,
+            content=content,
+            memory_type="fact",
+            observed_at=when,
         )
     await svc.flush_indexing()
     return svc
@@ -110,27 +124,26 @@ class TestFlagToggleNoopParity:
     emits ``NONE`` and the primitive falls through."""
 
     async def test_plain_entity_query_identical_with_flag_toggle(
-        self, svc_flag_off: MemoryService, svc_flag_on: MemoryService,
+        self,
+        svc_flag_off: MemoryService,
+        svc_flag_on: MemoryService,
     ) -> None:
         query = "What do I know about MoMA?"
         off = await svc_flag_off.search(query=query, limit=5)
         on = await svc_flag_on.search(query=query, limit=5)
-        assert [r.memory.content for r in off] == [
-            r.memory.content for r in on
-        ], (
-            "Non-temporal entity query must be identical across the "
-            "temporal flag toggle."
+        assert [r.memory.content for r in off] == [r.memory.content for r in on], (
+            "Non-temporal entity query must be identical across the temporal flag toggle."
         )
 
     async def test_multi_entity_query_identical_with_flag_toggle(
-        self, svc_flag_off: MemoryService, svc_flag_on: MemoryService,
+        self,
+        svc_flag_off: MemoryService,
+        svc_flag_on: MemoryService,
     ) -> None:
         query = "Tell me about museums."
         off = await svc_flag_off.search(query=query, limit=5)
         on = await svc_flag_on.search(query=query, limit=5)
-        assert [r.memory.content for r in off] == [
-            r.memory.content for r in on
-        ]
+        assert [r.memory.content for r in off] == [r.memory.content for r in on]
 
 
 class TestPrimitiveStillFiresWhenItShould:
@@ -139,12 +152,14 @@ class TestPrimitiveStillFiresWhenItShould:
     disable the primitive entirely and the guard above would still pass."""
 
     async def test_ordinal_query_does_rerank(
-        self, svc_flag_on: MemoryService,
+        self,
+        svc_flag_on: MemoryService,
     ) -> None:
         # "Latest MoMA" with flag on: classifier → ORDINAL_SINGLE,
         # primitive reorders subject-linked by observed_at desc.
         results = await svc_flag_on.search(
-            query="What is the latest MoMA memory?", limit=5,
+            query="What is the latest MoMA memory?",
+            limit=5,
         )
         assert results
         # The newest MoMA memory should surface at rank 1.
@@ -162,7 +177,8 @@ class TestArithmeticNoFire:
     minor BM25 tiebreaker noise can flip adjacent ranks)."""
 
     async def test_arithmetic_query_not_chronologically_sorted(
-        self, svc_flag_on: MemoryService,
+        self,
+        svc_flag_on: MemoryService,
     ) -> None:
         """If the primitive had fired on an arithmetic query, top-K
         would be monotonically sorted by ``observed_at``.  Assert it
@@ -172,19 +188,10 @@ class TestArithmeticNoFire:
             limit=5,
         )
         assert results
-        dates = [
-            r.memory.observed_at for r in results
-            if r.memory.observed_at is not None
-        ]
+        dates = [r.memory.observed_at for r in results if r.memory.observed_at is not None]
         if len(dates) >= 3:
-            monotonic_asc = all(
-                dates[i] <= dates[i + 1]
-                for i in range(len(dates) - 1)
-            )
-            monotonic_desc = all(
-                dates[i] >= dates[i + 1]
-                for i in range(len(dates) - 1)
-            )
+            monotonic_asc = all(dates[i] <= dates[i + 1] for i in range(len(dates) - 1))
+            monotonic_desc = all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
             assert not (monotonic_asc or monotonic_desc), (
                 "Arithmetic query was chronologically sorted — the "
                 "ordinal primitive fired when it shouldn't have."
@@ -197,14 +204,15 @@ class TestObservedAtSurfaces:
     tools, recall enrichment) can read the metadata clock."""
 
     async def test_every_result_has_observed_at(
-        self, svc_flag_on: MemoryService,
+        self,
+        svc_flag_on: MemoryService,
     ) -> None:
         results = await svc_flag_on.search(
-            query="Tell me about museum visits", limit=5,
+            query="Tell me about museum visits",
+            limit=5,
         )
         assert results
         for r in results:
             assert r.memory.observed_at is not None, (
-                f"observed_at missing on {r.memory.id}: "
-                f"{r.memory.content[:60]}"
+                f"observed_at missing on {r.memory.id}: {r.memory.content[:60]}"
             )

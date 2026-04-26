@@ -40,12 +40,20 @@ class TestPersonalizedPageRank:
         graph.add_entity(Entity(id="e2", name="Neighbor", type="concept"))
         graph.add_entity(Entity(id="e3", name="Distant", type="concept"))
 
-        graph.add_relationship(Relationship(
-            source_entity_id="e1", target_entity_id="e2", type="related_to",
-        ))
-        graph.add_relationship(Relationship(
-            source_entity_id="e2", target_entity_id="e3", type="related_to",
-        ))
+        graph.add_relationship(
+            Relationship(
+                source_entity_id="e1",
+                target_entity_id="e2",
+                type="related_to",
+            )
+        )
+        graph.add_relationship(
+            Relationship(
+                source_entity_id="e2",
+                target_entity_id="e3",
+                type="related_to",
+            )
+        )
 
         result = graph.personalized_pagerank({"e1": 1.0})
 
@@ -61,9 +69,13 @@ class TestPersonalizedPageRank:
 
         # Star topology: e0 is hub
         for i in range(1, 5):
-            graph.add_relationship(Relationship(
-                source_entity_id=f"e{i}", target_entity_id="e0", type="related_to",
-            ))
+            graph.add_relationship(
+                Relationship(
+                    source_entity_id=f"e{i}",
+                    target_entity_id="e0",
+                    type="related_to",
+                )
+            )
 
         # Seed with e1 and e2, both point to e0
         result = graph.personalized_pagerank({"e1": 1.0, "e2": 1.0})
@@ -79,12 +91,20 @@ class TestPersonalizedPageRank:
         graph.add_entity(Entity(id="e2", name="Common", type="concept"))
         graph.add_entity(Entity(id="e3", name="Target", type="concept"))
 
-        graph.add_relationship(Relationship(
-            source_entity_id="e1", target_entity_id="e3", type="related_to",
-        ))
-        graph.add_relationship(Relationship(
-            source_entity_id="e2", target_entity_id="e3", type="related_to",
-        ))
+        graph.add_relationship(
+            Relationship(
+                source_entity_id="e1",
+                target_entity_id="e3",
+                type="related_to",
+            )
+        )
+        graph.add_relationship(
+            Relationship(
+                source_entity_id="e2",
+                target_entity_id="e3",
+                type="related_to",
+            )
+        )
 
         # e1 has high IDF (rare), e2 has low IDF (common)
         result = graph.personalized_pagerank({"e1": 5.0, "e2": 1.0})
@@ -97,10 +117,13 @@ class TestPersonalizedPageRank:
         for i in range(10):
             graph.add_entity(Entity(id=f"e{i}", name=f"E{i}", type="concept"))
         for i in range(9):
-            graph.add_relationship(Relationship(
-                source_entity_id=f"e{i}", target_entity_id=f"e{i+1}",
-                type="related_to",
-            ))
+            graph.add_relationship(
+                Relationship(
+                    source_entity_id=f"e{i}",
+                    target_entity_id=f"e{i + 1}",
+                    type="related_to",
+                )
+            )
 
         result = graph.personalized_pagerank({"e0": 1.0})
         assert sum(result.values()) == pytest.approx(1.0, abs=0.01)

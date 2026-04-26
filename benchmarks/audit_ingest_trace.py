@@ -17,11 +17,14 @@ with:
 Special focus: ``sdev-adr_jph-high-trust-teamwork-sec-01`` — the memory
 that squats at rank 1 across many unrelated queries in the new run.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 from pathlib import Path
 
@@ -58,17 +61,14 @@ async def main() -> None:
 
         print("[trace] ingesting...", flush=True)
         import time
+
         t0 = time.perf_counter()
         mid_map = await backend.ingest(corpus)
-        print(f"[trace] ingest done in {time.perf_counter() - t0:.1f}s",
-              flush=True)
+        print(f"[trace] ingest done in {time.perf_counter() - t0:.1f}s", flush=True)
 
         svc = backend._svc
         store = svc._store
         from ncms.domain.models import NodeType
-
-        # Index: memory_id -> corpus mid via the mid_map (reverse)
-        id_to_mid = {mem_id: mid for mid, mem_id in mid_map.items()}
 
         # Preload all ENTITY_STATE nodes keyed by memory_id
         l2_nodes = await store.get_memory_nodes_by_type(
@@ -89,25 +89,24 @@ async def main() -> None:
 
             # memory_entities JOIN for names + types
             entity_ids = await store.get_memory_entities(mem_id)
-            entity_names = await store.get_memory_entity_names(mem_id)
             entity_records = []
             for eid in entity_ids:
                 ent = await store.get_entity(eid)
                 if ent is not None:
-                    entity_records.append({
-                        "name": ent.name,
-                        "type": ent.type,
-                        # attributes may contain source=slm_slot marker
-                        "attributes": ent.attributes,
-                    })
+                    entity_records.append(
+                        {
+                            "name": ent.name,
+                            "type": ent.type,
+                            # attributes may contain source=slm_slot marker
+                            "attributes": ent.attributes,
+                        }
+                    )
 
             # memory_slots (raw slot surface forms from SLM)
             memory_slots = []
             if hasattr(store, "get_memory_slots"):
-                try:
+                with contextlib.suppress(Exception):
                     memory_slots = await store.get_memory_slots(mem_id)
-                except Exception:
-                    pass
 
             # SLM head outputs were baked into structured['intent_slot']
             # by store_memory before save_memory.
@@ -158,8 +157,7 @@ async def main() -> None:
         with OUT.open("w") as f:
             for r in records:
                 f.write(json.dumps(r, default=str) + "\n")
-        print(f"[trace] wrote {len(records)} records -> {OUT}",
-              flush=True)
+        print(f"[trace] wrote {len(records)} records -> {OUT}", flush=True)
 
         # ── Print spotlight memories in human-readable form ─────────────
         print()
@@ -171,22 +169,22 @@ async def main() -> None:
             print(f"    subject (corpus): {r['corpus_subject']}")
             print(f"    content[:160]:    {r['content_head'][:160]!r}")
             print(f"    SLM method:       {r['slm']['method']}")
-            print(f"    SLM intent:       {r['slm']['intent']} "
-                  f"(conf={r['slm']['intent_conf']})")
-            print(f"    SLM topic:        {r['slm']['topic']} "
-                  f"(conf={r['slm']['topic_conf']})")
-            print(f"    SLM admission:    {r['slm']['admission']} "
-                  f"(conf={r['slm']['admission_conf']})")
-            print(f"    SLM state_change: {r['slm']['state_change']} "
-                  f"(conf={r['slm']['state_change_conf']})")
+            print(f"    SLM intent:       {r['slm']['intent']} (conf={r['slm']['intent_conf']})")
+            print(f"    SLM topic:        {r['slm']['topic']} (conf={r['slm']['topic_conf']})")
+            print(
+                f"    SLM admission:    {r['slm']['admission']} (conf={r['slm']['admission_conf']})"
+            )
+            print(
+                f"    SLM state_change: {r['slm']['state_change']} "
+                f"(conf={r['slm']['state_change_conf']})"
+            )
             print(f"    memory_slots:     {r['memory_slots']}")
             print(f"    n_entities_linked: {r['n_entities_linked']}")
-            for e in r['entities_linked']:
+            for e in r["entities_linked"]:
                 src = ""
-                if isinstance(e.get('attributes'), dict):
-                    src = e['attributes'].get('source', '')
-                print(f"      - name={e['name']!r:45}  type={e['type']!r:20}  "
-                      f"src={src!r}")
+                if isinstance(e.get("attributes"), dict):
+                    src = e["attributes"].get("source", "")
+                print(f"      - name={e['name']!r:45}  type={e['type']!r:20}  src={src!r}")
             print(f"    L2: {r['l2']}")
 
         # ── Aggregate stats ─────────────────────────────────────────────
@@ -210,11 +208,14 @@ async def main() -> None:
         print(f"  L2 node source histogram: {l2_src}")
         print(f"  Memories total:           {len(records)}")
         print(f"  Memories with L2:         {sum(1 for r in records if r['has_l2'])}")
-        print(f"  Memories with 0 linked entities:  "
-              f"{sum(1 for r in records if r['n_entities_linked'] == 0)}")
+        print(
+            f"  Memories with 0 linked entities:  "
+            f"{sum(1 for r in records if r['n_entities_linked'] == 0)}"
+        )
 
         # Entity-count distribution
         from collections import Counter
+
         counts = Counter(r["n_entities_linked"] for r in records)
         print("  Entities-linked distribution (count -> num memories):")
         for n in sorted(counts):

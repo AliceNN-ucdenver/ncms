@@ -112,6 +112,7 @@ def generate_chart(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")  # Non-interactive backend
         import matplotlib.pyplot as plt
         import numpy as np
@@ -147,7 +148,9 @@ def generate_chart(
         values = [ds_results.get(c.name, {}).get("nDCG@10", 0) for c in configs]
         offset = (i - len(datasets) / 2 + 0.5) * width
         bars = ax.bar(
-            x + offset, values, width,
+            x + offset,
+            values,
+            width,
             label=dataset.capitalize(),
             color=colors[i % len(colors)],
             alpha=0.85,
@@ -156,20 +159,34 @@ def generate_chart(
         for bar, val in zip(bars, values, strict=True):
             if val > 0:
                 ax.text(
-                    bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
-                    f"{val:.3f}", ha="center", va="bottom", fontsize=7,
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.005,
+                    f"{val:.3f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=7,
                 )
 
     # Add published baseline reference lines (when SciFact is present)
     if "scifact" in datasets:
         for label, (value, color, style) in baselines.items():
             ax.axhline(
-                y=value, color=color, linestyle=style, linewidth=1.2, alpha=0.7,
+                y=value,
+                color=color,
+                linestyle=style,
+                linewidth=1.2,
+                alpha=0.7,
             )
             ax.text(
-                len(configs) - 0.5, value + 0.003, label,
-                fontsize=7, color=color, alpha=0.85,
-                ha="right", va="bottom", style="italic",
+                len(configs) - 0.5,
+                value + 0.003,
+                label,
+                fontsize=7,
+                color=color,
+                alpha=0.85,
+                ha="right",
+                va="bottom",
+                style="italic",
             )
 
     # Zoom y-axis to the interesting range instead of 0-1

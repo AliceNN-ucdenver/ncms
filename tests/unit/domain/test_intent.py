@@ -42,7 +42,8 @@ class TestClassifyIntent:
         # "What happened" is event_reconstruction but "in january" adds historical
         # The winner depends on cumulative weight — check it classifies to one of them
         assert result.intent in (
-            QueryIntent.HISTORICAL_LOOKUP, QueryIntent.EVENT_RECONSTRUCTION,
+            QueryIntent.HISTORICAL_LOOKUP,
+            QueryIntent.EVENT_RECONSTRUCTION,
         )
 
     def test_previously_query(self) -> None:
@@ -194,6 +195,4 @@ class TestIntentExemplars:
 
     def test_no_duplicate_exemplars_within_intent(self) -> None:
         for intent, exemplars in INTENT_EXEMPLARS.items():
-            assert len(exemplars) == len(set(exemplars)), (
-                f"Duplicate exemplars in {intent}"
-            )
+            assert len(exemplars) == len(set(exemplars)), f"Duplicate exemplars in {intent}"

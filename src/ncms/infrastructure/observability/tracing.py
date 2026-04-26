@@ -100,10 +100,12 @@ def setup_tracing(
         return _tracer
 
     try:
-        resource = Resource.create({
-            "service.name": service_name,
-            "service.version": "0.1.0",
-        })
+        resource = Resource.create(
+            {
+                "service.name": service_name,
+                "service.version": "0.1.0",
+            }
+        )
 
         provider = TracerProvider(resource=resource)
 
@@ -129,7 +131,8 @@ def setup_tracing(
 
         logger.info(
             "OpenTelemetry tracing enabled (service=%s, protocol=%s)",
-            service_name, protocol,
+            service_name,
+            protocol,
         )
         return _tracer
 

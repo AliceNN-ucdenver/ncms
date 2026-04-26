@@ -33,9 +33,7 @@ logger = logging.getLogger(__name__)
 
 HF_DATASET_ID = "xiaowu0162/longmemeval-cleaned"
 # Direct raw download URLs for the cleaned dataset on HuggingFace
-HF_RAW_BASE = (
-    "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main"
-)
+HF_RAW_BASE = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main"
 DEFAULT_CACHE_DIR = Path("benchmarks/results/.cache")
 
 # Known dataset files (per README: oracle, small-cleaned, medium-cleaned)
@@ -104,7 +102,9 @@ def download_longmemeval(cache_dir: Path | None = None) -> Path:
     existing_json = list(data_dir.glob("*.json"))
     if existing_json:
         logger.info(
-            "LongMemEval data already cached at %s (%d files)", data_dir, len(existing_json),
+            "LongMemEval data already cached at %s (%d files)",
+            data_dir,
+            len(existing_json),
         )
         return data_dir
 
@@ -115,12 +115,14 @@ def download_longmemeval(cache_dir: Path | None = None) -> Path:
         if json_files:
             logger.info(
                 "Found LongMemEval in kumiho-benchmarks at %s (%d files)",
-                kumiho_data, len(json_files),
+                kumiho_data,
+                len(json_files),
             )
             for f in json_files:
                 dest = data_dir / f.name
                 if not dest.exists():
                     import shutil
+
                     shutil.copy2(f, dest)
             return data_dir
 
@@ -307,12 +309,14 @@ def load_longmemeval_dataset(
                     continue
 
                 if content.strip():
-                    session.turns.append(SessionTurn(
-                        turn_id=t_idx,
-                        role=role,
-                        content=content,
-                        session_id=sid,
-                    ))
+                    session.turns.append(
+                        SessionTurn(
+                            turn_id=t_idx,
+                            role=role,
+                            content=content,
+                            session_id=sid,
+                        )
+                    )
 
             if session.turns:
                 question_sessions.append(session)
@@ -320,13 +324,12 @@ def load_longmemeval_dataset(
         sessions_by_question[qid] = question_sessions
 
     total_sessions = sum(len(s) for s in sessions_by_question.values())
-    total_turns = sum(
-        sum(len(s.turns) for s in sess)
-        for sess in sessions_by_question.values()
-    )
+    total_turns = sum(sum(len(s.turns) for s in sess) for sess in sessions_by_question.values())
     logger.info(
         "Loaded %d questions, %d total session instances (%d total turns)",
-        len(questions), total_sessions, total_turns,
+        len(questions),
+        total_sessions,
+        total_turns,
     )
 
     return sessions_by_question, questions

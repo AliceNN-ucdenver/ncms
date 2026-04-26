@@ -26,13 +26,16 @@ async def dream_env():
         db_path=":memory:",
         dream_cycle_enabled=True,
         dream_rehearsal_fraction=0.50,  # Rehearse top 50% for testing
-        dream_min_access_count=2,       # Lower threshold for tests
+        dream_min_access_count=2,  # Lower threshold for tests
         dream_importance_drift_window_days=14,
         dream_importance_drift_rate=0.5,
         actr_noise=0.0,
     )
     svc = ConsolidationService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     yield store, index, graph, config, svc
     await store.close()
@@ -51,7 +54,7 @@ async def _create_memory_with_accesses(
     await store.save_memory(mem)
 
     # Create entities and link them (save to store for FK + graph for in-memory)
-    for name in (entity_names or []):
+    for name in entity_names or []:
         entity = Entity(id=f"e-{name}", name=name, type="concept")
         await store.save_entity(entity)
         graph.add_entity(entity)
@@ -60,11 +63,13 @@ async def _create_memory_with_accesses(
 
     # Log accesses
     for i in range(n_accesses):
-        await store.log_access(AccessRecord(
-            memory_id=mem.id,
-            accessing_agent="test",
-            accessed_at=datetime.now(UTC) - timedelta(hours=i * 24),
-        ))
+        await store.log_access(
+            AccessRecord(
+                memory_id=mem.id,
+                accessing_agent="test",
+                accessed_at=datetime.now(UTC) - timedelta(hours=i * 24),
+            )
+        )
 
     return mem
 
@@ -88,7 +93,9 @@ class TestDreamRehearsal:
         # Create 4 memories with enough accesses
         for i in range(4):
             await _create_memory_with_accesses(
-                store, graph, f"Memory {i}",
+                store,
+                graph,
+                f"Memory {i}",
                 n_accesses=3,
                 entity_names=[f"concept-{i}"],
             )
@@ -113,7 +120,9 @@ class TestDreamRehearsal:
         store, index, graph, config, svc = dream_env
 
         mem = await _create_memory_with_accesses(
-            store, graph, "Important memory",
+            store,
+            graph,
+            "Important memory",
             n_accesses=5,
             entity_names=["important-concept"],
         )
@@ -146,30 +155,40 @@ class TestAssociationLearning:
 
         # Create memories with entities that have varying co-occurrence patterns
         mem1 = await _create_memory_with_accesses(
-            store, graph, "Redis cache config",
+            store,
+            graph,
+            "Redis cache config",
             entity_names=["redis", "cache"],
         )
         mem2 = await _create_memory_with_accesses(
-            store, graph, "Redis session store",
+            store,
+            graph,
+            "Redis session store",
             entity_names=["redis", "session"],
         )
         mem3 = await _create_memory_with_accesses(
-            store, graph, "PostgreSQL backup",
+            store,
+            graph,
+            "PostgreSQL backup",
             entity_names=["postgres", "backup"],
         )
 
         # Log searches with varying result sets so PMI has signal:
         # redis+cache co-occur in some but not all results
         for i in range(3):
-            await store.log_search(SearchLogEntry(
-                query=f"redis query {i}",
-                returned_ids=[mem1.id, mem2.id],  # redis entities
-            ))
+            await store.log_search(
+                SearchLogEntry(
+                    query=f"redis query {i}",
+                    returned_ids=[mem1.id, mem2.id],  # redis entities
+                )
+            )
         for i in range(3):
-            await store.log_search(SearchLogEntry(
-                query=f"postgres query {i}",
-                returned_ids=[mem3.id],  # postgres entities only
-            ))
+            await store.log_search(
+                SearchLogEntry(
+                    query=f"postgres query {i}",
+                    returned_ids=[mem3.id],  # postgres entities only
+                )
+            )
 
         saved = await svc.learn_association_strengths()
         assert saved > 0
@@ -206,19 +225,23 @@ class TestImportanceDrift:
         # Create many recent accesses (last few hours)
         now = datetime.now(UTC)
         for i in range(10):
-            await store.log_access(AccessRecord(
-                memory_id=mem.id,
-                accessing_agent="test",
-                accessed_at=now - timedelta(hours=i),
-            ))
+            await store.log_access(
+                AccessRecord(
+                    memory_id=mem.id,
+                    accessing_agent="test",
+                    accessed_at=now - timedelta(hours=i),
+                )
+            )
 
         # Create fewer older accesses (8-14 days ago)
         for i in range(2):
-            await store.log_access(AccessRecord(
-                memory_id=mem.id,
-                accessing_agent="test",
-                accessed_at=now - timedelta(days=8 + i),
-            ))
+            await store.log_access(
+                AccessRecord(
+                    memory_id=mem.id,
+                    accessing_agent="test",
+                    accessed_at=now - timedelta(days=8 + i),
+                )
+            )
 
         adjusted = await svc.adjust_importance_drift()
 
@@ -258,7 +281,9 @@ class TestDreamCycle:
         # Create some memories so rehearsal has work to do
         for i in range(5):
             await _create_memory_with_accesses(
-                store, graph, f"Memory {i}",
+                store,
+                graph,
+                f"Memory {i}",
                 n_accesses=3,
                 entity_names=[f"entity-{i}"],
             )

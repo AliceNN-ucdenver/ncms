@@ -97,18 +97,22 @@ def load_labeled_dir(path: Path) -> list[CorpusMemory]:
             kind = row.get("metadata", {}).get("kind", "none")
             if kind not in MESSAGE_KINDS:
                 logger.warning(
-                    "mid=%s unknown kind=%r → coerced to 'none'", mid, kind,
+                    "mid=%s unknown kind=%r → coerced to 'none'",
+                    mid,
+                    kind,
                 )
                 row.setdefault("metadata", {})["kind"] = "none"
 
-            out.append(CorpusMemory(
-                mid=mid,
-                subject=row["subject"],
-                content=row["content"],
-                observed_at=row["observed_at"],
-                entities=row.get("entities", []),
-                metadata=row.get("metadata", {}),
-            ))
+            out.append(
+                CorpusMemory(
+                    mid=mid,
+                    subject=row["subject"],
+                    content=row["content"],
+                    observed_at=row["observed_at"],
+                    entities=row.get("entities", []),
+                    metadata=row.get("metadata", {}),
+                )
+            )
     logger.info("loaded %d memories from %s", len(out), path)
     return out
 
@@ -127,6 +131,7 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
     text = path.read_text(encoding="utf-8")
     try:
         import yaml
+
         rows = yaml.safe_load(text) or []
     except ImportError:
         # Minimal fallback: a JSON array in the same file.
@@ -148,14 +153,17 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
         if shape not in INTENT_SHAPES:
             logger.warning(
                 "qid=%s: unknown shape=%r → coerced to 'current_state'",
-                qid, shape,
+                qid,
+                shape,
             )
             shape = "current_state"
 
         pref = row.get("preference", "none")
         if pref not in PREFERENCE_KINDS:
             logger.warning(
-                "qid=%s: unknown preference=%r → coerced to 'none'", qid, pref,
+                "qid=%s: unknown preference=%r → coerced to 'none'",
+                qid,
+                pref,
             )
             pref = "none"
 
@@ -163,23 +171,26 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
         if qclass not in QUERY_CLASSES:
             logger.warning(
                 "qid=%s: unknown query_class=%r → coerced to 'general'",
-                qid, qclass,
+                qid,
+                qclass,
             )
             qclass = "general"
 
-        out.append(GoldQuery(
-            qid=qid,
-            shape=shape,
-            text=row.get("text", ""),
-            subject=row.get("subject", ""),
-            entity=row.get("entity"),
-            gold_mid=row.get("gold_mid", ""),
-            gold_alt=row.get("gold_alt", []) or [],
-            expected_proof_pattern=row.get("expected_proof_pattern"),
-            note=row.get("note", ""),
-            preference=pref,
-            query_class=qclass,
-        ))
+        out.append(
+            GoldQuery(
+                qid=qid,
+                shape=shape,
+                text=row.get("text", ""),
+                subject=row.get("subject", ""),
+                entity=row.get("entity"),
+                gold_mid=row.get("gold_mid", ""),
+                gold_alt=row.get("gold_alt", []) or [],
+                expected_proof_pattern=row.get("expected_proof_pattern"),
+                note=row.get("note", ""),
+                preference=pref,
+                query_class=qclass,
+            )
+        )
     logger.info("loaded %d gold queries from %s", len(out), path)
     return out
 
@@ -190,7 +201,8 @@ def load_gold_yaml(path: Path) -> list[GoldQuery]:
 
 
 def validate(
-    corpus: list[CorpusMemory], queries: list[GoldQuery],
+    corpus: list[CorpusMemory],
+    queries: list[GoldQuery],
 ) -> dict[str, int]:
     """Consistency checks.
 
@@ -211,14 +223,14 @@ def validate(
 
     if unknown_gold:
         raise ValueError(
-            f"{len(unknown_gold)} gold mids not present in corpus: "
-            f"{unknown_gold[:5]} …",
+            f"{len(unknown_gold)} gold mids not present in corpus: {unknown_gold[:5]} …",
         )
     if unknown_subject:
         logger.warning(
             "%d queries reference unknown subjects (e.g. %s) — "
             "harness will still run but these queries will return empty",
-            len(unknown_subject), unknown_subject[:3],
+            len(unknown_subject),
+            unknown_subject[:3],
         )
     return {
         "corpus_memories": len(corpus),
@@ -234,7 +246,10 @@ def validate(
 
 
 def build(
-    *, labeled_dir: Path, gold_yaml: Path, out_dir: Path,
+    *,
+    labeled_dir: Path,
+    gold_yaml: Path,
+    out_dir: Path,
 ) -> dict[str, int]:
     out_dir.mkdir(parents=True, exist_ok=True)
     corpus = load_labeled_dir(labeled_dir)
@@ -248,7 +263,9 @@ def build(
     )
     logger.info(
         "built %d memories + %d queries → %s",
-        stats["corpus_memories"], stats["gold_queries"], out_dir,
+        stats["corpus_memories"],
+        stats["gold_queries"],
+        out_dir,
     )
     return stats
 
@@ -260,8 +277,8 @@ def main() -> None:
     )
     ap = argparse.ArgumentParser(description="MSEB build: labeled + gold → canonical JSONL")
     ap.add_argument("--labeled-dir", type=Path, required=True)
-    ap.add_argument("--gold-yaml",  type=Path, required=True)
-    ap.add_argument("--out-dir",    type=Path, required=True)
+    ap.add_argument("--gold-yaml", type=Path, required=True)
+    ap.add_argument("--out-dir", type=Path, required=True)
     args = ap.parse_args()
 
     stats = build(

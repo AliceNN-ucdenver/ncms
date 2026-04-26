@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 # ── Label presets (§15.1 of the design) ───────────────────────────────
 
+
 # Current default — universal entities merged with temporal labels.
 # Imported lazily from ncms so we get the source of truth.
 def _label_presets() -> dict[str, tuple[list[str], list[str]]]:
@@ -75,6 +76,7 @@ def _label_presets() -> dict[str, tuple[list[str], list[str]]]:
         TEMPORAL_LABELS,
         UNIVERSAL_LABELS,
     )
+
     return {
         "full": (list(UNIVERSAL_LABELS), list(TEMPORAL_LABELS)),
         "slim": (
@@ -86,9 +88,9 @@ def _label_presets() -> dict[str, tuple[list[str], list[str]]]:
 
 @dataclass
 class VariantResult:
-    label_preset: str        # 'full' | 'slim'
-    call_strategy: str       # 'combined' | 'split'
-    label_count: int         # total labels issued to GLiNER per question
+    label_preset: str  # 'full' | 'slim'
+    call_strategy: str  # 'combined' | 'split'
+    label_count: int  # total labels issued to GLiNER per question
     # Query-side
     query_samples: int = 0
     query_with_range: int = 0
@@ -101,17 +103,11 @@ class VariantResult:
 
     @property
     def query_rate(self) -> float:
-        return (
-            self.query_with_range / self.query_samples
-            if self.query_samples else 0.0
-        )
+        return self.query_with_range / self.query_samples if self.query_samples else 0.0
 
     @property
     def memory_rate(self) -> float:
-        return (
-            self.memory_with_range / self.memory_samples
-            if self.memory_samples else 0.0
-        )
+        return self.memory_with_range / self.memory_samples if self.memory_samples else 0.0
 
 
 @dataclass
@@ -198,8 +194,7 @@ def _format_markdown(
     lines.append("# P1-Temporal-Experiment — Phase A Range Coverage")
     lines.append("")
     lines.append(
-        f"**Questions analyzed:** {total_questions} "
-        "(LongMemEval temporal-reasoning subset)"
+        f"**Questions analyzed:** {total_questions} (LongMemEval temporal-reasoning subset)"
     )
     lines.append(f"**Elapsed:** {elapsed_s:.1f} s")
     lines.append("")
@@ -207,10 +202,7 @@ def _format_markdown(
     # Aggregate table
     lines.append("## Variant comparison")
     lines.append("")
-    lines.append(
-        "| Label preset | Strategy | Labels/call | "
-        "Query R | Memory R | p50 ms | p95 ms |"
-    )
+    lines.append("| Label preset | Strategy | Labels/call | Query R | Memory R | p50 ms | p95 ms |")
     lines.append("|---|---|---:|---:|---:|---:|---:|")
     for key in sorted(variants):
         v = variants[key]
@@ -241,13 +233,11 @@ def _format_markdown(
         pattern_buckets.setdefault(d.pattern, []).append(d)
     key_str = f"{baseline_key[0]}-{baseline_key[1]}"
     for p, items in sorted(
-        pattern_buckets.items(), key=lambda kv: -len(kv[1]),
+        pattern_buckets.items(),
+        key=lambda kv: -len(kv[1]),
     ):
         n = len(items)
-        hit = sum(
-            1 for d in items
-            if d.per_variant_had_range.get(key_str, False)
-        )
+        hit = sum(1 for d in items if d.per_variant_had_range.get(key_str, False))
         rate = hit / n if n else 0.0
         lines.append(f"| {p} | {n} | {hit} | {rate * 100:.1f}% |")
     lines.append("")
@@ -286,24 +276,25 @@ async def _run(args: argparse.Namespace) -> None:
 
     logger.info("Loading LongMemEval dataset...")
     sessions_by_q, questions = load_longmemeval_dataset(
-        cache_dir=cache_dir, dataset_file=args.dataset,
+        cache_dir=cache_dir,
+        dataset_file=args.dataset,
     )
-    temporal_qs = [
-        q for q in questions if q.category == "temporal-reasoning"
-    ]
+    temporal_qs = [q for q in questions if q.category == "temporal-reasoning"]
     logger.info(
         "Loaded %d total, %d temporal-reasoning",
-        len(questions), len(temporal_qs),
+        len(questions),
+        len(temporal_qs),
     )
     if args.limit:
-        temporal_qs = temporal_qs[:args.limit]
+        temporal_qs = temporal_qs[: args.limit]
 
     cfg = NCMSConfig(db_path=":memory:")
     presets = _label_presets()
 
     def extract(text: str, labels: list[str]):
         return extract_entities_gliner(
-            text, labels=labels,
+            text,
+            labels=labels,
             model_name=cfg.gliner_model,
             threshold=cfg.gliner_threshold,
             cache_dir=cfg.model_cache_dir,
@@ -346,9 +337,14 @@ async def _run(args: argparse.Namespace) -> None:
         for (preset_name, strategy), vr in variants.items():
             e_labels, t_labels = presets[preset_name]
             had_range, ms = _run_variant_on_query(
-                q.question, ref_time,
-                e_labels, t_labels, strategy,
-                extract, split, resolve,
+                q.question,
+                ref_time,
+                e_labels,
+                t_labels,
+                strategy,
+                extract,
+                split,
+                resolve,
             )
             vr.query_samples += 1
             if had_range:
@@ -362,7 +358,8 @@ async def _run(args: argparse.Namespace) -> None:
         if (qi + 1) % 10 == 0 or qi == 0:
             logger.info(
                 "Q %d/%d — full·combined hit rate: %.1f%%  slim·combined: %.1f%%",
-                qi + 1, len(temporal_qs),
+                qi + 1,
+                len(temporal_qs),
                 variants[("full", "combined")].query_rate * 100,
                 variants[("slim", "combined")].query_rate * 100,
             )
@@ -397,9 +394,14 @@ async def _run(args: argparse.Namespace) -> None:
             for (preset_name, strategy), vr in variants.items():
                 e_labels, t_labels = presets[preset_name]
                 had = _run_variant_on_memory(
-                    content, anchor,
-                    e_labels, t_labels, strategy,
-                    extract, split, normalize_spans,
+                    content,
+                    anchor,
+                    e_labels,
+                    t_labels,
+                    strategy,
+                    extract,
+                    split,
+                    normalize_spans,
                 )
                 vr.memory_samples += 1
                 if had:
@@ -411,45 +413,55 @@ async def _run(args: argparse.Namespace) -> None:
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     json_path = output_dir / f"range_coverage_{ts}.json"
     md_path = output_dir / f"range_coverage_{ts}.md"
-    json_path.write_text(json.dumps(
-        {
-            "total_questions": len(temporal_qs),
-            "elapsed_s": elapsed_s,
-            "variants": [
-                {
-                    "label_preset": v.label_preset,
-                    "call_strategy": v.call_strategy,
-                    "label_count": v.label_count,
-                    "query_samples": v.query_samples,
-                    "query_with_range": v.query_with_range,
-                    "query_rate": v.query_rate,
-                    "query_p50_ms": v.query_p50_ms,
-                    "query_p95_ms": v.query_p95_ms,
-                    "memory_samples": v.memory_samples,
-                    "memory_with_range": v.memory_with_range,
-                    "memory_rate": v.memory_rate,
-                }
-                for v in variants.values()
-            ],
-            "questions": [asdict(d) for d in details],
-        },
-        indent=2,
-    ))
-    md_path.write_text(_format_markdown(
-        variants, details, len(temporal_qs), elapsed_s,
-    ))
+    json_path.write_text(
+        json.dumps(
+            {
+                "total_questions": len(temporal_qs),
+                "elapsed_s": elapsed_s,
+                "variants": [
+                    {
+                        "label_preset": v.label_preset,
+                        "call_strategy": v.call_strategy,
+                        "label_count": v.label_count,
+                        "query_samples": v.query_samples,
+                        "query_with_range": v.query_with_range,
+                        "query_rate": v.query_rate,
+                        "query_p50_ms": v.query_p50_ms,
+                        "query_p95_ms": v.query_p95_ms,
+                        "memory_samples": v.memory_samples,
+                        "memory_with_range": v.memory_with_range,
+                        "memory_rate": v.memory_rate,
+                    }
+                    for v in variants.values()
+                ],
+                "questions": [asdict(d) for d in details],
+            },
+            indent=2,
+        )
+    )
+    md_path.write_text(
+        _format_markdown(
+            variants,
+            details,
+            len(temporal_qs),
+            elapsed_s,
+        )
+    )
     for suffix in ("json", "md"):
         latest = output_dir / f"range_coverage_latest.{suffix}"
         if latest.is_symlink() or latest.exists():
             latest.unlink()
         latest.symlink_to(f"range_coverage_{ts}.{suffix}")
     logger.info("Wrote %s", md_path)
-    for key, vr in sorted(variants.items()):
+    for _key, vr in sorted(variants.items()):
         logger.info(
             "%s · %s: Q=%.1f%% M=%.1f%% p50=%.0fms p95=%.0fms",
-            vr.label_preset, vr.call_strategy,
-            vr.query_rate * 100, vr.memory_rate * 100,
-            vr.query_p50_ms, vr.query_p95_ms,
+            vr.label_preset,
+            vr.call_strategy,
+            vr.query_rate * 100,
+            vr.memory_rate * 100,
+            vr.query_p50_ms,
+            vr.query_p95_ms,
         )
 
 
@@ -462,11 +474,15 @@ def main() -> None:
         default="benchmarks/results/temporal_diagnostic",
     )
     p.add_argument(
-        "--limit", type=int, default=None,
+        "--limit",
+        type=int,
+        default=None,
         help="Run only first N questions (debug)",
     )
     p.add_argument(
-        "--memory-sample", type=int, default=200,
+        "--memory-sample",
+        type=int,
+        default=200,
         help="Size of haystack memory sample (0 = skip)",
     )
     args = p.parse_args()

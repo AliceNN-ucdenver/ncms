@@ -66,12 +66,10 @@ def _fixture_ctx(
 ) -> ParserContext:
     corpus = _auth_corpus()
     vocab = induce_vocabulary(corpus)
-    mem_fixtures = [
-        _MemFixture(subject=m.subject, entities=m.entities)
-        for m in corpus
-    ]
+    mem_fixtures = [_MemFixture(subject=m.subject, entities=m.entities) for m in corpus]
     domain_nouns = compute_domain_nouns(
-        mem_fixtures, min_memories_per_subject=2,
+        mem_fixtures,
+        min_memories_per_subject=2,
     )
     return ParserContext(
         vocabulary=vocab,
@@ -117,7 +115,8 @@ class TestAnalyzeQuery:
     def test_resolves_subject_from_vocabulary_match(self) -> None:
         ctx = _fixture_ctx()
         qs = analyze_query(
-            "how has authentication evolved?", ctx,
+            "how has authentication evolved?",
+            ctx,
         )
         # "authentication" is in the auth subject's entity set;
         # vocabulary lookup resolves to subject="auth".
@@ -142,6 +141,7 @@ class TestAnalyzeQuery:
         # "problem" is in issue_entities; query has no distinctive
         # L1 entities, so the issue-seed fallback picks it up.
         qs = analyze_query(
-            "what was the latest reported problem?", ctx,
+            "what was the latest reported problem?",
+            ctx,
         )
         assert qs.target_entity == "problem"

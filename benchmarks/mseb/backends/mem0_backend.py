@@ -77,7 +77,8 @@ class Mem0Backend:
     )
     llm_api_key: str = field(
         default_factory=lambda: os.environ.get(
-            "OPENAI_API_KEY", "EMPTY",
+            "OPENAI_API_KEY",
+            "EMPTY",
         ),
     )
 
@@ -141,9 +142,14 @@ class Mem0Backend:
         logger.info(
             "mem0 runtime config: llm=%s api_base=%s embedder=%s "
             "collection=%s infer=%s rerank=%s user_id=%s tmp_path=%s",
-            self.llm_model, self.llm_api_base, self.embedder_model,
-            self.collection_name, self.infer, self.rerank,
-            GLOBAL_USER_ID, self._tmp_path,
+            self.llm_model,
+            self.llm_api_base,
+            self.embedder_model,
+            self.collection_name,
+            self.infer,
+            self.rerank,
+            GLOBAL_USER_ID,
+            self._tmp_path,
         )
 
     # -------------------------------------------------------------------
@@ -151,7 +157,8 @@ class Mem0Backend:
     # -------------------------------------------------------------------
 
     async def ingest(
-        self, memories: list[CorpusMemory],
+        self,
+        memories: list[CorpusMemory],
     ) -> dict[str, str]:
         if self._memory is None:
             raise RuntimeError("setup() must be called before ingest()")
@@ -160,7 +167,8 @@ class Mem0Backend:
         # Ordering doesn't matter for mem0 (no temporal scoring), but
         # we keep the same ordering NCMS uses for determinism.
         ordered = sorted(
-            memories, key=lambda m: (m.subject, m.observed_at, m.mid),
+            memories,
+            key=lambda m: (m.subject, m.observed_at, m.mid),
         )
 
         for m in ordered:
@@ -169,13 +177,14 @@ class Mem0Backend:
                 "subject": m.subject,
                 "observed_at": m.observed_at,
                 **{
-                    k: v for k, v in (m.metadata or {}).items()
+                    k: v
+                    for k, v in (m.metadata or {}).items()
                     if isinstance(v, (str, int, float, bool))
                 },
             }
             try:
                 resp = await asyncio.to_thread(
-                    self._memory.add,        # type: ignore[union-attr]
+                    self._memory.add,  # type: ignore[union-attr]
                     m.content,
                     user_id=GLOBAL_USER_ID,
                     metadata=metadata,
@@ -197,14 +206,17 @@ class Mem0Backend:
     # -------------------------------------------------------------------
 
     async def search(
-        self, query: str, *, limit: int = 10,
+        self,
+        query: str,
+        *,
+        limit: int = 10,
     ) -> list[BackendRanking]:
         if self._memory is None:
             raise RuntimeError("setup() must be called before search()")
 
         try:
             resp = await asyncio.to_thread(
-                self._memory.search,    # type: ignore[union-attr]
+                self._memory.search,  # type: ignore[union-attr]
                 query,
                 user_id=GLOBAL_USER_ID,
                 limit=limit,
@@ -231,11 +243,13 @@ class Mem0Backend:
                 similarity = 1.0 - score if score <= 1.0 else 1.0 / (1.0 + score)
             except (TypeError, ValueError):
                 similarity = 1.0 / (rank + 1)
-            rankings.append(BackendRanking(
-                mid=str(mid),
-                score=similarity,
-                raw={"raw_score": raw_score, "rank": rank},
-            ))
+            rankings.append(
+                BackendRanking(
+                    mid=str(mid),
+                    score=similarity,
+                    raw={"raw_score": raw_score, "rank": rank},
+                )
+            )
         return rankings
 
     # -------------------------------------------------------------------

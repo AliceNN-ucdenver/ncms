@@ -53,14 +53,11 @@ logger = logging.getLogger(__name__)
 # so RetrievalPipeline.apply_ordinal_ordering stays under the D-
 # complexity gate).  See that method's docstring for semantics.
 
+
 def _event_time(sm: ScoredMemory) -> datetime:
     """Extract the sort-key timestamp for a scored memory."""
     mem = sm.memory
-    return (
-        getattr(mem, "observed_at", None)
-        or getattr(mem, "created_at", None)
-        or datetime.min
-    )
+    return getattr(mem, "observed_at", None) or getattr(mem, "created_at", None) or datetime.min
 
 
 def _partition_subjects(
@@ -69,6 +66,7 @@ def _partition_subjects(
     needles: list[str],
 ) -> tuple[list[ScoredMemory], list[ScoredMemory]]:
     """Split head into (subject_linked, other) using graph + text fallback."""
+
     def _touches(sm: ScoredMemory) -> bool:
         if sm.memory.id in subject_memory_ids:
             return True
@@ -90,7 +88,9 @@ def _order_single_subject(
 ) -> list[ScoredMemory]:
     """Sort subject-linked slice by date, place at front of head."""
     sorted_linked = sorted(
-        subject_linked, key=_event_time, reverse=(ordinal == "last"),
+        subject_linked,
+        key=_event_time,
+        reverse=(ordinal == "last"),
     )
     return sorted_linked + other + tail
 
@@ -104,7 +104,7 @@ def _order_multi_subject(
     ordinal: str,
 ) -> list[ScoredMemory]:
     """Pick one representative per subject, chronological across reps."""
-    reverse = (ordinal == "last")
+    reverse = ordinal == "last"
     by_subject: dict[str, list[ScoredMemory]] = {}
     for sm in subject_linked:
         eid = subject_memory_ids.get(sm.memory.id)
@@ -116,15 +116,13 @@ def _order_multi_subject(
         bucket = by_subject.get(eid)
         if not bucket:
             continue
-        reps.append(
-            min(bucket, key=_event_time) if not reverse
-            else max(bucket, key=_event_time)
-        )
+        reps.append(min(bucket, key=_event_time) if not reverse else max(bucket, key=_event_time))
     reps.sort(key=_event_time)
     rep_ids = {sm.memory.id for sm in reps}
     remaining = sorted(
         (sm for sm in subject_linked if sm.memory.id not in rep_ids),
-        key=_event_time, reverse=reverse,
+        key=_event_time,
+        reverse=reverse,
     )
     return reps + list(remaining) + other + tail
 
@@ -190,12 +188,14 @@ class RetrievalPipeline:
         async def _bm25_task() -> list[tuple[str, float]]:
             t = time.perf_counter()
             result = await asyncio.to_thread(
-                self._index.search, query,
+                self._index.search,
+                query,
                 self._config.tier1_candidates,
             )
             logger.info(
                 "[search] BM25 done: %d results (%.0fms)",
-                len(result), (time.perf_counter() - t) * 1000,
+                len(result),
+                (time.perf_counter() - t) * 1000,
             )
             return result
 
@@ -205,12 +205,14 @@ class RetrievalPipeline:
             try:
                 t = time.perf_counter()
                 result = await asyncio.to_thread(
-                    self._splade.search, query,
+                    self._splade.search,
+                    query,
                     self._config.splade_top_k,
                 )
                 logger.info(
                     "[search] SPLADE done: %d results (%.0fms)",
-                    len(result), (time.perf_counter() - t) * 1000,
+                    len(result),
+                    (time.perf_counter() - t) * 1000,
                 )
                 return result
             except Exception:
@@ -223,37 +225,42 @@ class RetrievalPipeline:
         async def _entity_task() -> list[dict]:
             t = time.perf_counter()
             result = await asyncio.to_thread(
-                extract_with_label_budget, query, labels,
+                extract_with_label_budget,
+                query,
+                labels,
                 model_name=self._config.gliner_model,
                 threshold=self._config.gliner_threshold,
                 cache_dir=self._config.model_cache_dir,
             )
             logger.info(
                 "[search] GLiNER done: %d entities (%.0fms)",
-                len(result), (time.perf_counter() - t) * 1000,
+                len(result),
+                (time.perf_counter() - t) * 1000,
             )
             return result
 
         logger.info(
-            "[search] Starting parallel retrieval: "
-            "BM25 + SPLADE + GLiNER",
+            "[search] Starting parallel retrieval: BM25 + SPLADE + GLiNER",
         )
-        bm25_results, splade_results, query_entity_names = (
-            await asyncio.gather(
-                _bm25_task(), _splade_task(), _entity_task(),
-            )
+        bm25_results, splade_results, query_entity_names = await asyncio.gather(
+            _bm25_task(),
+            _splade_task(),
+            _entity_task(),
         )
         parallel_ms = (time.perf_counter() - t0) * 1000
 
-        emit_stage("bm25", parallel_ms, {
-            "candidate_count": len(bm25_results),
-            "top_score": (
-                round(bm25_results[0][1], 3) if bm25_results else None
-            ),
-        })
+        emit_stage(
+            "bm25",
+            parallel_ms,
+            {
+                "candidate_count": len(bm25_results),
+                "top_score": (round(bm25_results[0][1], 3) if bm25_results else None),
+            },
+        )
         if splade_results:
             emit_stage(
-                "splade", parallel_ms,
+                "splade",
+                parallel_ms,
                 {"candidate_count": len(splade_results)},
             )
 
@@ -261,7 +268,8 @@ class RetrievalPipeline:
         if splade_results:
             t0 = time.perf_counter()
             fused_candidates = self.rrf_fuse(
-                bm25_results, splade_results,
+                bm25_results,
+                splade_results,
             )
             emit_stage(
                 "rrf_fusion",
@@ -278,8 +286,12 @@ class RetrievalPipeline:
         splade_scores = {mid: score for mid, score in splade_results}
 
         return (
-            fused_candidates, bm25_results, splade_results,
-            bm25_scores, splade_scores, query_entity_names,
+            fused_candidates,
+            bm25_results,
+            splade_results,
+            bm25_scores,
+            splade_scores,
+            query_entity_names,
             parallel_ms,
         )
 
@@ -302,12 +314,14 @@ class RetrievalPipeline:
         for item in mixed:
             label = str(item.get("type", "")).lower()
             if label in temporal_label_set:
-                spans.append(RawSpan(
-                    text=str(item.get("name", "")),
-                    label=label,
-                    char_start=int(item.get("char_start", 0) or 0),
-                    char_end=int(item.get("char_end", 0) or 0),
-                ))
+                spans.append(
+                    RawSpan(
+                        text=str(item.get("name", "")),
+                        label=label,
+                        char_start=int(item.get("char_start", 0) or 0),
+                        char_end=int(item.get("char_end", 0) or 0),
+                    )
+                )
             else:
                 entities.append(item)
         return entities, spans
@@ -395,22 +409,35 @@ class RetrievalPipeline:
         head = list(scored[:k])
         tail = list(scored[k:])
         subject_linked, other = _partition_subjects(
-            head, subject_memory_ids, needles,
+            head,
+            subject_memory_ids,
+            needles,
         )
         if not subject_linked:
             return scored
 
         if multi_subject:
-            return _order_multi_subject(
-                subject_linked, other, tail,
-                subject_entity_ids, subject_memory_ids, ordinal,
-            ) or scored
+            return (
+                _order_multi_subject(
+                    subject_linked,
+                    other,
+                    tail,
+                    subject_entity_ids,
+                    subject_memory_ids,
+                    ordinal,
+                )
+                or scored
+            )
         return _order_single_subject(
-            subject_linked, other, tail, ordinal,
+            subject_linked,
+            other,
+            tail,
+            ordinal,
         )
 
     def _build_subject_membership(
-        self, subject_entity_ids: list[str],
+        self,
+        subject_entity_ids: list[str],
     ) -> dict[str, str]:
         """Map memory_id → subject_entity_id for graph-linked memories."""
         membership: dict[str, str] = {}
@@ -437,11 +464,7 @@ class RetrievalPipeline:
         """
         if multi_subject or not subject_names:
             return []
-        return [
-            n.strip().lower()
-            for n in subject_names
-            if n and len(n.strip()) >= 3
-        ]
+        return [n.strip().lower() for n in subject_names if n and len(n.strip()) >= 3]
 
     @staticmethod
     def resolve_temporal_range(
@@ -544,17 +567,15 @@ class RetrievalPipeline:
         rrf_scores: dict[str, float] = {}
 
         for rank, (mid, _score) in enumerate(bm25_results):
-            rrf_scores[mid] = (
-                rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
-            )
+            rrf_scores[mid] = rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
 
         for rank, (mid, _score) in enumerate(splade_results):
-            rrf_scores[mid] = (
-                rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
-            )
+            rrf_scores[mid] = rrf_scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
 
         return sorted(
-            rrf_scores.items(), key=lambda x: x[1], reverse=True,
+            rrf_scores.items(),
+            key=lambda x: x[1],
+            reverse=True,
         )
 
     # ── Stage 2: Cross-Encoder Reranking ─────────────────────────────────
@@ -582,52 +603,48 @@ class RetrievalPipeline:
         _use_ce = (
             self._reranker is not None
             and self._config.reranker_enabled
-            and (
-                intent_result is None
-                or intent_result.intent in ce_intents
-            )
+            and (intent_result is None or intent_result.intent in ce_intents)
         )
         ce_scores: dict[str, float] = {}
         if not _use_ce:
             return fused_candidates, ce_scores
 
         logger.info(
-            "[search] Starting cross-encoder reranking "
-            "(%d candidates)",
+            "[search] Starting cross-encoder reranking (%d candidates)",
             len(fused_candidates),
         )
         t0 = time.perf_counter()
-        rerank_ids = [
-            mid for mid, _ in fused_candidates[
-                :self._config.reranker_top_k
-            ]
-        ]
+        rerank_ids = [mid for mid, _ in fused_candidates[: self._config.reranker_top_k]]
         rerank_memories = await self._store.get_memories_batch(
             rerank_ids,
         )
         rerank_pairs = [
-            (mid, rerank_memories[mid].content)
-            for mid in rerank_ids if mid in rerank_memories
+            (mid, rerank_memories[mid].content) for mid in rerank_ids if mid in rerank_memories
         ]
         assert self._reranker is not None  # guarded by _use_ce
         reranked = await asyncio.to_thread(
-            self._reranker.rerank, query, rerank_pairs,
+            self._reranker.rerank,
+            query,
+            rerank_pairs,
             self._config.reranker_output_k,
         )
         ce_scores = {mid: score for mid, score in reranked}
         ce_ms = (time.perf_counter() - t0) * 1000
         logger.info(
-            "[search] Cross-encoder done: %d\u2192%d results "
-            "(%.0fms)",
-            len(rerank_pairs), len(reranked), ce_ms,
+            "[search] Cross-encoder done: %d\u2192%d results (%.0fms)",
+            len(rerank_pairs),
+            len(reranked),
+            ce_ms,
         )
-        emit_stage("cross_encoder_rerank", ce_ms, {
-            "input_count": len(rerank_pairs),
-            "output_count": len(reranked),
-            "top_score": (
-                round(reranked[0][1], 4) if reranked else None
-            ),
-        })
+        emit_stage(
+            "cross_encoder_rerank",
+            ce_ms,
+            {
+                "input_count": len(rerank_pairs),
+                "output_count": len(reranked),
+                "top_score": (round(reranked[0][1], 4) if reranked else None),
+            },
+        )
         return reranked, ce_scores
 
     # ── Stage 3: Candidate Expansion ─────────────────────────────────────
@@ -642,7 +659,9 @@ class RetrievalPipeline:
         parallel_ms: float,
         emit_stage: Callable,
     ) -> tuple[
-        list[tuple[str, float]], list[str], dict[str, list],
+        list[tuple[str, float]],
+        list[str],
+        dict[str, list],
     ]:
         """Expand candidates via entities, query terms, and graph.
 
@@ -660,34 +679,42 @@ class RetrievalPipeline:
         """
         # 1. Entity name resolution
         context_entity_ids = await self._resolve_query_entities(
-            query_entity_names, parallel_ms, emit_stage,
+            query_entity_names,
+            parallel_ms,
+            emit_stage,
         )
 
         # 2. PMI query expansion
         await self._apply_query_expansion(
-            query, context_entity_ids, fused_candidates,
-            bm25_scores, emit_stage,
+            query,
+            context_entity_ids,
+            fused_candidates,
+            bm25_scores,
+            emit_stage,
         )
 
         # 3. Graph expansion
         fused_ids = {mid for mid, _ in fused_candidates}
         all_candidates = await self._apply_graph_expansion(
-            fused_candidates, fused_ids, emit_stage,
+            fused_candidates,
+            fused_ids,
+            emit_stage,
         )
 
         # 4. Batch node preload
         nodes_by_memory = await self._preload_nodes(
-            all_candidates, emit_stage,
+            all_candidates,
+            emit_stage,
         )
 
         # 5. Intent supplementary candidates
-        if (
-            intent_result
-            and intent_result.intent != QueryIntent.FACT_LOOKUP
-        ):
+        if intent_result and intent_result.intent != QueryIntent.FACT_LOOKUP:
             await self._apply_intent_supplement(
-                intent_result, context_entity_ids,
-                fused_ids, all_candidates, nodes_by_memory,
+                intent_result,
+                context_entity_ids,
+                fused_ids,
+                all_candidates,
+                nodes_by_memory,
                 emit_stage,
             )
 
@@ -708,12 +735,14 @@ class RetrievalPipeline:
             existing = await self._store.find_entity_by_name(qe["name"])
             if existing:
                 context_entity_ids.append(existing.id)
-        emit_stage("entity_extraction", parallel_ms, {
-            "query_entities": [
-                e["name"] for e in query_entity_names[:10]
-            ],
-            "context_entity_count": len(context_entity_ids),
-        })
+        emit_stage(
+            "entity_extraction",
+            parallel_ms,
+            {
+                "query_entities": [e["name"] for e in query_entity_names[:10]],
+                "context_entity_count": len(context_entity_ids),
+            },
+        )
         return context_entity_ids
 
     async def _apply_query_expansion(
@@ -724,10 +753,7 @@ class RetrievalPipeline:
         bm25_scores: dict[str, float],
         emit_stage: Callable,
     ) -> None:
-        if not (
-            self._config.dream_query_expansion_enabled
-            and context_entity_ids
-        ):
+        if not (self._config.dream_query_expansion_enabled and context_entity_ids):
             return
         try:
             expansion_terms = await self.get_query_expansion_terms(
@@ -743,20 +769,21 @@ class RetrievalPipeline:
             existing_fused = {mid for mid, _ in fused_candidates}
             novel_from_expansion = 0
             for mid, score in expanded_bm25:
-                if (
-                    mid not in bm25_scores
-                    or score > bm25_scores[mid]
-                ):
+                if mid not in bm25_scores or score > bm25_scores[mid]:
                     bm25_scores[mid] = score
                 if mid not in existing_fused:
                     fused_candidates.append((mid, score))
                     existing_fused.add(mid)
                     novel_from_expansion += 1
-            emit_stage("query_expansion", 0, {
-                "terms": expansion_terms,
-                "expanded_candidates": len(expanded_bm25),
-                "novel_candidates": novel_from_expansion,
-            })
+            emit_stage(
+                "query_expansion",
+                0,
+                {
+                    "terms": expansion_terms,
+                    "expanded_candidates": len(expanded_bm25),
+                    "novel_candidates": novel_from_expansion,
+                },
+            )
         except Exception:
             logger.debug("Query expansion failed", exc_info=True)
 
@@ -782,9 +809,7 @@ class RetrievalPipeline:
             novel_ids = related_memory_ids - fused_ids
             if len(novel_ids) > self._config.graph_expansion_max:
                 novel_ids = set(
-                    list(novel_ids)[
-                        :self._config.graph_expansion_max
-                    ],
+                    list(novel_ids)[: self._config.graph_expansion_max],
                 )
             novel_count = len(novel_ids)
             for gid in novel_ids:
@@ -797,9 +822,7 @@ class RetrievalPipeline:
         }
         if self._config.pipeline_debug and novel_count > 0:
             novel_tuples = all_candidates[-novel_count:]
-            graph_exp_data["candidates"] = (
-                await self.load_candidate_previews(novel_tuples[:20])
-            )
+            graph_exp_data["candidates"] = await self.load_candidate_previews(novel_tuples[:20])
         emit_stage(
             "graph_expansion",
             (time.perf_counter() - t0) * 1000,
@@ -817,19 +840,15 @@ class RetrievalPipeline:
             return nodes_by_memory
         t0_nodes = time.perf_counter()
         candidate_memory_ids = [mid for mid, _ in all_candidates]
-        nodes_by_memory = (
-            await self._store.get_memory_nodes_for_memories(
-                candidate_memory_ids,
-            )
+        nodes_by_memory = await self._store.get_memory_nodes_for_memories(
+            candidate_memory_ids,
         )
         emit_stage(
             "node_preload",
             (time.perf_counter() - t0_nodes) * 1000,
             {
                 "candidate_count": len(candidate_memory_ids),
-                "nodes_loaded": sum(
-                    len(v) for v in nodes_by_memory.values()
-                ),
+                "nodes_loaded": sum(len(v) for v in nodes_by_memory.values()),
             },
         )
         return nodes_by_memory
@@ -845,17 +864,17 @@ class RetrievalPipeline:
     ) -> None:
         t0_supp = time.perf_counter()
         supplement_ids = await self.intent_supplement(
-            intent_result, context_entity_ids, fused_ids,
+            intent_result,
+            context_entity_ids,
+            fused_ids,
         )
         for sid in supplement_ids:
             if sid not in fused_ids:
                 all_candidates.append((sid, 0.0))
                 fused_ids.add(sid)
         if supplement_ids:
-            supp_nodes = (
-                await self._store.get_memory_nodes_for_memories(
-                    list(supplement_ids),
-                )
+            supp_nodes = await self._store.get_memory_nodes_for_memories(
+                list(supplement_ids),
             )
             nodes_by_memory.update(supp_nodes)
         emit_stage(
@@ -975,7 +994,8 @@ class RetrievalPipeline:
         self._query_expansion_dict = None
 
     async def get_query_expansion_terms(
-        self, context_entity_ids: list[str],
+        self,
+        context_entity_ids: list[str],
     ) -> list[str]:
         """Look up PMI-learned expansion terms for the query's entities.
 
@@ -1006,9 +1026,7 @@ class RetrievalPipeline:
         terms: list[str] = []
         seen: set[str] = set()
         max_terms = self._config.dream_expansion_max_terms
-        n_entities = (
-            len(context_entity_ids) if context_entity_ids else 1
-        )
+        n_entities = len(context_entity_ids) if context_entity_ids else 1
         per_entity = max(2, max_terms // n_entities)
 
         for eid in context_entity_ids:
@@ -1035,11 +1053,11 @@ class RetrievalPipeline:
         result: list[dict[str, object]] = []
         for mid, score in candidates[:limit]:
             memory = await self._store.get_memory(mid)
-            result.append({
-                "id": mid,
-                "score": round(score, 3),
-                "content": (
-                    memory.content[:120] if memory else "(not found)"
-                ),
-            })
+            result.append(
+                {
+                    "id": mid,
+                    "score": round(score, 3),
+                    "content": (memory.content[:120] if memory else "(not found)"),
+                }
+            )
         return result

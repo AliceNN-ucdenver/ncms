@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 # Junk entity patterns from resilience doc Section 3.3 / Appendix C
 _JUNK_ENTITY_PATTERNS = [
-    re.compile(r"^\d+(\.\d+)?%?$"),        # Pure numeric: "85%", "25789"
-    re.compile(r"^\d+ \w+\(s\)$"),          # Count patterns: "1 item(s)"
-    re.compile(r"^\d+ chars$"),             # Size patterns: "2783 chars"
-    re.compile(r"^[a-f0-9]{8,}$"),          # Hex IDs: "6f01603fe96a"
-    re.compile(r"^Document: "),             # Prefixed IDs
-    re.compile(r"^[A-Z]\d+$"),              # Citation labels: "S5", "S6"
-    re.compile(r"^avg \d"),                 # Aggregate labels: "avg 85%"
+    re.compile(r"^\d+(\.\d+)?%?$"),  # Pure numeric: "85%", "25789"
+    re.compile(r"^\d+ \w+\(s\)$"),  # Count patterns: "1 item(s)"
+    re.compile(r"^\d+ chars$"),  # Size patterns: "2783 chars"
+    re.compile(r"^[a-f0-9]{8,}$"),  # Hex IDs: "6f01603fe96a"
+    re.compile(r"^Document: "),  # Prefixed IDs
+    re.compile(r"^[A-Z]\d+$"),  # Citation labels: "S5", "S6"
+    re.compile(r"^avg \d"),  # Aggregate labels: "avg 85%"
 ]
 
 
@@ -120,17 +120,23 @@ async def replay_ingest(
     section_svc = None
     if config.content_classification_enabled:
         from ncms.application.section_service import SectionService
+
         # SectionService needs a reference to memory_service — create after
         section_svc = None  # Will be set after MemoryService init
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config, splade=splade,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
+        splade=splade,
         section_service=section_svc,
     )
 
     # Deferred wiring: SectionService needs memory_service to store sections
     if config.content_classification_enabled:
         from ncms.application.section_service import SectionService
+
         svc._section_svc = SectionService(memory_service=svc, config=config)
 
     # Start background indexing pool (matches production behavior)
@@ -194,11 +200,14 @@ async def replay_ingest(
         if (i + 1) % 10 == 0 or i == len(sorted_memories) - 1:
             logger.info(
                 "  Ingested %d/%d memories (last: %.1f ms)",
-                i + 1, len(sorted_memories), elapsed_ms,
+                i + 1,
+                len(sorted_memories),
+                elapsed_ms,
             )
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     logger.info(
@@ -302,7 +311,10 @@ async def evaluate_replay(
 
     logger.info(
         "  Data: %d total memories, %d duplicates, %d entities (%d junk)",
-        len(memories), duplicate_count, total_entities, junk_entity_count,
+        len(memories),
+        duplicate_count,
+        total_entities,
+        junk_entity_count,
     )
 
     # --- Queries ---
@@ -344,17 +356,21 @@ async def evaluate_replay(
 
     logger.info("=" * 60)
     logger.info("Hub Replay Summary:")
-    logger.info("  Ingest: p50=%.1f ms, p95=%.1f ms, p99=%.1f ms",
-                result["ingest_latency_p50"],
-                result["ingest_latency_p95"],
-                result["ingest_latency_p99"])
+    logger.info(
+        "  Ingest: p50=%.1f ms, p95=%.1f ms, p99=%.1f ms",
+        result["ingest_latency_p50"],
+        result["ingest_latency_p95"],
+        result["ingest_latency_p99"],
+    )
     logger.info("  Search: p50=%.1f ms", result["search_latency_p50"])
-    logger.info("  Data: %d memories, %d duplicates, %d entities (%d junk / %.1f%%)",
-                result["total_memories"],
-                result["duplicate_count"],
-                result["total_entities"],
-                result["junk_entity_count"],
-                result["junk_entity_rate"])
+    logger.info(
+        "  Data: %d memories, %d duplicates, %d entities (%d junk / %.1f%%)",
+        result["total_memories"],
+        result["duplicate_count"],
+        result["total_entities"],
+        result["junk_entity_count"],
+        result["junk_entity_rate"],
+    )
     logger.info("=" * 60)
 
     return result

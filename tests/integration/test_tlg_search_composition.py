@@ -41,6 +41,7 @@ class _StubIntentSlotExtractor:
     the stub translates that into the cue_tag sequence the v8.1
     synthesizer would emit for that shape.
     """
+
     name = "test_stub"
 
     # Minimal cue-tag fixture per legacy shape — enough for the
@@ -53,18 +54,38 @@ class _StubIntentSlotExtractor:
     #   * ASK_CHANGE + TEMPORAL_BEFORE → Rule 10 → axis=state, relation=retired
     _CUES_BY_SHAPE: dict[str, list[dict]] = {
         "current_state": [
-            {"char_start": 0, "char_end": 3, "surface": "now",
-             "cue_label": "B-ASK_CURRENT", "confidence": 0.99},
+            {
+                "char_start": 0,
+                "char_end": 3,
+                "surface": "now",
+                "cue_label": "B-ASK_CURRENT",
+                "confidence": 0.99,
+            },
         ],
         "origin": [
-            {"char_start": 0, "char_end": 5, "surface": "first",
-             "cue_label": "B-ORDINAL_FIRST", "confidence": 0.99},
+            {
+                "char_start": 0,
+                "char_end": 5,
+                "surface": "first",
+                "cue_label": "B-ORDINAL_FIRST",
+                "confidence": 0.99,
+            },
         ],
         "retirement": [
-            {"char_start": 0, "char_end": 12, "surface": "what happened",
-             "cue_label": "B-ASK_CHANGE", "confidence": 0.99},
-            {"char_start": 13, "char_end": 19, "surface": "before",
-             "cue_label": "B-TEMPORAL_BEFORE", "confidence": 0.99},
+            {
+                "char_start": 0,
+                "char_end": 12,
+                "surface": "what happened",
+                "cue_label": "B-ASK_CHANGE",
+                "confidence": 0.99,
+            },
+            {
+                "char_start": 13,
+                "char_end": 19,
+                "surface": "before",
+                "cue_label": "B-TEMPORAL_BEFORE",
+                "confidence": 0.99,
+            },
         ],
     }
 
@@ -74,6 +95,7 @@ class _StubIntentSlotExtractor:
 
     def extract(self, text: str, *, domain: str):  # pragma: no cover — trivial
         from ncms.domain.models import ExtractedLabel
+
         return ExtractedLabel(
             intent="none",
             intent_confidence=0.0,
@@ -83,7 +105,8 @@ class _StubIntentSlotExtractor:
 
 
 async def _build_service(
-    *, slm_shape: str | None = None,
+    *,
+    slm_shape: str | None = None,
 ) -> MemoryService:
     store = SQLiteStore(db_path=":memory:")
     await store.initialize()
@@ -101,9 +124,7 @@ async def _build_service(
         graph=graph,
         config=config,
         reconciliation=reconciliation,
-        intent_slot=(
-            _StubIntentSlotExtractor(slm_shape) if slm_shape else None
-        ),
+        intent_slot=(_StubIntentSlotExtractor(slm_shape) if slm_shape else None),
     )
     return svc
 
@@ -218,9 +239,7 @@ class TestSearchCompositionEnabled:
         # lands at rank 1.
         assert results[0].memory.id == current.memory_id
 
-    async def test_non_grammar_query_leaves_bm25_untouched(
-        self, svc_tlg_on: MemoryService
-    ) -> None:
+    async def test_non_grammar_query_leaves_bm25_untouched(self, svc_tlg_on: MemoryService) -> None:
         # Seed an ENTITY_STATE so the cache has content to work with,
         # then fire a query with no grammar structure.  Expectation:
         # the composition returns BM25 unchanged.

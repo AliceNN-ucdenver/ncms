@@ -118,9 +118,7 @@ async def _auth_corpus(store: SQLiteStore) -> tuple[MemoryNode, MemoryNode]:
 
 
 class TestCurrentIntent:
-    async def test_returns_current_entity_state_high_confidence(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_returns_current_entity_state_high_confidence(self, store: SQLiteStore) -> None:
         _, current = await _auth_corpus(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -165,16 +163,14 @@ class TestOriginIntent:
         assert trace.confidence == Confidence.HIGH
 
 
-
 # NOTE: ``TestStillIntent`` was removed in the v6 cleanup — the
 # dispatcher it exercised is no longer reachable via the SLM
 # ``shape_intent_head`` taxonomy.  See docs for the v6 deletion
 # rationale.
 
+
 class TestNoIntent:
-    async def test_non_grammar_query_produces_none(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_non_grammar_query_produces_none(self, store: SQLiteStore) -> None:
         await _auth_corpus(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -192,9 +188,7 @@ class TestNoIntent:
 
 
 class TestComposition:
-    async def test_confident_trace_prepends_onto_bm25(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_confident_trace_prepends_onto_bm25(self, store: SQLiteStore) -> None:
         _, current = await _auth_corpus(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(
@@ -211,9 +205,7 @@ class TestComposition:
         assert "other-memory-1" in composed
         assert "other-memory-2" in composed
 
-    async def test_no_intent_trace_preserves_bm25_exactly(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_no_intent_trace_preserves_bm25_exactly(self, store: SQLiteStore) -> None:
         await _auth_corpus(store)
         cache = VocabularyCache()
         trace = await retrieve_lg(

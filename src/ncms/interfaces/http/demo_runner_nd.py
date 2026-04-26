@@ -27,9 +27,7 @@ STEP_DELAY = 2.0  # seconds between phases for dashboard visibility
 
 _CONTAINER_KNOWLEDGE = Path("/app/knowledge")
 _GOV_BASE = Path.home() / "Documents" / "governance-mesh"
-_APP_BASE = (
-    _GOV_BASE / "platforms" / "imdb-lite" / "bars" / "imdb-lite-application"
-)
+_APP_BASE = _GOV_BASE / "platforms" / "imdb-lite" / "bars" / "imdb-lite-application"
 
 
 def _resolve(container_path: str, host_path: str) -> str:
@@ -44,23 +42,30 @@ def _build_knowledge_files() -> list[tuple[str, list[str]]]:
     """Build knowledge file list with container/host path resolution."""
     return [
         (
-            _resolve("architecture/bar.arch.json",
-                     str(_APP_BASE / "architecture" / "bar.arch.json")),
+            _resolve(
+                "architecture/bar.arch.json", str(_APP_BASE / "architecture" / "bar.arch.json")
+            ),
             ["architecture", "calm-model"],
         ),
         (
-            _resolve("architecture/ADRs/001-initial-architecture.md",
-                     str(_APP_BASE / "architecture" / "ADRs" / "001-initial-architecture.md")),
+            _resolve(
+                "architecture/ADRs/001-initial-architecture.md",
+                str(_APP_BASE / "architecture" / "ADRs" / "001-initial-architecture.md"),
+            ),
             ["architecture", "decisions"],
         ),
         (
-            _resolve("architecture/ADRs/002-mongodb-document-store.md",
-                     str(_APP_BASE / "architecture" / "ADRs" / "002-mongodb-document-store.md")),
+            _resolve(
+                "architecture/ADRs/002-mongodb-document-store.md",
+                str(_APP_BASE / "architecture" / "ADRs" / "002-mongodb-document-store.md"),
+            ),
             ["architecture", "decisions"],
         ),
         (
-            _resolve("architecture/ADRs/003-jwt-rbac-authentication.md",
-                     str(_APP_BASE / "architecture" / "ADRs" / "003-jwt-rbac-authentication.md")),
+            _resolve(
+                "architecture/ADRs/003-jwt-rbac-authentication.md",
+                str(_APP_BASE / "architecture" / "ADRs" / "003-jwt-rbac-authentication.md"),
+            ),
             ["architecture", "decisions", "security"],
         ),
         (
@@ -71,38 +76,51 @@ def _build_knowledge_files() -> list[tuple[str, list[str]]]:
             ["architecture", "decisions"],
         ),
         (
-            _resolve("architecture/quality-attributes.yaml",
-                     str(_APP_BASE / "architecture" / "quality-attributes.yaml")),
+            _resolve(
+                "architecture/quality-attributes.yaml",
+                str(_APP_BASE / "architecture" / "quality-attributes.yaml"),
+            ),
             ["architecture", "quality"],
         ),
         (
-            _resolve("architecture/fitness-functions.yaml",
-                     str(_APP_BASE / "architecture" / "fitness-functions.yaml")),
+            _resolve(
+                "architecture/fitness-functions.yaml",
+                str(_APP_BASE / "architecture" / "fitness-functions.yaml"),
+            ),
             ["architecture", "quality"],
         ),
         (
-            _resolve("prompts/architecture.md",
-                     str(_GOV_BASE / ".caterpillar" / "prompts" / "architecture.md")),
+            _resolve(
+                "prompts/architecture.md",
+                str(_GOV_BASE / ".caterpillar" / "prompts" / "architecture.md"),
+            ),
             ["architecture", "calm-model"],
         ),
         (
-            _resolve("security/threat-model.yaml",
-                     str(_APP_BASE / "security" / "threat-model.yaml")),
+            _resolve(
+                "security/threat-model.yaml", str(_APP_BASE / "security" / "threat-model.yaml")
+            ),
             ["security", "threats"],
         ),
         (
-            _resolve("security/security-controls.yaml",
-                     str(_APP_BASE / "security" / "security-controls.yaml")),
+            _resolve(
+                "security/security-controls.yaml",
+                str(_APP_BASE / "security" / "security-controls.yaml"),
+            ),
             ["security", "controls"],
         ),
         (
-            _resolve("security/compliance-checklist.yaml",
-                     str(_APP_BASE / "security" / "compliance-checklist.yaml")),
+            _resolve(
+                "security/compliance-checklist.yaml",
+                str(_APP_BASE / "security" / "compliance-checklist.yaml"),
+            ),
             ["security", "compliance"],
         ),
         (
-            _resolve("prompts/application-security.md",
-                     str(_GOV_BASE / ".caterpillar" / "prompts" / "application-security.md")),
+            _resolve(
+                "prompts/application-security.md",
+                str(_GOV_BASE / ".caterpillar" / "prompts" / "application-security.md"),
+            ),
             ["security", "threats", "controls"],
         ),
         (
@@ -125,9 +143,7 @@ async def run_nd_demo_loop(
     llm_model = config.llm_model
     llm_api_base = config.llm_api_base
 
-    logger.info(
-        "ND demo starting — LLM: %s @ %s", llm_model, llm_api_base or "(default)"
-    )
+    logger.info("ND demo starting — LLM: %s @ %s", llm_model, llm_api_base or "(default)")
 
     # ── Phase 1: Knowledge Loading ───────────────────────────────────────
 
@@ -143,7 +159,10 @@ async def run_nd_demo_loop(
             continue
 
         stats = await loader.load_file(
-            file_path, domains=domains, source_agent="knowledge-loader", importance=7.0,
+            file_path,
+            domains=domains,
+            source_agent="knowledge-loader",
+            importance=7.0,
         )
         files_loaded += stats.files_processed
         total_memories += stats.memories_created
@@ -249,7 +268,9 @@ async def run_nd_demo_loop(
 
     logger.info(
         "ND demo completed: %d files, %d memories, %d builder turns",
-        files_loaded, total_memories, len(turns),
+        files_loaded,
+        total_memories,
+        len(turns),
     )
 
     # Keep running so events stay in the log

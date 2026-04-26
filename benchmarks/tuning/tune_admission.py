@@ -33,9 +33,11 @@ TUNING_DIR = Path(__file__).parent
 # Labeled evaluation examples
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LabeledExample:
     """Content with expected admission route."""
+
     content: str
     expected_route: str  # persist | ephemeral_cache | discard
     category: str  # human-readable category for reporting
@@ -45,127 +47,147 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
     # --- persist: architecture decisions, important facts ---
     LabeledExample(
         "We decided to migrate from REST to gRPC for all internal service communication",
-        "persist", "architecture_decision",
+        "persist",
+        "architecture_decision",
     ),
     LabeledExample(
         "The authentication service uses OAuth 2.0 with PKCE flow for mobile clients",
-        "persist", "architecture_fact",
+        "persist",
+        "architecture_fact",
     ),
     LabeledExample(
         "PostgreSQL 16 was chosen as the primary database for the user service",
-        "persist", "technology_choice",
+        "persist",
+        "technology_choice",
     ),
     LabeledExample(
         "The API rate limit is set to 1000 requests per minute per API key",
-        "persist", "configuration",
+        "persist",
+        "configuration",
     ),
     LabeledExample(
         "All microservices must implement health check endpoints at /healthz",
-        "persist", "policy",
+        "persist",
+        "policy",
     ),
     LabeledExample(
         "The frontend uses React 18 with server-side rendering via Next.js",
-        "persist", "architecture_fact",
+        "persist",
+        "architecture_fact",
     ),
     LabeledExample(
         "CI/CD pipeline runs on GitHub Actions with Docker-based build steps",
-        "persist", "infrastructure",
+        "persist",
+        "infrastructure",
     ),
     LabeledExample(
         "The search service uses Elasticsearch 8.x with custom analyzers"
         " for multi-language support",
-        "persist", "architecture_fact",
+        "persist",
+        "architecture_fact",
     ),
     LabeledExample(
         "Data retention policy requires user data deletion within 30 days of account closure",
-        "persist", "policy",
+        "persist",
+        "policy",
     ),
     LabeledExample(
-        "The payment processing module integrates with Stripe API v2023-10"
-        " for all transactions",
-        "persist", "integration",
+        "The payment processing module integrates with Stripe API v2023-10 for all transactions",
+        "persist",
+        "integration",
     ),
     LabeledExample(
-        "Redis cluster with 6 nodes handles session management and caching"
-        " across all services",
-        "persist", "infrastructure",
+        "Redis cluster with 6 nodes handles session management and caching across all services",
+        "persist",
+        "infrastructure",
     ),
     LabeledExample(
         "GraphQL federation is used to compose the unified API gateway from 12 subgraphs",
-        "persist", "architecture_fact",
+        "persist",
+        "architecture_fact",
     ),
-
     # --- persist: state changes, version updates ---
     LabeledExample(
         "The auth service was updated from OAuth 1.0 to OAuth 2.0 as of January 2026",
-        "persist", "state_change",
+        "persist",
+        "state_change",
     ),
     LabeledExample(
         "Database version upgraded from PostgreSQL 14 to PostgreSQL 16",
-        "persist", "version_change",
+        "persist",
+        "version_change",
     ),
     LabeledExample(
         "The payment gateway switched from Stripe to Adyen in production",
-        "persist", "provider_change",
+        "persist",
+        "provider_change",
     ),
     LabeledExample(
         "API endpoint /v2/users replaced the deprecated /v1/users endpoint",
-        "persist", "api_change",
+        "persist",
+        "api_change",
     ),
     LabeledExample(
         "Monitoring moved from Datadog to Grafana Cloud as of March 2026",
-        "persist", "tool_change",
+        "persist",
+        "tool_change",
     ),
     LabeledExample(
-        "The user service status changed from degraded to healthy"
-        " after the fix was deployed",
-        "persist", "status_change",
+        "The user service status changed from degraded to healthy after the fix was deployed",
+        "persist",
+        "status_change",
     ),
     LabeledExample(
-        "Container runtime migrated from Docker to containerd"
-        " across all Kubernetes clusters",
-        "persist", "infrastructure_change",
+        "Container runtime migrated from Docker to containerd across all Kubernetes clusters",
+        "persist",
+        "infrastructure_change",
     ),
     LabeledExample(
         "Node.js version bumped from 18 to 20 LTS for all backend services",
-        "persist", "version_change",
+        "persist",
+        "version_change",
     ),
-
     # --- ephemeral_cache: useful but transient ---
     LabeledExample(
         "I'm looking into the auth issue, will update once I have more info",
-        "ephemeral_cache", "status_update",
+        "ephemeral_cache",
+        "status_update",
     ),
     LabeledExample(
         "The build is currently failing on the staging branch, investigating now",
-        "ephemeral_cache", "investigation",
+        "ephemeral_cache",
+        "investigation",
     ),
     LabeledExample(
         "Can someone check if the API is returning 500 errors on the health endpoint?",
-        "ephemeral_cache", "question",
+        "ephemeral_cache",
+        "question",
     ),
     LabeledExample(
         "Working on the PR for the caching layer, should be ready for review tomorrow",
-        "ephemeral_cache", "work_in_progress",
+        "ephemeral_cache",
+        "work_in_progress",
     ),
     LabeledExample(
-        "Meeting notes: discussed roadmap priorities for Q2,"
-        " need to follow up on auth redesign",
-        "ephemeral_cache", "meeting_note",
+        "Meeting notes: discussed roadmap priorities for Q2, need to follow up on auth redesign",
+        "ephemeral_cache",
+        "meeting_note",
     ),
     LabeledExample(
         "TODO: review the error handling in the payment module before merge",
-        "ephemeral_cache", "todo",
+        "ephemeral_cache",
+        "todo",
     ),
     LabeledExample(
         "Testing the new deployment pipeline, so far looks good but need more coverage",
-        "ephemeral_cache", "progress_note",
+        "ephemeral_cache",
+        "progress_note",
     ),
     LabeledExample(
         "Quick note: the staging environment is down for maintenance until 3pm",
-        "ephemeral_cache", "temporary_notice",
+        "ephemeral_cache",
+        "temporary_notice",
     ),
-
     # --- discard: noise, social, trivial ---
     LabeledExample("ok", "discard", "noise"),
     LabeledExample("thanks", "discard", "noise"),
@@ -177,37 +199,42 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
     LabeledExample("brb", "discard", "noise"),
     LabeledExample("np", "discard", "noise"),
     LabeledExample("+1", "discard", "noise"),
-
     # --- persist: incidents, causal chains ---
     LabeledExample(
         "INCIDENT: Production API latency spiked to 5s at 14:00 UTC"
         " due to database connection pool exhaustion",
-        "persist", "incident",
+        "persist",
+        "incident",
     ),
     LabeledExample(
         "Root cause identified: the connection pool leak was caused by"
         " unclosed transactions in the batch processor",
-        "persist", "root_cause",
+        "persist",
+        "root_cause",
     ),
     LabeledExample(
         "Hotfix deployed: increased connection pool size from 20 to 50"
         " and added connection timeout of 30s",
-        "persist", "resolution",
+        "persist",
+        "resolution",
     ),
     LabeledExample(
         "Post-incident review: the monitoring alert for connection pool usage"
         " fired 10 minutes after the spike started",
-        "persist", "post_mortem",
+        "persist",
+        "post_mortem",
     ),
     LabeledExample(
         "Sprint retrospective: the auth refactor introduced a regression"
         " in token validation affecting 3 downstream services",
-        "persist", "retrospective",
+        "persist",
+        "retrospective",
     ),
     LabeledExample(
         "Deployment of v2.3.1 to production started at 09:00,"
         " includes fix for JIRA-4521 payment timeout issue",
-        "persist", "deployment",
+        "persist",
+        "deployment",
     ),
 ]
 
@@ -216,6 +243,7 @@ EVALUATION_EXAMPLES: list[LabeledExample] = [
 # Feature extraction
 # ---------------------------------------------------------------------------
 
+
 def extract_features_for_content(content: str, svc: object) -> AdmissionFeatures:
     """Extract admission features using AdmissionService's text heuristics."""
     text_lower = content.lower()
@@ -223,7 +251,8 @@ def extract_features_for_content(content: str, svc: object) -> AdmissionFeatures
     return AdmissionFeatures(
         utility=svc._compute_utility(text_lower),  # type: ignore[attr-defined]
         temporal_salience=svc._compute_temporal_salience(  # type: ignore[attr-defined]
-            text_lower, content,
+            text_lower,
+            content,
         ),
         persistence=svc._compute_persistence(text_lower),  # type: ignore[attr-defined]
         state_change_signal=svc._compute_state_change_signal(  # type: ignore[attr-defined]
@@ -236,9 +265,11 @@ def extract_features_for_content(content: str, svc: object) -> AdmissionFeatures
 # Grid search
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RoutingConfig:
     """Routing threshold configuration to test."""
+
     discard_threshold: float
     ephemeral_upper: float
     state_change_threshold: float
@@ -264,6 +295,7 @@ def route_with_config(
 @dataclass
 class WeightConfig:
     """Feature weight configuration to test (must sum to ~1.0)."""
+
     utility: float = 0.30
     persistence: float = 0.25
     state_change_signal: float = 0.25
@@ -290,8 +322,12 @@ def run_grid_search() -> dict:
 
     class _FakeStore:
         """Minimal store stub for admission service init."""
-        async def initialize(self) -> None: pass
-        async def close(self) -> None: pass
+
+        async def initialize(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
 
     admission_svc = AdmissionService(
         store=_FakeStore(),  # type: ignore[arg-type]
@@ -328,17 +364,22 @@ def run_grid_search() -> dict:
         WeightConfig(utility=0.25, state_change_signal=0.30),
         WeightConfig(state_change_signal=0.30, temporal_salience=0.15),
         WeightConfig(utility=0.35, temporal_salience=0.15),
-        WeightConfig(utility=0.20, persistence=0.30, state_change_signal=0.30,
-                     temporal_salience=0.20),
+        WeightConfig(
+            utility=0.20, persistence=0.30, state_change_signal=0.30, temporal_salience=0.20
+        ),
     ]
 
     all_results = []
     best_accuracy = 0.0
     best_config = None
 
-    routing_grid = list(itertools.product(
-        discard_thresholds, ephemeral_uppers, state_change_thresholds,
-    ))
+    routing_grid = list(
+        itertools.product(
+            discard_thresholds,
+            ephemeral_uppers,
+            state_change_thresholds,
+        )
+    )
 
     total_combos = len(routing_grid) * len(weight_configs)
     print(
@@ -387,10 +428,7 @@ def run_grid_search() -> dict:
                 "accuracy": accuracy,
                 "correct": correct,
                 "total": len(examples_with_features),
-                "per_category": {
-                    k: v["correct"] / v["total"]
-                    for k, v in per_category.items()
-                },
+                "per_category": {k: v["correct"] / v["total"] for k, v in per_category.items()},
             }
             all_results.append(result_entry)
 
@@ -416,7 +454,8 @@ def run_grid_search() -> dict:
 def _get_git_sha() -> str:
     try:
         return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
         ).strip()
     except Exception:
         return "unknown"
@@ -469,27 +508,29 @@ def _write_results(results: dict) -> None:
     for feat, default_val in default_weights.items():
         tuned_val = best["weights"][feat]
         marker = " *" if abs(tuned_val - default_val) > 0.001 else ""
-        report_lines.append(
-            f"| {feat} | {default_val} | {tuned_val}{marker} |"
-        )
+        report_lines.append(f"| {feat} | {default_val} | {tuned_val}{marker} |")
 
-    report_lines.extend([
-        "",
-        "### Per-Category Accuracy",
-        "",
-        "| Route | Accuracy |",
-        "|-------|----------|",
-    ])
+    report_lines.extend(
+        [
+            "",
+            "### Per-Category Accuracy",
+            "",
+            "| Route | Accuracy |",
+            "|-------|----------|",
+        ]
+    )
     for cat, acc in sorted(best["per_category"].items()):
         report_lines.append(f"| {cat} | {acc:.1%} |")
 
-    report_lines.extend([
-        "",
-        "## Top 10 Configurations",
-        "",
-        "| # | Accuracy | Discard | Ephemeral | StateChg |",
-        "|---|----------|---------|-----------|----------|",
-    ])
+    report_lines.extend(
+        [
+            "",
+            "## Top 10 Configurations",
+            "",
+            "| # | Accuracy | Discard | Ephemeral | StateChg |",
+            "|---|----------|---------|-----------|----------|",
+        ]
+    )
     for i, cfg in enumerate(results["top_10"], 1):
         r = cfg["routing"]
         report_lines.append(
@@ -504,6 +545,7 @@ def _write_results(results: dict) -> None:
 
 def main() -> None:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     t0 = time.perf_counter()
     results = run_grid_search()

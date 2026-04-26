@@ -21,6 +21,7 @@ from __future__ import annotations
 # anonymous fetch otherwise, which 401s).
 try:
     from benchmarks.env import load_dotenv as _load_dotenv
+
     _load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -147,8 +148,9 @@ def score_answer(retrieved_text: str, answer_list: list[str]) -> dict[str, float
 # -- Text chunking ---------------------------------------------------------
 
 
-def chunk_context(context: str, chunk_size: int = DEFAULT_CHUNK_SIZE,
-                  overlap: int = DEFAULT_CHUNK_OVERLAP) -> list[str]:
+def chunk_context(
+    context: str, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap: int = DEFAULT_CHUNK_OVERLAP
+) -> list[str]:
     """Split context into overlapping chunks at sentence boundaries.
 
     Args:
@@ -163,7 +165,7 @@ def chunk_context(context: str, chunk_size: int = DEFAULT_CHUNK_SIZE,
         return []
 
     # Split on sentence boundaries (period/question/exclamation + space)
-    sentences = re.split(r'(?<=[.!?])\s+', context)
+    sentences = re.split(r"(?<=[.!?])\s+", context)
 
     chunks: list[str] = []
     current: list[str] = []
@@ -245,7 +247,10 @@ async def _create_ncms_instance(
         )
 
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
         splade=splade,
     )
     await svc.start_index_pool()
@@ -333,9 +338,13 @@ async def evaluate_sample(
     if not chunks:
         logger.warning("Sample %s: empty context, skipping", sample_id)
         return SampleResult(
-            sample_id=sample_id, split=split, source=source,
-            num_chunks=0, num_questions=len(questions),
-            ingestion_seconds=0.0, search_seconds=0.0,
+            sample_id=sample_id,
+            split=split,
+            source=source,
+            num_chunks=0,
+            num_questions=len(questions),
+            ingestion_seconds=0.0,
+            search_seconds=0.0,
         )
 
     # Ingest chunks
@@ -352,18 +361,26 @@ async def evaluate_sample(
 
     logger.debug(
         "Sample %s: ingested %d chunks (%.1fs), context=%d chars",
-        sample_id, len(chunks), ingestion_secs, len(context),
+        sample_id,
+        len(chunks),
+        ingestion_secs,
+        len(context),
     )
 
     # Wait for background indexing to finish before searching
     from benchmarks.core.runner import wait_for_indexing
+
     await wait_for_indexing(svc, run_logger=logger)
 
     # Search and score each question
     result = SampleResult(
-        sample_id=sample_id, split=split, source=source,
-        num_chunks=len(chunks), num_questions=len(questions),
-        ingestion_seconds=ingestion_secs, search_seconds=0.0,
+        sample_id=sample_id,
+        split=split,
+        source=source,
+        num_chunks=len(chunks),
+        num_questions=len(questions),
+        ingestion_seconds=ingestion_secs,
+        search_seconds=0.0,
     )
 
     t_search_total = time.perf_counter()
@@ -379,7 +396,9 @@ async def evaluate_sample(
 
         # Search NCMS
         search_results = await svc.search(
-            query=question, domain="mab", limit=top_k,
+            query=question,
+            domain="mab",
+            limit=top_k,
         )
 
         # Concatenate retrieved memory contents
@@ -403,10 +422,15 @@ async def evaluate_sample(
     logger.info(
         "Sample %s [%s]: contains_any=%.3f  f1=%.3f  substring=%.3f  "
         "(%d questions, %d chunks, ingest=%.1fs, search=%.1fs)",
-        sample_id, source,
-        result.avg_contains_any, result.avg_f1, result.avg_substring,
-        len(questions), len(chunks),
-        result.ingestion_seconds, result.search_seconds,
+        sample_id,
+        source,
+        result.avg_contains_any,
+        result.avg_f1,
+        result.avg_substring,
+        len(questions),
+        len(chunks),
+        result.ingestion_seconds,
+        result.search_seconds,
     )
 
     return result
@@ -495,9 +519,13 @@ def aggregate_results(
     logger.info(
         "%s: contains_any=%.4f  f1=%.4f  substring=%.4f  exact_match=%.4f  "
         "(%d samples, %d questions)",
-        label, metrics["contains_any"], metrics["f1"],
-        metrics["substring"], metrics["exact_match"],
-        metrics["num_samples"], metrics["num_questions"],
+        label,
+        metrics["contains_any"],
+        metrics["f1"],
+        metrics["substring"],
+        metrics["exact_match"],
+        metrics["num_samples"],
+        metrics["num_questions"],
     )
 
     return metrics
@@ -561,7 +589,9 @@ async def run_mab_benchmark(
         logger.info("")
         logger.info(
             "Evaluating %s: %d samples (%d total in dataset)...",
-            split.upper(), len(samples), len(split_data),
+            split.upper(),
+            len(samples),
+            len(split_data),
         )
         split_start = time.perf_counter()
 
@@ -579,7 +609,11 @@ async def run_mab_benchmark(
                 all_sample_results.append(sr)
             except Exception as exc:
                 logger.error(
-                    "Failed sample %s-%d: %s", split, si, exc, exc_info=True,
+                    "Failed sample %s-%d: %s",
+                    split,
+                    si,
+                    exc,
+                    exc_info=True,
                 )
 
         # Aggregate this split
@@ -609,7 +643,12 @@ async def run_mab_benchmark(
     logger.info("=" * 60)
     logger.info(
         "  %-6s  %8s  %8s  %8s  %8s  %8s",
-        "Split", "Samples", "Qs", "Contain", "F1", "SubStr",
+        "Split",
+        "Samples",
+        "Qs",
+        "Contain",
+        "F1",
+        "SubStr",
     )
     logger.info("  " + "-" * 54)
     for split in splits:

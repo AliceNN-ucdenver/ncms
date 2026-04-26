@@ -99,7 +99,10 @@ class TestConsolidateEpisodes:
         new_callable=AsyncMock,
     )
     async def test_creates_summary_from_closed_episode(
-        self, mock_llm, store, index,
+        self,
+        mock_llm,
+        store,
+        index,
     ) -> None:
         mock_llm.return_value = {
             "summary": "API migration completed successfully.",
@@ -202,7 +205,9 @@ class TestConsolidateEpisodes:
         m = Memory(content="fragment", type="fact")
         await store.save_memory(m)
         member = MemoryNode(
-            memory_id=m.id, node_type=NodeType.ATOMIC, parent_id=ep_node.id,
+            memory_id=m.id,
+            node_type=NodeType.ATOMIC,
+            parent_id=ep_node.id,
         )
         await store.save_memory_node(member)
 
@@ -233,7 +238,10 @@ class TestConsolidateTrajectories:
         new_callable=AsyncMock,
     )
     async def test_creates_trajectory_from_state_history(
-        self, mock_llm, store, index,
+        self,
+        mock_llm,
+        store,
+        index,
     ) -> None:
         mock_llm.return_value = {
             "narrative": "Version progressed from v1 to v3.",
@@ -246,15 +254,17 @@ class TestConsolidateTrajectories:
         for i in range(4):
             mem = Memory(content=f"state {i}", type="fact")
             await store.save_memory(mem)
-            await store.save_memory_node(MemoryNode(
-                memory_id=mem.id,
-                node_type=NodeType.ENTITY_STATE,
-                metadata={
-                    "entity_id": "ent-api",
-                    "state_key": "version",
-                    "state_value": f"v{i}",
-                },
-            ))
+            await store.save_memory_node(
+                MemoryNode(
+                    memory_id=mem.id,
+                    node_type=NodeType.ENTITY_STATE,
+                    metadata={
+                        "entity_id": "ent-api",
+                        "state_key": "version",
+                        "state_value": f"v{i}",
+                    },
+                )
+            )
 
         config = _trajectory_config()
         svc = ConsolidationService(store=store, index=index, config=config)
@@ -271,32 +281,39 @@ class TestConsolidateTrajectories:
         new_callable=AsyncMock,
     )
     async def test_skips_entity_with_existing_trajectory(
-        self, mock_llm, store, index,
+        self,
+        mock_llm,
+        store,
+        index,
     ) -> None:
         """Entity with an existing non-stale trajectory should be skipped."""
         # Create states
         for i in range(4):
             mem = Memory(content=f"state {i}", type="fact")
             await store.save_memory(mem)
-            await store.save_memory_node(MemoryNode(
-                memory_id=mem.id,
-                node_type=NodeType.ENTITY_STATE,
-                metadata={"entity_id": "ent-x", "state_key": "k", "state_value": f"v{i}"},
-            ))
+            await store.save_memory_node(
+                MemoryNode(
+                    memory_id=mem.id,
+                    node_type=NodeType.ENTITY_STATE,
+                    metadata={"entity_id": "ent-x", "state_key": "k", "state_value": f"v{i}"},
+                )
+            )
 
         # Pre-existing trajectory abstract
         abs_mem = Memory(content="existing trajectory", type="insight")
         await store.save_memory(abs_mem)
         future = (datetime.now(UTC) + timedelta(days=30)).isoformat()
-        await store.save_memory_node(MemoryNode(
-            memory_id=abs_mem.id,
-            node_type=NodeType.ABSTRACT,
-            metadata={
-                "abstract_type": "state_trajectory",
-                "entity_id": "ent-x",
-                "refresh_due_at": future,
-            },
-        ))
+        await store.save_memory_node(
+            MemoryNode(
+                memory_id=abs_mem.id,
+                node_type=NodeType.ABSTRACT,
+                metadata={
+                    "abstract_type": "state_trajectory",
+                    "entity_id": "ent-x",
+                    "refresh_due_at": future,
+                },
+            )
+        )
 
         config = _trajectory_config()
         svc = ConsolidationService(store=store, index=index, config=config)
@@ -326,7 +343,10 @@ class TestConsolidatePatterns:
         new_callable=AsyncMock,
     )
     async def test_creates_pattern_from_similar_episodes(
-        self, mock_llm, store, index,
+        self,
+        mock_llm,
+        store,
+        index,
     ) -> None:
         mock_llm.return_value = {
             "pattern": "API migrations follow a common pattern.",
@@ -341,15 +361,17 @@ class TestConsolidatePatterns:
         for i in range(3):
             mem = Memory(content=f"Episode {i} summary", type="insight")
             await store.save_memory(mem)
-            await store.save_memory_node(MemoryNode(
-                memory_id=mem.id,
-                node_type=NodeType.ABSTRACT,
-                metadata={
-                    "abstract_type": "episode_summary",
-                    "source_episode_id": f"ep-{i}",
-                    "topic_entities": shared,
-                },
-            ))
+            await store.save_memory_node(
+                MemoryNode(
+                    memory_id=mem.id,
+                    node_type=NodeType.ABSTRACT,
+                    metadata={
+                        "abstract_type": "episode_summary",
+                        "source_episode_id": f"ep-{i}",
+                        "topic_entities": shared,
+                    },
+                )
+            )
 
         config = _pattern_config()
         svc = ConsolidationService(store=store, index=index, config=config)
@@ -367,7 +389,10 @@ class TestConsolidatePatterns:
         new_callable=AsyncMock,
     )
     async def test_promotes_to_strategic_insight(
-        self, mock_llm, store, index,
+        self,
+        mock_llm,
+        store,
+        index,
     ) -> None:
         """High stability should promote to strategic_insight."""
         mock_llm.return_value = {
@@ -382,15 +407,17 @@ class TestConsolidatePatterns:
         for i in range(6):
             mem = Memory(content=f"Ep {i} summary", type="insight")
             await store.save_memory(mem)
-            await store.save_memory_node(MemoryNode(
-                memory_id=mem.id,
-                node_type=NodeType.ABSTRACT,
-                metadata={
-                    "abstract_type": "episode_summary",
-                    "source_episode_id": f"ep-{i}",
-                    "topic_entities": shared,
-                },
-            ))
+            await store.save_memory_node(
+                MemoryNode(
+                    memory_id=mem.id,
+                    node_type=NodeType.ABSTRACT,
+                    metadata={
+                        "abstract_type": "episode_summary",
+                        "source_episode_id": f"ep-{i}",
+                        "topic_entities": shared,
+                    },
+                )
+            )
 
         config = _pattern_config()
         svc = ConsolidationService(store=store, index=index, config=config)
@@ -508,7 +535,8 @@ class TestClusterByEntityOverlap:
 
     def test_separates_distinct_groups(self, store, index) -> None:
         config = _pattern_config(
-            pattern_min_episodes=2, pattern_entity_overlap_threshold=0.5,
+            pattern_min_episodes=2,
+            pattern_entity_overlap_threshold=0.5,
         )
         svc = ConsolidationService(store=store, index=index, config=config)
 

@@ -23,6 +23,8 @@ Public API:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ncms.application.adapters.schemas import DetectedSpan, Domain
 from ncms.application.adapters.sdg.catalog.primitives import CatalogEntry
 
@@ -55,6 +57,7 @@ def _ensure_loaded() -> None:
     if _REGISTRY:
         return
     import os
+
     if os.environ.get("NCMS_V9_DOMAIN_LOADER", "1") == "0":
         return
     _load_from_yaml_registry()
@@ -75,7 +78,6 @@ def _load_from_yaml_registry() -> set[str]:
     without the repo layout) — callers gracefully fall back to
     the Python modules.
     """
-    from pathlib import Path
 
     domains_root = _find_domains_root()
     if domains_root is None or not domains_root.is_dir():
@@ -115,14 +117,12 @@ def _load_from_yaml_registry() -> set[str]:
                 canonical_map[alias.lower().strip()] = entry
             by_slot.setdefault(entry.slot, []).append(entry)
         _REGISTRY[name] = canonical_map
-        _ENTRIES_BY_SLOT[name] = {
-            slot: tuple(entries) for slot, entries in by_slot.items()
-        }
+        _ENTRIES_BY_SLOT[name] = {slot: tuple(entries) for slot, entries in by_slot.items()}
         loaded.add(name)
     return loaded
 
 
-def _find_domains_root() -> "Path | None":
+def _find_domains_root() -> Path | None:
     """Walk up from this module looking for ``adapters/domains/``.
 
     The canonical location is ``<repo>/adapters/domains/``.  This
@@ -290,8 +290,7 @@ def detect_spans(
     pos = 0
     while pos < n:
         # Require left word boundary.
-        if pos > 0 and _is_word_char(text[pos - 1]) and \
-                _is_word_char(text[pos]):
+        if pos > 0 and _is_word_char(text[pos - 1]) and _is_word_char(text[pos]):
             pos += 1
             continue
         # Try the longest surface that fits at this offset.
@@ -306,18 +305,19 @@ def detect_spans(
             if lowered[pos:end] != surface_lower:
                 continue
             # Require right word boundary.
-            if end < n and _is_word_char(text[end]) and \
-                    _is_word_char(text[end - 1]):
+            if end < n and _is_word_char(text[end]) and _is_word_char(text[end - 1]):
                 continue
-            spans.append(DetectedSpan(
-                char_start=pos,
-                char_end=end,
-                surface=text[pos:end],
-                canonical=entry.canonical,
-                slot=entry.slot,
-                topic=entry.topic,
-                source_alias=alias,
-            ))
+            spans.append(
+                DetectedSpan(
+                    char_start=pos,
+                    char_end=end,
+                    surface=text[pos:end],
+                    canonical=entry.canonical,
+                    slot=entry.slot,
+                    topic=entry.topic,
+                    source_alias=alias,
+                )
+            )
             pos = end
             matched = True
             break
@@ -337,9 +337,7 @@ def all_canonical_surfaces(domain: Domain) -> tuple[str, ...]:
     by_slot = _ENTRIES_BY_SLOT.get(domain)  # type: ignore[arg-type]
     if by_slot is None:
         return ()
-    return tuple(
-        e.canonical for group in by_slot.values() for e in group
-    )
+    return tuple(e.canonical for group in by_slot.values() for e in group)
 
 
 __all__ = [

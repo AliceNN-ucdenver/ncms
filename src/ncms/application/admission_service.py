@@ -20,68 +20,205 @@ logger = logging.getLogger(__name__)
 
 # ── Keyword Lexicons ──────────────────────────────────────────────────────
 
-_DECISION_MARKERS: frozenset[str] = frozenset({
-    "decided", "decision", "chose", "chosen", "selected", "approved",
-    "rejected", "agreed", "concluded", "resolved",
-})
-
-_CHANGE_MARKERS: frozenset[str] = frozenset({
-    "changed", "updated", "migrated", "deployed", "released", "reverted",
-    "rolled back", "rollback", "upgraded", "downgraded", "patched",
-    "hotfix", "hotfixed",
-})
-
-_INCIDENT_MARKERS: frozenset[str] = frozenset({
-    "error", "bug", "incident", "outage", "failure", "failed", "crashed",
-    "fix", "fixed", "broken", "regression", "alert", "exception",
-})
-
-_ARCHITECTURE_MARKERS: frozenset[str] = frozenset({
-    "architecture", "architectural", "design", "pattern", "convention",
-    "constraint", "principle", "standard", "guideline", "policy",
-})
-
-_REFERENCE_MARKERS: frozenset[str] = frozenset({
-    "endpoint", "returns", "accepts", "supports", "requires",
-    "configuration", "parameter", "query", "response", "request",
-    "method", "schema", "field", "column", "table", "index",
-    "function", "class", "module", "interface", "protocol",
-    "format", "type", "value", "default", "option",
-    "authentication", "authorization", "token", "permission",
-    "route", "path", "url", "api", "service", "handler",
-})
-
-_UTILITY_MARKERS: frozenset[str] = (
-    _DECISION_MARKERS | _CHANGE_MARKERS | _INCIDENT_MARKERS
-    | _ARCHITECTURE_MARKERS | _REFERENCE_MARKERS
+_DECISION_MARKERS: frozenset[str] = frozenset(
+    {
+        "decided",
+        "decision",
+        "chose",
+        "chosen",
+        "selected",
+        "approved",
+        "rejected",
+        "agreed",
+        "concluded",
+        "resolved",
+    }
 )
 
-_TEMPORAL_MARKERS: frozenset[str] = frozenset({
-    "now", "currently", "since", "as of", "starting", "until",
-    "effective", "beginning", "from now", "going forward",
-})
+_CHANGE_MARKERS: frozenset[str] = frozenset(
+    {
+        "changed",
+        "updated",
+        "migrated",
+        "deployed",
+        "released",
+        "reverted",
+        "rolled back",
+        "rollback",
+        "upgraded",
+        "downgraded",
+        "patched",
+        "hotfix",
+        "hotfixed",
+    }
+)
 
-_TEMPORAL_VERBS: frozenset[str] = frozenset({
-    "changed", "updated", "released", "deprecated", "migrated",
-    "fixed", "deployed", "removed", "added", "created",
-})
+_INCIDENT_MARKERS: frozenset[str] = frozenset(
+    {
+        "error",
+        "bug",
+        "incident",
+        "outage",
+        "failure",
+        "failed",
+        "crashed",
+        "fix",
+        "fixed",
+        "broken",
+        "regression",
+        "alert",
+        "exception",
+    }
+)
 
-_PERSISTENCE_HIGH: frozenset[str] = frozenset({
-    "policy", "decision", "architectural", "architecture", "principle",
-    "standard", "convention", "constraint", "guideline", "requirement",
-    "rule", "always", "never", "must",
-})
+_ARCHITECTURE_MARKERS: frozenset[str] = frozenset(
+    {
+        "architecture",
+        "architectural",
+        "design",
+        "pattern",
+        "convention",
+        "constraint",
+        "principle",
+        "standard",
+        "guideline",
+        "policy",
+    }
+)
 
-_PERSISTENCE_LOW: frozenset[str] = frozenset({
-    "todo", "wip", "draft", "temp", "temporary", "hack", "workaround",
-    "quick fix", "placeholder", "experimenting", "trying",
-})
+_REFERENCE_MARKERS: frozenset[str] = frozenset(
+    {
+        "endpoint",
+        "returns",
+        "accepts",
+        "supports",
+        "requires",
+        "configuration",
+        "parameter",
+        "query",
+        "response",
+        "request",
+        "method",
+        "schema",
+        "field",
+        "column",
+        "table",
+        "index",
+        "function",
+        "class",
+        "module",
+        "interface",
+        "protocol",
+        "format",
+        "type",
+        "value",
+        "default",
+        "option",
+        "authentication",
+        "authorization",
+        "token",
+        "permission",
+        "route",
+        "path",
+        "url",
+        "api",
+        "service",
+        "handler",
+    }
+)
 
-_STATE_CHANGE_VERBS: frozenset[str] = frozenset({
-    "changed", "updated", "now", "switched", "moved", "set to",
-    "became", "is now", "transitioned", "upgraded", "downgraded",
-    "migrated", "replaced", "bumped", "converted",
-})
+_UTILITY_MARKERS: frozenset[str] = (
+    _DECISION_MARKERS
+    | _CHANGE_MARKERS
+    | _INCIDENT_MARKERS
+    | _ARCHITECTURE_MARKERS
+    | _REFERENCE_MARKERS
+)
+
+_TEMPORAL_MARKERS: frozenset[str] = frozenset(
+    {
+        "now",
+        "currently",
+        "since",
+        "as of",
+        "starting",
+        "until",
+        "effective",
+        "beginning",
+        "from now",
+        "going forward",
+    }
+)
+
+_TEMPORAL_VERBS: frozenset[str] = frozenset(
+    {
+        "changed",
+        "updated",
+        "released",
+        "deprecated",
+        "migrated",
+        "fixed",
+        "deployed",
+        "removed",
+        "added",
+        "created",
+    }
+)
+
+_PERSISTENCE_HIGH: frozenset[str] = frozenset(
+    {
+        "policy",
+        "decision",
+        "architectural",
+        "architecture",
+        "principle",
+        "standard",
+        "convention",
+        "constraint",
+        "guideline",
+        "requirement",
+        "rule",
+        "always",
+        "never",
+        "must",
+    }
+)
+
+_PERSISTENCE_LOW: frozenset[str] = frozenset(
+    {
+        "todo",
+        "wip",
+        "draft",
+        "temp",
+        "temporary",
+        "hack",
+        "workaround",
+        "quick fix",
+        "placeholder",
+        "experimenting",
+        "trying",
+    }
+)
+
+_STATE_CHANGE_VERBS: frozenset[str] = frozenset(
+    {
+        "changed",
+        "updated",
+        "now",
+        "switched",
+        "moved",
+        "set to",
+        "became",
+        "is now",
+        "transitioned",
+        "upgraded",
+        "downgraded",
+        "migrated",
+        "replaced",
+        "bumped",
+        "converted",
+    }
+)
 
 # Date patterns
 _DATE_ISO = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
@@ -228,7 +365,9 @@ class AdmissionService:
 
         logger.debug(
             "Admission: score=%.3f route=%s features=%s",
-            admission_score, route, features,
+            admission_score,
+            route,
+            features,
         )
 
         return features, admission_score, route

@@ -69,9 +69,7 @@ class EnrichmentPipeline:
 
         for eid in entity_ids[:5]:
             try:
-                all_states = (
-                    await self._store.get_entity_states_by_entity(eid)
-                )
+                all_states = await self._store.get_entity_states_by_entity(eid)
                 if intent == QueryIntent.CURRENT_STATE_LOOKUP:
                     state_nodes = [s for s in all_states if s.is_current]
                 else:
@@ -96,22 +94,24 @@ class EnrichmentPipeline:
                     QueryIntent.HISTORICAL_LOOKUP: "state_history_bonus",
                     QueryIntent.CHANGE_DETECTION: "change_detection_bonus",
                 }.get(intent, "state_bonus")
-                bonus.append(RecallResult(
-                    memory=scored,
-                    context=RecallContext(
-                        entity_states=[EntityStateSnapshot(
-                            entity_id=eid,
-                            entity_name=(
-                                self._graph.get_entity_name(eid) or eid
-                            ),
-                            state_key=meta.state_key or "",
-                            state_value=meta.state_value or "",
-                            is_current=sn.is_current,
-                            observed_at=sn.observed_at,
-                        )],
-                    ),
-                    retrieval_path=path,
-                ))
+                bonus.append(
+                    RecallResult(
+                        memory=scored,
+                        context=RecallContext(
+                            entity_states=[
+                                EntityStateSnapshot(
+                                    entity_id=eid,
+                                    entity_name=(self._graph.get_entity_name(eid) or eid),
+                                    state_key=meta.state_key or "",
+                                    state_value=meta.state_value or "",
+                                    is_current=sn.is_current,
+                                    observed_at=sn.observed_at,
+                                )
+                            ],
+                        ),
+                        retrieval_path=path,
+                    )
+                )
 
         return bonus
 
@@ -127,9 +127,7 @@ class EnrichmentPipeline:
         memories that BM25 may have missed.
         """
         bonus: list[RecallResult] = []
-        abstracts = [
-            s for s in scored if "abstract" in (s.node_types or [])
-        ]
+        abstracts = [s for s in scored if "abstract" in (s.node_types or [])]
 
         for abstract in abstracts[:5]:
             nodes = await self._store.get_memory_nodes_for_memory(
@@ -142,14 +140,13 @@ class EnrichmentPipeline:
                     continue
                 for edge in edges:
                     if edge.edge_type not in (
-                        "derived_from", "summarizes",
+                        "derived_from",
+                        "summarizes",
                     ):
                         continue
                     try:
-                        target_node = (
-                            await self._store.get_memory_node(
-                                edge.target_id,
-                            )
+                        target_node = await self._store.get_memory_node(
+                            edge.target_id,
                         )
                     except Exception:
                         continue
@@ -163,10 +160,12 @@ class EnrichmentPipeline:
                         continue
                     seen_memory_ids.add(mid)
                     sm = ScoredMemory(memory=memory, bm25_score=0.0)
-                    bonus.append(RecallResult(
-                        memory=sm,
-                        retrieval_path="episode_expansion_bonus",
-                    ))
+                    bonus.append(
+                        RecallResult(
+                            memory=sm,
+                            retrieval_path="episode_expansion_bonus",
+                        )
+                    )
 
         return bonus
 
@@ -216,9 +215,7 @@ class EnrichmentPipeline:
 
         for eid in entity_ids[:10]:
             try:
-                all_st = (
-                    await self._store.get_entity_states_by_entity(eid)
-                )
+                all_st = await self._store.get_entity_states_by_entity(eid)
                 state_nodes = [s for s in all_st if s.is_current]
             except Exception:
                 continue
@@ -229,9 +226,7 @@ class EnrichmentPipeline:
                 result.context.entity_states.append(
                     EntityStateSnapshot(
                         entity_id=eid,
-                        entity_name=(
-                            self._graph.get_entity_name(eid) or eid
-                        ),
+                        entity_name=(self._graph.get_entity_name(eid) or eid),
                         state_key=meta.state_key or "",
                         state_value=meta.state_value or "",
                         is_current=sn.is_current,
@@ -273,10 +268,7 @@ class EnrichmentPipeline:
                 status=ep_meta.status or "open",
                 member_count=ep_meta.member_count or 0,
                 topic_entities=ep_meta.topic_entities or [],
-                sibling_ids=[
-                    m.memory_id for m in members
-                    if m.memory_id != memory_id
-                ],
+                sibling_ids=[m.memory_id for m in members if m.memory_id != memory_id],
                 summary=summary_text,
             )
             break
@@ -296,34 +288,20 @@ class EnrichmentPipeline:
             for edge in edges:
                 et = edge.edge_type
                 tid = edge.target_id
-                if (
-                    et == EdgeType.SUPERSEDES
-                    and tid not in causal.supersedes
-                ):
+                if et == EdgeType.SUPERSEDES and tid not in causal.supersedes:
                     causal.supersedes.append(tid)
-                elif (
-                    et == EdgeType.SUPERSEDED_BY
-                    and tid not in causal.superseded_by
-                ):
+                elif et == EdgeType.SUPERSEDED_BY and tid not in causal.superseded_by:
                     causal.superseded_by.append(tid)
-                elif (
-                    et == EdgeType.DERIVED_FROM
-                    and tid not in causal.derived_from
-                ):
+                elif et == EdgeType.DERIVED_FROM and tid not in causal.derived_from:
                     causal.derived_from.append(tid)
-                elif (
-                    et == EdgeType.SUPPORTS
-                    and tid not in causal.supports
-                ):
+                elif et == EdgeType.SUPPORTS and tid not in causal.supports:
                     causal.supports.append(tid)
-                elif (
-                    et == EdgeType.CONFLICTS_WITH
-                    and tid not in causal.conflicts_with
-                ):
+                elif et == EdgeType.CONFLICTS_WITH and tid not in causal.conflicts_with:
                     causal.conflicts_with.append(tid)
 
     async def _find_episode_summary(
-        self, episode_node_id: str,
+        self,
+        episode_node_id: str,
     ) -> str | None:
         """Find an episode summary abstract that SUMMARIZES this episode."""
         try:
@@ -366,7 +344,9 @@ class EnrichmentPipeline:
 
         for result in results:
             await self._expand_single_result(
-                result, query_terms, max_sections,
+                result,
+                query_terms,
+                max_sections,
             )
 
         return results
@@ -389,10 +369,8 @@ class EnrichmentPipeline:
             if not parent_doc:
                 return
 
-            children = (
-                await self._document_service.get_children_documents(
-                    doc_id,
-                )
+            children = await self._document_service.get_children_documents(
+                doc_id,
             )
             if not children:
                 return
@@ -406,7 +384,8 @@ class EnrichmentPipeline:
                 overlap = len(query_terms & child_terms)
                 score = overlap / max(len(query_terms), 1)
                 section_idx = (child.metadata or {}).get(
-                    "section_index", 0,
+                    "section_index",
+                    0,
                 )
                 scored_sections.append((score, section_idx, child))
 
@@ -429,12 +408,14 @@ class EnrichmentPipeline:
                 )
 
             logger.info(
-                "[recall] Expanding document profile %s: "
-                "found %d sections, returning top %d",
-                doc_id, len(children), len(top_sections),
+                "[recall] Expanding document profile %s: found %d sections, returning top %d",
+                doc_id,
+                len(children),
+                len(top_sections),
             )
         except Exception as exc:
             logger.warning(
                 "[recall] Failed to expand document profile %s: %s",
-                doc_id, exc,
+                doc_id,
+                exc,
             )

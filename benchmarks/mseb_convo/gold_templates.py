@@ -62,11 +62,12 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
         # Fallback (non-preference) current-state queries — grounded
         # on any first-person declaration.
         {
-            "text_template": "What's the user's current state per their latest statement: {first_sentence}?",
+            "text_template": (
+                "What's the user's current state per their latest statement: {first_sentence}?"
+            ),
             "gold_kind": "declaration",
         },
     ],
-
     # =================================================================
     # origin / ordinal_first — gold = very first turn in the chain
     # =================================================================
@@ -82,7 +83,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "ordinal_anchor",
         },
     ],
-
     # =================================================================
     # ordinal_last — gold = a late-chain declaration (the most recent)
     # =================================================================
@@ -94,10 +94,12 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             # memory matching the filter — in subject-chronological
             # order that's not literally "last", so the author should
             # review these candidates carefully.  Note stamped below.
-            "note": "Review: generator emits EARLIEST matching declaration; flip to LATEST in build.py review",
+            "note": (
+                "Review: generator emits EARLIEST matching declaration; "
+                "flip to LATEST in build.py review"
+            ),
         },
     ],
-
     # =================================================================
     # sequence — gold = ordinal anchor (start of user's story)
     # =================================================================
@@ -107,7 +109,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "ordinal_anchor",
         },
     ],
-
     # =================================================================
     # predecessor — gold = earlier declaration (before a later retirement)
     # =================================================================
@@ -117,10 +118,11 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "declaration",
             "gold_preference": "positive",
             "preference": "positive",
-            "note": "Needs a subject with both an early positive declaration AND a later retirement",
+            "note": (
+                "Needs a subject with both an early positive declaration AND a later retirement"
+            ),
         },
     ],
-
     # =================================================================
     # transitive_cause — gold = causal_link turn ("because X, so Y")
     # =================================================================
@@ -130,7 +132,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "gold_kind": "causal_link",
         },
     ],
-
     # =================================================================
     # causal_chain — gold = causal_link turn connecting state changes
     # =================================================================
@@ -145,7 +146,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "preference": "difficult",
         },
     ],
-
     # =================================================================
     # concurrent — gold = habitual declaration alongside another state
     # =================================================================
@@ -157,7 +157,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "preference": "habitual",
         },
     ],
-
     # =================================================================
     # before_named — gold = an earlier declaration
     # =================================================================
@@ -169,7 +168,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "preference": "positive",
         },
     ],
-
     # =================================================================
     # retirement — gold = user's "I've switched / I used to" turn
     # =================================================================
@@ -180,7 +178,6 @@ TEMPLATES: dict[str, list[dict[str, object]]] = {
             "note": "Corpus-thin: LMEval users rarely say 'I used to...' explicitly",
         },
     ],
-
     # =================================================================
     # noise — off-topic adversarial queries
     # =================================================================

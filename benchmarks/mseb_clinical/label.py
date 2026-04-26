@@ -53,26 +53,26 @@ DEFAULT_OUT = Path(__file__).parent / "raw_labeled"
 
 # Deterministic heading → MemoryKind map.
 SOURCE_TO_KIND: dict[str, str] = {
-    "abstract":                "ordinal_anchor",
-    "introduction":            "none",
-    "background":              "none",
-    "case presentation":       "declaration",
-    "case report":             "declaration",
-    "presentation":            "declaration",
-    "history":                 "declaration",
-    "physical examination":    "declaration",
-    "investigations":          "declaration",
-    "workup":                  "declaration",
-    "differential diagnosis":  "declaration",
-    "initial diagnosis":       "declaration",
-    "management":              "causal_link",
-    "treatment":               "causal_link",
-    "course":                  "causal_link",
-    "outcome":                 "declaration",
-    "follow-up":               "declaration",
-    "final diagnosis":         "retirement",
-    "conclusion":              "ordinal_anchor",
-    "discussion":              "causal_link",
+    "abstract": "ordinal_anchor",
+    "introduction": "none",
+    "background": "none",
+    "case presentation": "declaration",
+    "case report": "declaration",
+    "presentation": "declaration",
+    "history": "declaration",
+    "physical examination": "declaration",
+    "investigations": "declaration",
+    "workup": "declaration",
+    "differential diagnosis": "declaration",
+    "initial diagnosis": "declaration",
+    "management": "causal_link",
+    "treatment": "causal_link",
+    "course": "causal_link",
+    "outcome": "declaration",
+    "follow-up": "declaration",
+    "final diagnosis": "retirement",
+    "conclusion": "ordinal_anchor",
+    "discussion": "causal_link",
 }
 
 
@@ -80,15 +80,15 @@ SOURCE_TO_KIND: dict[str, str] = {
 # "other" bucket.  Order matters — first match wins.  Tested
 # against the 13 methods-like samples flagged in the pilot.
 OTHER_HEADING_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(?i)\b(lessons?\s+learned|take[- ]?aways?)\b"),  "ordinal_anchor"),
-    (re.compile(r"(?i)\bfinal\b.*\b(diagnosis|outcome)\b"),        "retirement"),
-    (re.compile(r"(?i)\bcase\s+description\b"),                    "declaration"),
-    (re.compile(r"(?i)\bcase\s+summary\b"),                        "declaration"),
-    (re.compile(r"(?i)\bpatient\s+and\s+observation\b"),           "declaration"),
-    (re.compile(r"(?i)\bcase\s+\d+\b"),                            "declaration"),
-    (re.compile(r"(?i)\binvestigation\s+(?:and|&)\s+results?\b"),  "declaration"),
+    (re.compile(r"(?i)\b(lessons?\s+learned|take[- ]?aways?)\b"), "ordinal_anchor"),
+    (re.compile(r"(?i)\bfinal\b.*\b(diagnosis|outcome)\b"), "retirement"),
+    (re.compile(r"(?i)\bcase\s+description\b"), "declaration"),
+    (re.compile(r"(?i)\bcase\s+summary\b"), "declaration"),
+    (re.compile(r"(?i)\bpatient\s+and\s+observation\b"), "declaration"),
+    (re.compile(r"(?i)\bcase\s+\d+\b"), "declaration"),
+    (re.compile(r"(?i)\binvestigation\s+(?:and|&)\s+results?\b"), "declaration"),
     (re.compile(r"(?i)\b(methods?|system\s+overview|evaluation)\b"), "none"),
-    (re.compile(r"(?i)\bablation\b"),                              "none"),
+    (re.compile(r"(?i)\bablation\b"), "none"),
 ]
 
 
@@ -166,8 +166,12 @@ def _post_filter_methods_paper(meta: dict, sources: set[str]) -> bool:
     Returns ``True`` if the paper should be KEPT as a case report.
     """
     case_markers = {
-        "case presentation", "case report", "history",
-        "physical examination", "investigations", "presentation",
+        "case presentation",
+        "case report",
+        "history",
+        "physical examination",
+        "investigations",
+        "presentation",
     }
     if case_markers & sources:
         return True
@@ -187,8 +191,9 @@ def label_file(raw_path: Path, out_path: Path) -> dict[str, object]:
     Skips papers that fail the case-report post-filter.
     """
     lines = [
-        json.loads(line) for line in
-        raw_path.read_text(encoding="utf-8").split(chr(10)) if line.strip()
+        json.loads(line)
+        for line in raw_path.read_text(encoding="utf-8").split(chr(10))
+        if line.strip()
     ]
     if not lines:
         return {"total": 0, "skipped": "empty_file"}
@@ -202,7 +207,8 @@ def label_file(raw_path: Path, out_path: Path) -> dict[str, object]:
     sources = {row.get("source", "") for row in body}
     section_titles = [row.get("section_title", "") for row in body]
     if not _post_filter_methods_paper(
-        {**meta, "_section_titles": section_titles}, sources,
+        {**meta, "_section_titles": section_titles},
+        sources,
     ):
         logger.info("PMC%s: skipped (methods-like, no case markers)", pmcid)
         return {"total": 0, "skipped": "methods_like"}
@@ -246,8 +252,7 @@ def label_all(raw_dir: Path, out_dir: Path) -> dict:
     (out_dir / "_label_stats.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True),
     )
-    logger.info("labeled %d files, skipped %d (%s)",
-                files_labeled, files_skipped, skip_reasons)
+    logger.info("labeled %d files, skipped %d (%s)", files_labeled, files_skipped, skip_reasons)
     return summary
 
 

@@ -78,9 +78,7 @@ async def run_smoke_test(llm_model: str | None = None) -> None:
 
     # Use only queries that have special chars + some regular ones
     tricky_chars = "'\"():[]/{}\\"
-    tricky_qids = [
-        qid for qid, text in queries.items() if any(c in text for c in tricky_chars)
-    ]
+    tricky_qids = [qid for qid, text in queries.items() if any(c in text for c in tricky_chars)]
     regular_qids = [qid for qid in qrels if qid not in tricky_qids]
 
     # Take 20 tricky + 10 regular queries (only ones with qrels)
@@ -149,6 +147,7 @@ async def run_smoke_test(llm_model: str | None = None) -> None:
 
 if __name__ == "__main__":
     from benchmarks.env import load_dotenv
+
     load_dotenv()
     args = parse_args()
     asyncio.run(run_smoke_test(llm_model=args.llm_model))

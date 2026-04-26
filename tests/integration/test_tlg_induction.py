@@ -138,15 +138,11 @@ async def _run_reconciliation(store: SQLiteStore) -> None:
 
 
 class TestRunMarkerInduction:
-    async def test_cold_store_returns_empty_markers(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_cold_store_returns_empty_markers(self, store: SQLiteStore) -> None:
         induced = await run_marker_induction(store)
         assert induced.markers == {}
 
-    async def test_scans_supersedes_announcement_content(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_scans_supersedes_announcement_content(self, store: SQLiteStore) -> None:
         await _run_reconciliation(store)
         induced = await run_marker_induction(store)
         # Two supersedes chains — "retire" and "deprecated" appear in
@@ -157,9 +153,7 @@ class TestRunMarkerInduction:
         assert "retire" in supersedes
         assert "deprecated" in supersedes
 
-    async def test_refines_and_supersedes_tracked_separately(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_refines_and_supersedes_tracked_separately(self, store: SQLiteStore) -> None:
         # REFINES edge with distinct vocabulary.
         await _ensure_entity(store, "x")
         mem = Memory(content="Add feature flag X to the gateway.", domains=["t"])
@@ -172,11 +166,14 @@ class TestRunMarkerInduction:
         await store.save_memory_node(node)
         # Manually create a REFINES edge with node as source.
         from ncms.domain.models import GraphEdge
-        await store.save_graph_edge(GraphEdge(
-            source_id=node.id,
-            target_id=node.id,  # self-loop is fine for this scan test
-            edge_type=EdgeType.REFINES,
-        ))
+
+        await store.save_graph_edge(
+            GraphEdge(
+                source_id=node.id,
+                target_id=node.id,  # self-loop is fine for this scan test
+                edge_type=EdgeType.REFINES,
+            )
+        )
         # Add a supersedes chain too
         await _run_reconciliation(store)
 
@@ -214,9 +211,11 @@ class TestInduceAndPersistMarkers:
         # snapshot reflects the new observation — proving DELETE-then-
         # INSERT semantics (new marker lands, nothing from first lost).
         from ncms.domain.models import GraphEdge
+
         await _ensure_entity(store, "y")
         mem = Memory(
-            content="Replaces v1 with v2 across the stack.", domains=["t"],
+            content="Replaces v1 with v2 across the stack.",
+            domains=["t"],
         )
         await store.save_memory(mem)
         node = MemoryNode(
@@ -225,11 +224,13 @@ class TestInduceAndPersistMarkers:
             metadata={"entity_id": "y", "state_key": "s", "state_value": "v"},
         )
         await store.save_memory_node(node)
-        await store.save_graph_edge(GraphEdge(
-            source_id=node.id,
-            target_id=node.id,
-            edge_type=EdgeType.SUPERSEDES,
-        ))
+        await store.save_graph_edge(
+            GraphEdge(
+                source_id=node.id,
+                target_id=node.id,
+                edge_type=EdgeType.SUPERSEDES,
+            )
+        )
         await induce_and_persist_markers(store)
         second = await store.load_transition_markers()
         assert second != first
@@ -246,9 +247,7 @@ class TestLoadRetirementVerbs:
         verbs = await load_retirement_verbs(store)
         assert verbs == SEED_RETIREMENT_VERBS
 
-    async def test_populated_store_returns_induced(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_populated_store_returns_induced(self, store: SQLiteStore) -> None:
         await _run_reconciliation(store)
         await induce_and_persist_markers(store)
         verbs = await load_retirement_verbs(store)
@@ -264,9 +263,7 @@ class TestLoadRetirementVerbs:
 
 
 class TestReconciliationUsesInducedMarkers:
-    async def test_second_reconcile_uses_persisted_verbs(
-        self, store: SQLiteStore
-    ) -> None:
+    async def test_second_reconcile_uses_persisted_verbs(self, store: SQLiteStore) -> None:
         # Bootstrap reconciliation chain + induce markers from it.
         await _run_reconciliation(store)
         await induce_and_persist_markers(store)

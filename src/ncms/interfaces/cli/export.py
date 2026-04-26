@@ -57,11 +57,15 @@ async def export_wiki(
 
     # Rebuild graph from stored entities/relationships
     from ncms.application.graph_service import GraphService
+
     graph_svc = GraphService(store=store, graph=graph)
     await graph_svc.rebuild_from_store()
 
     counts: dict[str, int] = {
-        "entities": 0, "episodes": 0, "agents": 0, "insights": 0,
+        "entities": 0,
+        "episodes": 0,
+        "agents": 0,
+        "insights": 0,
     }
 
     try:
@@ -71,20 +75,29 @@ async def export_wiki(
 
         all_entities = await store.list_entities()
         entity_memory_counts = await _generate_entity_pages(
-            store, graph, output_dir, all_entities, counts,
+            store,
+            graph,
+            output_dir,
+            all_entities,
+            counts,
         )
         await _generate_episode_pages(store, output_dir, counts)
         await _generate_agent_pages(store, output_dir, counts)
         await _generate_insight_pages(store, output_dir, counts)
         _generate_index_page(
-            output_dir, counts, entity_memory_counts, all_entities,
+            output_dir,
+            counts,
+            entity_memory_counts,
+            all_entities,
         )
 
         logger.info(
-            "[export] Wiki exported to %s: %d entity, %d episode, "
-            "%d agent, %d insight pages",
-            output_dir, counts["entities"], counts["episodes"],
-            counts["agents"], counts["insights"],
+            "[export] Wiki exported to %s: %d entity, %d episode, %d agent, %d insight pages",
+            output_dir,
+            counts["entities"],
+            counts["episodes"],
+            counts["agents"],
+            counts["insights"],
         )
 
     finally:
@@ -117,10 +130,12 @@ async def _generate_entity_pages(
         states.sort(key=lambda s: s.observed_at or s.created_at)
 
         lines = [
-            f"# {name}", "",
+            f"# {name}",
+            "",
             f"**Type:** {etype}  ",
             f"**ID:** `{entity_id}`  ",
-            f"**Linked memories:** {len(memory_ids)}  ", "",
+            f"**Linked memories:** {len(memory_ids)}  ",
+            "",
         ]
 
         if states:
@@ -174,10 +189,12 @@ async def _generate_episode_pages(
         members = await store.get_episode_members(ep_node.id)
 
         lines = [
-            f"# {ep_meta.episode_title or 'Untitled Episode'}", "",
+            f"# {ep_meta.episode_title or 'Untitled Episode'}",
+            "",
             f"**Status:** {ep_meta.status}  ",
             f"**Members:** {ep_meta.member_count}  ",
-            f"**Anchor:** {ep_meta.anchor_type}  ", "",
+            f"**Anchor:** {ep_meta.anchor_type}  ",
+            "",
         ]
 
         if ep_meta.topic_entities:
@@ -234,10 +251,13 @@ async def _generate_agent_pages(
             type_counts[t] = type_counts.get(t, 0) + 1
 
         lines = [
-            f"# Agent: {agent_id}", "",
+            f"# Agent: {agent_id}",
+            "",
             f"**Total memories:** {len(memories)}  ",
-            f"**Domains:** {', '.join(sorted(domains)) or 'none'}  ", "",
-            "## Memory Types", "",
+            f"**Domains:** {', '.join(sorted(domains)) or 'none'}  ",
+            "",
+            "## Memory Types",
+            "",
             "| Type | Count |",
             "|------|-------|",
         ]
@@ -278,10 +298,15 @@ async def _generate_insight_pages(
         slug = _slugify(f"{abstract_type}-{node.id[:8]}")
 
         lines = [
-            f"# {abstract_type.replace('_', ' ').title()}", "",
+            f"# {abstract_type.replace('_', ' ').title()}",
+            "",
             f"**Type:** {abstract_type}  ",
-            f"**Created:** {node.created_at.strftime('%Y-%m-%d %H:%M')}  ", "",
-            "## Content", "", mem.content, "",
+            f"**Created:** {node.created_at.strftime('%Y-%m-%d %H:%M')}  ",
+            "",
+            "## Content",
+            "",
+            mem.content,
+            "",
         ]
 
         src_episodes = node_meta.get("source_episode_ids", [])
@@ -293,9 +318,7 @@ async def _generate_insight_pages(
 
         key_ents = node_meta.get("key_entities", node_meta.get("topic_entities", []))
         if key_ents:
-            entity_links = [
-                f"[{n}](../entities/{_slugify(n)}.md)" for n in key_ents[:10]
-            ]
+            entity_links = [f"[{n}](../entities/{_slugify(n)}.md)" for n in key_ents[:10]]
             lines.append("**Key entities:** " + ", ".join(entity_links))
             lines.append("")
 
@@ -312,14 +335,19 @@ def _generate_index_page(
     """Generate the top-level index.md page."""
     total = sum(counts.values())
     lines = [
-        "# NCMS Knowledge Wiki", "",
-        f"*Exported {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}*", "",
-        f"**Total pages:** {total}", "",
-        "## Contents", "",
+        "# NCMS Knowledge Wiki",
+        "",
+        f"*Exported {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}*",
+        "",
+        f"**Total pages:** {total}",
+        "",
+        "## Contents",
+        "",
         f"- **[Entities](entities/)** — {counts['entities']} entities",
         f"- **[Episodes](episodes/)** — {counts['episodes']} episodes",
         f"- **[Agents](agents/)** — {counts['agents']} agents",
-        f"- **[Insights](insights/)** — {counts['insights']} insights", "",
+        f"- **[Insights](insights/)** — {counts['insights']} insights",
+        "",
     ]
 
     if entity_memory_counts:
@@ -336,7 +364,8 @@ def _generate_index_page(
 
 
 async def _find_episode_summary(
-    store: SQLiteStore, episode_node_id: str,
+    store: SQLiteStore,
+    episode_node_id: str,
 ) -> str | None:
     """Find abstract summary for an episode."""
     try:
@@ -356,6 +385,7 @@ async def _find_episode_summary(
 def _slugify(text: str) -> str:
     """Convert text to filesystem-safe slug."""
     import re
+
     slug = text.lower().strip()
     slug = re.sub(r"[^\w\s-]", "", slug)
     slug = re.sub(r"[\s_]+", "-", slug)

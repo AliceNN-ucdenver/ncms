@@ -75,7 +75,9 @@ def resolve_device(component_env: str | None = None) -> Device:
         if override not in _VALID:
             logger.warning(
                 "[hardware] ignoring invalid %s=%r (use one of %s)",
-                key, override, sorted(_VALID),
+                key,
+                override,
+                sorted(_VALID),
             )
             continue
         if override == "auto":
@@ -100,12 +102,7 @@ def summary() -> dict[str, object]:
         "torch": True,
         "torch_version": torch.__version__,
         "cuda_available": torch.cuda.is_available(),
-        "cuda_device_count": (
-            torch.cuda.device_count() if torch.cuda.is_available() else 0
-        ),
-        "mps_available": (
-            hasattr(torch.backends, "mps")
-            and torch.backends.mps.is_available()
-        ),
+        "cuda_device_count": (torch.cuda.device_count() if torch.cuda.is_available() else 0),
+        "mps_available": (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()),
         "selected": _auto(),
     }

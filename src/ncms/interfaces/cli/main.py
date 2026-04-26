@@ -24,7 +24,9 @@ def cli() -> None:
 @click.option("--db", default=None, help="Database path (default: ~/.ncms/ncms.db)")
 @click.option("--index", default=None, help="Index path (default: ~/.ncms/index)")
 @click.option(
-    "--transport", default="stdio", type=click.Choice(["stdio", "http"]),
+    "--transport",
+    default="stdio",
+    type=click.Choice(["stdio", "http"]),
     help="Transport protocol",
 )
 @click.option("--host", default="0.0.0.0", help="HTTP bind address (http transport only)")
@@ -65,10 +67,15 @@ def serve(
         click.echo(f"Starting NCMS HTTP API server on {host}:{port}...", err=True)
         if dashboard_port:
             click.echo(f"Dashboard on {host}:{dashboard_port} (shared EventLog)", err=True)
-        asyncio.run(run_http_server(
-            config=config, host=host, port=port,
-            auth_token=auth_token, dashboard_port=dashboard_port,
-        ))
+        asyncio.run(
+            run_http_server(
+                config=config,
+                host=host,
+                port=port,
+                auth_token=auth_token,
+                dashboard_port=dashboard_port,
+            )
+        )
     else:
         from ncms.interfaces.mcp.server import run_server
 
@@ -114,7 +121,9 @@ def bus_agent(
 @cli.command()
 @click.option("--nemoclaw", is_flag=True, help="Run NemoClaw multi-agent demo")
 @click.option(
-    "--nemoclaw-nd", "nemoclaw_nd", is_flag=True,
+    "--nemoclaw-nd",
+    "nemoclaw_nd",
+    is_flag=True,
     help="Run NemoClaw Non-Deterministic demo (LLM-powered agents)",
 )
 def demo(nemoclaw: bool, nemoclaw_nd: bool) -> None:
@@ -141,8 +150,12 @@ def demo(nemoclaw: bool, nemoclaw_nd: bool) -> None:
 @click.option("--open/--no-open", "open_browser", default=True, help="Open browser automatically")
 @click.option("--debug/--no-debug", "debug_flag", default=False, help="Emit candidate details")
 def dashboard(
-    host: str, port: int, run_demo_flag: bool, nd_demo: bool,
-    open_browser: bool, debug_flag: bool,
+    host: str,
+    port: int,
+    run_demo_flag: bool,
+    nd_demo: bool,
+    open_browser: bool,
+    debug_flag: bool,
 ) -> None:
     """Start the NCMS observability dashboard (web UI).
 
@@ -185,11 +198,15 @@ def dashboard(
     demo_mode = "nd" if nd_demo else ("classic" if run_demo_flag else None)
 
     try:
-        asyncio.run(run_dashboard(
-            host=host, port=port, run_demo=run_demo_flag,
-            pipeline_debug=effective_debug,
-            demo_mode=demo_mode,
-        ))
+        asyncio.run(
+            run_dashboard(
+                host=host,
+                port=port,
+                run_demo=run_demo_flag,
+                pipeline_debug=effective_debug,
+                demo_mode=demo_mode,
+            )
+        )
     except KeyboardInterrupt:
         click.echo("\nDashboard stopped.", err=True)
 
@@ -230,6 +247,7 @@ def info(db: str | None) -> None:
             # Hardware summary — which device ML-backed subsystems
             # (GLiNER, SPLADE, cross-encoder) will load onto.
             from ncms.infrastructure.hardware import summary as hw_summary
+
             hw = hw_summary()
             click.echo("")
             click.echo("Hardware:")
@@ -251,8 +269,11 @@ def info(db: str | None) -> None:
 @click.option("--recursive/--no-recursive", default=True, help="Recurse into directories.")
 @click.option("--bulk/--no-bulk", default=True, help="Bulk import with async indexing (default).")
 def load(
-    paths: tuple[str, ...], domains: tuple[str, ...],
-    project: str | None, recursive: bool, bulk: bool,
+    paths: tuple[str, ...],
+    domains: tuple[str, ...],
+    project: str | None,
+    recursive: bool,
+    bulk: bool,
 ) -> None:
     """Load knowledge from files into NCMS memory (The Matrix download).
 
@@ -299,7 +320,10 @@ def load(
             from ncms.application.admission_service import AdmissionService
 
             admission = AdmissionService(
-                store=store, index=index, graph=graph, config=config,
+                store=store,
+                index=index,
+                graph=graph,
+                config=config,
             )
 
         # Reconciliation service (Phase 2, disabled by default)
@@ -315,7 +339,10 @@ def load(
             from ncms.application.episode_service import EpisodeService
 
             episode = EpisodeService(
-                store=store, index=index, config=config, splade=splade,
+                store=store,
+                index=index,
+                config=config,
+                splade=splade,
             )
 
         # Cross-encoder reranker (Phase 10, disabled by default)
@@ -335,6 +362,7 @@ def load(
         from ncms.application.intent_slot_chain import (
             maybe_build_chain_for_config,
         )
+
         intent_slot = maybe_build_chain_for_config(config)
         if intent_slot is not None:
             console.print(
@@ -344,10 +372,16 @@ def load(
             )
 
         memory_svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
-            splade=splade, admission=admission,
-            reconciliation=reconciliation, episode=episode,
-            reranker=reranker, intent_slot=intent_slot,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
+            splade=splade,
+            admission=admission,
+            reconciliation=reconciliation,
+            episode=episode,
+            reranker=reranker,
+            intent_slot=intent_slot,
         )
         await GraphService(store=store, graph=graph).rebuild_from_store()
         loader = KnowledgeLoader(memory_svc)
@@ -371,16 +405,24 @@ def load(
                     console.print(f"  [dim]{fp.name}[/] {fs.memories_created} memories")
 
                 stats = await loader.bulk_load_directory(
-                    path, domains=domain_list, project=project,
-                    recursive=recursive, progress_callback=_progress,
+                    path,
+                    domains=domain_list,
+                    project=project,
+                    recursive=recursive,
+                    progress_callback=_progress,
                 )
             elif path.is_dir():
                 stats = await loader.load_directory(
-                    path, domains=domain_list, project=project, recursive=recursive,
+                    path,
+                    domains=domain_list,
+                    project=project,
+                    recursive=recursive,
                 )
             else:
                 stats = await loader.load_file(
-                    path, domains=domain_list, project=project,
+                    path,
+                    domains=domain_list,
+                    project=project,
                 )
 
             total_files += stats.files_processed
@@ -394,9 +436,7 @@ def load(
         await memory_svc.flush_indexing()
         await memory_svc.stop_index_pool()
 
-        console.print(
-            f"[green]Loaded {total_files} file(s) -> {total_memories} memories[/]"
-        )
+        console.print(f"[green]Loaded {total_files} file(s) -> {total_memories} memories[/]")
         await store.close()
 
     asyncio.run(_load())
@@ -408,11 +448,13 @@ def load(
 @click.option("--bm25/--no-bm25", default=True, help="Rebuild BM25 index (default: on)")
 @click.option("--splade/--no-splade", default=True, help="Rebuild SPLADE index (default: on)")
 @click.option(
-    "--entities/--no-entities", default=False,
+    "--entities/--no-entities",
+    default=False,
     help="Re-extract entities via GLiNER (default: off)",
 )
 @click.option(
-    "--graph/--no-graph", default=False,
+    "--graph/--no-graph",
+    default=False,
     help="Rebuild knowledge graph from SQLite (default: off)",
 )
 def reindex(
@@ -522,7 +564,8 @@ def reindex(
                     await svc.rebuild_bm25(
                         memories=memories,
                         progress_callback=lambda cur, _tot: progress.update(
-                            task_id, completed=cur,
+                            task_id,
+                            completed=cur,
                         ),
                     )
                     progress.update(task_id, completed=total)
@@ -531,13 +574,15 @@ def reindex(
 
             if splade and splade_engine is not None:
                 task_id = progress.add_task(
-                    "[cyan]SPLADE indexing...", total=total,
+                    "[cyan]SPLADE indexing...",
+                    total=total,
                 )
                 try:
                     await svc.rebuild_splade(
                         memories=memories,
                         progress_callback=lambda cur, _tot: progress.update(
-                            task_id, completed=cur,
+                            task_id,
+                            completed=cur,
                         ),
                     )
                     progress.update(task_id, completed=total)
@@ -546,13 +591,15 @@ def reindex(
 
             if entities:
                 task_id = progress.add_task(
-                    "[cyan]Entity extraction...", total=total,
+                    "[cyan]Entity extraction...",
+                    total=total,
                 )
                 try:
                     await svc.rebuild_entities(
                         memories=memories,
                         progress_callback=lambda cur, _tot: progress.update(
-                            task_id, completed=cur,
+                            task_id,
+                            completed=cur,
                         ),
                     )
                     progress.update(task_id, completed=total)
@@ -642,7 +689,10 @@ def watch(
             from ncms.application.admission_service import AdmissionService
 
             admission = AdmissionService(
-                store=store, index=index, graph=graph, config=config,
+                store=store,
+                index=index,
+                graph=graph,
+                config=config,
             )
 
         # Optional reconciliation
@@ -658,7 +708,10 @@ def watch(
             from ncms.application.episode_service import EpisodeService
 
             episode = EpisodeService(
-                store=store, index=index, config=config, splade=splade,
+                store=store,
+                index=index,
+                config=config,
+                splade=splade,
             )
 
         # Optional reranker
@@ -677,6 +730,7 @@ def watch(
         from ncms.application.intent_slot_chain import (
             maybe_build_chain_for_config,
         )
+
         intent_slot = maybe_build_chain_for_config(config)
         if intent_slot is not None:
             console.print(
@@ -686,10 +740,16 @@ def watch(
             )
 
         memory_svc = MemoryService(
-            store=store, index=index, graph=graph, config=config,
-            splade=splade, admission=admission,
-            reconciliation=reconciliation, episode=episode,
-            reranker=reranker, intent_slot=intent_slot,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
+            splade=splade,
+            admission=admission,
+            reconciliation=reconciliation,
+            episode=episode,
+            reranker=reranker,
+            intent_slot=intent_slot,
         )
         await GraphService(store=store, graph=graph).rebuild_from_store()
 
@@ -721,9 +781,7 @@ def watch(
                 f"{stats.total_memories_created} memories created"
             )
             if stats.domains_detected:
-                console.print(
-                    f"[bold]Domains:[/] {', '.join(sorted(stats.domains_detected))}"
-                )
+                console.print(f"[bold]Domains:[/] {', '.join(sorted(stats.domains_detected))}")
             await store.close()
             return
 
@@ -732,6 +790,7 @@ def watch(
             from ncms.infrastructure.watch.filesystem_watcher import FilesystemWatcher
         except ImportError:
             from rich.console import Console as _ErrConsole
+
             _err_console = _ErrConsole(stderr=True)
             _err_console.print(
                 "[red]watchdog not installed. Run:[/]\n"
@@ -791,8 +850,12 @@ def topics() -> None:
 @click.argument("domain")
 @click.argument("labels", nargs=-1, required=True)
 @click.option("--db", default=None, help="Database path")
-@click.option("--keep-universal", is_flag=True, default=False,
-              help="Keep universal labels (additive). Default: domain labels replace universal.")
+@click.option(
+    "--keep-universal",
+    is_flag=True,
+    default=False,
+    help="Keep universal labels (additive). Default: domain labels replace universal.",
+)
 def topics_set(domain: str, labels: tuple[str, ...], db: str | None, keep_universal: bool) -> None:
     """Set entity labels for a domain.
 
@@ -821,13 +884,9 @@ def topics_set(domain: str, labels: tuple[str, ...], db: str | None, keep_univer
         try:
             await store.initialize()
             label_list = list(labels)
-            await store.set_consolidation_value(
-                f"entity_labels:{domain}", json.dumps(label_list)
-            )
+            await store.set_consolidation_value(f"entity_labels:{domain}", json.dumps(label_list))
             # Store the keep_universal preference
-            await store.set_consolidation_value(
-                "_keep_universal", json.dumps(keep_universal)
-            )
+            await store.set_consolidation_value("_keep_universal", json.dumps(keep_universal))
             mode = "additive (universal + domain)" if keep_universal else "replace (domain only)"
             console.print(
                 f"[green]Set {len(label_list)} labels for domain '{domain}' ({mode}):[/] "
@@ -901,8 +960,7 @@ def topics_list(domain: str | None, db: str | None) -> None:
                     table.add_row(d, ", ".join(labels))
                 console.print(table)
                 console.print(
-                    f"\n[dim]Universal fallback (when no cache): "
-                    f"{', '.join(UNIVERSAL_LABELS)}[/]"
+                    f"\n[dim]Universal fallback (when no cache): {', '.join(UNIVERSAL_LABELS)}[/]"
                 )
         finally:
             await store.close()
@@ -918,9 +976,12 @@ def topics_list(domain: str | None, db: str | None) -> None:
 @click.option("--dry-run", is_flag=True, help="Show detected labels without saving")
 @click.option("--db", default=None, help="Database path")
 def topics_detect(
-    domain: str, paths: tuple[str, ...],
-    model: str | None, api_base: str | None,
-    dry_run: bool, db: str | None,
+    domain: str,
+    paths: tuple[str, ...],
+    model: str | None,
+    api_base: str | None,
+    dry_run: bool,
+    db: str | None,
 ) -> None:
     """Auto-detect entity labels for a domain from sample files.
 
@@ -953,8 +1014,14 @@ def topics_detect(
         import contextlib
 
         text_suffixes = {
-            ".md", ".txt", ".json", ".yaml", ".yml",
-            ".rst", ".html", ".csv",
+            ".md",
+            ".txt",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".rst",
+            ".html",
+            ".csv",
         }
         sample_texts: list[str] = []
         for p in paths:
@@ -974,9 +1041,7 @@ def topics_detect(
             console.print("[red]No readable text found in the provided paths.[/]")
             return
 
-        console.print(
-            f"Analyzing {len(sample_texts)} sample(s) for domain '{domain}'..."
-        )
+        console.print(f"Analyzing {len(sample_texts)} sample(s) for domain '{domain}'...")
 
         llm_model = model or config.label_detection_model
         llm_api_base = api_base or config.label_detection_api_base
@@ -1000,9 +1065,7 @@ def topics_detect(
         store = SQLiteStore(db_path=config.db_path)
         try:
             await store.initialize()
-            await store.set_consolidation_value(
-                f"entity_labels:{domain}", json.dumps(labels)
-            )
+            await store.set_consolidation_value(f"entity_labels:{domain}", json.dumps(labels))
             console.print(f"[green]Saved labels for domain '{domain}'.[/]")
         finally:
             await store.close()
@@ -1037,8 +1100,7 @@ def topics_clear(domain: str, db: str | None) -> None:
             await store.initialize()
             await store.delete_consolidation_value(f"entity_labels:{domain}")
             console.print(
-                f"[green]Cleared labels for domain '{domain}'.[/] "
-                "Will use universal fallback."
+                f"[green]Cleared labels for domain '{domain}'.[/] Will use universal fallback."
             )
         finally:
             await store.close()
@@ -1083,10 +1145,7 @@ def state_get(entity_id: str, key: str, db: str | None) -> None:
             await store.initialize()
             node = await store.get_current_state(entity_id, key)
             if node is None:
-                console.print(
-                    f"[yellow]No current state for entity '{entity_id}' "
-                    f"key '{key}'.[/]"
-                )
+                console.print(f"[yellow]No current state for entity '{entity_id}' key '{key}'.[/]")
                 return
             val = node.metadata.get("state_value", "")
             label = node.metadata.get("state_label", "")
@@ -1131,10 +1190,7 @@ def state_history(entity_id: str, key: str, db: str | None) -> None:
             await store.initialize()
             nodes = await store.get_state_history(entity_id, key)
             if not nodes:
-                console.print(
-                    f"[yellow]No state history for entity '{entity_id}' "
-                    f"key '{key}'.[/]"
-                )
+                console.print(f"[yellow]No state history for entity '{entity_id}' key '{key}'.[/]")
                 return
 
             table = Table(title=f"State History: {entity_id} / {key}")
@@ -1263,8 +1319,11 @@ def episodes_list(closed: bool, db: str | None) -> None:
                 ts = ep.created_at.isoformat() if ep.created_at else "?"
                 style = "green" if status == "open" else "dim"
                 table.add_row(
-                    ep.id[:24], title, f"[{style}]{status}[/]",
-                    str(len(members)), ts,
+                    ep.id[:24],
+                    title,
+                    f"[{style}]{status}[/]",
+                    str(len(members)),
+                    ts,
                 )
             console.print(table)
         finally:
@@ -1414,8 +1473,7 @@ def maintenance_status() -> None:
 @click.argument(
     "task",
     type=click.Choice(
-        ["consolidation", "dream", "episode-close", "decay",
-         "tlg-induction", "all"],
+        ["consolidation", "dream", "episode-close", "decay", "tlg-induction", "all"],
     ),
 )
 def maintenance_run(task: str) -> None:
@@ -1460,7 +1518,10 @@ def maintenance_run(task: str) -> None:
             )
 
         consolidation_svc = ConsolidationService(
-            store=store, index=index, graph=graph, config=config,
+            store=store,
+            index=index,
+            graph=graph,
+            config=config,
             splade=splade,
         )
 
@@ -1470,7 +1531,10 @@ def maintenance_run(task: str) -> None:
             from ncms.application.episode_service import EpisodeService
 
             episode_svc = EpisodeService(
-                store=store, index=index, config=config, splade=splade,
+                store=store,
+                index=index,
+                config=config,
+                splade=splade,
             )
 
         # Rebuild graph for consolidation
@@ -1549,10 +1613,7 @@ def lint(db: str | None) -> None:
             n_info = sum(1 for i in report.issues if i.severity == "info")
 
             if not report.issues:
-                console.print(
-                    f"[green]No issues found.[/] "
-                    f"({report.duration_ms:.0f}ms)"
-                )
+                console.print(f"[green]No issues found.[/] ({report.duration_ms:.0f}ms)")
                 return
 
             # Issues table
@@ -1585,10 +1646,7 @@ def lint(db: str | None) -> None:
                 parts.append(f"[yellow]{n_warnings} warning(s)[/]")
             if n_info:
                 parts.append(f"[dim]{n_info} info[/]")
-            console.print(
-                f"\n{', '.join(parts)} "
-                f"| {report.duration_ms:.0f}ms"
-            )
+            console.print(f"\n{', '.join(parts)} | {report.duration_ms:.0f}ms")
 
             if n_errors > 0:
                 raise SystemExit(1)

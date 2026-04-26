@@ -99,11 +99,13 @@ async def suggest_episode_links(
             if ep_id not in known_ids:
                 continue
             confidence = float(entry.get("confidence", 0.0))
-            valid.append({
-                "episode_id": ep_id,
-                "confidence": min(1.0, max(0.0, confidence)),
-                "reasoning": str(entry.get("reasoning", ""))[:200],
-            })
+            valid.append(
+                {
+                    "episode_id": ep_id,
+                    "confidence": min(1.0, max(0.0, confidence)),
+                    "reasoning": str(entry.get("reasoning", ""))[:200],
+                }
+            )
 
         return valid
 

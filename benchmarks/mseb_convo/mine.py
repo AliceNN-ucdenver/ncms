@@ -57,6 +57,7 @@ from pathlib import Path
 
 try:
     from benchmarks.env import load_dotenv
+
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
@@ -130,15 +131,17 @@ def _session_to_messages(
             "assistant": "assistant_turn",
         }.get(role, f"{role}_turn")
         seq += 1
-        messages.append({
-            "message_id": f"{user}::m{seq:04d}",
-            "text": content[:4000],
-            "timestamp": ts,
-            "source": source,
-            "session_id": session_id,
-            "turn_index": turn_index,
-            "role": role,
-        })
+        messages.append(
+            {
+                "message_id": f"{user}::m{seq:04d}",
+                "text": content[:4000],
+                "timestamp": ts,
+                "source": source,
+                "session_id": session_id,
+                "turn_index": turn_index,
+                "role": role,
+            }
+        )
     return messages, seq
 
 
@@ -172,6 +175,7 @@ def mine(
     if not source.exists():
         # Fall back to the loader — downloads if missing.
         from benchmarks.longmemeval.loader import download_longmemeval
+
         data_dir = download_longmemeval()
         source = data_dir / "longmemeval_oracle.json"
         if not source.exists():
@@ -189,12 +193,15 @@ def mine(
         kept = [q for q in data if q.get("question_type") in question_types]
         logger.info(
             "filtered to question_types=%s → %d rows (of %d)",
-            question_types, len(kept), len(data),
+            question_types,
+            len(kept),
+            len(data),
         )
         data = kept
 
     if shuffle_seed is not None:
         import random
+
         random.Random(shuffle_seed).shuffle(data)
         logger.info("shuffled %d rows with seed=%d", len(data), shuffle_seed)
 
@@ -220,17 +227,21 @@ def mine(
             # Guard against schema drift.
             if len(sessions) != len(session_ids) or len(sessions) != len(dates):
                 logger.warning(
-                    "question %s: haystack length mismatch sessions=%d "
-                    "ids=%d dates=%d — skipping",
-                    q.get("question_id"), len(sessions),
-                    len(session_ids), len(dates),
+                    "question %s: haystack length mismatch sessions=%d ids=%d dates=%d — skipping",
+                    q.get("question_id"),
+                    len(sessions),
+                    len(session_ids),
+                    len(dates),
                 )
                 continue
 
             messages: list[dict] = []
             seq = 0
             for sid, sdate, turns in zip(
-                session_ids, dates, sessions, strict=False,
+                session_ids,
+                dates,
+                sessions,
+                strict=False,
             ):
                 sess_msgs, seq = _session_to_messages(
                     user=user,
@@ -243,7 +254,8 @@ def mine(
 
             if not messages:
                 logger.warning(
-                    "question %s produced 0 messages — skipping", user,
+                    "question %s produced 0 messages — skipping",
+                    user,
                 )
                 continue
 
@@ -257,15 +269,20 @@ def mine(
             # Record the question itself — the gold author + labeler
             # both need this to produce gold queries that point at
             # specific messages.
-            qfh.write(json.dumps({
-                "question_id": q.get("question_id"),
-                "question": q.get("question"),
-                "question_type": q.get("question_type"),
-                "answer": q.get("answer"),
-                "answer_session_ids": q.get("answer_session_ids"),
-                "subject": user,
-                "message_count": len(messages),
-            }, ensure_ascii=False))
+            qfh.write(
+                json.dumps(
+                    {
+                        "question_id": q.get("question_id"),
+                        "question": q.get("question"),
+                        "question_type": q.get("question_type"),
+                        "answer": q.get("answer"),
+                        "answer_session_ids": q.get("answer_session_ids"),
+                        "subject": user,
+                        "message_count": len(messages),
+                    },
+                    ensure_ascii=False,
+                )
+            )
             qfh.write("\n")
 
             stats["users"] += 1
@@ -280,7 +297,11 @@ def mine(
             if (i + 1) % 25 == 0 or (i + 1) == limit:
                 logger.info(
                     "[%d/%d] subject=%s msgs=%d qtype=%s",
-                    i + 1, limit, user, len(messages), qtype,
+                    i + 1,
+                    limit,
+                    user,
+                    len(messages),
+                    qtype,
                 )
 
     (out_dir / "_stats.json").write_text(
@@ -297,20 +318,29 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="MSEB-Convo miner: LongMemEval sessions → raw messages",
     )
-    parser.add_argument("--limit", type=int, default=50,
-                        help="Max questions/subjects to mine (default 50)")
-    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE,
-                        help="LMEval JSON file (default: oracle variant)")
     parser.add_argument(
-        "--question-types", nargs="*", default=None,
-        help="Only mine questions whose type is in this list "
-             "(e.g. --question-types single-session-preference temporal-reasoning)",
+        "--limit", type=int, default=50, help="Max questions/subjects to mine (default 50)"
+    )
+    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=DEFAULT_SOURCE,
+        help="LMEval JSON file (default: oracle variant)",
     )
     parser.add_argument(
-        "--shuffle-seed", type=int, default=None,
+        "--question-types",
+        nargs="*",
+        default=None,
+        help="Only mine questions whose type is in this list "
+        "(e.g. --question-types single-session-preference temporal-reasoning)",
+    )
+    parser.add_argument(
+        "--shuffle-seed",
+        type=int,
+        default=None,
         help="Shuffle LMEval rows with this seed before slicing to --limit "
-             "(so pilot gets a balanced question-type mix)",
+        "(so pilot gets a balanced question-type mix)",
     )
     args = parser.parse_args()
 

@@ -54,7 +54,8 @@ class GraphService:
                         pass  # Edge doesn't exist in graph or method not available
                 logger.info(
                     "Loaded %d association strengths (%d applied to graph edges)",
-                    len(assoc), applied,
+                    len(assoc),
+                    applied,
                 )
         except Exception:
             logger.debug("No association strengths to load", exc_info=True)

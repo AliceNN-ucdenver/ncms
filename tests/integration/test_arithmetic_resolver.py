@@ -39,20 +39,20 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
 _CORPUS: list[tuple[str, datetime]] = [
     # MoMA events
-    ("Visited MoMA with family — a highlight of the spring break.",
-     datetime(2024, 4, 1, tzinfo=UTC)),
-    ("Returned to MoMA for the Vermeer retrospective.",
-     datetime(2024, 11, 15, tzinfo=UTC)),
+    (
+        "Visited MoMA with family — a highlight of the spring break.",
+        datetime(2024, 4, 1, tzinfo=UTC),
+    ),
+    ("Returned to MoMA for the Vermeer retrospective.", datetime(2024, 11, 15, tzinfo=UTC)),
     # Metropolitan Museum events
-    ("First trip to the Metropolitan Museum of Art in years.",
-     datetime(2024, 6, 5, tzinfo=UTC)),
-    ("Another Metropolitan Museum visit — the Egyptian wing again.",
-     datetime(2025, 2, 20, tzinfo=UTC)),
+    ("First trip to the Metropolitan Museum of Art in years.", datetime(2024, 6, 5, tzinfo=UTC)),
+    (
+        "Another Metropolitan Museum visit — the Egyptian wing again.",
+        datetime(2025, 2, 20, tzinfo=UTC),
+    ),
     # Central Park events
-    ("Central Park autumn walk, beautiful foliage.",
-     datetime(2024, 10, 10, tzinfo=UTC)),
-    ("Central Park picnic for my aunt's birthday.",
-     datetime(2025, 5, 3, tzinfo=UTC)),
+    ("Central Park autumn walk, beautiful foliage.", datetime(2024, 10, 10, tzinfo=UTC)),
+    ("Central Park picnic for my aunt's birthday.", datetime(2025, 5, 3, tzinfo=UTC)),
 ]
 
 
@@ -66,7 +66,8 @@ async def svc() -> MemoryService:
     config = NCMSConfig(
         db_path=":memory:",
         actr_noise=0.0,
-        splade_enabled=False, scoring_weight_splade=0.0,
+        splade_enabled=False,
+        scoring_weight_splade=0.0,
         scoring_weight_bm25=0.6,
         scoring_weight_actr=0.0,
         scoring_weight_graph=0.0,
@@ -76,11 +77,16 @@ async def svc() -> MemoryService:
         temporal_range_filter_enabled=True,
     )
     svc = MemoryService(
-        store=store, index=index, graph=graph, config=config,
+        store=store,
+        index=index,
+        graph=graph,
+        config=config,
     )
     for content, when in _CORPUS:
         await svc.store_memory(
-            content=content, memory_type="fact", observed_at=when,
+            content=content,
+            memory_type="fact",
+            observed_at=when,
         )
     await svc.flush_indexing()
     yield svc
@@ -98,15 +104,13 @@ class TestBetween:
 
     async def test_between_days(self, svc: MemoryService) -> None:
         result = await svc.compute_temporal_arithmetic(
-            query="How many days between my MoMA visit and "
-                  "the Metropolitan Museum trip?",
+            query="How many days between my MoMA visit and the Metropolitan Museum trip?",
         )
         assert result is not None, "expected a resolver result"
         assert result.operation == "between"
         assert result.unit == "days"
         assert result.answer_value == 65.0, (
-            f"65 days between 2024-04-01 and 2024-06-05, got "
-            f"{result.answer_value}"
+            f"65 days between 2024-04-01 and 2024-06-05, got {result.answer_value}"
         )
         assert result.answer_text == "65 days"
         assert len(result.anchor_memories) == 2
@@ -128,17 +132,15 @@ class TestBetween:
         # Delta must be positive and the two anchors distinct.
         assert result.answer_value > 0.0
         assert len(result.anchor_memories) == 2
-        assert (
-            result.anchor_memories[0].id
-            != result.anchor_memories[1].id
-        )
+        assert result.anchor_memories[0].id != result.anchor_memories[1].id
 
 
 class TestSince:
     """One-anchor arithmetic with a caller-supplied reference_time."""
 
     async def test_since_weeks_with_reference(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         ref = datetime(2025, 5, 1, tzinfo=UTC)  # exactly 4 weeks after picnic
         result = await svc.compute_temporal_arithmetic(
@@ -177,9 +179,9 @@ class TestAgeOf:
 
 
 class TestNoneCases:
-
     async def test_unknown_anchor_returns_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         """Anchor entity never mentioned in any memory → None."""
         result = await svc.compute_temporal_arithmetic(
@@ -188,7 +190,8 @@ class TestNoneCases:
         assert result is None
 
     async def test_non_arithmetic_query_returns_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         result = await svc.compute_temporal_arithmetic(
             query="Tell me about the Metropolitan Museum",
@@ -196,7 +199,8 @@ class TestNoneCases:
         assert result is None
 
     async def test_ordinal_query_returns_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         """Ordinal queries fall to the ordinal primitive, not arithmetic."""
         result = await svc.compute_temporal_arithmetic(
@@ -205,7 +209,8 @@ class TestNoneCases:
         assert result is None
 
     async def test_range_query_returns_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         result = await svc.compute_temporal_arithmetic(
             query="What did I do during 2024?",
@@ -213,7 +218,8 @@ class TestNoneCases:
         assert result is None
 
     async def test_one_anchor_for_between_returns_none(
-        self, svc: MemoryService,
+        self,
+        svc: MemoryService,
     ) -> None:
         """'Between' needs 2 anchors; if only one resolves, return None."""
         result = await svc.compute_temporal_arithmetic(

@@ -50,11 +50,15 @@ class TestFindEntityClusters:
             _make_memory("RBAC permission model", domains=["auth"]),
         ]
         # All three share "auth-service" entity; m0 and m1 share "token" entity
-        _setup_graph_with_entities(graph, memories, {
-            0: ["auth-service", "token"],
-            1: ["auth-service", "token"],
-            2: ["auth-service"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["auth-service", "token"],
+                1: ["auth-service", "token"],
+                2: ["auth-service"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 1
@@ -67,10 +71,14 @@ class TestFindEntityClusters:
             _make_memory("Memory A"),
             _make_memory("Memory B"),
         ]
-        _setup_graph_with_entities(graph, memories, {
-            0: ["shared-entity"],
-            1: ["shared-entity"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["shared-entity"],
+                1: ["shared-entity"],
+            },
+        )
 
         # min_cluster_size=3 but only 2 memories share entity
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
@@ -83,10 +91,14 @@ class TestFindEntityClusters:
             _make_memory("Memory A"),
             _make_memory("Memory B"),
         ]
-        _setup_graph_with_entities(graph, memories, {
-            0: ["shared-entity"],
-            1: ["shared-entity"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["shared-entity"],
+                1: ["shared-entity"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=2)
         assert len(clusters) == 1
@@ -102,12 +114,16 @@ class TestFindEntityClusters:
             Memory(content="An insight", type="insight", domains=["db"]),
         ]
         # All four share an entity, but the insight should be excluded
-        _setup_graph_with_entities(graph, memories, {
-            0: ["postgres"],
-            1: ["postgres"],
-            2: ["postgres"],
-            3: ["postgres"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["postgres"],
+                1: ["postgres"],
+                2: ["postgres"],
+                3: ["postgres"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 1
@@ -135,11 +151,15 @@ class TestFindEntityClusters:
             _make_memory("Memory B"),
             _make_memory("Memory C"),
         ]
-        entities = _setup_graph_with_entities(graph, memories, {
-            0: ["shared-x", "unique-a"],
-            1: ["shared-x", "shared-y"],
-            2: ["shared-x", "shared-y"],
-        })
+        entities = _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["shared-x", "unique-a"],
+                1: ["shared-x", "shared-y"],
+                2: ["shared-x", "shared-y"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 1
@@ -157,11 +177,15 @@ class TestFindEntityClusters:
             _make_memory("Memory B", domains=["db"]),
             _make_memory("Memory C", domains=["auth"]),
         ]
-        _setup_graph_with_entities(graph, memories, {
-            0: ["shared"],
-            1: ["shared"],
-            2: ["shared"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["shared"],
+                1: ["shared"],
+                2: ["shared"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 1
@@ -178,12 +202,16 @@ class TestFindEntityClusters:
         ]
         # A-B share entity "x", B-C share entity "y", C-D share entity "z"
         # Union-find should merge all into one cluster
-        _setup_graph_with_entities(graph, memories, {
-            0: ["x"],
-            1: ["x", "y"],
-            2: ["y", "z"],
-            3: ["z"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["x"],
+                1: ["x", "y"],
+                2: ["y", "z"],
+                3: ["z"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 1
@@ -200,14 +228,18 @@ class TestFindEntityClusters:
             _make_memory("DB Y"),
             _make_memory("DB Z"),
         ]
-        _setup_graph_with_entities(graph, memories, {
-            0: ["auth-entity"],
-            1: ["auth-entity"],
-            2: ["auth-entity"],
-            3: ["db-entity"],
-            4: ["db-entity"],
-            5: ["db-entity"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["auth-entity"],
+                1: ["auth-entity"],
+                2: ["auth-entity"],
+                3: ["db-entity"],
+                4: ["db-entity"],
+                5: ["db-entity"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 2
@@ -227,15 +259,19 @@ class TestFindEntityClusters:
             _make_memory("B2"),
             _make_memory("B3"),
         ]
-        _setup_graph_with_entities(graph, memories, {
-            0: ["big-entity"],
-            1: ["big-entity"],
-            2: ["big-entity"],
-            3: ["big-entity"],
-            4: ["small-entity"],
-            5: ["small-entity"],
-            6: ["small-entity"],
-        })
+        _setup_graph_with_entities(
+            graph,
+            memories,
+            {
+                0: ["big-entity"],
+                1: ["big-entity"],
+                2: ["big-entity"],
+                3: ["big-entity"],
+                4: ["small-entity"],
+                5: ["small-entity"],
+                6: ["small-entity"],
+            },
+        )
 
         clusters = find_entity_clusters(memories, graph, min_cluster_size=3)
         assert len(clusters) == 2

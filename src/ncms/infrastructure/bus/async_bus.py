@@ -204,9 +204,7 @@ class AsyncKnowledgeBus:
                 # Collect valid responses into the asking agent's inbox
                 for result in results:
                     if isinstance(result, KnowledgeResponse):
-                        self._response_inbox.setdefault(ask.from_agent, []).append(
-                            result
-                        )
+                        self._response_inbox.setdefault(ask.from_agent, []).append(result)
                         if self._event_log:
                             self._event_log.bus_response(
                                 ask_id=result.ask_id,
@@ -249,9 +247,7 @@ class AsyncKnowledgeBus:
             if self._matches_filter(announcement, sub_filter):
                 self._announcement_inbox.setdefault(agent_id, []).append(announcement)
                 recipients.append(agent_id)
-                logger.debug(
-                    "Announcement %s delivered to %s", announcement.announce_id, agent_id
-                )
+                logger.debug("Announcement %s delivered to %s", announcement.announce_id, agent_id)
 
         if self._event_log:
             severity = "info"

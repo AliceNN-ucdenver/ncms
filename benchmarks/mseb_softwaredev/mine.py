@@ -96,7 +96,8 @@ def _git_head(path: Path) -> str:
     try:
         out = subprocess.check_output(
             ["git", "-C", str(path), "rev-parse", "HEAD"],
-            stderr=subprocess.DEVNULL, text=True,
+            stderr=subprocess.DEVNULL,
+            text=True,
         ).strip()
         return out[:12]
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -162,22 +163,24 @@ class AdrJosephParkerHendersonSource(Source):
             subject = f"sdev-{self.source_id}-{_slugify(d.name)}"
             messages: list[dict] = []
             for i, (heading, body) in enumerate(sections):
-                messages.append({
-                    "message_id": f"{subject}::sec-{i:02d}",
-                    "text": body.strip()[:4000],
-                    "section": heading or "body",
-                    "observed_at": observed_at,
-                    "source": "adr_section",
-                    "source_set": self.source_id,
-                    "source_url": (
-                        f"{self.source_url}/blob/{commit or 'main'}/"
-                        f"locales/en/examples/{d.name}/README.md"
-                    ),
-                    "license": self.license,
-                    "source_commit": commit,
-                    "retrieved_at": datetime.now(tz=UTC).isoformat(),
-                    "adr_status": status,
-                })
+                messages.append(
+                    {
+                        "message_id": f"{subject}::sec-{i:02d}",
+                        "text": body.strip()[:4000],
+                        "section": heading or "body",
+                        "observed_at": observed_at,
+                        "source": "adr_section",
+                        "source_set": self.source_id,
+                        "source_url": (
+                            f"{self.source_url}/blob/{commit or 'main'}/"
+                            f"locales/en/examples/{d.name}/README.md"
+                        ),
+                        "license": self.license,
+                        "source_commit": commit,
+                        "retrieved_at": datetime.now(tz=UTC).isoformat(),
+                        "adr_status": status,
+                    }
+                )
 
             yield {
                 "subject": subject,
@@ -185,7 +188,9 @@ class AdrJosephParkerHendersonSource(Source):
                 "messages": messages,
                 "metadata": {
                     "source_set": self.source_id,
-                    "source_url": f"{self.source_url}/tree/{commit or 'main'}/locales/en/examples/{d.name}",
+                    "source_url": (
+                        f"{self.source_url}/tree/{commit or 'main'}/locales/en/examples/{d.name}"
+                    ),
                     "license": self.license,
                     "source_commit": commit,
                     "retrieved_at": datetime.now(tz=UTC).isoformat(),
@@ -203,7 +208,7 @@ class AdrJosephParkerHendersonSource(Source):
         last_pos = 0
         last_heading = ""
         for m in AdrJosephParkerHendersonSource._HEADING_RE.finditer(text):
-            body = text[last_pos:m.start()].strip()
+            body = text[last_pos : m.start()].strip()
             if body:
                 parts.append((last_heading, body))
             last_heading = m.group(2).strip()
@@ -242,7 +247,9 @@ SOURCES: dict[str, Source] = {
 
 
 def mine_source(
-    source_id: str, src_dir: Path, out_dir: Path,
+    source_id: str,
+    src_dir: Path,
+    out_dir: Path,
 ) -> dict:
     """Run one source.  Returns a stats dict for the provenance manifest."""
     source = SOURCES[source_id]
@@ -268,11 +275,16 @@ def mine_source(
         subject = doc["subject"]
         out_path = out_dir / f"{subject}.jsonl"
         with out_path.open("w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "_meta": doc.get("metadata", {}),
-                "_subject": subject,
-                "_title": doc.get("title", ""),
-            }, ensure_ascii=False))
+            fh.write(
+                json.dumps(
+                    {
+                        "_meta": doc.get("metadata", {}),
+                        "_subject": subject,
+                        "_title": doc.get("title", ""),
+                    },
+                    ensure_ascii=False,
+                )
+            )
             fh.write("\n")
             for msg in doc["messages"]:
                 fh.write(json.dumps(msg, ensure_ascii=False))
@@ -285,7 +297,9 @@ def mine_source(
 
     logger.info(
         "source=%s kept=%d messages=%d",
-        source_id, stats["documents_kept"], stats["messages"],
+        source_id,
+        stats["documents_kept"],
+        stats["messages"],
     )
     return stats
 
@@ -298,13 +312,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="MSEB-SoftwareDev miner: ADR / RFC / post-mortem → raw messages",
     )
-    ap.add_argument("--source", choices=list(SOURCES),
-                    help="Single source to mine.")
-    ap.add_argument("--all", action="store_true",
-                    help="Mine every registered source.  Requires per-source "
-                         "--src-dir-<source_id> arguments (or env vars).")
-    ap.add_argument("--src-dir", type=Path, default=None,
-                    help="Path to the source's root (git clone / download).")
+    ap.add_argument("--source", choices=list(SOURCES), help="Single source to mine.")
+    ap.add_argument(
+        "--all",
+        action="store_true",
+        help="Mine every registered source.  Requires per-source "
+        "--src-dir-<source_id> arguments (or env vars).",
+    )
+    ap.add_argument(
+        "--src-dir",
+        type=Path,
+        default=None,
+        help="Path to the source's root (git clone / download).",
+    )
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args()
 
@@ -328,14 +348,17 @@ def main() -> None:
         json.dumps(sources_manifest, indent=2, sort_keys=True),
     )
     (args.out_dir / "_stats.json").write_text(
-        json.dumps({
-            **total_stats,
-            "sources": list(sources_manifest),
-            "retrieved_at": datetime.now(tz=UTC).isoformat(),
-        }, indent=2, sort_keys=True),
+        json.dumps(
+            {
+                **total_stats,
+                "sources": list(sources_manifest),
+                "retrieved_at": datetime.now(tz=UTC).isoformat(),
+            },
+            indent=2,
+            sort_keys=True,
+        ),
     )
-    print(json.dumps({**total_stats, "sources": list(sources_manifest)},
-                     indent=2, sort_keys=True))
+    print(json.dumps({**total_stats, "sources": list(sources_manifest)}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":

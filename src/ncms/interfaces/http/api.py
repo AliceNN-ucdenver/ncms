@@ -62,12 +62,15 @@ def create_api_app(
 
     import os as _os
     import secrets as _secrets
+
     _jwt_secret = _os.environ.get("NCMS_JWT_SECRET") or _secrets.token_hex(32)
 
     # Unprotected paths (no JWT required)
     _public_paths = {
-        "/api/v1/health", "/api/v1/auth/login",
-        "/api/v1/bus/events", "/api/v1/bus/register",
+        "/api/v1/health",
+        "/api/v1/auth/login",
+        "/api/v1/bus/events",
+        "/api/v1/bus/register",
         "/api/v1/maintenance/status",
     }
     _public_prefixes = ("/js/", "/css/", "/api/stats", "/api/v1/agents")
@@ -96,6 +99,7 @@ def create_api_app(
         if bearer:
             try:
                 import jwt
+
                 payload = jwt.decode(bearer, _jwt_secret, algorithms=["HS256"])
                 request.state.user = payload
                 return await call_next(request)
@@ -114,6 +118,7 @@ def create_api_app(
         if bearer:
             try:
                 import jwt
+
                 request.state.user = jwt.decode(bearer, _jwt_secret, algorithms=["HS256"])
             except Exception:
                 pass
@@ -134,10 +139,12 @@ def create_api_app(
             return JSONResponse({"error": "invalid credentials"}, status_code=401)
 
         import bcrypt as _bcrypt
+
         if not _bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
             return JSONResponse({"error": "invalid credentials"}, status_code=401)
 
         import jwt
+
         payload = {
             "sub": user["username"],
             "role": user["role"],
@@ -146,15 +153,17 @@ def create_api_app(
         }
         token = jwt.encode(payload, _jwt_secret, algorithm="HS256")
 
-        return JSONResponse({
-            "token": token,
-            "expires_in": 86400,
-            "user": {
-                "username": user["username"],
-                "display_name": user["display_name"],
-                "role": user["role"],
-            },
-        })
+        return JSONResponse(
+            {
+                "token": token,
+                "expires_in": 86400,
+                "user": {
+                    "username": user["username"],
+                    "display_name": user["display_name"],
+                    "role": user["role"],
+                },
+            }
+        )
 
     async def auth_me(request: Request) -> JSONResponse:
         """Return current user from JWT."""
@@ -241,12 +250,15 @@ def create_api_app(
             source_agent=agent_id or body.get("source_agent"),
             structured=body.get("structured"),
         )
-        return JSONResponse({
-            "memory_id": memory.id,
-            "content": memory.content[:200],
-            "domains": memory.domains,
-            "created_at": memory.created_at.isoformat() if memory.created_at else None,
-        }, status_code=201)
+        return JSONResponse(
+            {
+                "memory_id": memory.id,
+                "content": memory.content[:200],
+                "domains": memory.domains,
+                "created_at": memory.created_at.isoformat() if memory.created_at else None,
+            },
+            status_code=201,
+        )
 
     async def search_memory(request: Request) -> JSONResponse:
         # Support both GET (query params) and POST (JSON body) for large queries
@@ -273,7 +285,10 @@ def create_api_app(
             seen: dict[str, Any] = {}
             for d in domains:
                 domain_results = await memory_svc.search(
-                    query=query, domain=d, limit=limit, intent_override=intent,
+                    query=query,
+                    domain=d,
+                    limit=limit,
+                    intent_override=intent,
                 )
                 for r in domain_results:
                     mid = r.memory.id
@@ -282,7 +297,10 @@ def create_api_app(
             results = sorted(seen.values(), key=lambda r: r.total_activation, reverse=True)[:limit]
         else:
             results = await memory_svc.search(
-                query=query, domain=domain_param, limit=limit, intent_override=intent,
+                query=query,
+                domain=domain_param,
+                limit=limit,
+                intent_override=intent,
             )
 
         # Expand document profiles: fetch relevant sections from document store
@@ -317,30 +335,37 @@ def create_api_app(
                     ]
                     logger.info(
                         "[search] Expanded document profile %s: %d sections, returning top %d",
-                        doc_id, len(children), min(len(scored), 3),
+                        doc_id,
+                        len(children),
+                        min(len(scored), 3),
                     )
                 except Exception as exc:
                     logger.warning("[search] Failed to expand profile %s: %s", doc_id, exc)
 
-        return JSONResponse({
-            "results": [
-                {
-                    "memory_id": r.memory.id,
-                    "content": r.memory.content,
-                    "type": r.memory.type,
-                    "domains": r.memory.domains,
-                    "score": r.total_activation,
-                    "bm25_score": r.bm25_score,
-                    "created_at": (
-                        r.memory.created_at.isoformat() if r.memory.created_at else None
-                    ),
-                    **({"document_sections": expanded[r.memory.id]}
-                       if r.memory.id in expanded else {}),
-                }
-                for r in results
-            ],
-            "count": len(results),
-        })
+        return JSONResponse(
+            {
+                "results": [
+                    {
+                        "memory_id": r.memory.id,
+                        "content": r.memory.content,
+                        "type": r.memory.type,
+                        "domains": r.memory.domains,
+                        "score": r.total_activation,
+                        "bm25_score": r.bm25_score,
+                        "created_at": (
+                            r.memory.created_at.isoformat() if r.memory.created_at else None
+                        ),
+                        **(
+                            {"document_sections": expanded[r.memory.id]}
+                            if r.memory.id in expanded
+                            else {}
+                        ),
+                    }
+                    for r in results
+                ],
+                "count": len(results),
+            }
+        )
 
     async def recall_memory(request: Request) -> JSONResponse:
         if request.method == "POST":
@@ -357,54 +382,62 @@ def create_api_app(
             return JSONResponse({"error": "q parameter is required"}, status_code=400)
 
         results = await memory_svc.recall(
-            query=query, domain=domain, limit=limit,
+            query=query,
+            domain=domain,
+            limit=limit,
         )
-        return JSONResponse({
-            "results": [
-                {
-                    "memory_id": r.memory.memory.id,
-                    "content": r.memory.memory.content,
-                    "score": r.memory.total_activation,
-                    "retrieval_path": r.retrieval_path,
-                    "episode": {
-                        "episode_id": r.context.episode.episode_id,
-                        "episode_title": r.context.episode.episode_title,
-                        "status": r.context.episode.status,
-                        "member_count": r.context.episode.member_count,
-                    } if r.context.episode else None,
-                    "entity_states": [
-                        {
-                            "entity_name": s.entity_name,
-                            "state_key": s.state_key,
-                            "state_value": s.state_value,
-                            "is_current": s.is_current,
+        return JSONResponse(
+            {
+                "results": [
+                    {
+                        "memory_id": r.memory.memory.id,
+                        "content": r.memory.memory.content,
+                        "score": r.memory.total_activation,
+                        "retrieval_path": r.retrieval_path,
+                        "episode": {
+                            "episode_id": r.context.episode.episode_id,
+                            "episode_title": r.context.episode.episode_title,
+                            "status": r.context.episode.status,
+                            "member_count": r.context.episode.member_count,
                         }
-                        for s in r.context.entity_states
-                    ],
-                    "causal_chain": {
-                        "supersedes": r.context.causal_chain.supersedes,
-                        "superseded_by": r.context.causal_chain.superseded_by,
-                        "derived_from": r.context.causal_chain.derived_from,
-                        "supports": r.context.causal_chain.supports,
-                        "conflicts_with": r.context.causal_chain.conflicts_with,
-                    },
-                    "document_sections": [
-                        {
-                            "doc_id": ds.doc_id,
-                            "doc_title": ds.doc_title,
-                            "doc_type": ds.doc_type,
-                            "section_heading": ds.section_heading,
-                            "section_content": ds.section_content,
-                            "section_index": ds.section_index,
-                            "relevance_score": ds.relevance_score,
-                        }
-                        for ds in r.context.document_sections
-                    ] if r.context.document_sections else [],
-                }
-                for r in results
-            ],
-            "count": len(results),
-        })
+                        if r.context.episode
+                        else None,
+                        "entity_states": [
+                            {
+                                "entity_name": s.entity_name,
+                                "state_key": s.state_key,
+                                "state_value": s.state_value,
+                                "is_current": s.is_current,
+                            }
+                            for s in r.context.entity_states
+                        ],
+                        "causal_chain": {
+                            "supersedes": r.context.causal_chain.supersedes,
+                            "superseded_by": r.context.causal_chain.superseded_by,
+                            "derived_from": r.context.causal_chain.derived_from,
+                            "supports": r.context.causal_chain.supports,
+                            "conflicts_with": r.context.causal_chain.conflicts_with,
+                        },
+                        "document_sections": [
+                            {
+                                "doc_id": ds.doc_id,
+                                "doc_title": ds.doc_title,
+                                "doc_type": ds.doc_type,
+                                "section_heading": ds.section_heading,
+                                "section_content": ds.section_content,
+                                "section_index": ds.section_index,
+                                "relevance_score": ds.relevance_score,
+                            }
+                            for ds in r.context.document_sections
+                        ]
+                        if r.context.document_sections
+                        else [],
+                    }
+                    for r in results
+                ],
+                "count": len(results),
+            }
+        )
 
     async def delete_memory_endpoint(request: Request) -> JSONResponse:
         memory_id = request.path_params["memory_id"]
@@ -420,18 +453,20 @@ def create_api_app(
             return JSONResponse({"error": "Memory not found"}, status_code=404)
 
         entity_ids = await memory_svc.store.get_memory_entities(memory_id)
-        return JSONResponse({
-            "memory_id": memory.id,
-            "content": memory.content,
-            "type": memory.type,
-            "domains": memory.domains,
-            "tags": memory.tags,
-            "source_agent": memory.source_agent,
-            "importance": memory.importance,
-            "created_at": memory.created_at.isoformat() if memory.created_at else None,
-            "updated_at": memory.updated_at.isoformat() if memory.updated_at else None,
-            "linked_entities": entity_ids,
-        })
+        return JSONResponse(
+            {
+                "memory_id": memory.id,
+                "content": memory.content,
+                "type": memory.type,
+                "domains": memory.domains,
+                "tags": memory.tags,
+                "source_agent": memory.source_agent,
+                "importance": memory.importance,
+                "created_at": memory.created_at.isoformat() if memory.created_at else None,
+                "updated_at": memory.updated_at.isoformat() if memory.updated_at else None,
+                "linked_entities": entity_ids,
+            }
+        )
 
     # -- Knowledge Bus -------------------------------------------------------
 
@@ -458,6 +493,7 @@ def create_api_app(
             try:
                 # Extract project_id from question text if present
                 import re as _re
+
                 _pid_match = _re.search(r"\(project_id:\s*(PRJ-[a-f0-9]{8})\)", question)
                 _project_id = _pid_match.group(1) if _pid_match else None
                 await doc_svc.record_bus_conversation(
@@ -476,14 +512,16 @@ def create_api_app(
         if response is None:
             return JSONResponse({"answered": False})
 
-        return JSONResponse({
-            "answered": True,
-            "content": response.knowledge.content,
-            "from_agent": response.from_agent,
-            "source_mode": response.source_mode,
-            "confidence": response.confidence,
-            "staleness_warning": response.staleness_warning,
-        })
+        return JSONResponse(
+            {
+                "answered": True,
+                "content": response.knowledge.content,
+                "from_agent": response.from_agent,
+                "source_mode": response.source_mode,
+                "confidence": response.confidence,
+                "staleness_warning": response.staleness_warning,
+            }
+        )
 
     async def bus_announce(request: Request) -> JSONResponse:
         body = await request.json()
@@ -491,11 +529,13 @@ def create_api_app(
         domains = body.get("domains", [])
         if not content or not domains:
             return JSONResponse(
-                {"error": "content and domains are required"}, status_code=400,
+                {"error": "content and domains are required"},
+                status_code=400,
             )
 
         agent_id = request.headers.get(
-            "X-Agent-ID", body.get("from_agent", "http-client"),
+            "X-Agent-ID",
+            body.get("from_agent", "http-client"),
         )
         announcement = KnowledgeAnnounce(
             knowledge=KnowledgePayload(content=content),
@@ -520,9 +560,7 @@ def create_api_app(
                         # Filter by domain if specified
                         if domain_filter:
                             evt_domains = getattr(evt, "domains", [])
-                            if evt_domains and not any(
-                                d in domain_filter for d in evt_domains
-                            ):
+                            if evt_domains and not any(d in domain_filter for d in evt_domains):
                                 continue
                         yield evt.to_sse()
                     except TimeoutError:
@@ -561,29 +599,31 @@ def create_api_app(
         inbox = await bus_svc.drain_inbox(agent_id)
         announcements = await bus_svc.drain_announcements(agent_id)
 
-        return JSONResponse({
-            "agent_id": agent_id,
-            "status": "live",
-            "domains": domains,
-            "inbox_count": len(inbox),
-            "announcement_count": len(announcements),
-            "inbox": [
-                {
-                    "content": r.knowledge.content,
-                    "from_agent": r.from_agent,
-                    "source_mode": r.source_mode,
-                }
-                for r in inbox
-            ],
-            "announcements": [
-                {
-                    "content": a.knowledge.content,
-                    "from_agent": a.from_agent,
-                    "event": a.event,
-                }
-                for a in announcements
-            ],
-        })
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "status": "live",
+                "domains": domains,
+                "inbox_count": len(inbox),
+                "announcement_count": len(announcements),
+                "inbox": [
+                    {
+                        "content": r.knowledge.content,
+                        "from_agent": r.from_agent,
+                        "source_mode": r.source_mode,
+                    }
+                    for r in inbox
+                ],
+                "announcements": [
+                    {
+                        "content": a.knowledge.content,
+                        "from_agent": a.from_agent,
+                        "event": a.event,
+                    }
+                    for a in announcements
+                ],
+            }
+        )
 
     async def agent_sleep(request: Request) -> JSONResponse:
         agent_id = request.path_params["agent_id"]
@@ -592,11 +632,13 @@ def create_api_app(
         # Create snapshot from provided entries
         entries = []
         for entry_data in body.get("entries", []):
-            entries.append(SnapshotEntry(
-                domain=entry_data.get("domain", "general"),
-                knowledge=KnowledgePayload(content=entry_data["content"]),
-                confidence=entry_data.get("confidence", 0.8),
-            ))
+            entries.append(
+                SnapshotEntry(
+                    domain=entry_data.get("domain", "general"),
+                    knowledge=KnowledgePayload(content=entry_data["content"]),
+                    confidence=entry_data.get("confidence", 0.8),
+                )
+            )
 
         if entries:
             domains = list({e.domain for e in entries})
@@ -609,11 +651,13 @@ def create_api_app(
         # Update agent status
         await bus_svc.update_availability(agent_id, "sleeping")
 
-        return JSONResponse({
-            "agent_id": agent_id,
-            "status": "sleeping",
-            "snapshot_entries": len(entries),
-        })
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "status": "sleeping",
+                "snapshot_entries": len(entries),
+            }
+        )
 
     async def agent_snapshot(request: Request) -> JSONResponse:
         agent_id = request.path_params["agent_id"]
@@ -621,28 +665,32 @@ def create_api_app(
         if snapshot is None:
             return JSONResponse({"exists": False, "agent_id": agent_id})
 
-        return JSONResponse({
-            "exists": True,
-            "agent_id": agent_id,
-            "snapshot_id": snapshot.snapshot_id,
-            "timestamp": snapshot.timestamp.isoformat() if snapshot.timestamp else None,
-            "domains": snapshot.domains,
-            "entry_count": len(snapshot.entries),
-        })
+        return JSONResponse(
+            {
+                "exists": True,
+                "agent_id": agent_id,
+                "snapshot_id": snapshot.snapshot_id,
+                "timestamp": snapshot.timestamp.isoformat() if snapshot.timestamp else None,
+                "domains": snapshot.domains,
+                "entry_count": len(snapshot.entries),
+            }
+        )
 
     async def list_agents(request: Request) -> JSONResponse:
         agents = bus_svc.get_all_agents()
-        return JSONResponse({
-            "agents": [
-                {
-                    "agent_id": a.agent_id,
-                    "status": a.status,
-                    "domains": a.domains,
-                }
-                for a in agents
-            ],
-            "count": len(agents),
-        })
+        return JSONResponse(
+            {
+                "agents": [
+                    {
+                        "agent_id": a.agent_id,
+                        "status": a.status,
+                        "domains": a.domains,
+                    }
+                    for a in agents
+                ],
+                "count": len(agents),
+            }
+        )
 
     # -- Entity state & episodes ---------------------------------------------
 
@@ -652,50 +700,56 @@ def create_api_app(
         node = await memory_svc.store.get_current_state(entity_id, state_key)
         if node is None:
             return JSONResponse({"found": False, "entity_id": entity_id})
-        return JSONResponse({
-            "found": True,
-            "entity_id": entity_id,
-            "node_id": node.id,
-            "state_key": node.metadata.get("state_key", ""),
-            "state_value": node.metadata.get("state_value", ""),
-            "observed_at": node.metadata.get("observed_at", ""),
-        })
+        return JSONResponse(
+            {
+                "found": True,
+                "entity_id": entity_id,
+                "node_id": node.id,
+                "state_key": node.metadata.get("state_key", ""),
+                "state_value": node.metadata.get("state_value", ""),
+                "observed_at": node.metadata.get("observed_at", ""),
+            }
+        )
 
     async def entity_history(request: Request) -> JSONResponse:
         entity_id = request.path_params["entity_id"]
         state_key = request.query_params.get("key", "state")
         nodes = await memory_svc.store.get_state_history(entity_id, state_key)
-        return JSONResponse({
-            "entity_id": entity_id,
-            "state_key": state_key,
-            "count": len(nodes),
-            "states": [
-                {
-                    "node_id": n.id,
-                    "state_value": n.metadata.get("state_value", ""),
-                    "is_current": n.is_current,
-                    "observed_at": n.metadata.get("observed_at", ""),
-                    "created_at": n.created_at.isoformat() if n.created_at else None,
-                }
-                for n in nodes
-            ],
-        })
+        return JSONResponse(
+            {
+                "entity_id": entity_id,
+                "state_key": state_key,
+                "count": len(nodes),
+                "states": [
+                    {
+                        "node_id": n.id,
+                        "state_value": n.metadata.get("state_value", ""),
+                        "is_current": n.is_current,
+                        "observed_at": n.metadata.get("observed_at", ""),
+                        "created_at": n.created_at.isoformat() if n.created_at else None,
+                    }
+                    for n in nodes
+                ],
+            }
+        )
 
     async def list_episodes_endpoint(request: Request) -> JSONResponse:
         episodes = list(await memory_svc.store.get_open_episodes())
-        return JSONResponse({
-            "count": len(episodes),
-            "episodes": [
-                {
-                    "episode_id": ep.id,
-                    "memory_id": ep.memory_id,
-                    "status": ep.metadata.get("status", "open"),
-                    "title": ep.metadata.get("episode_title", ""),
-                    "created_at": ep.created_at.isoformat() if ep.created_at else None,
-                }
-                for ep in episodes
-            ],
-        })
+        return JSONResponse(
+            {
+                "count": len(episodes),
+                "episodes": [
+                    {
+                        "episode_id": ep.id,
+                        "memory_id": ep.memory_id,
+                        "status": ep.metadata.get("status", "open"),
+                        "title": ep.metadata.get("episode_title", ""),
+                        "created_at": ep.created_at.isoformat() if ep.created_at else None,
+                    }
+                    for ep in episodes
+                ],
+            }
+        )
 
     async def get_episode_endpoint(request: Request) -> JSONResponse:
         episode_id = request.path_params["episode_id"]
@@ -704,21 +758,23 @@ def create_api_app(
             return JSONResponse({"error": "Episode not found"}, status_code=404)
 
         members = await memory_svc.store.get_episode_members(episode_id)
-        return JSONResponse({
-            "episode_id": episode_node.id,
-            "status": episode_node.metadata.get("status", "unknown"),
-            "title": episode_node.metadata.get("episode_title", ""),
-            "member_count": len(members),
-            "members": [
-                {
-                    "node_id": m.id,
-                    "memory_id": m.memory_id,
-                    "node_type": m.node_type,
-                    "created_at": m.created_at.isoformat() if m.created_at else None,
-                }
-                for m in members
-            ],
-        })
+        return JSONResponse(
+            {
+                "episode_id": episode_node.id,
+                "status": episode_node.metadata.get("status", "unknown"),
+                "title": episode_node.metadata.get("episode_title", ""),
+                "member_count": len(members),
+                "members": [
+                    {
+                        "node_id": m.id,
+                        "memory_id": m.memory_id,
+                        "node_type": m.node_type,
+                        "created_at": m.created_at.isoformat() if m.created_at else None,
+                    }
+                    for m in members
+                ],
+            }
+        )
 
     # -- Phase 5: Level-First Retrieval & Synthesis -------------------------
 
@@ -731,58 +787,68 @@ def create_api_app(
         domain = body.get("domain")
         limit = int(body.get("limit", 10))
         results = await memory_svc.search_level(
-            query, node_types=node_types, domain=domain, limit=limit,
+            query,
+            node_types=node_types,
+            domain=domain,
+            limit=limit,
         )
-        return JSONResponse([
-            {
-                "memory_id": sm.memory.id,
-                "content": sm.memory.content[:500],
-                "score": round(sm.total_activation, 4),
-                "node_types": sm.node_types,
-                "memory_type": sm.memory.type,
-            }
-            for sm in results
-        ])
+        return JSONResponse(
+            [
+                {
+                    "memory_id": sm.memory.id,
+                    "content": sm.memory.content[:500],
+                    "score": round(sm.total_activation, 4),
+                    "node_types": sm.node_types,
+                    "memory_type": sm.memory.type,
+                }
+                for sm in results
+            ]
+        )
 
     async def traverse_endpoint(request: Request) -> JSONResponse:
         body = await request.json()
         seed_id = body.get("seed_memory_id", "")
         if not seed_id:
             return JSONResponse(
-                {"error": "seed_memory_id is required"}, status_code=400,
+                {"error": "seed_memory_id is required"},
+                status_code=400,
             )
         mode = body.get("mode", "bottom_up")
         limit = int(body.get("limit", 20))
         result = await memory_svc.traverse(seed_id, mode=mode, limit=limit)
-        return JSONResponse({
-            "seed_id": result.seed_id,
-            "traversal_mode": result.traversal_mode,
-            "levels_traversed": result.levels_traversed,
-            "result_count": len(result.results),
-            "path": result.path[:20],
-            "results": [
-                {
-                    "memory_id": rr.memory.memory.id,
-                    "content": rr.memory.memory.content[:300],
-                    "retrieval_path": rr.retrieval_path,
-                }
-                for rr in result.results
-            ],
-        })
+        return JSONResponse(
+            {
+                "seed_id": result.seed_id,
+                "traversal_mode": result.traversal_mode,
+                "levels_traversed": result.levels_traversed,
+                "result_count": len(result.results),
+                "path": result.path[:20],
+                "results": [
+                    {
+                        "memory_id": rr.memory.memory.id,
+                        "content": rr.memory.memory.content[:300],
+                        "retrieval_path": rr.retrieval_path,
+                    }
+                    for rr in result.results
+                ],
+            }
+        )
 
     async def topic_map_endpoint(request: Request) -> JSONResponse:
         clusters = await memory_svc.get_topic_map()
-        return JSONResponse([
-            {
-                "topic_id": c.topic_id,
-                "label": c.label,
-                "entity_keys": c.entity_keys,
-                "abstract_count": len(c.abstract_ids),
-                "episode_count": len(c.episode_ids),
-                "confidence": round(c.confidence, 3),
-            }
-            for c in clusters
-        ])
+        return JSONResponse(
+            [
+                {
+                    "topic_id": c.topic_id,
+                    "label": c.label,
+                    "entity_keys": c.entity_keys,
+                    "abstract_count": len(c.abstract_ids),
+                    "episode_count": len(c.episode_ids),
+                    "confidence": round(c.confidence, 3),
+                }
+                for c in clusters
+            ]
+        )
 
     async def synthesize_endpoint(request: Request) -> JSONResponse:
         body = await request.json()
@@ -798,17 +864,19 @@ def create_api_app(
             traversal=body.get("traversal"),
             seed_memory_id=body.get("seed_memory_id"),
         )
-        return JSONResponse({
-            "query": result.query,
-            "mode": result.mode,
-            "content": result.content,
-            "sources": result.sources,
-            "source_count": result.source_count,
-            "token_budget": result.token_budget,
-            "tokens_used": result.tokens_used,
-            "traversal": result.traversal,
-            "intent": result.intent,
-        })
+        return JSONResponse(
+            {
+                "query": result.query,
+                "mode": result.mode,
+                "content": result.content,
+                "sources": result.sources,
+                "source_count": result.source_count,
+                "token_budget": result.token_budget,
+                "tokens_used": result.tokens_used,
+                "traversal": result.traversal,
+                "intent": result.intent,
+            }
+        )
 
     # -- Consolidation -------------------------------------------------------
 
@@ -823,8 +891,11 @@ def create_api_app(
     # Avoids CORS issues (dashboard and hub share the same origin).
     # Agent port mapping: architect=8001, security=8002, builder=8003
     _agent_ports = {
-        "archeologist": 8001, "architect": 8002, "security": 8003,
-        "product_owner": 8004, "designer": 8005,
+        "archeologist": 8001,
+        "architect": 8002,
+        "security": 8003,
+        "product_owner": 8004,
+        "designer": 8005,
     }
 
     async def agent_chat(request: Request) -> JSONResponse:
@@ -834,7 +905,8 @@ def create_api_app(
         port = _agent_ports.get(agent_id)
         if port is None:
             return JSONResponse(
-                {"error": f"Unknown agent: {agent_id}"}, status_code=404,
+                {"error": f"Unknown agent: {agent_id}"},
+                status_code=404,
             )
 
         body = await request.json()
@@ -855,14 +927,17 @@ def create_api_app(
                 data = resp.json()
                 content = data.get("value", data.get("output", str(data)))
 
-                return JSONResponse({
-                    "from_agent": agent_id,
-                    "content": content,
-                    "answered": True,
-                })
+                return JSONResponse(
+                    {
+                        "from_agent": agent_id,
+                        "content": content,
+                        "answered": True,
+                    }
+                )
         except _httpx.TimeoutException:
             return JSONResponse(
-                {"error": "Agent timed out", "answered": False}, status_code=504,
+                {"error": "Agent timed out", "answered": False},
+                status_code=504,
             )
         except Exception as exc:
             return JSONResponse(
@@ -908,10 +983,13 @@ def create_api_app(
 
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="project.created",
-                data={"project_id": project_id, "topic": topic},
-            ))
+
+            event_log.emit(
+                DashboardEvent(
+                    type="project.created",
+                    data={"project_id": project_id, "topic": topic},
+                )
+            )
 
         # Fire-and-forget: trigger the first agent via bus announcement.
         # The SSE listener in each agent detects trigger-{agent_id} domains
@@ -950,7 +1028,8 @@ def create_api_app(
             await bus_svc.announce(announcement)
             logger.info(
                 "Triggered %s for %s via bus announce",
-                trigger_domain, project_id,
+                trigger_domain,
+                project_id,
             )
 
         # Update project phase
@@ -998,10 +1077,13 @@ def create_api_app(
 
             if event_log:
                 from ncms.infrastructure.observability.event_log import DashboardEvent
-                event_log.emit(DashboardEvent(
-                    type="project.archived",
-                    data={"project_id": project_id},
-                ))
+
+                event_log.emit(
+                    DashboardEvent(
+                        type="project.archived",
+                        data={"project_id": project_id},
+                    )
+                )
 
             return JSONResponse(project.model_dump(mode="json"))
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -1013,10 +1095,13 @@ def create_api_app(
             await doc_svc.update_project_status(project_id, "failed")
             if event_log:
                 from ncms.infrastructure.observability.event_log import DashboardEvent
-                event_log.emit(DashboardEvent(
-                    type="project.failed",
-                    data={"project_id": project_id},
-                ))
+
+                event_log.emit(
+                    DashboardEvent(
+                        type="project.failed",
+                        data={"project_id": project_id},
+                    )
+                )
             return JSONResponse({"status": "failed", "project_id": project_id})
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -1032,15 +1117,19 @@ def create_api_app(
                 if project:
                     project.quality_score = quality_score
                     from datetime import UTC, datetime
+
                     project.updated_at = datetime.now(UTC)
                     await doc_svc._store.update_project(project)
 
             if event_log:
                 from ncms.infrastructure.observability.event_log import DashboardEvent
-                event_log.emit(DashboardEvent(
-                    type="project.completed",
-                    data={"project_id": project_id, "quality_score": quality_score},
-                ))
+
+                event_log.emit(
+                    DashboardEvent(
+                        type="project.completed",
+                        data={"project_id": project_id, "quality_score": quality_score},
+                    )
+                )
 
             return JSONResponse({"status": "completed", "project_id": project_id})
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -1076,11 +1165,14 @@ def create_api_app(
 
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="pipeline.node",
-                data=evt,
-                agent_id=body.get("agent"),
-            ))
+
+            event_log.emit(
+                DashboardEvent(
+                    type="pipeline.node",
+                    data=evt,
+                    agent_id=body.get("agent"),
+                )
+            )
 
         return JSONResponse({"stored": True})
 
@@ -1088,20 +1180,23 @@ def create_api_app(
         project_id = request.path_params["project_id"]
         if doc_svc:
             events = await doc_svc.get_pipeline_events(project_id)
-            return JSONResponse([
-                {
-                    "project_id": e.project_id,
-                    "agent": e.agent,
-                    "node": e.node,
-                    "status": e.status,
-                    "detail": e.detail,
-                    "timestamp": (
-                        e.timestamp.isoformat()
-                        if hasattr(e.timestamp, "isoformat") else str(e.timestamp)
-                    ),
-                }
-                for e in events
-            ])
+            return JSONResponse(
+                [
+                    {
+                        "project_id": e.project_id,
+                        "agent": e.agent,
+                        "node": e.node,
+                        "status": e.status,
+                        "detail": e.detail,
+                        "timestamp": (
+                            e.timestamp.isoformat()
+                            if hasattr(e.timestamp, "isoformat")
+                            else str(e.timestamp)
+                        ),
+                    }
+                    for e in events
+                ]
+            )
         return JSONResponse([])
 
     # -- Pipeline Interrupt ----------------------------------------------------
@@ -1122,11 +1217,14 @@ def create_api_app(
 
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="pipeline.interrupt",
-                data={"agent_id": agent_id},
-                agent_id=agent_id,
-            ))
+
+            event_log.emit(
+                DashboardEvent(
+                    type="pipeline.interrupt",
+                    data={"agent_id": agent_id},
+                    agent_id=agent_id,
+                )
+            )
 
         # Mark the active project as interrupted and emit telemetry
         # so pipeline progress nodes stop showing as "started"
@@ -1150,12 +1248,16 @@ def create_api_app(
                                 started_nodes.discard(e.node)
                         for node in started_nodes:
                             await doc_svc.record_pipeline_event(
-                                proj.id, agent_id, node, "interrupted",
+                                proj.id,
+                                agent_id,
+                                node,
+                                "interrupted",
                                 detail="Interrupted by human",
                             )
                         logger.info(
                             "Project %s marked interrupted (%d nodes stopped)",
-                            proj.id, len(started_nodes),
+                            proj.id,
+                            len(started_nodes),
                         )
                         break  # Only interrupt the first matching project
             except Exception as e:
@@ -1180,9 +1282,7 @@ def create_api_app(
 
         # Find highest existing version for this agent+type combo
         prefix = f"{agent_id}/{prompt_type}/"
-        existing_versions = [
-            v["version"] for k, v in _prompts.items() if k.startswith(prefix)
-        ]
+        existing_versions = [v["version"] for k, v in _prompts.items() if k.startswith(prefix)]
         version = max(existing_versions, default=0) + 1
         key = f"{agent_id}/{prompt_type}/{version}"
 
@@ -1232,7 +1332,8 @@ def create_api_app(
         content = body.get("content", "")
         if not policy_type or not content:
             return JSONResponse(
-                {"error": "policy_type and content are required"}, status_code=400,
+                {"error": "policy_type and content are required"},
+                status_code=400,
             )
 
         existing = _policies.get(policy_type)
@@ -1293,7 +1394,9 @@ def create_api_app(
             }
             logger.info(
                 "[api] store_document: from=%s type=%s client_metadata_keys=%s",
-                from_agent, doc_type, list(client_meta.keys()),
+                from_agent,
+                doc_type,
+                list(client_meta.keys()),
             )
             doc = await doc_svc.publish_document(
                 title=title,
@@ -1329,7 +1432,9 @@ def create_api_app(
 
                         _src_fmt = body.get("source_format")
                         classification = classify_content(
-                            content, "document", source_format=_src_fmt,
+                            content,
+                            "document",
+                            source_format=_src_fmt,
                         )
                         doc_domains = body.get("domains") or []
                         if classification.content_class == ContentClass.NAVIGABLE:
@@ -1351,7 +1456,9 @@ def create_api_app(
                                 logger.info(
                                     "[api] Document %s: NAVIGABLE, section service "
                                     "path (%d sections, format=%s)",
-                                    doc.id, len(sections), classification.format_hint,
+                                    doc.id,
+                                    len(sections),
+                                    classification.format_hint,
                                 )
                         if not _used_section_path:
                             # Document is ATOMIC or has <2 sections — still a document.
@@ -1378,13 +1485,16 @@ def create_api_app(
                             logger.info(
                                 "[api] Document %s: ATOMIC (%s, %d chars), stored as "
                                 "unsplit document_profile",
-                                doc.id, classification.format_hint, len(content),
+                                doc.id,
+                                classification.format_hint,
+                                len(content),
                             )
                     except Exception as cls_err:
                         logger.warning(
                             "[api] Document %s: classification failed, "
                             "falling back to rich summary: %s",
-                            doc.id, cls_err,
+                            doc.id,
+                            cls_err,
                         )
 
                 if not _used_section_path:
@@ -1396,9 +1506,7 @@ def create_api_app(
                     if doc_type:
                         summary_parts.append(f"Type: {doc_type}")
                     if entity_names:
-                        summary_parts.append(
-                            f"Key entities: {', '.join(entity_names)}"
-                        )
+                        summary_parts.append(f"Key entities: {', '.join(entity_names)}")
                     # Include more content than before (up to 600 chars)
                     preview = content[:600].strip()
                     if len(content) > 600:
@@ -1411,8 +1519,7 @@ def create_api_app(
                         content=summary,
                         memory_type="fact",
                         domains=fallback_domains,
-                        tags=["document", doc.id]
-                        + [e["name"].lower() for e in doc.entities[:5]],
+                        tags=["document", doc.id] + [e["name"].lower() for e in doc.entities[:5]],
                         importance=6.0,
                         source_agent=from_agent,
                         entities=doc.entities,
@@ -1427,32 +1534,38 @@ def create_api_app(
             # Emit SSE event
             if event_log:
                 from ncms.infrastructure.observability.event_log import DashboardEvent
-                event_log.emit(DashboardEvent(
-                    type="document.published",
-                    data={
-                        "document_id": doc.id,
-                        "title": title,
-                        "from_agent": from_agent,
-                        "doc_type": doc_type,
-                        "content": content[:200],
-                    },
-                    agent_id=from_agent,
-                ))
 
-            return JSONResponse({
-                "document_id": doc.id,
-                "title": doc.title,
-                "from_agent": doc.from_agent,
-                "project_id": doc.project_id,
-                "doc_type": doc.doc_type,
-                "version": doc.version,
-                "content_hash": doc.content_hash,
-                "format": doc.format,
-                "url": f"/documents/{filename}",
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "size_bytes": doc.size_bytes,
-                "entities": doc.entities,
-            }, status_code=201)
+                event_log.emit(
+                    DashboardEvent(
+                        type="document.published",
+                        data={
+                            "document_id": doc.id,
+                            "title": title,
+                            "from_agent": from_agent,
+                            "doc_type": doc_type,
+                            "content": content[:200],
+                        },
+                        agent_id=from_agent,
+                    )
+                )
+
+            return JSONResponse(
+                {
+                    "document_id": doc.id,
+                    "title": doc.title,
+                    "from_agent": doc.from_agent,
+                    "project_id": doc.project_id,
+                    "doc_type": doc.doc_type,
+                    "version": doc.version,
+                    "content_hash": doc.content_hash,
+                    "format": doc.format,
+                    "url": f"/documents/{filename}",
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                    "size_bytes": doc.size_bytes,
+                    "entities": doc.entities,
+                },
+                status_code=201,
+            )
 
         # Fallback: no doc_svc (shouldn't happen in production)
         return JSONResponse({"error": "DocumentService not available"}, status_code=503)
@@ -1463,25 +1576,27 @@ def create_api_app(
             project_id = request.query_params.get("project_id")
             doc_type = request.query_params.get("doc_type")
             docs = await doc_svc.list_documents(project_id=project_id, doc_type=doc_type)
-            return JSONResponse([
-                {
-                    "document_id": d.id,
-                    "id": d.id,
-                    "title": d.title,
-                    "from_agent": d.from_agent,
-                    "project_id": d.project_id,
-                    "doc_type": d.doc_type,
-                    "version": d.version,
-                    "content_hash": d.content_hash,
-                    "url": f"/documents/{d.id}.md",
-                    "created_at": d.created_at.isoformat() if d.created_at else None,
-                    "size_bytes": d.size_bytes,
-                    "entity_count": len(d.entities) if d.entities else 0,
-                    "metadata": d.metadata if isinstance(d.metadata, dict) else {},
-                    "entities": d.entities,
-                }
-                for d in docs
-            ])
+            return JSONResponse(
+                [
+                    {
+                        "document_id": d.id,
+                        "id": d.id,
+                        "title": d.title,
+                        "from_agent": d.from_agent,
+                        "project_id": d.project_id,
+                        "doc_type": d.doc_type,
+                        "version": d.version,
+                        "content_hash": d.content_hash,
+                        "url": f"/documents/{d.id}.md",
+                        "created_at": d.created_at.isoformat() if d.created_at else None,
+                        "size_bytes": d.size_bytes,
+                        "entity_count": len(d.entities) if d.entities else 0,
+                        "metadata": d.metadata if isinstance(d.metadata, dict) else {},
+                        "entities": d.entities,
+                    }
+                    for d in docs
+                ]
+            )
         return JSONResponse([])
 
     async def get_document(request: Request) -> JSONResponse:
@@ -1491,23 +1606,25 @@ def create_api_app(
             doc = await doc_svc.get_document(doc_id)
             if not doc:
                 return JSONResponse({"error": "Document not found"}, status_code=404)
-            return JSONResponse({
-                "document_id": doc.id,
-                "id": doc.id,
-                "title": doc.title,
-                "from_agent": doc.from_agent,
-                "project_id": doc.project_id,
-                "doc_type": doc.doc_type,
-                "version": doc.version,
-                "content_hash": doc.content_hash,
-                "url": f"/documents/{doc.id}.md",
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "size_bytes": doc.size_bytes,
-                "entity_count": len(doc.entities) if doc.entities else 0,
-                "entities": doc.entities,
-                "metadata": doc.metadata if isinstance(doc.metadata, dict) else {},
-                "content": doc.content,
-            })
+            return JSONResponse(
+                {
+                    "document_id": doc.id,
+                    "id": doc.id,
+                    "title": doc.title,
+                    "from_agent": doc.from_agent,
+                    "project_id": doc.project_id,
+                    "doc_type": doc.doc_type,
+                    "version": doc.version,
+                    "content_hash": doc.content_hash,
+                    "url": f"/documents/{doc.id}.md",
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                    "size_bytes": doc.size_bytes,
+                    "entity_count": len(doc.entities) if doc.entities else 0,
+                    "entities": doc.entities,
+                    "metadata": doc.metadata if isinstance(doc.metadata, dict) else {},
+                    "content": doc.content,
+                }
+            )
         return JSONResponse({"error": "Document not found"}, status_code=404)
 
     # -- Document Links & Reviews (Phase 2.5) --------------------------------
@@ -1546,32 +1663,36 @@ def create_api_app(
         if not doc_svc:
             return JSONResponse([], status_code=200)
         chain = await doc_svc.get_traceability_chain(doc_id)
-        return JSONResponse([
-            {
-                "source_doc_id": lnk.source_doc_id,
-                "target_doc_id": lnk.target_doc_id,
-                "link_type": lnk.link_type,
-                "metadata": lnk.metadata,
-            }
-            for lnk in chain
-        ])
+        return JSONResponse(
+            [
+                {
+                    "source_doc_id": lnk.source_doc_id,
+                    "target_doc_id": lnk.target_doc_id,
+                    "link_type": lnk.link_type,
+                    "metadata": lnk.metadata,
+                }
+                for lnk in chain
+            ]
+        )
 
     async def get_document_versions(request: Request) -> JSONResponse:
         doc_id = request.path_params["doc_id"]
         if not doc_svc:
             return JSONResponse([], status_code=200)
         versions = await doc_svc.get_document_versions(doc_id)
-        return JSONResponse([
-            {
-                "document_id": v.id,
-                "version": v.version,
-                "title": v.title,
-                "size_bytes": v.size_bytes,
-                "content_hash": v.content_hash,
-                "created_at": v.created_at.isoformat() if v.created_at else None,
-            }
-            for v in versions
-        ])
+        return JSONResponse(
+            [
+                {
+                    "document_id": v.id,
+                    "version": v.version,
+                    "title": v.title,
+                    "size_bytes": v.size_bytes,
+                    "content_hash": v.content_hash,
+                    "created_at": v.created_at.isoformat() if v.created_at else None,
+                }
+                for v in versions
+            ]
+        )
 
     async def get_document_reviews(request: Request) -> JSONResponse:
         doc_id = request.path_params["doc_id"]
@@ -1587,21 +1708,24 @@ def create_api_app(
         doc_type = request.query_params.get("doc_type")
         min_score = request.query_params.get("min_score")
         results = await doc_svc.search_documents(
-            entity=entity, doc_type=doc_type,
+            entity=entity,
+            doc_type=doc_type,
             min_score=int(min_score) if min_score else None,
         )
-        return JSONResponse([
-            {
-                "document_id": d.id,
-                "title": d.title,
-                "doc_type": d.doc_type,
-                "from_agent": d.from_agent,
-                "project_id": d.project_id,
-                "entities": d.entities,
-                "size_bytes": d.size_bytes,
-            }
-            for d in results
-        ])
+        return JSONResponse(
+            [
+                {
+                    "document_id": d.id,
+                    "title": d.title,
+                    "doc_type": d.doc_type,
+                    "from_agent": d.from_agent,
+                    "project_id": d.project_id,
+                    "entities": d.entities,
+                    "size_bytes": d.size_bytes,
+                }
+                for d in results
+            ]
+        )
 
     # -- Guardrail Approval Gate endpoints ------------------------------------
 
@@ -1620,16 +1744,19 @@ def create_api_app(
         # Emit SSE event so dashboard knows immediately
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="approval_requested",
-                data={
-                    "approval_id": approval.id,
-                    "project_id": approval.project_id,
-                    "agent": approval.agent,
-                    "node": approval.node,
-                    "violation_count": len(approval.violations),
-                },
-            ))
+
+            event_log.emit(
+                DashboardEvent(
+                    type="approval_requested",
+                    data={
+                        "approval_id": approval.id,
+                        "project_id": approval.project_id,
+                        "agent": approval.agent,
+                        "node": approval.node,
+                        "violation_count": len(approval.violations),
+                    },
+                )
+            )
         return JSONResponse(approval.model_dump(mode="json"), status_code=201)
 
     async def list_approvals_endpoint(request: Request) -> JSONResponse:
@@ -1639,7 +1766,8 @@ def create_api_app(
         status = request.query_params.get("status")
         project_id = request.query_params.get("project_id")
         approvals = await doc_svc.list_pending_approvals(
-            status=status, project_id=project_id,
+            status=status,
+            project_id=project_id,
         )
         return JSONResponse([a.model_dump(mode="json") for a in approvals])
 
@@ -1670,7 +1798,10 @@ def create_api_app(
                 status_code=400,
             )
         result = await doc_svc.decide_approval(
-            approval_id, decision, decided_by, comment,
+            approval_id,
+            decision,
+            decided_by,
+            comment,
         )
         if not result:
             return JSONResponse(
@@ -1680,15 +1811,18 @@ def create_api_app(
         # Emit SSE event so dashboard + agents know
         if event_log:
             from ncms.infrastructure.observability.event_log import DashboardEvent
-            event_log.emit(DashboardEvent(
-                type="approval_decided",
-                data={
-                    "approval_id": result.id,
-                    "project_id": result.project_id,
-                    "decision": decision,
-                    "decided_by": decided_by,
-                },
-            ))
+
+            event_log.emit(
+                DashboardEvent(
+                    type="approval_decided",
+                    data={
+                        "approval_id": result.id,
+                        "project_id": result.project_id,
+                        "decision": decision,
+                        "decided_by": decided_by,
+                    },
+                )
+            )
         return JSONResponse(result.model_dump(mode="json"))
 
     # -- Audit Record endpoints ------------------------------------------------
@@ -1802,6 +1936,7 @@ def create_api_app(
         project_id = request.path_params["project_id"]
         report = await doc_svc.export_audit_report(project_id)
         from starlette.responses import Response
+
         return Response(
             content=report,
             media_type="text/markdown",
@@ -1830,7 +1965,8 @@ def create_api_app(
         except Exception:
             logger.error("Failed to get maintenance status", exc_info=True)
             return JSONResponse(
-                {"error": "failed to retrieve status"}, status_code=500,
+                {"error": "failed to retrieve status"},
+                status_code=500,
             )
 
     async def maintenance_run(request: Request) -> JSONResponse:
@@ -1844,18 +1980,21 @@ def create_api_app(
         task_name = body.get("task")
         if not task_name:
             return JSONResponse(
-                {"error": "task is required"}, status_code=400,
+                {"error": "task is required"},
+                status_code=400,
             )
         try:
             result = await maintenance_scheduler.run_now(task_name)
             return JSONResponse({"status": "ok", "task": task_name, "result": result})
         except Exception as exc:
             logger.error(
-                "Failed to trigger maintenance task %s", task_name,
+                "Failed to trigger maintenance task %s",
+                task_name,
                 exc_info=True,
             )
             return JSONResponse(
-                {"error": str(exc)}, status_code=500,
+                {"error": str(exc)},
+                status_code=500,
             )
 
     # -- Phase 6: Export & Feedback -------------------------------------------
@@ -1878,15 +2017,15 @@ def create_api_app(
         )
         result_ids = body.get("result_ids") or []
         position = (
-            result_ids.index(selected_memory_id) + 1
-            if selected_memory_id in result_ids
-            else None
+            result_ids.index(selected_memory_id) + 1 if selected_memory_id in result_ids else None
         )
-        return JSONResponse({
-            "recorded": True,
-            "selected_memory_id": selected_memory_id,
-            "position": position,
-        })
+        return JSONResponse(
+            {
+                "recorded": True,
+                "selected_memory_id": selected_memory_id,
+                "position": position,
+            }
+        )
 
     async def heartbeat_endpoint(request: Request) -> JSONResponse:
         """Record a heartbeat from an agent."""
@@ -1896,11 +2035,13 @@ def create_api_app(
             return JSONResponse({"error": "agent_id is required"}, status_code=400)
         await bus_svc.heartbeat(agent_id)
         online = bus_svc.is_agent_online(agent_id)
-        return JSONResponse({
-            "agent_id": agent_id,
-            "status": "online" if online else "offline",
-            "heartbeat_received": True,
-        })
+        return JSONResponse(
+            {
+                "agent_id": agent_id,
+                "status": "online" if online else "offline",
+                "heartbeat_received": True,
+            }
+        )
 
     async def scale_flags_endpoint(request: Request) -> JSONResponse:
         """Check scale-aware feature flags."""
@@ -1922,11 +2063,13 @@ def create_api_app(
                 rel = str(md_file.relative_to(output_path))
                 pages[rel] = md_file.read_text(encoding="utf-8")
 
-        return JSONResponse({
-            "counts": counts,
-            "total_pages": sum(counts.values()),
-            "pages": pages,
-        })
+        return JSONResponse(
+            {
+                "counts": counts,
+                "total_pages": sum(counts.values()),
+                "pages": pages,
+            }
+        )
 
     async def bulk_import_endpoint(request: Request) -> JSONResponse:
         """Bulk import knowledge from a directory path on the server.
@@ -1950,71 +2093,62 @@ def create_api_app(
 
         loader = KnowledgeLoader(memory_svc)
         stats = await loader.bulk_load_directory(p, domains=domains, project=project)
-        return JSONResponse({
-            "files_processed": stats.files_processed,
-            "memories_created": stats.memories_created,
-            "chunks_total": stats.chunks_total,
-            "errors": stats.errors,
-        })
+        return JSONResponse(
+            {
+                "files_processed": stats.files_processed,
+                "memories_created": stats.memories_created,
+                "chunks_total": stats.chunks_total,
+                "errors": stats.errors,
+            }
+        )
 
     # -- Routes --------------------------------------------------------------
 
     routes = [
         # Health
         Route("/api/v1/health", health, methods=["GET"]),
-
         # Auth
         Route("/api/v1/auth/login", login, methods=["POST"]),
         Route("/api/v1/auth/me", auth_me, methods=["GET"]),
-
         # Memory operations
         Route("/api/v1/memories", store_memory, methods=["POST"]),
         Route("/api/v1/memories/search", search_memory, methods=["GET", "POST"]),
         Route("/api/v1/memories/recall", recall_memory, methods=["GET", "POST"]),
         Route("/api/v1/memories/{memory_id}", get_provenance, methods=["GET"]),
         Route("/api/v1/memories/{memory_id}", delete_memory_endpoint, methods=["DELETE"]),
-
         # Knowledge Bus
         Route("/api/v1/bus/ask", bus_ask, methods=["POST"]),
         Route("/api/v1/bus/announce", bus_announce, methods=["POST"]),
         Route("/api/v1/bus/events", bus_events, methods=["GET"]),
         Route("/api/v1/bus/domains", bus_domains, methods=["GET"]),
-
         # Agent lifecycle
         Route("/api/v1/agents", list_agents, methods=["GET"]),
         Route("/api/v1/agents/{agent_id}/wake", agent_wake, methods=["POST"]),
         Route("/api/v1/agents/{agent_id}/sleep", agent_sleep, methods=["POST"]),
         Route("/api/v1/agents/{agent_id}/snapshot", agent_snapshot, methods=["GET"]),
-
         # Entity state & episodes
         Route("/api/v1/entities/{entity_id}/state", entity_state, methods=["GET"]),
         Route("/api/v1/entities/{entity_id}/history", entity_history, methods=["GET"]),
         Route("/api/v1/episodes", list_episodes_endpoint, methods=["GET"]),
         Route("/api/v1/episodes/{episode_id}", get_episode_endpoint, methods=["GET"]),
-
         # Agent chat proxy (NAT /generate)
         Route("/api/v1/agent/{agent_id}/chat", agent_chat, methods=["POST"]),
-
         # Phase 5: Level-first retrieval & synthesis
         Route("/api/v1/memory/search-level", search_level_endpoint, methods=["POST"]),
         Route("/api/v1/memory/traverse", traverse_endpoint, methods=["POST"]),
         Route("/api/v1/memory/synthesize", synthesize_endpoint, methods=["POST"]),
         Route("/api/v1/topics", topic_map_endpoint, methods=["GET"]),
-
         # Phase 6: Export & Feedback
         Route("/api/v1/feedback", search_feedback_endpoint, methods=["POST"]),
         Route("/api/v1/heartbeat", heartbeat_endpoint, methods=["POST"]),
         Route("/api/v1/scale-flags", scale_flags_endpoint, methods=["GET"]),
         Route("/api/v1/export/wiki", export_wiki_endpoint, methods=["POST"]),
         Route("/api/v1/knowledge/bulk-import", bulk_import_endpoint, methods=["POST"]),
-
         # Consolidation
         Route("/api/v1/consolidation/run", run_consolidation_endpoint, methods=["POST"]),
-
         # Maintenance
         Route("/api/v1/maintenance/status", maintenance_status, methods=["GET"]),
         Route("/api/v1/maintenance/run", maintenance_run, methods=["POST"]),
-
         # Documents (Phase 2.5)
         Route("/api/v1/documents", store_document, methods=["POST"]),
         Route("/api/v1/documents", list_documents, methods=["GET"]),
@@ -2024,10 +2158,8 @@ def create_api_app(
         Route("/api/v1/documents/{doc_id}/chain", get_document_chain, methods=["GET"]),
         Route("/api/v1/documents/{doc_id}/versions", get_document_versions, methods=["GET"]),
         Route("/api/v1/documents/{doc_id}/reviews", get_document_reviews, methods=["GET"]),
-
         # Reviews (Phase 2.5)
         Route("/api/v1/reviews", save_review_score_endpoint, methods=["POST"]),
-
         # Projects
         Route("/api/v1/projects", create_project, methods=["POST"]),
         Route("/api/v1/projects", list_projects, methods=["GET"]),
@@ -2035,12 +2167,10 @@ def create_api_app(
         Route("/api/v1/projects/{project_id}/archive", archive_project, methods=["POST"]),
         Route("/api/v1/projects/{project_id}/fail", fail_project, methods=["POST"]),
         Route("/api/v1/projects/{project_id}/complete", complete_project, methods=["POST"]),
-
         # Pipeline telemetry + control
         Route("/api/v1/pipeline/events", post_pipeline_event, methods=["POST"]),
         Route("/api/v1/pipeline/events/{project_id}", get_pipeline_events, methods=["GET"]),
         Route("/api/v1/pipeline/interrupt/{agent_id}", interrupt_agent, methods=["GET", "POST"]),
-
         # Prompts
         Route("/api/v1/prompts", store_prompt, methods=["POST"]),
         Route("/api/v1/prompts", list_prompts, methods=["GET"]),
@@ -2049,47 +2179,49 @@ def create_api_app(
             get_latest_prompt,
             methods=["GET"],
         ),
-
         # Policies
         Route("/api/v1/policies", store_policy, methods=["POST"]),
         Route("/api/v1/policies", list_policies, methods=["GET"]),
         Route("/api/v1/policies/{policy_type}", get_policy, methods=["GET"]),
-
         # Guardrail Approval Gates
         Route("/api/v1/approvals", create_approval_request, methods=["POST"]),
         Route("/api/v1/approvals", list_approvals_endpoint, methods=["GET"]),
         Route("/api/v1/approvals/{approval_id}", get_approval_endpoint, methods=["GET"]),
         Route("/api/v1/approvals/{approval_id}/decide", decide_approval_endpoint, methods=["POST"]),
-
         # Audit Records (agents report LLM calls, config, grounding, violations)
         Route("/api/v1/audit/llm-call", record_llm_call_endpoint, methods=["POST"]),
         Route("/api/v1/audit/config-snapshot", record_config_snapshot_endpoint, methods=["POST"]),
         Route("/api/v1/audit/grounding", record_grounding_endpoint, methods=["POST"]),
         Route(
             "/api/v1/audit/guardrail-violation",
-            record_guardrail_violation_endpoint, methods=["POST"],
+            record_guardrail_violation_endpoint,
+            methods=["POST"],
         ),
-
         # Audit & Provenance
         Route(
             "/api/v1/projects/{project_id}/audit-timeline",
-            audit_timeline_endpoint, methods=["GET"],
+            audit_timeline_endpoint,
+            methods=["GET"],
         ),
         Route(
             "/api/v1/projects/{project_id}/verify-integrity",
-            verify_integrity_endpoint, methods=["GET"],
+            verify_integrity_endpoint,
+            methods=["GET"],
         ),
         Route(
             "/api/v1/projects/{project_id}/compliance",
-            compliance_score_endpoint, methods=["GET"],
+            compliance_score_endpoint,
+            methods=["GET"],
         ),
         Route(
             "/api/v1/projects/{project_id}/export",
-            export_audit_report_endpoint, methods=["GET"],
+            export_audit_report_endpoint,
+            methods=["GET"],
         ),
         Route(
             "/api/v1/documents/{doc_id}/provenance",
-            document_provenance_endpoint, methods=["GET"],
+            document_provenance_endpoint,
+            methods=["GET"],
         ),
         Route("/api/v1/documents/{doc_id}/verify", verify_document_endpoint, methods=["GET"]),
     ]
@@ -2146,12 +2278,13 @@ async def run_http_server(
 
     # Create services first so we can grab the DB connection for event persistence
     event_log = EventLog(max_events=5000)
-    memory_svc, bus_svc, snapshot_svc, consolidation_svc, scheduler = (
-        await create_ncms_services(config, event_log=event_log)
+    memory_svc, bus_svc, snapshot_svc, consolidation_svc, scheduler = await create_ncms_services(
+        config, event_log=event_log
     )
 
     # Wire EventLog to the store's DB for persistent event history (time-travel)
     from ncms.infrastructure.storage.sqlite_store import SQLiteStore as _SQLiteStore
+
     _sqlite_store = memory_svc.store
     assert isinstance(_sqlite_store, _SQLiteStore), "Expected SQLiteStore backend"
     event_log._db = _sqlite_store.db
@@ -2201,7 +2334,10 @@ async def run_http_server(
     )
 
     config_uvicorn = uvicorn.Config(
-        app, host=host, port=port, log_level="info",
+        app,
+        host=host,
+        port=port,
+        log_level="info",
     )
     server = uvicorn.Server(config_uvicorn)
 
@@ -2217,18 +2353,19 @@ async def run_http_server(
                 event_log=event_log,
             )
             dashboard_config = uvicorn.Config(
-                dashboard_app, host=host, port=dashboard_port,
+                dashboard_app,
+                host=host,
+                port=dashboard_port,
                 log_level="info",
             )
             dashboard_server = uvicorn.Server(dashboard_config)
             logger.info(
                 "Dashboard will start on %s:%d (shared EventLog)",
-                host, dashboard_port,
+                host,
+                dashboard_port,
             )
         except ImportError:
-            logger.warning(
-                "Dashboard dependencies not installed, skipping"
-            )
+            logger.warning("Dashboard dependencies not installed, skipping")
 
     def _handle_shutdown(sig: int, frame: object) -> None:
         server.should_exit = True

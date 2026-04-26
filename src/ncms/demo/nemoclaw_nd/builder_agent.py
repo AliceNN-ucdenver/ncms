@@ -81,7 +81,9 @@ class BuilderAgent(LLMAgent):
     # ── Internal turn execution ────────────────────────────────────────
 
     async def _execute_turn(
-        self, turn_num: int, max_turns: int,
+        self,
+        turn_num: int,
+        max_turns: int,
     ) -> dict[str, str]:
         """Execute a single reasoning turn."""
         history_text = self._format_history()
@@ -152,31 +154,31 @@ class BuilderAgent(LLMAgent):
         first_line = raw.strip().split("\n")[0].strip()
 
         if first_line.startswith("ASK_ARCHITECTURE:"):
-            question = first_line[len("ASK_ARCHITECTURE:"):].strip()
+            question = first_line[len("ASK_ARCHITECTURE:") :].strip()
             if not question:
                 question = raw.split("\n", 1)[-1].strip()[:300]
             return await self._do_ask("architecture", question)
 
         if first_line.startswith("ASK_SECURITY:"):
-            question = first_line[len("ASK_SECURITY:"):].strip()
+            question = first_line[len("ASK_SECURITY:") :].strip()
             if not question:
                 question = raw.split("\n", 1)[-1].strip()[:300]
             return await self._do_ask("security", question)
 
         if first_line.startswith("DECIDE:"):
-            decision = first_line[len("DECIDE:"):].strip()
+            decision = first_line[len("DECIDE:") :].strip()
             if not decision:
                 decision = raw.split("\n", 1)[-1].strip()[:500]
             return await self._do_decide(decision)
 
         if first_line.startswith("ANNOUNCE:"):
-            announcement = first_line[len("ANNOUNCE:"):].strip()
+            announcement = first_line[len("ANNOUNCE:") :].strip()
             if not announcement:
                 announcement = raw.split("\n", 1)[-1].strip()[:500]
             return await self._do_announce(announcement)
 
         if first_line.startswith("DONE:"):
-            summary = first_line[len("DONE:"):].strip()
+            summary = first_line[len("DONE:") :].strip()
             if not summary:
                 summary = raw.split("\n", 1)[-1].strip()[:500]
             return {"action": "done", "detail": summary}
@@ -193,17 +195,16 @@ class BuilderAgent(LLMAgent):
 
         try:
             response = await self.ask_knowledge(
-                question=question, domains=domains, urgency="important",
+                question=question,
+                domains=domains,
+                urgency="important",
                 timeout_ms=_ASK_TIMEOUT_MS,
             )
             if response:
                 answer = response.knowledge.content[:500]
                 # Store the answer as our own knowledge
                 await self.store_knowledge(
-                    content=(
-                        f"[from {target}] Q: {question[:200]} "
-                        f"A: {answer}"
-                    ),
+                    content=(f"[from {target}] Q: {question[:200]} A: {answer}"),
                     domains=["identity-service"],
                 )
                 return {

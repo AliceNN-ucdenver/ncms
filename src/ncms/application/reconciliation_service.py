@@ -47,7 +47,9 @@ class ReconciliationService:
     # ── Find Related States ──────────────────────────────────────────
 
     async def _find_related_states(
-        self, entity_id: str, state_key: str,
+        self,
+        entity_id: str,
+        state_key: str,
     ) -> list[MemoryNode]:
         """Retrieve current entity states for the same entity + state_key."""
         return await self._store.get_current_entity_states(entity_id, state_key)  # type: ignore[attr-defined]
@@ -85,8 +87,7 @@ class ReconciliationService:
 
         # Same entity + same key
         values_match = (
-            new_meta.state_value.strip().lower()
-            == existing_meta.state_value.strip().lower()
+            new_meta.state_value.strip().lower() == existing_meta.state_value.strip().lower()
         )
 
         if values_match:
@@ -138,7 +139,9 @@ class ReconciliationService:
     # ── Apply Actions ────────────────────────────────────────────────
 
     async def _apply_supports(
-        self, new_node: MemoryNode, existing_node: MemoryNode,
+        self,
+        new_node: MemoryNode,
+        existing_node: MemoryNode,
     ) -> None:
         """Create SUPPORTS edge, boost importance of both nodes."""
         boost = self._config.reconciliation_importance_boost
@@ -164,7 +167,9 @@ class ReconciliationService:
         )
 
     async def _apply_refines(
-        self, new_node: MemoryNode, existing_node: MemoryNode,
+        self,
+        new_node: MemoryNode,
+        existing_node: MemoryNode,
     ) -> None:
         """Create REFINES edge. Source (broader) remains valid."""
         edge = GraphEdge(
@@ -222,22 +227,26 @@ class ReconciliationService:
         retires = await self._compute_retires_entities(new_node, existing_node)
 
         # Create SUPERSEDES edge (new → old)
-        await self._store.save_graph_edge(GraphEdge(  # type: ignore[attr-defined]
-            source_id=new_node.id,
-            target_id=existing_node.id,
-            edge_type=EdgeType.SUPERSEDES,
-            metadata={"reason": reason},
-            retires_entities=retires,
-        ))
+        await self._store.save_graph_edge(
+            GraphEdge(  # type: ignore[attr-defined]
+                source_id=new_node.id,
+                target_id=existing_node.id,
+                edge_type=EdgeType.SUPERSEDES,
+                metadata={"reason": reason},
+                retires_entities=retires,
+            )
+        )
 
         # Create SUPERSEDED_BY edge (old → new)
-        await self._store.save_graph_edge(GraphEdge(  # type: ignore[attr-defined]
-            source_id=existing_node.id,
-            target_id=new_node.id,
-            edge_type=EdgeType.SUPERSEDED_BY,
-            metadata={"reason": reason},
-            retires_entities=retires,
-        ))
+        await self._store.save_graph_edge(
+            GraphEdge(  # type: ignore[attr-defined]
+                source_id=existing_node.id,
+                target_id=new_node.id,
+                edge_type=EdgeType.SUPERSEDED_BY,
+                metadata={"reason": reason},
+                retires_entities=retires,
+            )
+        )
 
         self._event_log.reconciliation_applied(  # type: ignore[attr-defined]
             new_node_id=new_node.id,
@@ -294,24 +303,30 @@ class ReconciliationService:
             return []
 
     async def _apply_conflicts(
-        self, new_node: MemoryNode, existing_node: MemoryNode,
+        self,
+        new_node: MemoryNode,
+        existing_node: MemoryNode,
         reason: str = "",
     ) -> None:
         """Create bidirectional CONFLICTS_WITH edges, flag for review."""
         # new → existing
-        await self._store.save_graph_edge(GraphEdge(  # type: ignore[attr-defined]
-            source_id=new_node.id,
-            target_id=existing_node.id,
-            edge_type=EdgeType.CONFLICTS_WITH,
-            metadata={"reason": reason, "flagged_for_review": True},
-        ))
+        await self._store.save_graph_edge(
+            GraphEdge(  # type: ignore[attr-defined]
+                source_id=new_node.id,
+                target_id=existing_node.id,
+                edge_type=EdgeType.CONFLICTS_WITH,
+                metadata={"reason": reason, "flagged_for_review": True},
+            )
+        )
         # existing → new
-        await self._store.save_graph_edge(GraphEdge(  # type: ignore[attr-defined]
-            source_id=existing_node.id,
-            target_id=new_node.id,
-            edge_type=EdgeType.CONFLICTS_WITH,
-            metadata={"reason": reason, "flagged_for_review": True},
-        ))
+        await self._store.save_graph_edge(
+            GraphEdge(  # type: ignore[attr-defined]
+                source_id=existing_node.id,
+                target_id=new_node.id,
+                edge_type=EdgeType.CONFLICTS_WITH,
+                metadata={"reason": reason, "flagged_for_review": True},
+            )
+        )
 
         self._event_log.reconciliation_applied(  # type: ignore[attr-defined]
             new_node_id=new_node.id,
@@ -322,7 +337,8 @@ class ReconciliationService:
     # ── Orchestrator ─────────────────────────────────────────────────
 
     async def reconcile(
-        self, new_node: MemoryNode,
+        self,
+        new_node: MemoryNode,
     ) -> list[ReconciliationResult]:
         """Run reconciliation for an incoming entity state node.
 
@@ -342,7 +358,8 @@ class ReconciliationService:
             return []
 
         related_states = await self._find_related_states(
-            new_meta.entity_id, new_meta.state_key,
+            new_meta.entity_id,
+            new_meta.state_key,
         )
 
         results: list[ReconciliationResult] = []
@@ -365,11 +382,15 @@ class ReconciliationService:
                 await self._apply_refines(new_node, existing_node)
             elif result.relation == RelationType.SUPERSEDES:
                 await self._apply_supersedes(
-                    new_node, existing_node, reason=result.reason,
+                    new_node,
+                    existing_node,
+                    reason=result.reason,
                 )
             elif result.relation == RelationType.CONFLICTS:
                 await self._apply_conflicts(
-                    new_node, existing_node, reason=result.reason,
+                    new_node,
+                    existing_node,
+                    reason=result.reason,
                 )
             # UNRELATED: no action needed
 
