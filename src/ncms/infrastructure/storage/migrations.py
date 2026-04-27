@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -509,6 +509,41 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Schema v14 (Phase A — subject-centered graph): canonical subject
+-- registry.  ``subjects`` holds one row per canonical subject id
+-- (e.g. ``"application:xyz"``).  ``subject_aliases`` maps every
+-- known surface form to a canonical id.  Lookup is alias-first:
+-- given a surface, the canonicalize() helper consults
+-- ``subject_aliases`` (exact + normalized) before minting a new
+-- canonical id.
+--
+-- Both tables are write-only-grow under normal operation —
+-- aliases accumulate but are not deleted.  Phase B may add a
+-- subject-state index over ``memory_nodes.metadata.entity_id``.
+CREATE TABLE IF NOT EXISTS subjects (
+    canonical_id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subjects_type ON subjects(type);
+
+CREATE TABLE IF NOT EXISTS subject_aliases (
+    canonical_id TEXT NOT NULL REFERENCES subjects(canonical_id),
+    type TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    -- Normalized lookup form (lowercase, whitespace-collapsed).
+    -- Distinct column so we can index it without re-normalizing on
+    -- every read; the original surface is preserved in ``alias``
+    -- for audit / display.
+    alias_normalized TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (canonical_id, alias)
+);
+CREATE INDEX IF NOT EXISTS idx_subject_aliases_normalized
+    ON subject_aliases(alias_normalized);
+CREATE INDEX IF NOT EXISTS idx_subject_aliases_type
+    ON subject_aliases(type);
 """
 
 # Backward compat alias used by older code paths

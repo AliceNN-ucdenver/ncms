@@ -381,6 +381,7 @@ class TestGenerateForArchetype:
             speaker_voice="a clinician",
             slots=("medication",),
             topics=("medication_mgmt",),
+            subject_types=(),
             gazetteer=(
                 CatalogEntry(
                     canonical="metformin",

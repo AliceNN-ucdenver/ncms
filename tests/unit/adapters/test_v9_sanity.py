@@ -57,6 +57,7 @@ def _minimal_spec(tmp_path: Path) -> DomainSpec:
         speaker_voice="a clinician",
         slots=("medication",),
         topics=("medication_mgmt", "other"),
+        subject_types=(),
         gazetteer=gazetteer,
         diversity=DiversityTaxonomy(nodes=()),
         archetypes=(archetype,),

@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _utcnow() -> datetime:
@@ -66,6 +66,74 @@ class EdgeType(StrEnum):
     # It is weaker than CAUSED_BY — the target made the source possible
     # but did not force it.
     ENABLES = "enables"
+
+
+# ---------------------------------------------------------------------------
+# Subject Payload (Phase A — subject-centered graph)
+# ---------------------------------------------------------------------------
+
+#: Where a Subject came from.  Drives precedence (caller > slm_role >
+#: document > episode > resolver) and audit trails.  See claim doc
+#: §A.3 / §A.17 for the precedence rules.
+SubjectSource = Literal[
+    "caller",  # explicit subject= or subjects= kwarg from store_memory caller
+    "document",  # inherited from a parent document's primary subject
+    "episode",  # derived from active episode anchors
+    "slm_role",  # SLM role_head primary span (the GLiNER-retirement path)
+    "ctlg_cue",  # CTLG B-SUBJECT cue tag (Phase C; reserved here for forward compat)
+    "resolver",  # deterministic resolver derived (e.g. URL parse)
+]
+
+
+class Subject(BaseModel):
+    """A canonical timeline anchor a memory is "about".
+
+    Multi-subject by design: one memory can pin multiple subjects
+    (e.g. "ADR-004 supersedes ADR-002 for auth-service" pins
+    [adr:004, adr:002, service:auth-api]).  Each subject is its own
+    timeline; reconciliation runs per timeline independently.
+
+    Subject ids are domain-plugin-typed (e.g. ``"application:xyz"``,
+    ``"adr:004"``).  Type validation is advisory — unknown types are
+    accepted with low confidence and logged via the alias-collision
+    audit event (see claim A.16).
+
+    The model is frozen so it can be used as a dict key and so the
+    tuple-of-aliases guarantees immutability.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    """Canonical id, e.g. ``"application:xyz"``.  Always
+    ``"<type>:<canonical-slug>"`` after canonicalization."""
+
+    type: str
+    """Domain-plugin-defined type (e.g. ``"application"``,
+    ``"adr"``, ``"patient"``).  Must appear in the loaded
+    DomainSpec.subject_types when known; unknown types are accepted
+    with reduced confidence."""
+
+    primary: bool = True
+    """``True`` when this subject is the memory's primary timeline
+    anchor.  Exactly one Subject in a list should have
+    ``primary=True``; conflicting primaries raise ValueError at
+    store_memory time."""
+
+    aliases: tuple[str, ...] = ()
+    """Surface forms that resolve to this canonical id.  Always a
+    tuple (not list) for hashability."""
+
+    source: SubjectSource = "caller"
+    """Provenance.  Determines precedence when multiple sources
+    propose the same subject."""
+
+    confidence: float = 1.0
+    """Confidence in the canonicalization, in [0.0, 1.0].
+    1.0 = exact alias match; 0.85 = fuzzy match; 0.6 = newly minted
+    (no prior alias).  SLM-derived subjects inherit the role_head
+    confidence.  Used to gate alias-collision events and to break
+    ties between competing canonicalization candidates."""
 
 
 # ---------------------------------------------------------------------------

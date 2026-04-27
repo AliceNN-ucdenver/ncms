@@ -45,6 +45,16 @@ topics:
   - habit_pref
   - other
 
+# Phase A — subject types (timeline anchors).  Conversational
+# subjects are who/what the preference belongs to or refers to.
+# Open-vocab: caller-supplied names within these types are not
+# constrained to a closed catalog.
+subject_types:
+  - person           # the speaker or someone named (defaults to "self")
+  - place            # a location ("home", "the office", a city)
+  - activity         # a recurring activity or hobby
+  - object           # a preferred object / brand / product family
+
 # No gazetteer_path — conversational is open-vocab.
 diversity_path: diversity.yaml
 archetypes_path: archetypes.yaml

@@ -49,6 +49,16 @@ topics:
   - preventive_care
   - other
 
+# Phase A — subject types (timeline anchors).  Clinical subjects
+# answer "this note is about whom/what."  Patient is by far the
+# most common; condition / episode-of-care give finer-grained
+# timelines for chronic-care reasoning.
+subject_types:
+  - patient                # the person the note is about
+  - condition              # a diagnosis / chronic condition (timeline of severity)
+  - treatment              # a course of treatment (medication regime, therapy)
+  - episode_of_care        # an admission / visit / care episode
+
 gazetteer_path: gazetteer.yaml
 diversity_path: diversity.yaml
 archetypes_path: archetypes.yaml

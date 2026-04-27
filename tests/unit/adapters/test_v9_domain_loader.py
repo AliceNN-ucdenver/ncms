@@ -262,6 +262,71 @@ class TestLoadDomainHappyPath:
 
 
 # ---------------------------------------------------------------------------
+# Phase A — subject_types loading
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectTypes:
+    """Claim A.15 — domain.yaml drives the subject_types tuple."""
+
+    def test_subject_types_absent_defaults_to_empty(self, tmp_path: Path):
+        d = _valid_software_dev_fixture(tmp_path)
+        spec = load_domain(d)
+        # Fixture omits subject_types — DomainSpec gets ().
+        assert spec.subject_types == ()
+
+    def test_subject_types_loaded_when_declared(self, tmp_path: Path):
+        d = _valid_software_dev_fixture(tmp_path)
+        manifest = yaml.safe_load((d / "domain.yaml").read_text())
+        manifest["subject_types"] = ["service", "decision", "incident"]
+        (d / "domain.yaml").write_text(yaml.safe_dump(manifest))
+        spec = load_domain(d)
+        assert spec.subject_types == ("service", "decision", "incident")
+
+    def test_invalid_subject_types_rejected(self, tmp_path: Path):
+        d = _valid_software_dev_fixture(tmp_path)
+        manifest = yaml.safe_load((d / "domain.yaml").read_text())
+        # Non-string entries — should fail validation.
+        manifest["subject_types"] = ["valid", 42, ""]
+        (d / "domain.yaml").write_text(yaml.safe_dump(manifest))
+        with pytest.raises(
+            DomainValidationError,
+            match="subject_types",
+        ):
+            load_domain(d)
+
+    def test_subject_types_must_be_list(self, tmp_path: Path):
+        d = _valid_software_dev_fixture(tmp_path)
+        manifest = yaml.safe_load((d / "domain.yaml").read_text())
+        manifest["subject_types"] = "not a list"
+        (d / "domain.yaml").write_text(yaml.safe_dump(manifest))
+        with pytest.raises(
+            DomainValidationError,
+            match="subject_types",
+        ):
+            load_domain(d)
+
+
+class TestShippedDomainSpecsHaveSubjectTypes:
+    """Sanity: the three shipped domain.yaml files declare subject_types."""
+
+    @pytest.mark.parametrize(
+        "domain_name",
+        ["software_dev", "conversational", "clinical"],
+    )
+    def test_shipped_domain_declares_subject_types(self, domain_name: str):
+        repo_root = Path(__file__).resolve().parents[3]
+        spec = load_domain(repo_root / "adapters" / "domains" / domain_name)
+        assert spec.subject_types, (
+            f"shipped domain {domain_name!r} must declare subject_types"
+        )
+        # Phase A claim: every shipped domain has at least 3 subject
+        # types so multi-subject ingest has something to canonicalize
+        # against.
+        assert len(spec.subject_types) >= 3
+
+
+# ---------------------------------------------------------------------------
 # Validation errors
 # ---------------------------------------------------------------------------
 

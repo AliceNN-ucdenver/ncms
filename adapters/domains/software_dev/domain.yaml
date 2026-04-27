@@ -51,6 +51,22 @@ topics:
   - editor
   - other
 
+# Phase A — subject types (timeline anchors).  These are NOT slots;
+# slots tag entities mentioned within content, subject_types tag
+# what a memory is *about* (its primary timeline).  A single
+# memory can pin multiple subjects (e.g. "ADR-004 supersedes
+# ADR-002 for auth-service" → adr:004, adr:002, service:auth-api).
+subject_types:
+  - service          # a deployable system component (auth-service)
+  - component        # a sub-module within a service (auth-service::tokens)
+  - repo             # a code repository
+  - team             # an engineering team
+  - decision         # an ADR / architecture decision (adr:004)
+  - incident         # a post-mortem / outage event
+  - feature          # a feature flag or product capability
+  - environment      # a runtime environment (prod / staging / dev-east)
+  - dependency       # an external library or upstream service
+
 # Default file paths; overridable via the `paths` / `adapter` blocks.
 gazetteer_path: gazetteer.yaml
 diversity_path: diversity.yaml

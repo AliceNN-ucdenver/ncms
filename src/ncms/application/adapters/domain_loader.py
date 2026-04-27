@@ -164,6 +164,13 @@ class DomainSpec:
     slots: tuple[str, ...]  # domain's slot taxonomy
     topics: tuple[str, ...]  # topic head vocabulary
 
+    # Phase A — subject-centered graph.  Domain-defined timeline
+    # anchor types (e.g. ``("application", "service", "adr")`` for
+    # software_dev).  Empty when the domain.yaml omits the field;
+    # SubjectRegistry then accepts any string-typed subject with
+    # reduced confidence and logs for review.
+    subject_types: tuple[str, ...]
+
     gazetteer: tuple[CatalogEntry, ...]  # empty when no gazetteer
     diversity: DiversityTaxonomy
     archetypes: tuple[ArchetypeSpec, ...]
@@ -712,6 +719,30 @@ def _load_archetypes(
 # ---------------------------------------------------------------------------
 
 
+def _parse_subject_types(
+    manifest: dict,
+    manifest_path: Path,
+) -> tuple[str, ...]:
+    """Parse the optional ``subject_types`` block from domain.yaml.
+
+    Phase A — timeline-anchor types.  Optional; when absent the
+    SubjectRegistry accepts any string-typed subject with reduced
+    confidence and logs for review.  When present, must be a
+    non-empty list of non-empty strings.
+    """
+    raw = manifest.get("subject_types")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(
+        isinstance(s, str) and s.strip() for s in raw
+    ):
+        raise DomainValidationError(
+            f"{manifest_path}: 'subject_types' must be a list of "
+            "non-empty strings if present",
+        )
+    return tuple(raw)
+
+
 def load_domain(
     domain_dir: Path,
     *,
@@ -767,6 +798,7 @@ def load_domain(
     )
     slots = _require_list_of_str(manifest, "slots", manifest_path)
     topics = _require_list_of_str(manifest, "topics", manifest_path)
+    subject_types = _parse_subject_types(manifest, manifest_path)
 
     # ── gazetteer (optional) ──────────────────────────────────────
     gaz_path_name = _opt_str(manifest, "gazetteer_path", "gazetteer.yaml")
@@ -869,6 +901,7 @@ def load_domain(
         speaker_voice=speaker_voice,
         slots=slots,
         topics=topics,
+        subject_types=subject_types,
         gazetteer=gazetteer,
         diversity=diversity,
         archetypes=archetypes,

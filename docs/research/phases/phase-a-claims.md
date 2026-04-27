@@ -10,10 +10,24 @@
 
 A first-class, multi-subject, alias-canonicalized `Subject` payload
 on every persisted Memory, written consistently by every ingest path.
-Zero new edge types. Zero changes to the L2 ENTITY\_STATE schema.
+SLM `role_head` `primary` spans auto-suggest subjects when the
+caller doesn't pin them (the GLiNER-retirement wiring). Zero new
+edge types. Zero changes to the L2 ENTITY\_STATE schema. Fresh DB
+only — no back-fill on legacy rows.
 
-**PR scope budget:** ≤ 6 sub-PRs, each independently reviewable.
+**PR scope budget:** 6 sub-PRs, each independently reviewable, all
+straight-to-main.
 **Estimated total:** 1.5 weeks.
+
+**Sub-PR sequence:**
+| # | Scope | Claims |
+|---|---|---|
+| 1 | Foundations: `Subject` dataclass, `subjects`/`subject_aliases` tables, `SubjectRegistry` skeleton, `subject_types` in domain.yaml | A.1, A.4, A.15 |
+| 2 | Canonicalization: `SubjectRegistry.canonicalize()` + alias-collision event | A.5, A.16 |
+| 3 | `store_memory(subjects=…)` + payload bake + inline path + SLM auto-suggest | A.2, A.3, A.8, A.17 |
+| 4 | Multi-subject L2 + `MENTIONS_ENTITY` role metadata | A.6, A.7 |
+| 5 | Async path + parity test (the headline) + MSEB backend | A.9, A.13, **A.14** |
+| 6 | Coverage tail: documents, reindex, knowledge loader | A.10, A.11, A.12 |
 
 ---
 
@@ -296,13 +310,30 @@ where each dict is `Subject.model_dump()`.
 ### A.3 — `store_memory` accepts both `subject=str` and `subjects=list[Subject]`
 **[API]**
 **Pre:** Only `subject: str | None` exists today.
-**Post:** Signature is `store_memory(..., subject: str | None = None, subjects: list[Subject] | None = None, ...)`. When both are provided, `subjects` wins; when only `subject` is provided, it's promoted into a one-element list with `source="caller"`, `primary=True`. Passing both with conflicting primary values raises `ValueError`.
+**Post:** Signature is `store_memory(..., subject: str | None = None, subjects: list[Subject] | None = None, ...)`.
+
+**Subject-resolution precedence (highest wins):**
+1. `subjects=[...]` provided → use as-is (after canonicalization).
+2. `subject="..."` provided → promote to `[Subject(id=canonical, source="caller", primary=True)]`.
+3. SLM `role_head` output present in `memory.structured["intent_slot"]`
+   with `role="primary"` spans above confidence threshold → derive
+   subjects per A.17.
+4. Document context (caller passed `parent_doc_id` or path is doc-publish) →
+   inherit primary subject from parent doc (A.10).
+5. Episode context (active episode's anchor entities) → derive from anchors
+   (low-priority Phase A target; falls through to empty if not implemented).
+6. Empty subjects list — Memory still persists, no L2, no role edges.
+
+When both `subject` and `subjects` are provided, `subjects` wins.
+Passing both with conflicting `primary` values raises `ValueError`.
 **Verify:**
 - `grep -E "subject: str \| None|subjects: list\[Subject\] \| None" src/ncms/application/memory_service.py`
 - Expected: both lines present.
 - Test: `tests/integration/test_subject_payload.py::test_legacy_subject_string_promoted_to_list`.
 - Test: `tests/integration/test_subject_payload.py::test_subjects_list_takes_precedence_over_subject_string`.
 - Test: `tests/integration/test_subject_payload.py::test_conflicting_primaries_raises`.
+- Test: `tests/integration/test_subject_payload.py::test_precedence_caller_beats_slm`
+  — caller's `subjects=` overrides SLM-derived spans.
 
 ### A.4 — `SubjectRegistry` table + alias canonicalization
 **[SCHEMA]**
@@ -365,11 +396,18 @@ where each dict is `Subject.model_dump()`.
 - Documents with a `parent_doc_id` inherit the parent's primary subject by default.
 **Citation:** `src/ncms/application/document_service.py`.
 
-### A.11 — Reindex preserves canonical subjects
+### A.11 — Reindex preserves canonical subjects on memories already-shaped
 **[COVERAGE]**
+**Scope decision (post-design):** Phase A targets a fresh DB. We do
+NOT back-fill `structured["subjects"]` on legacy memories that
+predate this phase — caller imports fresh. Reindex must preserve
+the payload for memories stored in the new shape (round-trip
+through the index path).
 **Verify:**
-- Test: `tests/integration/test_reindex_subjects.py::test_reindex_preserves_subject_payload`.
-- Reindex over existing memories writes `structured["subjects"]` if missing (back-fill).
+- Test: `tests/integration/test_reindex_subjects.py::test_reindex_preserves_subject_payload`
+  — store with subjects, then reindex, then read back and assert
+  `structured["subjects"]` is byte-equivalent.
+- No back-fill test required; legacy import is out of scope.
 **Citation:** `src/ncms/application/reindex_service.py`.
 
 ### A.12 — Knowledge loader writes canonical subjects
@@ -412,11 +450,58 @@ where each dict is `Subject.model_dump()`.
 ### A.16 — Alias collision audit event
 **[BEHAVIOR]**
 **Pre:** No alias collision tracking.
-**Post:** When canonicalize() picks an existing canonical id via fuzzy match (confidence < 1.0), it emits a `subject.alias_collision` dashboard event with `{surface, picked_canonical, confidence, alternatives}`. Reviewer can grep these events to spot wrong canonicalization.
+**Post:** When canonicalize() picks an existing canonical id via fuzzy match (confidence < 1.0), it emits a `subject.alias_collision` dashboard event with `{surface, picked_canonical, confidence, alternatives}`. Reviewer can grep these events to spot wrong canonicalization. **No UI is required for Phase A** — events are queryable via the `dashboard_events` table (`SELECT * FROM dashboard_events WHERE type='subject.alias_collision'`), which is the validation surface.
 **Verify:**
 - `grep "alias_collision" src/ncms/application/subject_registry.py`
 - Expected: matches.
 - Test: `tests/integration/test_subject_alias_collision.py::test_event_emitted_on_fuzzy_match`.
+- Test: `tests/integration/test_subject_alias_collision.py::test_event_queryable_from_dashboard_events`
+  — confirm the event row is read-back-able from `dashboard_events`
+  with the expected payload shape.
+
+### A.17 — SLM `role_head` `primary` spans auto-suggest subjects
+**[BEHAVIOR]**
+**Pre:** SLM `role_head` is being trained (v9 corpus regen in
+flight); when adapters land, ingest must consume `role_spans` to
+populate subjects without caller intervention. This is the
+GLiNER-retirement path: SLM produces typed spans + role
+classification, replacing the legacy `subject=str` + GLiNER NER
+combo.
+**Post:** When `memory.structured["intent_slot"]` contains
+`role_spans` with role="primary" above
+`config.slm_confidence_threshold` AND the caller did not supply
+`subjects=` or `subject=`, the bake step:
+
+1. Takes each `primary` span's surface + the slot type as a
+   subject candidate.
+2. Calls `SubjectRegistry.canonicalize(surface, type_hint=slot,
+   domain=memory.domains[0])` for each.
+3. Marks the first as `primary=True`, rest as `primary=False`,
+   all with `source="slm_role"` and `confidence` inherited from
+   the SLM head.
+4. Writes the resulting list to `structured["subjects"]`.
+
+If the SLM chain is dark (`NCMS_DEFAULT_ADAPTER_DOMAIN` unset),
+the bake skips this step — Phase A does NOT regress on
+adapter-less deployments.
+**Verify:**
+- Test: `tests/integration/test_slm_subject_autosuggest.py::test_primary_role_span_becomes_subject`
+  — feed a Memory whose `structured["intent_slot"]["role_spans"]`
+  contains `[{surface: "auth-service", role: "primary",
+  slot: "service", confidence: 0.92}]`; assert
+  `structured["subjects"]` ends with one entry where
+  `id` is canonical, `source="slm_role"`, `primary=True`.
+- Test: `test_caller_subjects_override_slm_spans` — when caller
+  provides `subjects=[…]`, SLM spans are ignored.
+- Test: `test_no_slm_chain_no_autosuggest` — when adapter chain is
+  absent, SLM-derived subjects are empty (no error).
+- Test: `test_low_confidence_span_skipped` — span below threshold
+  is not promoted to a subject.
+**Failure mode:** GLiNER stays embedded as the entity-suggester
+even when SLM is present (the divergence pattern again, but
+inverted — SLM does the work but ingest doesn't read it).
+**Citation:** `src/ncms/application/ingestion/store_helpers.py`,
+`src/ncms/application/subject_registry.py`.
 
 ---
 
@@ -536,19 +621,18 @@ verify each claim manually using the `Verify:` lines.
 
 ---
 
-## Open questions for codex / reviewer
+## Resolved open questions (decisions captured 2026-04-27)
 
-1. **Should Phase A include the alias-collision review queue UI**, or
-   is logging an event enough for v1? Doc says "review queue" in
-   §8 risks; this claim doc says "events." Reviewer to flag.
+1. **Alias-collision review surface — events only, no UI for Phase A.**
+   The `dashboard_events` table is the validation surface; codex /
+   operators query it via SQL. UI is out of scope for Phase A. See A.16.
 
-2. **Does the SLM `primary` role span auto-suggest a subject when
-   the caller doesn't provide one?** §3.5 of the design doc says
-   yes (priority 3 in the subject set); this claim doc doesn't
-   require it. Should A.16 be expanded to cover this?
+2. **SLM `primary` role span auto-suggests subjects — yes, this is
+   the GLiNER-retirement path.** Added as A.17. The SLM was built
+   precisely so role_head replaces GLiNER's entity-suggester role;
+   Phase A wires this in. Skipped gracefully when the adapter chain
+   is dark.
 
-3. **Backwards-compat for existing memories** — should reindex
-   back-fill `structured["subjects"]` for memories that predate this
-   PR? Claim A.11 says yes; reviewer to confirm scope.
-
-These should be resolved before code lands, not during.
+3. **No reindex back-fill on legacy memories.** A.11 scoped down:
+   Phase A targets a fresh DB. Re-import from source if needed; do
+   not back-fill `structured["subjects"]` on pre-existing rows.

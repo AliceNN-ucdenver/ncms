@@ -32,14 +32,15 @@ async def store() -> SQLiteStore:
 
 
 class TestSchemaVersion:
-    async def test_schema_version_is_13(self) -> None:
-        assert SCHEMA_VERSION == 13
+    async def test_schema_version_is_14(self) -> None:
+        # Phase A bumped to 14 (subjects + subject_aliases tables).
+        assert SCHEMA_VERSION == 14
 
     async def test_persisted_version_matches(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
         assert row is not None
-        assert row[0] == 13
+        assert row[0] == 14
 
 
 class TestGraphEdgesRetiresColumn:
