@@ -15,6 +15,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from ncms.application.enrichment import EnrichmentPipeline
+from ncms.application.entity_extraction_mode import (
+    slm_slots_to_entity_dicts,
+    use_gliner_entities,
+    use_slm_entities,
+)
 from ncms.application.ingestion import IngestionPipeline
 from ncms.application.label_cache import load_cached_labels
 from ncms.application.retrieval import RetrievalPipeline
@@ -37,7 +42,13 @@ from ncms.domain.models import (
     TraversalMode,
     TraversalResult,
 )
-from ncms.domain.protocols import GraphEngine, IndexEngine, IntentClassifier, MemoryStore
+from ncms.domain.protocols import (
+    CTLGCueTagger,
+    GraphEngine,
+    IndexEngine,
+    IntentClassifier,
+    MemoryStore,
+)
 from ncms.domain.temporal.parser import (
     TemporalReference,
     parse_temporal_reference,
@@ -121,6 +132,7 @@ class MemoryService:
         section_service: SectionService | None = None,
         document_service: DocumentService | None = None,
         intent_slot: Any | None = None,
+        ctlg_cue_tagger: CTLGCueTagger | None = None,
     ):
         self._store = store
         self._index = index
@@ -148,6 +160,10 @@ class MemoryService:
         # benchmarks can swap adapters without rebuilding the
         # whole MemoryService.
         self._intent_slot = intent_slot
+        # Dedicated CTLG cue tagger (optional).  This is deliberately
+        # separate from intent-slot so CTLG cannot re-enter as a sixth
+        # head on the 5-head content SLM.
+        self._ctlg_cue_tagger = ctlg_cue_tagger
         # Background indexing worker pool (Phase 2 performance)
         self._index_pool: IndexWorkerPool | None = None
 
@@ -223,6 +239,8 @@ class MemoryService:
             features.append("temporal_stack")
         if self._intent_slot is not None:
             features.append("slm")
+        if self._ctlg_cue_tagger is not None:
+            features.append("ctlg")
         if self._config.content_classification_enabled:
             features.append("content_classification")
         if self._config.dream_cycle_enabled:
@@ -398,6 +416,29 @@ class MemoryService:
             structured,
         ) = slm_result
 
+        if self._config.temporal_enabled and self._ctlg_cue_tagger is not None:
+            from ncms.application.ctlg import bake_ctlg_payload, extract_ctlg_cues
+
+            domain_hint = (domains or [""])[0]
+            ctlg_result = await extract_ctlg_cues(
+                self._ctlg_cue_tagger,
+                content,
+                domain=domain_hint,
+            )
+            if ctlg_result.tokens:
+                structured = bake_ctlg_payload(
+                    structured=structured,
+                    cue_tags=ctlg_result.tokens,
+                    method=getattr(self._ctlg_cue_tagger, "name", "ctlg_cue_tagger"),
+                    latency_ms=ctlg_result.latency_ms,
+                    voice="memory",
+                )
+                _emit_stage(
+                    "ctlg_cues",
+                    ctlg_result.latency_ms,
+                    {"n_cue_tags": len(ctlg_result.tokens), "voice": "memory"},
+                )
+
         memory = Memory(
             content=content,
             type=cast(Any, memory_type),
@@ -447,20 +488,18 @@ class MemoryService:
                     exc_info=True,
                 )
 
-        # ── SLM slot head → entity dicts (Option D' Part 2) ──────────────
-        # The slot head is fine-tuned per-domain and outperforms
-        # GLiNER's zero-shot NER on trained taxonomies (typed labels,
-        # higher precision).  When the slot head produces confident
-        # typed entities, we use those AS the entity set and skip
-        # GLiNER for this memory — honouring the "SLM primary,
-        # GLiNER fallback for open-vocabulary" design invariant.
-        #
-        # When the slot head produced nothing (empty or sub-threshold),
-        # GLiNER runs as the open-vocabulary fallback to ensure the
-        # memory is still linked to the graph for retrieval.
-        slm_entity_dicts = self._ingestion.slm_slots_to_entity_dicts(
-            intent_slot_label,
-            confidence_threshold=self._config.slm_confidence_threshold,
+        # ── Entity extraction lane ──────────────────────────────────────
+        # ``slm_only`` promotes the SLM slot/role output into the
+        # entity graph and prevents GLiNER from running downstream.
+        # ``gliner_only`` leaves SLM entities out of the graph so
+        # the zero-shot NER lane can be measured independently.
+        slm_entity_dicts = (
+            slm_slots_to_entity_dicts(
+                intent_slot_label,
+                confidence_threshold=self._config.slm_confidence_threshold,
+            )
+            if use_slm_entities(self._config)
+            else []
         )
         merged_entities = list(entities or [])
         slot_entities_present = False
@@ -638,7 +677,8 @@ class MemoryService:
                     },
                 )
 
-        # Tier 1: Parallel retrieval (BM25 + SPLADE + GLiNER) + RRF fusion
+        # Tier 1: Parallel retrieval (BM25 + SPLADE + configured
+        # query entity extraction) + RRF fusion
         retrieval = await self._retrieval.retrieve_candidates(
             query,
             domain,
@@ -1027,8 +1067,9 @@ class MemoryService:
         Mechanism:
           1. Parse the query for operation (between / since / age_of)
              and unit (days / weeks / months / years / hours).
-          2. Extract subject entities via GLiNER (using the same
-             label-budget helper the search path uses).
+          2. Extract subject entities via the configured query entity
+             extraction lane. In ``slm_only`` mode this abstains until
+             query-side SLM analysis is wired.
           3. For each anchor entity: resolve to graph entity_id,
              pull the earliest ``observed_at`` among graph-linked
              memories as the anchor date.
@@ -1150,21 +1191,27 @@ class MemoryService:
                 intent_result = classify_intent(query)
         intent = intent_result.intent if intent_result else QueryIntent.FACT_LOOKUP
 
-        # 3. Extract entities from query for structured lookups
-        from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_with_label_budget,
-        )
+        # 3. Extract entities from query for structured lookups.
+        # In ``slm_only`` mode, do not let GLiNER leak into recall
+        # context expansion.  Query-side SLM extraction will be added
+        # as its own boundary when the adapter proves it can replace
+        # the zero-shot query NER path.
+        query_entity_names: list[dict[str, Any]] = []
+        if use_gliner_entities(self._config):
+            from ncms.infrastructure.extraction.gliner_extractor import (
+                extract_with_label_budget,
+            )
 
-        search_domains = [domain] if domain else []
-        cached = await load_cached_labels(self._store, search_domains)
-        labels = resolve_labels(search_domains, cached_labels=cached)
-        query_entity_names = extract_with_label_budget(
-            query,
-            labels,
-            model_name=self._config.gliner_model,
-            threshold=self._config.gliner_threshold,
-            cache_dir=self._config.model_cache_dir,
-        )
+            search_domains = [domain] if domain else []
+            cached = await load_cached_labels(self._store, search_domains)
+            labels = resolve_labels(search_domains, cached_labels=cached)
+            query_entity_names = extract_with_label_budget(
+                query,
+                labels,
+                model_name=self._config.gliner_model,
+                threshold=self._config.gliner_threshold,
+                cache_dir=self._config.model_cache_dir,
+            )
         context_entity_ids: list[str] = []
         for qe in query_entity_names:
             eid = self._graph.find_entity_by_name(qe["name"])
@@ -1241,13 +1288,12 @@ class MemoryService:
         ``tlg_query`` is a test / benchmark hatch — when set,
         it overrides the cue-head + synthesizer step and hands the
         composed :class:`TLGQuery` directly to the dispatcher.
-        Production callers leave it ``None`` and let the
-        ingest-time SLM chain run the cue head + synthesizer.
+        Production callers leave it ``None`` and let the dedicated
+        CTLG cue tagger run cue extraction + synthesis.
         """
         from ncms.application.tlg import retrieve_lg as _dispatch
         from ncms.domain.tlg import Confidence, LGIntent, LGTrace
-        from ncms.domain.tlg.cue_taxonomy import TaggedToken
-        from ncms.domain.tlg.semantic_parser import synthesize
+        from ncms.domain.tlg.semantic_parser import SLMQuerySignals, synthesize
 
         if not self._config.temporal_enabled:
             return LGTrace(
@@ -1264,54 +1310,66 @@ class MemoryService:
                 logger.debug("TLG shape-cache warm failed", exc_info=True)
             self._tlg_shape_cache_warmed = True
 
-        # ── CTLG cue head + synthesizer (v8+) ─────────────────────
-        # The SLM's ``shape_cue_head`` tags each token with a BIO
-        # cue label; the synthesizer composes the tags into a
-        # structured :class:`TLGQuery`.  Pass the TLGQuery straight
-        # to the dispatcher.
+        # ── CTLG cue tagger + synthesizer ─────────────────────────
+        # The dedicated CTLG adapter tags each token with a BIO cue
+        # label; the synthesizer composes the tags into a structured
+        # :class:`TLGQuery`.  Pass the TLGQuery straight to the
+        # dispatcher.
         #
         # When the caller supplied an explicit ``tlg_query``
         # override (test / benchmark path), use it verbatim.
         resolved_tlg_query = tlg_query
-        slm_abstained = False
-        if resolved_tlg_query is None and self._intent_slot is not None:
+        cue_abstained = False
+        if resolved_tlg_query is None and self._ctlg_cue_tagger is not None:
             try:
                 adapter_domain = (
                     getattr(
-                        self._intent_slot,
+                        self._ctlg_cue_tagger,
                         "adapter_domain",
                         None,
                     )
                     or "conversational"
                 )
-                slm_result = self._intent_slot.extract(
+                slm_signals: SLMQuerySignals | None = None
+                intent_slot = self._intent_slot
+                if intent_slot is not None:
+                    try:
+                        slm_domain = self._config.default_adapter_domain or adapter_domain
+                        loop = asyncio.get_running_loop()
+                        slm_label = await loop.run_in_executor(
+                            None,
+                            lambda: intent_slot.extract(
+                                query,
+                                domain=slm_domain,
+                            ),
+                        )
+                        slm_signals = SLMQuerySignals.from_label(slm_label)
+                    except Exception:  # pragma: no cover — defensive guard
+                        logger.debug(
+                            "TLG: query-side SLM grounding failed",
+                            exc_info=True,
+                        )
+                from ncms.application.ctlg import extract_ctlg_cues
+
+                ctlg_result = await extract_ctlg_cues(
+                    self._ctlg_cue_tagger,
                     query,
                     domain=adapter_domain,
                 )
-                cue_tag_dicts = list(getattr(slm_result, "cue_tags", ()) or ())
-                if cue_tag_dicts:
-                    # Convert list[dict] boundary type back to
-                    # TaggedToken dataclasses for the synthesizer.
-                    tokens = [
-                        TaggedToken(
-                            char_start=int(d["char_start"]),
-                            char_end=int(d["char_end"]),
-                            surface=str(d["surface"]),
-                            cue_label=str(d["cue_label"]),
-                            confidence=float(d.get("confidence", 1.0)),
-                        )
-                        for d in cue_tag_dicts
-                    ]
-                    resolved_tlg_query = synthesize(tokens)
+                if ctlg_result.tokens:
+                    resolved_tlg_query = synthesize(
+                        ctlg_result.tokens,
+                        slm_signals=slm_signals,
+                    )
                     if resolved_tlg_query is None:
                         # Synthesizer matched no rule — grammar abstains.
-                        slm_abstained = True
+                        cue_abstained = True
                 else:
-                    # Adapter ships no cue head (pre-v8) — abstain.
-                    slm_abstained = True
+                    # CTLG tagger returned no cue signal — abstain.
+                    cue_abstained = True
             except Exception:  # pragma: no cover — defensive guard
                 logger.debug(
-                    "TLG: cue-head synthesizer failed",
+                    "TLG: CTLG cue-tag synthesizer failed",
                     exc_info=True,
                 )
 
@@ -1321,7 +1379,7 @@ class MemoryService:
             vocabulary_cache=self._tlg_vocab_cache,
             shape_cache=self._tlg_shape_cache,
             tlg_query=resolved_tlg_query,
-            slm_abstained=slm_abstained,
+            cue_abstained=cue_abstained,
         )
         # Dashboard observability — one event per dispatch; dashboards
         # can aggregate the ``grammar.*`` namespace to visualise intent

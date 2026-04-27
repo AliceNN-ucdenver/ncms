@@ -417,6 +417,9 @@ class CausalEdge:
     dst: str  # cause memory id
     edge_type: str  # "caused_by" or "enables"
     cue_type: str = ""  # "CAUSAL_EXPLICIT" / "CAUSAL_ALTLEX"
+    cue_surface: str = ""  # matched cue phrase for provenance
+    cue_char_start: int = -1
+    cue_char_end: int = -1
     confidence: float = 1.0
 
 

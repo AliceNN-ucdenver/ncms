@@ -38,6 +38,7 @@ imports keep working unchanged.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -91,17 +92,34 @@ def find_adapter_dir(
 
     if version is not None:
         candidate = domain_dir / version
-        return candidate if candidate.is_dir() else None
+        return candidate if _is_intent_slot_adapter_dir(candidate) else None
 
     versions = [p for p in domain_dir.iterdir() if p.is_dir()]
     if not versions:
         # Flat layout — check for the artifact files directly under domain_dir.
-        if (domain_dir / "manifest.json").is_file():
+        if _is_intent_slot_adapter_dir(domain_dir):
             return domain_dir
         return None
 
     versions.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return versions[0]
+    for candidate in versions:
+        if _is_intent_slot_adapter_dir(candidate):
+            return candidate
+    return None
+
+
+def _is_intent_slot_adapter_dir(path: Path) -> bool:
+    """Return true for five-head intent-slot adapters, excluding CTLG siblings."""
+    if not path.is_dir() or path.name.startswith("ctlg-"):
+        return False
+    manifest_path = path / "manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        raw = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError:
+        return False
+    return "cue_labels" not in raw and "intent_labels" in raw
 
 
 def list_available_adapters(

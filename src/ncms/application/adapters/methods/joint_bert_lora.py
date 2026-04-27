@@ -223,7 +223,7 @@ class LoraJointModel(nn.Module):
         """Run the shared encoder; return ``(sequence, pooled)``.
 
         ``sequence`` is (B, L, H) — needed by the role head for
-        span pooling and the cue head for per-token classification.
+        span pooling.
         ``pooled`` is (B, H) — needed by the four [CLS]-pooled heads.
         """
         out = self.encoder(

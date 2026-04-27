@@ -142,13 +142,11 @@ class ChainedExtractor:
             ):
                 merged.state_change = label.state_change
                 merged.state_change_confidence = label.state_change_confidence
-            # v7+ role_spans + v8+ cue_tags — only the primary
-            # LoRA backend produces these; fallbacks always return
-            # empty lists.  Take whichever backend set them.
+            # v7+ role_spans — only the primary LoRA backend produces
+            # these; fallbacks always return empty lists.  CTLG cue
+            # tags are deliberately handled by a separate adapter.
             if label.role_spans:
                 merged.role_spans = list(label.role_spans)
-            if label.cue_tags:
-                merged.cue_tags = list(label.cue_tags)
             chain_notes.append(f"{backend.name}:ok")
 
         merged.method = self._backends[0].name

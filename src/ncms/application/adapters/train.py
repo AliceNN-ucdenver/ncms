@@ -444,7 +444,7 @@ def phase4_finetune_and_gate(
 
     # v8.1: the v6/v7.x shape_intent classifier head was removed.
     # Query-shape classification is now produced compositionally at
-    # inference by the CTLG synthesizer over the cue head's output —
+    # inference by the CTLG synthesizer over dedicated cue-tagger output —
     # see ncms.domain.tlg.semantic_parser.synthesize.
 
     manifest = build_manifest(

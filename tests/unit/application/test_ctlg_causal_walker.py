@@ -180,6 +180,10 @@ class TestTransitiveCauseDispatcher:
         )
         assert trace.confidence == Confidence.HIGH
         assert trace.grammar_answer == "m_audit"
+        assert trace.causal_edges_traversed == [
+            {"source_id": "m_rewrite", "target_id": "m_outage", "edge_type": "caused_by"},
+            {"source_id": "m_outage", "target_id": "m_audit", "edge_type": "caused_by"},
+        ]
         # Proof should name the CTLG path (not the pre-CTLG fallback).
         assert "CTLG causal chain" in (trace.proof or "")
 

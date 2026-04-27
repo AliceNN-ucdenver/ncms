@@ -22,10 +22,18 @@ taxonomy wiring stays consistent.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import random
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal, cast
 
 import click
+
+if TYPE_CHECKING:
+    from ncms.application.adapters.schemas import Domain
+    from ncms.application.adapters.sdg.v9 import LLMBackend
 
 
 @click.group()
@@ -231,7 +239,7 @@ def adapters_generate_sdg(
         rows, stats_by = generate_domain(
             spec,
             backend=be,
-            split=split,
+            split=cast(Literal["gold", "sdg"], split),
             seed=seed,  # type: ignore[arg-type]
         )
     else:
@@ -258,13 +266,783 @@ def adapters_generate_sdg(
     )
 
 
+@adapters.command("generate-ctlg")
+@click.option("--domain", required=True, help="Domain name, e.g. software_dev / clinical")
+@click.option(
+    "--voice",
+    type=click.Choice(["query", "memory", "counterfactual"]),
+    required=True,
+    help="Generation voice. counterfactual emits query-voice rows with modal cues.",
+)
+@click.option("--n-rows", type=int, required=True, help="Number of CTLG rows to generate.")
+@click.option(
+    "--split",
+    type=click.Choice(["train", "dev", "test", "gold", "llm", "sdg", "adversarial"]),
+    default="llm",
+    help="Corpus split label to write into generated rows.",
+)
+@click.option(
+    "--preset",
+    type=click.Choice(
+        [
+            "predecessor",
+            "current",
+            "cause_of",
+            "after_named",
+            "concurrent_with",
+            "last",
+            "modal_counterfactual",
+        ]
+    ),
+    default=None,
+    help="Optional grammar-slice preset to merge into focus/examples.",
+)
+@click.option("--focus", default="", help="Optional focused cue family or scenario.")
+@click.option(
+    "--example",
+    "examples",
+    multiple=True,
+    help="Style-only reference example. Repeatable.",
+)
+@click.option("--model", default=None, help="litellm model id for generation.")
+@click.option("--api-base", default=None, help="Optional OpenAI-compatible API base.")
+@click.option("--temperature", type=float, default=0.4)
+@click.option("--max-tokens", type=int, default=4000)
+@click.option(
+    "--source",
+    default="llm_generated",
+    help="source field for generated rows.",
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output JSONL. Defaults under adapters/corpora/ctlg/.",
+)
+@click.option(
+    "--report-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON validation report path.",
+)
+@click.option(
+    "--print-prompt",
+    is_flag=True,
+    help="Print the prompt and exit without calling an LLM.",
+)
+@click.option(
+    "--allow-partial",
+    is_flag=True,
+    help="Write validated rows even when some generated rows fail validation.",
+)
+def adapters_generate_ctlg(
+    domain: str,
+    voice: str,
+    n_rows: int,
+    split: str,
+    preset: str | None,
+    focus: str,
+    examples: tuple[str, ...],
+    model: str | None,
+    api_base: str | None,
+    temperature: float,
+    max_tokens: int,
+    source: str,
+    output: Path | None,
+    report_path: Path | None,
+    print_prompt: bool,
+    allow_partial: bool,
+) -> None:
+    """Generate dedicated CTLG BIO cue-tag rows and validate before writing."""
+    from ncms.application.adapters.ctlg import (
+        CTLGGenerationRequest,
+        CTLGPromptSpec,
+        apply_ctlg_pilot_preset,
+        build_generation_prompt,
+        dump_ctlg_jsonl,
+        generate_ctlg_examples,
+        write_generation_result,
+    )
+
+    if n_rows <= 0:
+        raise click.ClickException("--n-rows must be positive")
+
+    request = apply_ctlg_pilot_preset(
+        CTLGGenerationRequest(
+            domain=domain,
+            voice=voice,  # type: ignore[arg-type]
+            n_rows=n_rows,
+            split=split,  # type: ignore[arg-type]
+            source=source,
+            focus=focus,
+            examples=tuple(examples),
+            model=model or "",
+            api_base=api_base,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ),
+        preset,
+    )
+
+    if print_prompt:
+        click.echo(
+            build_generation_prompt(
+                CTLGPromptSpec(
+                    domain=request.domain,
+                    voice=request.voice,
+                    n_rows=request.n_rows,
+                    focus=request.focus,
+                    examples=request.examples,
+                )
+            )
+        )
+        return
+
+    if not model:
+        raise click.ClickException("--model is required unless --print-prompt is set")
+
+    result = asyncio.run(generate_ctlg_examples(request))
+    if report_path is not None:
+        _write_ctlg_generation_report(result, report_path)
+
+    if result.diagnostics and not allow_partial:
+        preview = "\n".join(d.format() for d in result.diagnostics[:5])
+        raise click.ClickException(
+            "CTLG generation failed validation; no corpus was written.\n"
+            f"{preview}"
+            + ("\n..." if len(result.diagnostics) > 5 else ""),
+        )
+    if result.diagnostics and not result.examples:
+        preview = "\n".join(d.format() for d in result.diagnostics[:5])
+        raise click.ClickException(
+            "CTLG generation produced no validated rows.\n"
+            f"{preview}"
+            + ("\n..." if len(result.diagnostics) > 5 else ""),
+        )
+
+    out = output or _default_ctlg_output_path(domain=domain, voice=voice, split=split)
+    if result.diagnostics:
+        dump_ctlg_jsonl(result.examples, out)
+    else:
+        write_generation_result(result, out)
+    click.echo(
+        f"[ctlg generate] domain={domain} voice={voice} split={split} "
+        f"rows={len(result.examples)} diagnostics={len(result.diagnostics)} → {out}",
+    )
+
+
+def _default_ctlg_output_path(*, domain: str, voice: str, split: str) -> Path:
+    suffix = "query" if voice == "counterfactual" else voice
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent / "adapters" / "corpora" / "ctlg" / f"{split}_{suffix}_{domain}.jsonl"
+    return Path("adapters") / "corpora" / "ctlg" / f"{split}_{suffix}_{domain}.jsonl"
+
+
+def _write_ctlg_generation_report(result, report_path: Path) -> None:
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report = result.as_report()
+    report_path.write_text(
+        json.dumps(
+            {
+                "rows_seen": report.rows_seen,
+                "n_valid": len(report.examples),
+                "n_diagnostics": len(report.diagnostics),
+                "examples": [
+                    {
+                        "text": ex.text,
+                        "cue_tags": list(ex.cue_tags),
+                        "expected_tlg_query": (
+                            ex.expected_tlg_query.to_json()
+                            if ex.expected_tlg_query is not None
+                            else None
+                        ),
+                    }
+                    for ex in report.examples
+                ],
+                "diagnostics": [
+                    {
+                        "path": d.path,
+                        "line_no": d.line_no,
+                        "code": d.code,
+                        "message": d.message,
+                    }
+                    for d in report.diagnostics
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+@adapters.command("pilot-ctlg")
+@click.option("--domain", required=True, help="Domain name, e.g. software_dev / clinical")
+@click.option(
+    "--voice",
+    type=click.Choice(["query", "memory", "counterfactual"]),
+    required=True,
+    help="Generation voice. counterfactual emits query-voice rows with modal cues.",
+)
+@click.option("--target-rows", type=int, required=True, help="Accepted row target.")
+@click.option("--batch-size", type=int, default=8, help="Rows requested per LLM batch.")
+@click.option("--max-batches", type=int, default=10, help="Maximum LLM batches to run.")
+@click.option(
+    "--split",
+    type=click.Choice(["train", "dev", "test", "gold", "llm", "sdg", "adversarial"]),
+    default="llm",
+    help="Corpus split label to write into generated rows.",
+)
+@click.option(
+    "--preset",
+    type=click.Choice(
+        [
+            "predecessor",
+            "current",
+            "cause_of",
+            "after_named",
+            "concurrent_with",
+            "last",
+            "modal_counterfactual",
+        ]
+    ),
+    default=None,
+    help="Optional grammar-slice preset to merge into focus/examples.",
+)
+@click.option("--focus", default="", help="Optional focused cue family or scenario.")
+@click.option(
+    "--example",
+    "examples",
+    multiple=True,
+    help="Style-only reference example. Repeatable.",
+)
+@click.option("--model", required=True, help="litellm model id for generation.")
+@click.option("--api-base", default=None, help="Optional OpenAI-compatible API base.")
+@click.option("--temperature", type=float, default=0.4)
+@click.option("--max-tokens", type=int, default=4000)
+@click.option("--source", default="llm_pilot", help="source field for generated rows.")
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Accepted-row JSONL. Defaults under adapters/corpora/ctlg/.",
+)
+@click.option(
+    "--report-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON pilot report path.",
+)
+@click.option(
+    "--allow-duplicates",
+    is_flag=True,
+    help="Keep exact duplicate generated texts instead of deduplicating.",
+)
+def adapters_pilot_ctlg(
+    domain: str,
+    voice: str,
+    target_rows: int,
+    batch_size: int,
+    max_batches: int,
+    split: str,
+    preset: str | None,
+    focus: str,
+    examples: tuple[str, ...],
+    model: str,
+    api_base: str | None,
+    temperature: float,
+    max_tokens: int,
+    source: str,
+    output: Path | None,
+    report_path: Path | None,
+    allow_duplicates: bool,
+) -> None:
+    """Run repeated CTLG generation batches and keep only grammar-valid rows."""
+    from ncms.application.adapters.ctlg import (
+        CTLGGenerationRequest,
+        CTLGPilotRequest,
+        apply_ctlg_pilot_preset,
+        ctlg_pilot_preset_expectation,
+        generate_ctlg_pilot,
+        write_pilot_examples,
+    )
+
+    if target_rows <= 0:
+        raise click.ClickException("--target-rows must be positive")
+    if batch_size <= 0:
+        raise click.ClickException("--batch-size must be positive")
+    if max_batches <= 0:
+        raise click.ClickException("--max-batches must be positive")
+    required_axis, required_relation = ctlg_pilot_preset_expectation(preset)
+
+    result = asyncio.run(
+        generate_ctlg_pilot(
+            CTLGPilotRequest(
+                generation=apply_ctlg_pilot_preset(
+                    CTLGGenerationRequest(
+                        domain=domain,
+                        voice=voice,  # type: ignore[arg-type]
+                        n_rows=batch_size,
+                        split=split,  # type: ignore[arg-type]
+                        source=source,
+                        focus=focus,
+                        examples=tuple(examples),
+                        model=model,
+                        api_base=api_base,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    ),
+                    preset,
+                ),
+                target_rows=target_rows,
+                batch_size=batch_size,
+                max_batches=max_batches,
+                deduplicate_text=not allow_duplicates,
+                required_axis=required_axis,
+                required_relation=required_relation,
+            )
+        )
+    )
+    if not result.examples:
+        preview = "\n".join(
+            f"batch {d.batch_no}:{d.line_no} {d.code}: {d.message}"
+            for d in result.diagnostics[:5]
+        )
+        raise click.ClickException(
+            "CTLG pilot produced no validated rows.\n"
+            f"{preview}"
+            + ("\n..." if len(result.diagnostics) > 5 else ""),
+        )
+
+    out = output or _default_ctlg_pilot_output_path(domain=domain, voice=voice, split=split)
+    write_pilot_examples(result, out)
+    report = report_path or out.with_suffix(".report.json")
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(result.to_json(), indent=2), encoding="utf-8")
+    click.echo(
+        f"[ctlg pilot] domain={domain} voice={voice} split={split} "
+        f"preset={preset or 'none'} "
+        f"accepted={len(result.examples)}/{result.rows_seen} "
+        f"yield={result.valid_yield:.1%} target_hit={result.hit_target} → {out}",
+    )
+    click.echo(f"             report → {report}")
+
+
+def _default_ctlg_pilot_output_path(*, domain: str, voice: str, split: str) -> Path:
+    suffix = "query" if voice == "counterfactual" else voice
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            return (
+                parent
+                / "adapters"
+                / "corpora"
+                / "ctlg"
+                / f"{split}_{suffix}_{domain}_pilot.jsonl"
+            )
+    return Path("adapters") / "corpora" / "ctlg" / f"{split}_{suffix}_{domain}_pilot.jsonl"
+
+
+@adapters.command("audit-ctlg")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--min-query-synthesis-rate",
+    type=float,
+    default=0.0,
+    help="Fail if synthesized/query rows fall below this rate.",
+)
+@click.option(
+    "--report-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON audit report path.",
+)
+@click.option("--max-misses", type=int, default=10, help="Max misses per file in JSON report.")
+def adapters_audit_ctlg(
+    paths: tuple[Path, ...],
+    min_query_synthesis_rate: float,
+    report_path: Path | None,
+    max_misses: int,
+) -> None:
+    """Audit CTLG corpora for grammar-composable query rows."""
+    from ncms.application.adapters.ctlg import audit_ctlg_files
+
+    if not paths:
+        paths = tuple(sorted(Path("adapters/corpora/ctlg").glob("*.jsonl")))
+    if not paths:
+        raise click.ClickException("no CTLG corpus paths found")
+    if not 0.0 <= min_query_synthesis_rate <= 1.0:
+        raise click.ClickException("--min-query-synthesis-rate must be in [0, 1]")
+
+    report = audit_ctlg_files(list(paths))
+    payload = report.to_json(max_misses_per_file=max_misses)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    click.echo(
+        "[ctlg audit] "
+        f"files={len(report.files)} query={report.n_query} "
+        f"synthesized={report.n_query_synthesized} "
+        f"rate={report.query_synthesis_rate:.1%} "
+        f"expected_coverage={report.expected_tlg_coverage:.1%} "
+        f"diagnostics={report.n_diagnostics}",
+    )
+    for file in report.files:
+        click.echo(
+            f"  {file.path}: query={file.n_query} "
+            f"synthesized={file.n_query_synthesized} "
+            f"rate={file.query_synthesis_rate:.1%} "
+            f"expected={file.expected_tlg_coverage:.1%} "
+            f"diagnostics={file.n_diagnostics}",
+        )
+    if not report.ok(min_query_synthesis_rate=min_query_synthesis_rate):
+        raise click.ClickException(
+            "CTLG audit failed: "
+            f"query_synthesis_rate={report.query_synthesis_rate:.3f} "
+            f"< {min_query_synthesis_rate:.3f} or diagnostics={report.n_diagnostics}",
+        )
+
+
+@adapters.command("build-ctlg-corpus")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Output JSONL for grammar-safe CTLG training rows.",
+)
+@click.option(
+    "--report-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON build report path.",
+)
+@click.option(
+    "--min-query-synthesis-rate",
+    type=float,
+    default=0.0,
+    help="Fail if source synthesized/query rows fall below this rate.",
+)
+@click.option(
+    "--exclude-memory",
+    is_flag=True,
+    help="Drop memory-voice rows; by default they are kept for ingest cue extraction.",
+)
+@click.option(
+    "--allow-duplicates",
+    is_flag=True,
+    help="Keep exact duplicate texts instead of deduplicating.",
+)
+@click.option("--max-exclusions", type=int, default=20, help="Max exclusions in JSON report.")
+def adapters_build_ctlg_corpus(
+    paths: tuple[Path, ...],
+    output: Path,
+    report_path: Path | None,
+    min_query_synthesis_rate: float,
+    exclude_memory: bool,
+    allow_duplicates: bool,
+    max_exclusions: int,
+) -> None:
+    """Build a training JSONL containing grammar-composable CTLG rows."""
+    from ncms.application.adapters.ctlg import build_ctlg_training_corpus
+
+    if not paths:
+        paths = tuple(sorted(Path("adapters/corpora/ctlg").glob("*.jsonl")))
+    if not paths:
+        raise click.ClickException("no CTLG corpus paths found")
+    if not 0.0 <= min_query_synthesis_rate <= 1.0:
+        raise click.ClickException("--min-query-synthesis-rate must be in [0, 1]")
+
+    result = build_ctlg_training_corpus(
+        list(paths),
+        output_path=output,
+        include_memory=not exclude_memory,
+        deduplicate_text=not allow_duplicates,
+    )
+    payload = result.to_json(max_exclusions=max_exclusions)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    click.echo(
+        "[ctlg corpus] "
+        f"written={result.n_written} excluded={result.n_excluded} "
+        f"diagnostics={result.n_diagnostics} "
+        f"source_query_rate={result.audit.query_synthesis_rate:.1%} → {output}",
+    )
+    click.echo(
+        f"              by_voice={result.by_voice} by_split={result.by_split} "
+        f"by_exclusion={result.by_exclusion_reason}",
+    )
+    if not result.ok(min_query_synthesis_rate=min_query_synthesis_rate):
+        raise click.ClickException(
+            "CTLG corpus build failed source quality gate: "
+            f"query_synthesis_rate={result.audit.query_synthesis_rate:.3f} "
+            f"< {min_query_synthesis_rate:.3f} or diagnostics={result.n_diagnostics}",
+        )
+
+
+@adapters.command("train-ctlg")
+@click.option("--domain", required=True, help="Domain name, e.g. software_dev / clinical")
+@click.option("--version", default="ctlg-v2", help="Checkpoint version directory name.")
+@click.option(
+    "--corpus",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Grammar-safe CTLG training corpus JSONL.",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Adapter checkpoint directory. Defaults under adapters/checkpoints/<domain>/<version>.",
+)
+@click.option("--encoder", default="bert-base-uncased", help="Base encoder model.")
+@click.option("--epochs", type=int, default=5)
+@click.option("--batch-size", type=int, default=16)
+@click.option("--learning-rate", type=float, default=3e-4)
+@click.option(
+    "--heldout-fraction",
+    type=float,
+    default=0.2,
+    help="Fraction of rows held out from training and evaluated after save.",
+)
+@click.option("--seed", type=int, default=13, help="Stable train/heldout split seed.")
+@click.option(
+    "--device",
+    default="auto",
+    help="auto, mps, cuda, or cpu. auto uses NCMS_CTLG_DEVICE then CUDA/MPS/CPU.",
+)
+@click.option("--no-class-weighting", is_flag=True, help="Disable inverse-frequency loss weights.")
+@click.option("--no-balanced-sampling", is_flag=True, help="Disable rare-label balanced sampling.")
+def adapters_train_ctlg(
+    domain: str,
+    version: str,
+    corpus: Path,
+    output_dir: Path | None,
+    encoder: str,
+    epochs: int,
+    batch_size: int,
+    learning_rate: float,
+    heldout_fraction: float,
+    seed: int,
+    device: str,
+    no_class_weighting: bool,
+    no_balanced_sampling: bool,
+) -> None:
+    """Train the dedicated CTLG BIO cue-tagger adapter."""
+    from ncms.application.adapters.ctlg import (
+        CTLGAdapterManifest,
+        LoraCTLGCueTagger,
+        dump_ctlg_jsonl,
+        evaluate_cue_tagger,
+        load_ctlg_jsonl,
+        train,
+    )
+
+    if epochs <= 0:
+        raise click.ClickException("--epochs must be positive")
+    if batch_size <= 0:
+        raise click.ClickException("--batch-size must be positive")
+    if not 0.0 <= heldout_fraction < 1.0:
+        raise click.ClickException("--heldout-fraction must be in [0, 1)")
+    selected_device = None if device == "auto" else device
+
+    examples = [ex for ex in load_ctlg_jsonl(corpus) if ex.domain == domain]
+    if not examples:
+        raise click.ClickException(f"no CTLG rows for domain {domain!r} in {corpus}")
+
+    shuffled = list(examples)
+    random.Random(seed).shuffle(shuffled)
+    n_heldout = int(round(len(shuffled) * heldout_fraction))
+    heldout = shuffled[:n_heldout]
+    train_examples = shuffled[n_heldout:]
+    if not train_examples:
+        raise click.ClickException("heldout split consumed all rows; lower --heldout-fraction")
+
+    adapter_dir = output_dir or _default_ctlg_adapter_output_dir(domain=domain, version=version)
+    manifest = CTLGAdapterManifest(
+        domain=cast("Domain", domain),
+        version=version,
+        encoder=encoder,
+    )
+    trained_manifest = train(
+        train_examples,
+        domain=cast("Domain", domain),
+        adapter_dir=adapter_dir,
+        manifest=manifest,
+        epochs=epochs,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        device=selected_device,
+        class_weighting=not no_class_weighting,
+        balanced_sampling=not no_balanced_sampling,
+    )
+
+    dump_ctlg_jsonl(train_examples, adapter_dir / "train_corpus.jsonl")
+    if heldout:
+        dump_ctlg_jsonl(heldout, adapter_dir / "heldout_gold.jsonl")
+        tagger = LoraCTLGCueTagger(adapter_dir, device=selected_device)
+        metrics = evaluate_cue_tagger(
+            tagger,
+            heldout,
+            domain=cast("Domain", domain),
+            cue_labels=trained_manifest.cue_labels,
+        )
+        (adapter_dir / "heldout_eval.json").write_text(json.dumps(metrics, indent=2))
+        trained_manifest.gate_metrics = {
+            **trained_manifest.gate_metrics,
+            **{f"heldout_{k}": round(v, 4) for k, v in metrics.items()},
+        }
+        trained_manifest.save(adapter_dir / "manifest.json")
+    else:
+        metrics = {}
+
+    click.echo(
+        "[ctlg train] "
+        f"domain={domain} version={version} train={len(train_examples)} "
+        f"heldout={len(heldout)} adapter={adapter_dir}",
+    )
+    if metrics:
+        click.echo(
+            "             heldout "
+            f"non_o_macro_f1={metrics.get('non_o_macro_f1', 0.0):.3f} "
+            f"token_accuracy={metrics.get('token_accuracy', 0.0):.3f}",
+        )
+
+
+def _default_ctlg_adapter_output_dir(*, domain: str, version: str) -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent / "adapters" / "checkpoints" / domain / version
+    return Path("adapters") / "checkpoints" / domain / version
+
+
+@adapters.command("generate-ctlg-sdg")
+@click.option("--domain", required=True, help="Domain name, e.g. software_dev / clinical")
+@click.option(
+    "--voice",
+    type=click.Choice(["query", "memory", "counterfactual", "mixed", "mseb_targeted"]),
+    default="mixed",
+    help="Template family to generate. mixed balances query, memory, and counterfactual rows.",
+)
+@click.option("--n-rows", type=int, required=True, help="Number of CTLG SDG rows to generate.")
+@click.option(
+    "--split",
+    type=click.Choice(["train", "dev", "test", "gold", "llm", "sdg", "adversarial"]),
+    default="sdg",
+    help="Corpus split label to write into generated rows.",
+)
+@click.option("--seed", type=int, default=13, help="Deterministic generation seed.")
+@click.option("--source", default="sdg_ctlg_template", help="source field for generated rows.")
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output JSONL. Defaults under adapters/corpora/ctlg/.",
+)
+@click.option(
+    "--report-path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Optional JSON validation report path.",
+)
+def adapters_generate_ctlg_sdg(
+    domain: str,
+    voice: str,
+    n_rows: int,
+    split: str,
+    seed: int,
+    source: str,
+    output: Path | None,
+    report_path: Path | None,
+) -> None:
+    """Generate deterministic CTLG BIO cue-tag rows for training coverage."""
+    from ncms.application.adapters.ctlg import (
+        CTLGSDGRequest,
+        dump_ctlg_jsonl,
+        generate_ctlg_sdg_examples,
+        validate_ctlg_jsonl,
+    )
+
+    if n_rows <= 0:
+        raise click.ClickException("--n-rows must be positive")
+
+    rows = generate_ctlg_sdg_examples(
+        CTLGSDGRequest(
+            domain=domain,  # type: ignore[arg-type]
+            voice=voice,  # type: ignore[arg-type]
+            n_rows=n_rows,
+            split=split,  # type: ignore[arg-type]
+            source=source,
+            seed=seed,
+        )
+    )
+    out = output or _default_ctlg_sdg_output_path(domain=domain, voice=voice, split=split)
+    dump_ctlg_jsonl(rows, out)
+    report = validate_ctlg_jsonl(out)
+    if report_path is not None:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(
+                {
+                    "rows_seen": report.rows_seen,
+                    "n_valid": len(report.examples),
+                    "n_diagnostics": len(report.diagnostics),
+                    "by_voice": report.by_voice,
+                    "by_cue_family": report.by_cue_family,
+                    "diagnostics": [
+                        {
+                            "path": d.path,
+                            "line_no": d.line_no,
+                            "code": d.code,
+                            "message": d.message,
+                        }
+                        for d in report.diagnostics
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    if not report.ok:
+        preview = "\n".join(d.format() for d in report.diagnostics[:5])
+        raise click.ClickException(
+            "CTLG SDG generation failed validation.\n"
+            f"{preview}"
+            + ("\n..." if len(report.diagnostics) > 5 else ""),
+        )
+    click.echo(
+        f"[ctlg sdg] domain={domain} voice={voice} split={split} "
+        f"rows={len(report.examples)} → {out}",
+    )
+
+
+def _default_ctlg_sdg_output_path(*, domain: str, voice: str, split: str) -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file():
+            return (
+                parent
+                / "adapters"
+                / "corpora"
+                / "ctlg"
+                / f"{split}_{voice}_{domain}_sdg.jsonl"
+            )
+    return Path("adapters") / "corpora" / "ctlg" / f"{split}_{voice}_{domain}_sdg.jsonl"
+
+
 def _resolve_sdg_backend(
     *,
     backend: str,
     model: str | None,
     api_base: str | None,
     temperature: float,
-) -> object:
+) -> LLMBackend:
     from ncms.application.adapters.sdg.v9 import SparkBackend, TemplateBackend
 
     if backend == "template":
@@ -719,7 +1497,7 @@ def adapters_label_slots(
 
     n = sync_label_corpus(
         source=source,
-        domain=domain,
+        domain=cast("Domain", domain),
         output=output,  # type: ignore[arg-type]
         model=model,
         api_base=api_base,

@@ -69,6 +69,7 @@ class LGTrace:
     grammar_answer: str | None = None
     zone_context: list[str] = field(default_factory=list)
     admitted_zones: list[str] = field(default_factory=list)
+    causal_edges_traversed: list[dict[str, str]] = field(default_factory=list)
     proof: str = ""
     confidence: Confidence = Confidence.NONE
 

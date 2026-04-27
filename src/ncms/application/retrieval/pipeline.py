@@ -2,8 +2,8 @@
 
 Three stages — each a public method on ``RetrievalPipeline``:
 
-1. **retrieve_candidates** — Parallel BM25 + SPLADE + GLiNER extraction,
-   fused via Reciprocal Rank Fusion.
+1. **retrieve_candidates** — Parallel BM25 + SPLADE + configured query
+   entity extraction, fused via Reciprocal Rank Fusion.
 2. **rerank_candidates** — Cross-encoder reranking, applied selectively
    based on classified intent (fact/pattern/reflection benefit; temporal
    state queries would be hurt).
@@ -23,6 +23,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from ncms.application.entity_extraction_mode import use_gliner_entities
 from ncms.application.label_cache import load_cached_labels
 from ncms.domain.entity_extraction import (
     TEMPORAL_LABELS,
@@ -163,17 +164,13 @@ class RetrievalPipeline:
         domain: str | None,
         emit_stage: Callable,
     ) -> tuple | None:
-        """Run BM25 + SPLADE + GLiNER in parallel, fuse via RRF.
+        """Run BM25 + SPLADE + configured query entities in parallel, fuse via RRF.
 
         Returns ``None`` if no candidates found, or a tuple of
         ``(fused_candidates, bm25_results, splade_results,
         bm25_scores, splade_scores, query_entity_names,
         parallel_ms)``.
         """
-        from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_with_label_budget,
-        )
-
         search_domains = [domain] if domain else []
         cached = await load_cached_labels(self._store, search_domains)
         labels = resolve_labels(search_domains, cached_labels=cached)
@@ -223,6 +220,16 @@ class RetrievalPipeline:
                 return []
 
         async def _entity_task() -> list[dict]:
+            if not use_gliner_entities(self._config):
+                logger.info(
+                    "[search] Query entity extraction skipped: mode=%s",
+                    self._config.entity_extraction_mode,
+                )
+                return []
+            from ncms.infrastructure.extraction.gliner_extractor import (
+                extract_with_label_budget,
+            )
+
             t = time.perf_counter()
             result = await asyncio.to_thread(
                 extract_with_label_budget,
@@ -240,7 +247,8 @@ class RetrievalPipeline:
             return result
 
         logger.info(
-            "[search] Starting parallel retrieval: BM25 + SPLADE + GLiNER",
+            "[search] Starting parallel retrieval: BM25 + SPLADE + entity_extraction(%s)",
+            self._config.entity_extraction_mode,
         )
         bm25_results, splade_results, query_entity_names = await asyncio.gather(
             _bm25_task(),

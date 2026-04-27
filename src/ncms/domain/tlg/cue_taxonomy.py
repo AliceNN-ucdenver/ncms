@@ -1,7 +1,7 @@
 """CTLG cue taxonomy — linguistic cue labels for causal-temporal parsing.
 
 This module defines the vocabulary of typed linguistic cues used by
-the CTLG 6th head (BIO sequence tagger) to mark tokens in a query or
+the dedicated CTLG BIO sequence tagger to mark tokens in a query or
 memory content.  The cue vocabulary and annotator contract is
 documented in :doc:`../../../docs/research/ctlg-cue-guidelines.md`;
 the grammar-level consumer (trajectory grammar :math:`G_{tr,c}` and
@@ -236,7 +236,7 @@ CUE_FAMILIES: dict[CueFamily, frozenset[CueLabel]] = {
 class TaggedToken:
     """One token marked with a cue label.
 
-    Produced by the CTLG shape_cue_head at inference time and by
+    Produced by the dedicated CTLG cue tagger at inference time and by
     annotators (LLM or human) at training time.  The offsets are
     character-level into the original text so downstream
     consumers can slice the source or align with gazetteer

@@ -8,13 +8,11 @@ production rules that matched seed-marker vocabularies
 (``SEED_INTENT_MARKERS``) against the query text to pick a TLG
 grammar intent (``current`` / ``origin`` / ``before_named`` / etc.).
 
-The P2 SLM's 6th head (``shape_intent_head``, trained on 747 MSEB
-gold queries with 100% accuracy on the clean-gold domains) now
-owns intent classification.  The production-rule matchers and the
-seed-marker vocabulary have been deleted — see
-``ncms.application.tlg.vocabulary_cache`` for the two small seed
-sets that survived (used only for L2 marker induction at ingest
-time, not for query parsing).
+The failed P2 SLM ``shape_intent_head`` briefly owned intent
+classification, then was retired after held-out collapse.  CTLG now
+owns relation detection through cue tags + the semantic synthesizer.
+This module only supplies deterministic subject/entity grounding
+that CTLG can use as a fallback.
 
 What this module still does
 ---------------------------
@@ -26,10 +24,10 @@ What this module still does
 2. **Target-entity extraction** — ``_extract_event_name`` finds
    named entities (issue-vocabulary or L1-vocabulary hits) in the
    query so dispatchers that need a specific target (sequence,
-   predecessor, before_named, …) can reference it.  This is a
-   surface-form NER task and will move to a ``target_entity``
-   slot head in v7; until then it's a compact regex-adjacent
-   helper kept in-process.
+   predecessor, before_named, …) can reference it. Query-side CTLG
+   prefers cue-tagged anchors and 5-head SLM slot/role grounding;
+   this vocabulary path remains the deterministic fallback for
+   subject and secondary-entity resolution.
 
 3. **Data types** — ``ParserContext`` + ``QueryStructure`` + the
    ``compute_domain_nouns`` helper are schema containers the
@@ -37,8 +35,7 @@ What this module still does
 
 The exported ``analyze_query`` returns a ``QueryStructure`` with
 ``intent=None``.  The caller (``retrieve_lg``) fills ``intent``
-from the SLM's ``shape_intent_head`` output before dispatching
-to a walker.
+from the CTLG ``TLGQuery`` relation before dispatching to a walker.
 
 See ``docs/completed/p2-plan.md`` for the SLM design and
 ``docs/mseb-results.md`` §5 for per-head evidence.
@@ -109,10 +106,9 @@ class ParserContext:
 class QueryStructure:
     """Structured query analysis — subject + target_entity only.
 
-    Post-v6, ``intent`` is always ``None`` on output from
+    Post-v8.1, ``intent`` is always ``None`` on output from
     :func:`analyze_query`.  The grammar dispatcher fills it in
-    from the SLM ``shape_intent_head`` classification before
-    routing to a walker.
+    from the CTLG semantic parser before routing to a walker.
 
     Consumers should branch on the dispatcher-assigned intent, not
     on this struct's ``intent`` field.  Kept here for
@@ -315,10 +311,10 @@ def analyze_query(
 ) -> QueryStructure:
     """Extract subject + target entity + secondary entity from a query.
 
-    Post-v6 this function does NOT classify intent — the SLM's
-    ``shape_intent_head`` owns that.  Returns ``intent=None``;
-    the grammar dispatcher overrides it from the SLM output
-    before routing.
+    Post-v8.1 this function does NOT classify intent — CTLG owns
+    relation detection.  Returns ``intent=None``; the grammar
+    dispatcher overrides it from the synthesized ``TLGQuery`` before
+    routing.
 
     When the query mentions two L1-vocabulary entities (e.g.
     "Did session cookies come before OAuth?"), the first is

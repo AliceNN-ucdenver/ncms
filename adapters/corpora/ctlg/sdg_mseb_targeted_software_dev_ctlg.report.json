@@ -1,0 +1,20 @@
+{
+  "by_cue_family": {
+    "ASK_CHANGE": 2,
+    "ASK_CURRENT": 22,
+    "O": 159,
+    "ORDINAL_LAST": 12,
+    "REFERENT": 7,
+    "SCOPE": 33,
+    "SUBJECT": 40,
+    "TEMPORAL_AFTER": 1,
+    "TEMPORAL_BEFORE": 2
+  },
+  "by_voice": {
+    "query": 31
+  },
+  "diagnostics": [],
+  "n_diagnostics": 0,
+  "n_valid": 31,
+  "rows_seen": 31
+}

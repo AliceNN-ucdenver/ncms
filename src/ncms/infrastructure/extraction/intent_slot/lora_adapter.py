@@ -46,10 +46,9 @@ def _to_domain_label(src: _AdapterExtractedLabel) -> ExtractedLabel:
 
     ``cue_tags`` on the domain ExtractedLabel defaults to ``[]``
     and is left empty here — the v9 joint adapter produces five
-    heads, none of which emit cue tags.  When the future dedicated
-    CTLG adapter ships it will populate this field via a separate
-    chain link; the ChainedExtractor merges both extractors'
-    output into a single ExtractedLabel.
+    heads, none of which emit cue tags.  The dedicated CTLG adapter
+    uses its own boundary and stores output under
+    ``memory.structured["ctlg"]``.
     """
     role_spans = [
         {

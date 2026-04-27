@@ -3,7 +3,7 @@
 Reads all persisted memories from the store and rebuilds the specified
 indexes from scratch.  Useful after enabling SPLADE on an existing database,
 recovering a corrupted Tantivy index, or re-extracting entities with
-updated GLiNER labels.
+the configured entity extraction lane.
 
 Each rebuild method is independent and can be called individually or
 combined via ``rebuild_all()``.
@@ -17,6 +17,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from ncms.application.entity_extraction_mode import (
+    structured_slm_entities,
+    use_gliner_entities,
+)
 from ncms.config import NCMSConfig
 from ncms.domain.models import Entity, Memory
 from ncms.domain.protocols import GraphEngine, MemoryStore
@@ -158,43 +162,21 @@ class ReindexService:
         memories: list[Memory] | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> int:
-        """Re-extract entities via GLiNER and re-link to memories.
+        """Re-extract entities via configured lane and re-link to memories.
 
-        For each memory, runs GLiNER extraction with domain-resolved labels,
-        then links entities to the memory in both SQLite and the graph engine.
-        Returns the total number of entities extracted.
+        In ``gliner_only`` mode this reruns GLiNER.  In ``slm_only`` mode
+        it recovers the SLM entities baked into ``memory.structured`` at
+        ingest time, avoiding a hidden GLiNER fallback during reindex.
         """
-        from ncms.domain.entity_extraction import resolve_labels
-        from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_entities_gliner,
-        )
-
         if memories is None:
             memories = await self._load_all_memories()
 
         total_entities = 0
         total = len(memories)
 
-        from ncms.application.label_cache import load_cached_labels
-
         for i, memory in enumerate(memories):
             try:
-                # Resolve labels for this memory's domains
-                cached = await load_cached_labels(
-                    self._store,
-                    memory.domains,
-                )
-                labels = resolve_labels(memory.domains, cached_labels=cached)
-
-                # Extract entities
-                entities = await asyncio.to_thread(
-                    extract_entities_gliner,
-                    memory.content,
-                    model_name=self._config.gliner_model,
-                    threshold=self._config.gliner_threshold,
-                    labels=labels,
-                    cache_dir=self._config.model_cache_dir,
-                )
+                entities = await self._extract_reindex_entities(memory)
 
                 # Link entities to memory
                 for e_data in entities:
@@ -224,6 +206,30 @@ class ReindexService:
         )
         return total_entities
 
+    async def _extract_reindex_entities(self, memory: Memory) -> list[dict]:
+        if not use_gliner_entities(self._config):
+            return structured_slm_entities(memory.structured)
+
+        from ncms.application.label_cache import load_cached_labels
+        from ncms.domain.entity_extraction import resolve_labels
+        from ncms.infrastructure.extraction.gliner_extractor import (
+            extract_entities_gliner,
+        )
+
+        cached = await load_cached_labels(
+            self._store,
+            memory.domains,
+        )
+        labels = resolve_labels(memory.domains, cached_labels=cached)
+        return await asyncio.to_thread(
+            extract_entities_gliner,
+            memory.content,
+            model_name=self._config.gliner_model,
+            threshold=self._config.gliner_threshold,
+            labels=labels,
+            cache_dir=self._config.model_cache_dir,
+        )
+
     # ── Full rebuild ───────────────────────────────────────────────
 
     async def rebuild_all(
@@ -244,7 +250,7 @@ class ReindexService:
         Args:
             bm25: Rebuild the Tantivy BM25 index.
             splade: Rebuild the SPLADE sparse vector index.
-            entities: Re-extract entities via GLiNER and re-link.
+            entities: Re-extract entities via configured lane and re-link.
             graph: Rebuild the NetworkX graph from SQLite.
             progress_callback: Optional (current, total) callback.
 

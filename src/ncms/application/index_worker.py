@@ -1,8 +1,9 @@
 """Background indexing worker — decouples store_memory() from indexing.
 
 After store_memory() persists to SQLite and runs admission scoring, the
-expensive work (BM25, SPLADE, GLiNER, entity linking, co-occurrence edges,
-episode formation, contradiction detection) is enqueued as an IndexTask.
+expensive work (BM25, SPLADE, configured entity extraction, entity linking,
+co-occurrence edges, episode formation, contradiction detection) is enqueued
+as an IndexTask.
 
 A pool of async workers drains the queue, running indexing stages with
 parallelism where possible. Failures retry with exponential backoff.
@@ -22,6 +23,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
+
+from ncms.application.entity_extraction_mode import use_gliner_entities
 
 if TYPE_CHECKING:
     from ncms.domain.models import MemoryNode
@@ -55,10 +58,9 @@ class IndexTask:
     # ENTITY_STATE node creation uses this as ``entity_id`` directly
     # instead of inferring via regex / SLM state-change detection.
     subject: str | None = None
-    # SLM slot head primary / GLiNER fallback: when True, the SLM
-    # slot head already produced confident typed entities for this
-    # memory; skip GLiNER to keep the entity graph clean on
-    # trained-domain deployments.
+    # True when SLM output is already present in ``entities_manual`` for
+    # this memory.  The configured entity extraction lane decides whether
+    # GLiNER may run.
     slot_entities_present: bool = False
 
     # Internal tracking
@@ -303,15 +305,11 @@ class IndexWorkerPool:
                 _emit("failed", 0.0, {"error": "memory_not_found"})
                 return
 
-            # ── Stage 1: Parallel indexing (BM25 + SPLADE + GLiNER) ──
-            # All three are independent — run concurrently.  GLiNER
-            # is SKIPPED when the SLM slot head already produced
-            # confident typed entities for this memory (see
-            # ``task.slot_entities_present``, set upstream in
-            # ``MemoryService.store_memory``).  Keeps the entity
-            # graph clean on trained-domain deployments.
+            # ── Stage 1: Parallel indexing ─────────────────────────
+            # BM25/SPLADE always run; GLiNER runs only in the
+            # configured GLiNER lane so SLM-only experiments stay clean.
             t1 = time.perf_counter()
-            if task.slot_entities_present:
+            if not use_gliner_entities(self._svc._config):
 
                 async def _noop_gliner() -> tuple[list[dict[str, str]], float]:
                     return [], 0.0
@@ -336,6 +334,8 @@ class IndexWorkerPool:
                     "bm25_ms": round(bm25_ms, 1),
                     "splade_ms": round(splade_ms, 1),
                     "gliner_ms": round(extract_ms, 1),
+                    "entity_extraction_mode": self._svc._config.entity_extraction_mode,
+                    "slm_entities_present": task.slot_entities_present,
                     "entity_count": len(auto_entities),
                 },
             )

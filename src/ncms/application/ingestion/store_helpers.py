@@ -65,10 +65,10 @@ def bake_intent_slot_payload(
 ) -> dict:
     """Serialise the SLM extraction output into ``memory.structured``.
 
-    Threads role_spans (v7+) and cue_tags (v8+) through as JSON-ready
-    list[dict] so the ingest pipeline downstream consumers (L2
-    ENTITY_STATE builder, ``_extract_and_persist_causal_edges``) can
-    read them without per-row conversion.
+    Threads role_spans (v7+) through as JSON-ready list[dict] so
+    downstream consumers can read them without per-row conversion.
+    CTLG cue tags are intentionally not part of this payload; they
+    live under ``memory.structured["ctlg"]``.
     """
     result = dict(structured or {})
     result["intent_slot"] = {
@@ -84,7 +84,6 @@ def bake_intent_slot_payload(
         "latency_ms": intent_slot_label.latency_ms,
         "role_spans": [dict(r) for r in getattr(intent_slot_label, "role_spans", ()) or ()],
         "slots": dict(getattr(intent_slot_label, "slots", {}) or {}),
-        "cue_tags": list(getattr(intent_slot_label, "cue_tags", ()) or ()),
     }
     return result
 

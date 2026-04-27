@@ -30,16 +30,13 @@ from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 from tests.integration._tlg_helpers import tlg_query_for
 
 
-class _StubIntentSlotExtractor:
+class _StubCTLGCueTagger:
     """Test stub that returns a canned cue-tag set for any input.
 
-    The MemoryService consults its ``_intent_slot`` at query time
-    to run the cue head → synthesizer pipeline; production uses a
-    real LoRA adapter.  Tests that need the grammar composition
-    path to fire without loading a 2.4 MB adapter supply this stub
-    wired to the ``shape_intent`` label the test is exercising —
-    the stub translates that into the cue_tag sequence the v8.1
-    synthesizer would emit for that shape.
+    The MemoryService consults its dedicated CTLG cue tagger at query
+    time; production uses a CTLG LoRA adapter.  Tests that need the
+    grammar composition path to fire without loading an adapter supply
+    this stub wired to the legacy shape label the test is exercising.
     """
 
     name = "test_stub"
@@ -93,15 +90,8 @@ class _StubIntentSlotExtractor:
         self._shape = shape
         self.adapter_domain = adapter_domain
 
-    def extract(self, text: str, *, domain: str):  # pragma: no cover — trivial
-        from ncms.domain.models import ExtractedLabel
-
-        return ExtractedLabel(
-            intent="none",
-            intent_confidence=0.0,
-            cue_tags=list(self._CUES_BY_SHAPE.get(self._shape, [])),
-            method=self.name,
-        )
+    def extract_cues(self, text: str, *, domain: str):  # pragma: no cover — trivial
+        return list(self._CUES_BY_SHAPE.get(self._shape, []))
 
 
 async def _build_service(
@@ -124,7 +114,7 @@ async def _build_service(
         graph=graph,
         config=config,
         reconciliation=reconciliation,
-        intent_slot=(_StubIntentSlotExtractor(slm_shape) if slm_shape else None),
+        ctlg_cue_tagger=(_StubCTLGCueTagger(slm_shape) if slm_shape else None),
     )
     return svc
 

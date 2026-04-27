@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ncms.domain.intent import IntentResult
+    from ncms.domain.tlg.cue_taxonomy import TaggedToken
 
 from ncms.domain.models import (
     AccessRecord,
@@ -187,6 +188,24 @@ class ContentRangeStore(Protocol):
         self,
         memory_ids: list[str],
     ) -> dict[str, tuple[str, str]]: ...
+
+
+class CTLGCueTagger(Protocol):
+    """Dedicated CTLG cue-tagger boundary.
+
+    Implementations must be separate from the 5-head intent-slot SLM.
+    They return token-level causal/temporal/ordinal/modal cue tags used
+    by the CTLG synthesizer and ingest-side causal-edge extractor.
+    """
+
+    name: str
+
+    def extract_cues(
+        self,
+        text: str,
+        *,
+        domain: str = "",
+    ) -> list[TaggedToken] | list[dict]: ...
 
 
 class MemoryStore(

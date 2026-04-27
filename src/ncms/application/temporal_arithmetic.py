@@ -29,7 +29,12 @@ async def extract_anchor_entity_names(
     query: str,
     domain: str | None,
 ) -> list[str]:
-    """GLiNER extraction → subject names, filtered to non-temporal labels."""
+    """Configured query entity extraction → subject names."""
+    from ncms.application.entity_extraction_mode import use_gliner_entities
+
+    if not use_gliner_entities(config):
+        return []
+
     from ncms.application.label_cache import load_cached_labels
     from ncms.application.retrieval.pipeline import RetrievalPipeline
     from ncms.domain.entity_extraction import (

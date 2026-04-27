@@ -95,6 +95,20 @@ class MemoryBackend(Protocol):
         """
         return {}
 
+    async def ctlg_shadow_query(
+        self,
+        query: str,
+        *,
+        gold_mids: set[str],
+        gold_subject: str | None = None,
+    ) -> dict[str, object]:
+        """Return optional CTLG shadow diagnostics for one query.
+
+        Backends that do not implement CTLG return ``{}``.  Diagnostics
+        must not affect the ranked results used for scoring.
+        """
+        return {}
+
     async def shutdown(self) -> None: ...
 
 

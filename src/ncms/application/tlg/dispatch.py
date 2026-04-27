@@ -198,6 +198,7 @@ from ncms.application.tlg.walkers import (  # noqa: E402
     _dispatch_sequence,
     _dispatch_transitive_cause,
     _find_event_node,  # noqa: F401
+    _find_subject_section_node,
     _walk_causal_chain,  # noqa: F401
 )
 
@@ -343,11 +344,13 @@ async def _apply_tlg_dispatch_overlay(
     # the dispatcher had no structured signal.
     new_subject = getattr(tlg_query, "subject", None) or qs.subject
     new_target = getattr(tlg_query, "referent", None) or qs.target_entity
+    new_secondary = getattr(tlg_query, "secondary", None) or qs.secondary_entity
     qs = _dc.replace(
         qs,
         intent=mapped,
         subject=new_subject,
         target_entity=new_target,
+        secondary_entity=new_secondary,
         detected_marker="tlg_synthesizer",
     )
     trace = LGTrace(query=query, intent=_intent_to_lg_intent(qs))
@@ -371,9 +374,9 @@ async def _apply_tlg_dispatch_overlay(
     return qs, trace, None
 
 
-def _grammar_abstain_trace(*, trace: LGTrace, slm_abstained: bool) -> LGTrace:
-    if slm_abstained:
-        trace.proof = "SLM cue head / synthesizer abstained; grammar does not apply"
+def _grammar_abstain_trace(*, trace: LGTrace, cue_abstained: bool) -> LGTrace:
+    if cue_abstained:
+        trace.proof = "CTLG cue tagger / synthesizer abstained; grammar does not apply"
     else:
         trace.proof = (
             "no TLGQuery supplied; grammar does not apply "
@@ -390,7 +393,7 @@ async def retrieve_lg(
     vocabulary_cache: object,
     shape_cache: object | None = None,
     tlg_query: object | None = None,
-    slm_abstained: bool = False,
+    cue_abstained: bool = False,
 ) -> LGTrace:
     """Classify + dispatch a query against the grammar layer.
 
@@ -439,7 +442,7 @@ async def retrieve_lg(
         if terminal is not None:
             return terminal
     else:
-        return _grammar_abstain_trace(trace=trace, slm_abstained=slm_abstained)
+        return _grammar_abstain_trace(trace=trace, cue_abstained=cue_abstained)
 
     if qs.intent is None or qs.intent == "none":
         trace.proof = "no LG intent assigned; grammar does not apply"
@@ -659,6 +662,20 @@ async def _dispatch_retirement_intent(
     qs: QueryStructure,
     ctx: _DispatchCtx,
 ) -> None:
+    if qs.target_entity is None:
+        alternatives = await _find_subject_section_node(
+            ctx.store,
+            ctx.node_index,
+            section_keywords=("alternatives", "considered options", "alternatives considered"),
+            content_keywords=("alternatives", "considered options", "alternatives considered"),
+        )
+        if alternatives is not None:
+            trace.grammar_answer = alternatives.id
+            trace.proof = (
+                f"retirement(subject={qs.subject}): alternatives section = {alternatives.id}"
+            )
+            trace.confidence = Confidence.HIGH
+            return
     aliases = await _expand_entity_aliases(qs, ctx)
     retired_dst = await _still_retirement_match(qs, ctx, aliases)
     if retired_dst is not None:

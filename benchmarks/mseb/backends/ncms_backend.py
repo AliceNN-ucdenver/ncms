@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -22,6 +23,128 @@ if TYPE_CHECKING:
     from benchmarks.mseb.schema import CorpusMemory
 
 logger = logging.getLogger("mseb.backends.ncms")
+
+
+def _subject_diagnostics(
+    *,
+    baseline: tuple[str, ...],
+    subject_map: dict[str, str],
+    id_map: dict[str, str],
+    gold_subject: str | None,
+) -> dict[str, object]:
+    """Summarize whether retrieved candidates expose the gold subject."""
+    ranked_subjects: list[dict[str, object]] = []
+    first_subject_rank: dict[str, int] = {}
+    counts: Counter[str] = Counter()
+    gold_rank: int | None = None
+    for rank, ncms_id in enumerate(baseline, start=1):
+        subject = subject_map.get(ncms_id)
+        if not subject:
+            continue
+        counts[subject] += 1
+        first_subject_rank.setdefault(subject, rank)
+        if gold_subject is not None and subject == gold_subject and gold_rank is None:
+            gold_rank = rank
+        ranked_subjects.append(
+            {
+                "rank": rank,
+                "candidate": id_map.get(ncms_id, ncms_id),
+                "subject": subject,
+            }
+        )
+
+    top_subject: str | None = None
+    top_subject_count = 0
+    if counts:
+        top_subject, top_subject_count = counts.most_common(1)[0]
+
+    return {
+        "gold_subject": gold_subject,
+        "gold_subject_rank": gold_rank,
+        "gold_subject_in_candidates": gold_rank is not None,
+        "top_subject": top_subject,
+        "top_subject_count": top_subject_count,
+        "top_subject_is_gold": bool(gold_subject and top_subject == gold_subject),
+        "unique_subjects": len(counts),
+        "subject_counts": dict(counts.most_common()),
+        "first_subject_ranks": first_subject_rank,
+        "ranked_subjects": ranked_subjects,
+    }
+
+
+def _subject_anchor_candidates(
+    *,
+    candidate_ids: tuple[str, ...],
+    subject_map: dict[str, str],
+) -> tuple[tuple[str, str], ...]:
+    """Order one representative candidate per subject for anchor probing."""
+    counts: Counter[str] = Counter()
+    harmonic: Counter[str] = Counter()
+    best_rank: dict[str, int] = {}
+    best_candidate: dict[str, str] = {}
+    for rank, ncms_id in enumerate(candidate_ids, start=1):
+        subject = subject_map.get(ncms_id)
+        if not subject:
+            continue
+        counts[subject] += 1
+        harmonic[subject] += 1.0 / rank
+        if subject not in best_rank:
+            best_rank[subject] = rank
+            best_candidate[subject] = ncms_id
+    ordered_subjects = sorted(
+        counts,
+        key=lambda s: (
+            -counts[s],
+            -harmonic[s],
+            best_rank[s],
+            s,
+        ),
+    )
+    return tuple((best_candidate[subject], subject) for subject in ordered_subjects)
+
+
+def _subject_anchor_stats(
+    *,
+    candidate_ids: tuple[str, ...],
+    subject_map: dict[str, str],
+) -> dict[str, dict[str, float | int | str]]:
+    counts: Counter[str] = Counter()
+    harmonic: Counter[str] = Counter()
+    best_rank: dict[str, int] = {}
+    best_candidate: dict[str, str] = {}
+    for rank, ncms_id in enumerate(candidate_ids, start=1):
+        subject = subject_map.get(ncms_id)
+        if not subject:
+            continue
+        counts[subject] += 1
+        harmonic[subject] += 1.0 / rank
+        if subject not in best_rank:
+            best_rank[subject] = rank
+            best_candidate[subject] = ncms_id
+    return {
+        subject: {
+            "count": counts[subject],
+            "harmonic": float(harmonic[subject]),
+            "best_rank": best_rank[subject],
+            "best_candidate": best_candidate[subject],
+        }
+        for subject in counts
+    }
+
+
+def _oracle_subject_candidate(
+    *,
+    gold_subject: str | None,
+    candidate_ids: tuple[str, ...],
+    subject_map: dict[str, str],
+) -> tuple[tuple[str, str], ...]:
+    """Return a single candidate tuple pinned to the gold subject."""
+    if not gold_subject:
+        return ()
+    for ncms_id in candidate_ids:
+        if subject_map.get(ncms_id) == gold_subject:
+            return ((ncms_id, gold_subject),)
+    return ((f"oracle:{gold_subject}", gold_subject),)
 
 
 @dataclass
@@ -36,12 +159,16 @@ class NcmsBackend:
 
     feature_set: FeatureSet
     adapter_domain: str | None = None
+    ctlg_adapter_domain: str | None = None
+    ctlg_adapter_version: str | None = None
     shared_splade: object | None = None
     shared_intent_slot: object | None = None
-    #: Extra NCMSConfig fields (e.g. ``scoring_weight_temporal=0.5``)
-    #: passed by the harness when running ablation sweeps.  Applied
-    #: after the feature-set overrides, so sweep-flags win.
-    ncms_config_overrides: dict[str, float] = field(default_factory=dict)
+    shared_ctlg_cue_tagger: object | None = None
+    #: Extra NCMSConfig fields (e.g. ``scoring_weight_temporal=0.5``,
+    #: ``splade_enabled=False``) passed by the harness when running
+    #: ablation sweeps.  Applied after feature-set overrides, so
+    #: sweep flags win.
+    ncms_config_overrides: dict[str, object] = field(default_factory=dict)
 
     name: str = "ncms"
     _svc: object | None = field(default=None, init=False, repr=False)
@@ -55,7 +182,6 @@ class NcmsBackend:
         from ncms.application.memory_service import MemoryService
         from ncms.config import NCMSConfig
         from ncms.infrastructure.graph.networkx_store import NetworkXGraph
-        from ncms.infrastructure.indexing.splade_engine import SpladeEngine
         from ncms.infrastructure.indexing.tantivy_engine import TantivyEngine
         from ncms.infrastructure.storage.sqlite_store import SQLiteStore
 
@@ -66,7 +192,6 @@ class NcmsBackend:
         index.initialize()
 
         graph = NetworkXGraph()
-        splade = self.shared_splade if self.shared_splade is not None else SpladeEngine()
 
         intent_slot = self.shared_intent_slot
         if self.feature_set.slm and intent_slot is None and self.adapter_domain is not None:
@@ -85,6 +210,20 @@ class NcmsBackend:
         # short-circuits and falls back to the heuristic chain.
         if not self.feature_set.slm:
             intent_slot = None
+
+        ctlg_cue_tagger = self.shared_ctlg_cue_tagger
+        if (
+            self.feature_set.temporal
+            and ctlg_cue_tagger is None
+            and self.ctlg_adapter_domain is not None
+        ):
+            from ncms.application.ctlg_cue_tagger import build_default_ctlg_cue_tagger
+
+            ctlg_cue_tagger = build_default_ctlg_cue_tagger(
+                domain=self.ctlg_adapter_domain,
+                version=self.ctlg_adapter_version,
+                required=False,
+            )
 
         # Base config = FULL NCMS (temporal stack on + SLM on baseline).
         # ``temporal_enabled=True`` is the master flag that gates: the
@@ -113,6 +252,12 @@ class NcmsBackend:
             base_kwargs.update(self.ncms_config_overrides)
         config = NCMSConfig(**base_kwargs)
 
+        splade = None
+        if config.splade_enabled:
+            from ncms.infrastructure.indexing.splade_engine import SpladeEngine
+
+            splade = self.shared_splade if self.shared_splade is not None else SpladeEngine()
+
         svc = MemoryService(
             store=store,
             index=index,
@@ -120,6 +265,7 @@ class NcmsBackend:
             config=config,
             splade=splade,
             intent_slot=intent_slot,
+            ctlg_cue_tagger=ctlg_cue_tagger,
         )
         await svc.start_index_pool()
         self._svc = svc
@@ -129,12 +275,16 @@ class NcmsBackend:
         # third.  Grep this line in any run-log to verify what was ON.
         logger.info(
             "NCMS runtime config: "
-            "temporal_enabled=%s slm_chain=%s | "
+            "temporal_enabled=%s slm_chain=%s ctlg_chain=%s | "
+            "entity_mode=%s splade_enabled=%s | "
             "bm25=%.2f splade=%.2f graph=%.2f actr=%.2f "
             "temporal=%.2f hierarchy=%.2f recency=%.2f | "
             "admission=%s populate_domains=%s",
             config.temporal_enabled,
             "loaded" if intent_slot is not None else "off",
+            "loaded" if ctlg_cue_tagger is not None else "off",
+            config.entity_extraction_mode,
+            config.splade_enabled,
             config.scoring_weight_bm25,
             config.scoring_weight_splade,
             config.scoring_weight_graph,
@@ -200,6 +350,20 @@ class NcmsBackend:
                 self.feature_set.slm,
                 self.adapter_domain,
             )
+        if ctlg_cue_tagger is not None:
+            manifest = getattr(ctlg_cue_tagger, "manifest", None)
+            logger.info(
+                "CTLG adapter: domain=%s version=%s encoder=%s labels=%d",
+                getattr(manifest, "domain", self.ctlg_adapter_domain),
+                getattr(manifest, "version", self.ctlg_adapter_version),
+                getattr(manifest, "encoder", "?"),
+                len(getattr(manifest, "cue_labels", []) or []),
+            )
+        else:
+            logger.info(
+                "CTLG adapter: (none wired — ctlg_adapter_domain=%s)",
+                self.ctlg_adapter_domain,
+            )
 
     # -------------------------------------------------------------------
     # Ingest
@@ -264,6 +428,12 @@ class NcmsBackend:
         self._ncms_to_mseb: dict[str, str] = {
             ncms_id: mseb_mid for mseb_mid, ncms_id in mid_map.items()
         }
+        subject_by_mid = {m.mid: m.subject for m in memories}
+        self._ncms_to_subject: dict[str, str] = {
+            ncms_id: subject_by_mid[mseb_mid]
+            for mseb_mid, ncms_id in mid_map.items()
+            if mseb_mid in subject_by_mid
+        }
         return mid_map
 
     # -------------------------------------------------------------------
@@ -312,6 +482,7 @@ class NcmsBackend:
         svc: MemoryService = self._svc  # type: ignore[assignment]
 
         stages: dict[str, list[str]] = {} if capture_stages else None  # type: ignore[assignment]
+        self._last_stage_ncms = {}
         try:
             results = await svc.search(
                 query=query,
@@ -340,6 +511,8 @@ class NcmsBackend:
         # mapping (e.g. supplementary candidates injected by
         # intent-driven expansion that aren't in the gold corpus)
         # are dropped from the stage list.
+        if stages is not None:
+            self._last_stage_ncms = {stage: list(nids) for stage, nids in stages.items()}
         if stages:
             ncms_to_mseb = getattr(self, "_ncms_to_mseb", {})
             stages = {
@@ -347,6 +520,349 @@ class NcmsBackend:
                 for stage, nids in stages.items()
             }
         return rankings, (stages or {})
+
+    async def ctlg_shadow_query(
+        self,
+        query: str,
+        *,
+        gold_mids: set[str],
+        gold_subject: str | None = None,
+    ) -> dict[str, object]:
+        """Run CTLG in shadow mode against the last captured search ranking.
+
+        This is benchmark-only diagnostics: it computes the rank movement CTLG
+        would propose, but the live ``search()`` result remains the only ranking
+        the MSEB scorer sees.
+        """
+        from ncms.application.adapters.ctlg import (
+            run_candidate_grounded_ctlg_shadow,
+            run_ctlg_shadow,
+            serialize_harness_result,
+        )
+        from ncms.application.memory_service import MemoryService
+
+        if self._svc is None:
+            return {}
+        svc: MemoryService = self._svc  # type: ignore[assignment]
+        baseline = tuple((getattr(self, "_last_stage_ncms", {}) or {}).get("returned", []))
+        if not baseline:
+            return {}
+        id_map = getattr(self, "_ncms_to_mseb", {})
+        subject_map = getattr(self, "_ncms_to_subject", {})
+
+        async def _resolve_node_id(node_id: str) -> str | None:
+            try:
+                node = await svc.store.get_memory_node(node_id)
+            except Exception:
+                return None
+            return node.memory_id if node is not None else node_id
+
+        result = await run_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            resolve_id_fn=_resolve_node_id,
+        )
+        payload = serialize_harness_result(
+            result,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        candidate_subjects = subject_map
+        grounded = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=candidate_subjects,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+        )
+        payload["candidate_grounded"] = serialize_harness_result(
+            grounded,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        guarded = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=candidate_subjects,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+            require_answer_in_ranking=True,
+        )
+        payload["candidate_grounded_existing_only"] = serialize_harness_result(
+            guarded,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        stages = getattr(self, "_last_stage_ncms", {}) or {}
+        anchor_stage = "scored"
+        anchor_pool = tuple(stages.get(anchor_stage) or ())
+        if not anchor_pool:
+            anchor_stage = "expanded"
+            anchor_pool = tuple(stages.get(anchor_stage) or ())
+        if not anchor_pool:
+            anchor_stage = "returned"
+            anchor_pool = baseline
+        subject_anchor_candidates = _subject_anchor_candidates(
+            candidate_ids=anchor_pool,
+            subject_map=subject_map,
+        )
+        subject_anchor = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=subject_anchor_candidates,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+            require_answer_in_ranking=True,
+        )
+        subject_anchor_payload = serialize_harness_result(
+            subject_anchor,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        subject_anchor_payload["anchor_stage"] = anchor_stage
+        subject_anchor_payload["anchor_pool_size"] = len(anchor_pool)
+        subject_anchor_payload["anchor_subject_diagnostics"] = _subject_diagnostics(
+            baseline=anchor_pool,
+            subject_map=subject_map,
+            id_map=id_map,
+            gold_subject=gold_subject,
+        )
+        payload["subject_anchor_existing_only"] = subject_anchor_payload
+        subject_anchor_scored = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=subject_anchor_candidates,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+            require_answer_in_ranking=True,
+            allowed_answer_ids=anchor_pool,
+        )
+        subject_anchor_scored_payload = serialize_harness_result(
+            subject_anchor_scored,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        subject_anchor_scored_payload["anchor_stage"] = anchor_stage
+        subject_anchor_scored_payload["anchor_pool_size"] = len(anchor_pool)
+        subject_anchor_scored_payload["anchor_subject_diagnostics"] = _subject_diagnostics(
+            baseline=anchor_pool,
+            subject_map=subject_map,
+            id_map=id_map,
+            gold_subject=gold_subject,
+        )
+        payload["subject_anchor_scored_pool"] = subject_anchor_scored_payload
+
+        anchor_stats = _subject_anchor_stats(
+            candidate_ids=anchor_pool,
+            subject_map=subject_map,
+        )
+        max_count = max((float(stat["count"]) for stat in anchor_stats.values()), default=1.0)
+        max_harmonic = max(
+            (float(stat["harmonic"]) for stat in anchor_stats.values()), default=1.0
+        )
+        resolver_rows: list[dict[str, object]] = []
+        resolver_results = []
+        for candidate_id, subject in subject_anchor_candidates:
+            candidate_result = await run_candidate_grounded_ctlg_shadow(
+                query,
+                retrieve_lg_fn=svc.retrieve_lg,
+                bm25_ranking=baseline,
+                candidate_subjects=((candidate_id, subject),),
+                domain=self.adapter_domain or "",
+                cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+                cue_tags=result.cue_tags,
+                tlg_query=result.tlg_query,
+                resolve_id_fn=_resolve_node_id,
+                override_existing_subject=True,
+                require_answer_in_ranking=True,
+                allowed_answer_ids=anchor_pool,
+            )
+            stat = anchor_stats.get(subject, {})
+            best_rank = int(stat.get("best_rank", len(anchor_pool) + 1))
+            count_norm = float(stat.get("count", 0)) / max_count
+            harmonic_norm = float(stat.get("harmonic", 0.0)) / max_harmonic
+            inverse_rank = 1.0 / max(best_rank, 1)
+            attempt = (
+                dict(candidate_result.candidate_attempts[0])
+                if candidate_result.candidate_attempts
+                else {}
+            )
+            relation_supported = bool(candidate_result.would_compose)
+            answer_in_pool = bool(attempt.get("answer_in_allowed_ids"))
+            score = (
+                0.25 * harmonic_norm
+                + 0.20 * count_norm
+                + 0.15 * inverse_rank
+                + 0.25 * float(relation_supported)
+                + 0.15 * float(answer_in_pool)
+            )
+            row = {
+                "candidate": id_map.get(candidate_id, candidate_id),
+                "subject": subject,
+                "score": round(score, 6),
+                "count": stat.get("count", 0),
+                "harmonic": round(float(stat.get("harmonic", 0.0)), 6),
+                "best_rank": best_rank,
+                "relation_supported": relation_supported,
+                "answer_in_pool": answer_in_pool,
+                "grammar_answer": (
+                    id_map.get(
+                        str(attempt.get("grammar_answer")),
+                        str(attempt.get("grammar_answer")),
+                    )
+                    if attempt.get("grammar_answer")
+                    else None
+                ),
+                "proof": attempt.get("proof"),
+            }
+            resolver_rows.append(row)
+            resolver_results.append((score, subject, candidate_id, candidate_result))
+
+        resolver_results.sort(key=lambda item: (-item[0], item[1]))
+        selected_resolver = resolver_results[0] if resolver_results else None
+        second_score = resolver_results[1][0] if len(resolver_results) > 1 else 0.0
+        selected_score = selected_resolver[0] if selected_resolver is not None else 0.0
+        selected_result = selected_resolver[3] if selected_resolver is not None else None
+        selected_margin = selected_score - second_score
+        source_tlg_query = result.tlg_query
+        ambiguous_deictic_subject = (
+            source_tlg_query is not None
+            and source_tlg_query.subject is None
+            and source_tlg_query.referent is None
+            and sum(1 for _, _, _, candidate in resolver_results if candidate.would_compose) > 1
+        )
+        resolver_accept = bool(
+            selected_result is not None
+            and selected_result.would_compose
+            and not ambiguous_deictic_subject
+            and selected_score >= 0.45
+            and selected_margin >= 0.03
+        )
+        if resolver_accept and selected_result is not None:
+            resolver_payload = serialize_harness_result(
+                selected_result,
+                gold_ids=tuple(gold_mids),
+                id_map=id_map,
+            )
+            resolver_payload["abstention_reason"] = ""
+        else:
+            resolver_payload = serialize_harness_result(
+                await run_candidate_grounded_ctlg_shadow(
+                    query,
+                    retrieve_lg_fn=svc.retrieve_lg,
+                    bm25_ranking=baseline,
+                    candidate_subjects=(),
+                    domain=self.adapter_domain or "",
+                    cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+                    cue_tags=result.cue_tags,
+                    tlg_query=result.tlg_query,
+                    resolve_id_fn=_resolve_node_id,
+                    override_existing_subject=True,
+                    require_answer_in_ranking=True,
+                    allowed_answer_ids=anchor_pool,
+                ),
+                gold_ids=tuple(gold_mids),
+                id_map=id_map,
+            )
+            if selected_result is not None and not selected_result.would_compose:
+                resolver_payload["abstention_reason"] = "resolver_selected_no_composition"
+            elif ambiguous_deictic_subject:
+                resolver_payload["abstention_reason"] = "resolver_ambiguous_deictic_subject"
+            elif selected_result is not None and selected_margin < 0.03:
+                resolver_payload["abstention_reason"] = "resolver_margin_too_low"
+            elif selected_result is not None and selected_score < 0.45:
+                resolver_payload["abstention_reason"] = "resolver_score_too_low"
+        resolver_payload["resolver_selected_subject"] = (
+            selected_resolver[1] if selected_resolver is not None else None
+        )
+        resolver_payload["resolver_selected_score"] = round(selected_score, 6)
+        resolver_payload["resolver_margin"] = round(selected_margin, 6)
+        resolver_payload["resolver_candidates"] = sorted(
+            resolver_rows,
+            key=lambda row: (-float(row["score"]), str(row["subject"])),
+        )
+        resolver_payload["anchor_stage"] = anchor_stage
+        resolver_payload["anchor_pool_size"] = len(anchor_pool)
+        payload["subject_resolver_scored_pool"] = resolver_payload
+
+        oracle_subject_candidates = _oracle_subject_candidate(
+            gold_subject=gold_subject,
+            candidate_ids=anchor_pool,
+            subject_map=subject_map,
+        )
+        oracle_existing = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=oracle_subject_candidates,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+            require_answer_in_ranking=True,
+        )
+        oracle_existing_payload = serialize_harness_result(
+            oracle_existing,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        oracle_existing_payload["anchor_stage"] = "returned"
+        oracle_existing_payload["anchor_pool_size"] = len(baseline)
+        payload["oracle_subject_existing_only"] = oracle_existing_payload
+        oracle_scored = await run_candidate_grounded_ctlg_shadow(
+            query,
+            retrieve_lg_fn=svc.retrieve_lg,
+            bm25_ranking=baseline,
+            candidate_subjects=oracle_subject_candidates,
+            domain=self.adapter_domain or "",
+            cue_tagger=getattr(svc, "_ctlg_cue_tagger", None),
+            cue_tags=result.cue_tags,
+            tlg_query=result.tlg_query,
+            resolve_id_fn=_resolve_node_id,
+            override_existing_subject=True,
+            require_answer_in_ranking=True,
+            allowed_answer_ids=anchor_pool,
+        )
+        oracle_scored_payload = serialize_harness_result(
+            oracle_scored,
+            gold_ids=tuple(gold_mids),
+            id_map=id_map,
+        )
+        oracle_scored_payload["anchor_stage"] = anchor_stage
+        oracle_scored_payload["anchor_pool_size"] = len(anchor_pool)
+        payload["oracle_subject_scored_pool"] = oracle_scored_payload
+        payload["subject_diagnostics"] = _subject_diagnostics(
+            baseline=baseline,
+            subject_map=subject_map,
+            id_map=id_map,
+            gold_subject=gold_subject,
+        )
+        return payload
 
     # -------------------------------------------------------------------
     # Forensic: expose per-query SLM head outputs for predictions dump

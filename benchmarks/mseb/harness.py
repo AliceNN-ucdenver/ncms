@@ -161,6 +161,7 @@ async def _run_queries(
     """
     preds: list[Prediction] = []
     classify = getattr(backend, "classify_query", None)
+    ctlg_shadow = getattr(backend, "ctlg_shadow_query", None)
     # Per-stage gold-recall capture is opt-in: only NCMS backend
     # exposes ``search_with_stages``.  mem0 baseline doesn't have
     # per-stage candidates, so we fall back to plain ``search``.
@@ -171,6 +172,7 @@ async def _run_queries(
         return {q.gold_mid} | set(q.gold_alt or [])
 
     for q in queries:
+        gold = _gold_set(q)
         t0 = time.perf_counter()
         stages: dict[str, list[str]] = {}
         try:
@@ -199,6 +201,21 @@ async def _run_queries(
                     q.qid,
                     exc,
                 )
+        if ctlg_shadow is not None:
+            try:
+                ctlg_diag = await ctlg_shadow(
+                    q.text,
+                    gold_mids=gold,
+                    gold_subject=q.subject,
+                )
+                if ctlg_diag:
+                    head_outputs["ctlg_shadow"] = ctlg_diag
+            except Exception as exc:  # pragma: no cover — forensic path
+                logger.debug(
+                    "qid=%s ctlg_shadow_query failed: %s",
+                    q.qid,
+                    exc,
+                )
         intent_conf = head_outputs.get("intent_conf")
 
         # Per-stage gold-recall flags.  For each stage, check
@@ -206,8 +223,6 @@ async def _run_queries(
         # the first ``stage_recall_top_k`` candidates.  Stays
         # ``None`` when the backend didn't expose per-stage
         # candidates.
-        gold = _gold_set(q)
-
         def _gold_in_stage(
             stage_key: str,
             *,
@@ -255,6 +270,8 @@ class RunConfig:
     out_dir: Path
     run_id: str
     top_k: int = 10
+    ctlg_adapter_domain: str | None = None
+    ctlg_adapter_version: str | None = None
     head_gold: dict[str, dict[str, str]] | None = field(default=None)
     backend_kwargs: dict[str, object] = field(default_factory=dict)
 
@@ -272,6 +289,11 @@ async def run(cfg: RunConfig) -> dict[str, object]:
         cfg.domain,
         cfg.backend,
         cfg.adapter_domain,
+    )
+    logger.info(
+        "MSEB RUN ctlg_adapter=%s version=%s",
+        cfg.ctlg_adapter_domain,
+        cfg.ctlg_adapter_version,
     )
     logger.info(
         "MSEB RUN corpus=%d memories  queries=%d  top_k=%d",
@@ -299,6 +321,8 @@ async def run(cfg: RunConfig) -> dict[str, object]:
         cfg.backend,
         feature_set=cfg.feature_set,
         adapter_domain=cfg.adapter_domain,
+        ctlg_adapter_domain=cfg.ctlg_adapter_domain,
+        ctlg_adapter_version=cfg.ctlg_adapter_version,
         **cfg.backend_kwargs,
     )
     await backend.setup()
@@ -451,6 +475,17 @@ def main() -> None:
         "Required when SLM is on (NCMS backend only).",
     )
     ap.add_argument(
+        "--ctlg-adapter-domain",
+        default=None,
+        help="Dedicated CTLG cue-tagger adapter domain. Enables CTLG shadow diagnostics "
+        "without changing scored rankings.",
+    )
+    ap.add_argument(
+        "--ctlg-adapter-version",
+        default=None,
+        help="Optional CTLG cue-tagger version, e.g. ctlg-v1. Defaults to newest deployed.",
+    )
+    ap.add_argument(
         "--out-dir",
         type=Path,
         default=None,
@@ -511,6 +546,12 @@ def main() -> None:
         default=None,
         help="Override scoring_weight_splade (default 0.3).",
     )
+    ap.add_argument(
+        "--splade-off",
+        action="store_true",
+        help="[Performance ablation] Disable SPLADE engine construction/index/search "
+        "and set scoring_weight_splade=0.0.",
+    )
 
     # Ablation flags — two master toggles mirroring NCMSConfig.
     ap.add_argument(
@@ -564,6 +605,14 @@ def main() -> None:
         "(default 0.3).  Use 0.7 to revert to the v6/v7-era "
         "floor — tests whether the lowered threshold admits "
         "low-confidence labels that perturb retrieval.",
+    )
+    ap.add_argument(
+        "--entity-extraction-mode",
+        choices=["slm_only", "gliner_only"],
+        default=None,
+        help="[Entity extraction ablation] Select the graph/query entity "
+        "lane. slm_only never invokes GLiNER from NCMS application paths; "
+        "gliner_only preserves the historical GLiNER entity lane.",
     )
     ap.add_argument(
         "--intent-alignment-weight",
@@ -625,6 +674,9 @@ def main() -> None:
             weight_overrides["scoring_weight_bm25"] = args.bm25_weight
         if args.splade_weight is not None:
             weight_overrides["scoring_weight_splade"] = args.splade_weight
+        if args.splade_off:
+            weight_overrides["splade_enabled"] = False
+            weight_overrides["scoring_weight_splade"] = 0.0
         # Phase G: SLM signal-isolation flags routed through the
         # same overrides dict so the ablation runs are a one-line
         # CLI change.
@@ -635,6 +687,8 @@ def main() -> None:
             weight_overrides["reconciliation_conflict_penalty"] = 0.0
         if args.slm_confidence_threshold is not None:
             weight_overrides["slm_confidence_threshold"] = args.slm_confidence_threshold
+        if args.entity_extraction_mode is not None:
+            weight_overrides["entity_extraction_mode"] = args.entity_extraction_mode
         if args.intent_alignment_weight is not None:
             weight_overrides["scoring_weight_intent_alignment"] = args.intent_alignment_weight
         if args.role_grounding_weight is not None:
@@ -655,6 +709,8 @@ def main() -> None:
         out_dir=out_dir,
         run_id=run_id,
         top_k=args.top_k,
+        ctlg_adapter_domain=args.ctlg_adapter_domain,
+        ctlg_adapter_version=args.ctlg_adapter_version,
         backend_kwargs=backend_kwargs,
     )
     result = asyncio.run(run(cfg))
@@ -679,10 +735,10 @@ def main() -> None:
     # persisted everything we care about, so fast-exit is safe.
     import os as _os
 
-    _os.sys.stdout.flush()
-    _os.sys.stderr.flush()
+    sys.stdout.flush()
+    sys.stderr.flush()
     _os._exit(0)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

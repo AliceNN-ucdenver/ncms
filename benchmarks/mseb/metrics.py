@@ -49,7 +49,7 @@ class Prediction:
     latency_ms: float = 0.0
 
     # Optional SLM diagnostic fields.
-    head_outputs: dict[str, str] = field(default_factory=dict)
+    head_outputs: dict[str, Any] = field(default_factory=dict)
     """Per-head classifier output on the gold memory; only set when
     ``--slm-on`` and the gold query carries expected head labels."""
 
@@ -130,7 +130,7 @@ def wilson_ci(hits: int, n: int, z: float = 1.96) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 
 
-def macro_f1(pairs: list[tuple[str, str]]) -> dict[str, float]:
+def macro_f1(pairs: list[tuple[str, str]]) -> dict[str, Any]:
     """Macro-F1 across observed classes.
 
     ``pairs`` is a list of ``(gold_label, pred_label)`` strings.

@@ -4,7 +4,7 @@
 **Companion:** `docs/research/ctlg-design.md`
 **Owner:** NCMS core
 
-This document specifies how human (and LLM) annotators apply BIO cue labels to query-voice and memory-voice text for training the CTLG 6th head. Target: inter-annotator agreement Cohen's κ ≥ 0.8 on the pilot set before scale-out.
+This document specifies how human (and LLM) annotators apply BIO cue labels to query-voice and memory-voice text for training the dedicated CTLG cue-tagger adapter. Target: inter-annotator agreement Cohen's κ ≥ 0.8 on the pilot set before scale-out.
 
 ## Labeling contract
 

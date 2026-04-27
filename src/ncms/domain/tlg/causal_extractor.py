@@ -1,6 +1,6 @@
 """CTLG causal-edge extraction from memory-voice cue tags.
 
-The CTLG 6th head (shape_cue_head) tags query-voice AND memory-voice
+The dedicated CTLG cue tagger tags query-voice AND memory-voice
 text with the same cue vocabulary.  At ingest time, memory-voice
 tags let us populate typed :class:`CausalEdge` s on the zone graph
 without a second forward pass.
@@ -184,7 +184,7 @@ def extract_causal_pairs(
 
     Multi-cue memories produce multiple pairs (one per cue phrase
     between REFERENT spans).  Pairs below ``min_confidence`` are
-    dropped — the cue head's low-confidence predictions are noise
+    dropped — low-confidence cue predictions are noise
     that pollutes the causal graph.
 
     Pure function — no side effects.
@@ -389,6 +389,9 @@ def pairs_to_causal_edges(
                 dst=cause_id,
                 edge_type=p.edge_type,
                 cue_type=p.cue_type,
+                cue_surface=p.cue_surface,
+                cue_char_start=p.cue_char_start,
+                cue_char_end=p.cue_char_end,
                 confidence=p.confidence,
             )
         )

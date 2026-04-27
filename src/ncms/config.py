@@ -88,7 +88,12 @@ class NCMSConfig(BaseSettings):
     # Content size gating (Phase 1 data integrity)
     max_content_length: int = 5000
 
-    # GLiNER entity extraction (required dependency)
+    # Entity extraction lane.  ``gliner_only`` preserves the historical
+    # zero-shot NER graph; ``slm_only`` uses caller/SLM/catalog entities
+    # and never invokes GLiNER from application retrieval/indexing paths.
+    entity_extraction_mode: Literal["slm_only", "gliner_only"] = "gliner_only"
+
+    # GLiNER entity extraction
     gliner_model: str = "urchade/gliner_medium-v2.1"
     gliner_threshold: float = 0.3
 

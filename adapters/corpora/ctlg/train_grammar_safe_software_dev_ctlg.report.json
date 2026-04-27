@@ -1,0 +1,876 @@
+{
+  "output_path": "/tmp/ctlg_train_grammar_safe.jsonl",
+  "n_written": 1085,
+  "n_excluded": 305,
+  "n_diagnostics": 0,
+  "by_voice": {
+    "query": 788,
+    "memory": 297
+  },
+  "by_split": {
+    "gold": 336,
+    "llm": 249,
+    "sdg": 500
+  },
+  "by_domain": {
+    "software_dev": 1085
+  },
+  "by_exclusion_reason": {
+    "query_not_synthesizable": 295,
+    "duplicate_text": 10
+  },
+  "audit": {
+    "rows_seen": 1390,
+    "n_query": 1093,
+    "n_query_synthesized": 798,
+    "query_synthesis_rate": 0.7301006404391582,
+    "expected_tlg_coverage": 0.0,
+    "n_diagnostics": 0,
+    "files": [
+      {
+        "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+        "rows_seen": 640,
+        "n_valid": 640,
+        "n_diagnostics": 0,
+        "n_query": 640,
+        "n_query_with_expected_tlg": 0,
+        "n_query_synthesized": 346,
+        "query_synthesis_rate": 0.540625,
+        "expected_tlg_coverage": 0.0,
+        "by_axis": {
+          "state": 64,
+          "causal": 64,
+          "ordinal": 122,
+          "temporal": 77,
+          "modal": 19
+        },
+        "by_relation": {
+          "state_at": 24,
+          "cause_of": 45,
+          "first": 55,
+          "last": 38,
+          "predecessor": 21,
+          "chain_cause_of": 19,
+          "before_named": 11,
+          "current": 33,
+          "during_interval": 30,
+          "after_named": 1,
+          "would_be_current_if": 19,
+          "declared": 21,
+          "nth": 29
+        },
+        "by_miss_note": {
+          "": 294
+        },
+        "validation_diagnostics": [],
+        "misses": [
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 5,
+            "text": "Trace the ADR from context through decision for: Contents:.",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 8,
+            "text": "What decision was adopted in: After considering the pros and cons of both options, we have decided to use?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "I-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 12,
+            "text": "Trace the ADR from context through decision for: We are designing an API for a new service that will be used by multiple.",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 13,
+            "text": "What consequences were anticipated alongside adopting the decision in: After considering the pros and cons of both options, we have decided to use?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "I-TEMPORAL_BEFORE",
+              "I-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 14,
+            "text": "What problem existed before the decision was made in: After considering the pros and cons of both options, we have decided to use?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 15,
+            "text": "What decision was adopted in: We are considering different container orchestration tools to manage our?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 19,
+            "text": "Trace the ADR from context through decision for: Decision Number: 001.",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 20,
+            "text": "What alternatives were considered before the final choice in: - **Kubernetes:**  Kubernetes is the most widely-used container orchestration?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "B-REFERENT",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 21,
+            "text": "What consequences were anticipated alongside adopting the decision in: We are considering different container orchestration tools to manage our?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 22,
+            "text": "What problem existed before the decision was made in: We are considering different container orchestration tools to manage our?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 23,
+            "text": "Which alternatives were retired by the decision in: - **Kubernetes:**  Kubernetes is the most widely-used container orchestration?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 24,
+            "text": "What decision was adopted in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 28,
+            "text": "Trace the ADR from context through decision for: Contents:.",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 29,
+            "text": "What consequences were anticipated alongside adopting the decision in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 30,
+            "text": "What problem existed before the decision was made in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "B-TEMPORAL_BEFORE",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 31,
+            "text": "What decision was adopted in: Our organization is planning to develop a web application that manages customer?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 35,
+            "text": "Trace the ADR from context through decision for: Decision Date: 2021-07-15.",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 37,
+            "text": "What rationale or decision drivers justified the choice in: Some of the factors that influenced our decision include:?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 39,
+            "text": "What consequences were anticipated alongside adopting the decision in: Our organization is planning to develop a web application that manages customer?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          },
+          {
+            "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+            "line_no": 40,
+            "text": "What problem existed before the decision was made in: Our organization is planning to develop a web application that manages customer?",
+            "note": "",
+            "cue_tags": [
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "adapters/corpora/ctlg/llm_counterfactual_software_dev_pilot.jsonl",
+        "rows_seen": 50,
+        "n_valid": 50,
+        "n_diagnostics": 0,
+        "n_query": 50,
+        "n_query_with_expected_tlg": 0,
+        "n_query_synthesized": 50,
+        "query_synthesis_rate": 1.0,
+        "expected_tlg_coverage": 0.0,
+        "by_axis": {
+          "modal": 34,
+          "state": 16
+        },
+        "by_relation": {
+          "would_be_current_if": 34,
+          "current": 6,
+          "declared": 10
+        },
+        "by_miss_note": {},
+        "validation_diagnostics": [],
+        "misses": []
+      },
+      {
+        "path": "adapters/corpora/ctlg/llm_memory_software_dev_pilot.jsonl",
+        "rows_seen": 100,
+        "n_valid": 100,
+        "n_diagnostics": 0,
+        "n_query": 0,
+        "n_query_with_expected_tlg": 0,
+        "n_query_synthesized": 0,
+        "query_synthesis_rate": 1.0,
+        "expected_tlg_coverage": 1.0,
+        "by_axis": {},
+        "by_relation": {},
+        "by_miss_note": {},
+        "validation_diagnostics": [],
+        "misses": []
+      },
+      {
+        "path": "adapters/corpora/ctlg/llm_query_software_dev_pilot.jsonl",
+        "rows_seen": 100,
+        "n_valid": 100,
+        "n_diagnostics": 0,
+        "n_query": 100,
+        "n_query_with_expected_tlg": 0,
+        "n_query_synthesized": 99,
+        "query_synthesis_rate": 0.99,
+        "expected_tlg_coverage": 0.0,
+        "by_axis": {
+          "state": 62,
+          "temporal": 36,
+          "causal": 1
+        },
+        "by_relation": {
+          "current": 37,
+          "during_interval": 30,
+          "declared": 25,
+          "state_at": 6,
+          "cause_of": 1
+        },
+        "by_miss_note": {
+          "": 1
+        },
+        "validation_diagnostics": [],
+        "misses": [
+          {
+            "path": "adapters/corpora/ctlg/llm_query_software_dev_pilot.jsonl",
+            "line_no": 5,
+            "text": "Which commit introduced the bug?",
+            "note": "",
+            "cue_tags": [
+              "B-REFERENT",
+              "O",
+              "O",
+              "O",
+              "O",
+              "O"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "adapters/corpora/ctlg/sdg_mixed_software_dev_ctlg.jsonl",
+        "rows_seen": 500,
+        "n_valid": 500,
+        "n_diagnostics": 0,
+        "n_query": 303,
+        "n_query_with_expected_tlg": 0,
+        "n_query_synthesized": 303,
+        "query_synthesis_rate": 1.0,
+        "expected_tlg_coverage": 0.0,
+        "by_axis": {
+          "state": 81,
+          "temporal": 30,
+          "ordinal": 75,
+          "causal": 33,
+          "modal": 84
+        },
+        "by_relation": {
+          "declared": 81,
+          "predecessor": 30,
+          "first": 28,
+          "last": 30,
+          "nth": 17,
+          "cause_of": 33,
+          "would_be_current_if": 84
+        },
+        "by_miss_note": {},
+        "validation_diagnostics": [],
+        "misses": []
+      }
+    ]
+  },
+  "exclusions": [
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 5,
+      "text": "Trace the ADR from context through decision for: Contents:.",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 8,
+      "text": "What decision was adopted in: After considering the pros and cons of both options, we have decided to use?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 12,
+      "text": "Trace the ADR from context through decision for: We are designing an API for a new service that will be used by multiple.",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 13,
+      "text": "What consequences were anticipated alongside adopting the decision in: After considering the pros and cons of both options, we have decided to use?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 14,
+      "text": "What problem existed before the decision was made in: After considering the pros and cons of both options, we have decided to use?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 15,
+      "text": "What decision was adopted in: We are considering different container orchestration tools to manage our?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 19,
+      "text": "Trace the ADR from context through decision for: Decision Number: 001.",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 20,
+      "text": "What alternatives were considered before the final choice in: - **Kubernetes:**  Kubernetes is the most widely-used container orchestration?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 21,
+      "text": "What consequences were anticipated alongside adopting the decision in: We are considering different container orchestration tools to manage our?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 22,
+      "text": "What problem existed before the decision was made in: We are considering different container orchestration tools to manage our?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 23,
+      "text": "Which alternatives were retired by the decision in: - **Kubernetes:**  Kubernetes is the most widely-used container orchestration?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 24,
+      "text": "What decision was adopted in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 26,
+      "text": "What introduction opens the decision record: Contents:?",
+      "reason": "duplicate_text"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 27,
+      "text": "What closing summary does the decision record provide for: Contents:?",
+      "reason": "duplicate_text"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 28,
+      "text": "Trace the ADR from context through decision for: Contents:.",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 29,
+      "text": "What consequences were anticipated alongside adopting the decision in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 30,
+      "text": "What problem existed before the decision was made in: We choose the timestamp standard format ISO 8601 with nanosecond precision,?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 31,
+      "text": "What decision was adopted in: Our organization is planning to develop a web application that manages customer?",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 35,
+      "text": "Trace the ADR from context through decision for: Decision Date: 2021-07-15.",
+      "reason": "query_not_synthesizable"
+    },
+    {
+      "path": "adapters/corpora/ctlg/gold_cues_software_dev.jsonl",
+      "line_no": 37,
+      "text": "What rationale or decision drivers justified the choice in: Some of the factors that influenced our decision include:?",
+      "reason": "query_not_synthesizable"
+    }
+  ],
+  "diagnostics": []
+}

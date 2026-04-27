@@ -5,8 +5,8 @@ Seven stages — each a public method on ``IngestionPipeline``:
 1. **pre_admission_gates** — dedup, size check, content classification
 2. **gate_admission** — 4-feature admission scoring (discard /
    ephemeral / persist)
-3. **run_inline_indexing** — parallel BM25 + SPLADE + GLiNER +
-   entity linking + co-occurrence edges
+3. **run_inline_indexing** — parallel BM25 + SPLADE + configured
+   entity extraction + entity linking + co-occurrence edges
 4. **create_memory_nodes** — L1 atomic + optional L2 entity_state
 5. **reconcile_entity_state** — state reconciliation against existing
    entity states
@@ -28,6 +28,12 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
+from ncms.application.entity_extraction_mode import (
+    slm_slots_to_entity_dicts as _slm_slots_to_entity_dicts,
+)
+from ncms.application.entity_extraction_mode import (
+    use_gliner_entities,
+)
 from ncms.application.label_cache import load_cached_labels
 from ncms.domain.entity_extraction import (
     TEMPORAL_LABELS,
@@ -124,28 +130,10 @@ class IngestionPipeline:
         Returns an empty list when the label is ``None``, has no
         slots, or every slot is below threshold.
         """
-        if label is None:
-            return []
-        slots = getattr(label, "slots", None) or {}
-        confidences = getattr(label, "slot_confidences", None) or {}
-        out: list[dict] = []
-        for slot_name, surface in slots.items():
-            if not surface:
-                continue
-            conf = float(confidences.get(slot_name, 1.0))
-            if conf < confidence_threshold:
-                continue
-            out.append(
-                {
-                    "name": str(surface).strip(),
-                    "type": str(slot_name),
-                    "attributes": {
-                        "source": "slm_slot",
-                        "confidence": round(conf, 3),
-                    },
-                }
-            )
-        return out
+        return _slm_slots_to_entity_dicts(
+            label,
+            confidence_threshold=confidence_threshold,
+        )
 
     # ── Entity State Extraction (shared with index_worker) ──────────────
 
@@ -676,19 +664,14 @@ class IngestionPipeline:
         emit_stage: Callable,
         slot_entities_present: bool = False,
     ) -> tuple[list[dict], list[str]]:
-        """Run BM25, SPLADE, GLiNER in parallel; link entities.
+        """Run BM25, SPLADE, and configured entity extraction; link entities.
 
-        When ``slot_entities_present`` is True, the SLM slot head already
-        produced confident typed entities for this memory and
-        ``entities_manual`` contains them; GLiNER is skipped to
-        keep the entity graph clean on trained-domain deployments.
+        ``slot_entities_present`` is passed through for observability and
+        compatibility.  The configured entity extraction lane decides
+        whether GLiNER can run at all.
 
         Returns ``(all_entities, linked_entity_ids)``.
         """
-        from ncms.infrastructure.extraction.gliner_extractor import (
-            extract_with_label_budget,
-        )
-
         async def _do_bm25() -> float:
             t = time.perf_counter()
             await asyncio.to_thread(
@@ -715,12 +698,12 @@ class IngestionPipeline:
             return (time.perf_counter() - t) * 1000
 
         async def _do_gliner() -> tuple[list[dict[str, str]], float]:
-            # SLM slot head primary / GLiNER fallback: when the
-            # caller upstream told us the slot head already produced
-            # confident typed entities, skip the open-vocabulary NER
-            # pass entirely for this memory.
-            if slot_entities_present:
+            if not use_gliner_entities(self._config):
                 return [], 0.0
+            from ncms.infrastructure.extraction.gliner_extractor import (
+                extract_with_label_budget,
+            )
+
             t = time.perf_counter()
             cached = await load_cached_labels(self._store, domains or [])
             gliner_labels = resolve_labels(
@@ -744,9 +727,11 @@ class IngestionPipeline:
         # Intent-slot SLM is NOT invoked here — it runs earlier in
         # MemoryService.store_memory so its admission + state-change
         # heads can gate the ingest path.  Indexing only cares about
-        # BM25 / SPLADE / GLiNER, which remain parallel.
+        # BM25 / SPLADE / configured entity extraction, which remain
+        # parallel.
         logger.info(
-            "[store] Starting parallel indexing: BM25 + SPLADE + GLiNER",
+            "[store] Starting parallel indexing: BM25 + SPLADE + entity_extraction(%s)",
+            self._config.entity_extraction_mode,
         )
         bm25_ms, splade_ms, (auto_entities, extract_ms) = await asyncio.gather(
             _do_bm25(),
@@ -754,7 +739,7 @@ class IngestionPipeline:
             _do_gliner(),
         )
         logger.info(
-            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms GLiNER=%.0fms",
+            "[store] Parallel indexing complete: BM25=%.0fms SPLADE=%.0fms entity=%.0fms",
             bm25_ms,
             splade_ms,
             extract_ms,
@@ -782,7 +767,11 @@ class IngestionPipeline:
             "entity_extraction",
             extract_ms,
             {
-                "extractor": "gliner",
+                "extractor": (
+                    "gliner" if use_gliner_entities(self._config) else "slm_structured"
+                ),
+                "mode": self._config.entity_extraction_mode,
+                "slm_entities_present": slot_entities_present,
                 "auto_count": len(auto_entities),
                 "manual_count": len(manual),
                 "total_count": len(all_entities),

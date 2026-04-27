@@ -61,10 +61,10 @@ class EdgeType(StrEnum):
     # ingest-time by the cue-tagging pipeline when CAUSAL_EXPLICIT
     # or CAUSAL_ALTLEX spans connect two REFERENT entities.
     CAUSED_BY = "caused_by"
-    # CTLG v8+: enabling conditions.  ENABLES points from the
-    # enabler to the enabled; weaker than CAUSED_BY — the enabler
-    # made the effect possible but didn't force it.  Example:
-    # "availability of pgvector ENABLED the Postgres decision".
+    # CTLG v8+: enabling conditions.  ENABLES uses the same traversal
+    # direction as CAUSED_BY: enabled effect -> enabling condition.
+    # It is weaker than CAUSED_BY — the target made the source possible
+    # but did not force it.
     ENABLES = "enables"
 
 
@@ -926,7 +926,7 @@ StateChange = Literal["declaration", "retirement", "none"]
 
 # The v6/v7.x ``ShapeIntent`` literal (a 13-class query-shape
 # enum produced by the ``shape_intent_head``) was removed in v8.1
-# and replaced by the CTLG sequence-labeled ``shape_cue_head`` +
+# and replaced by the dedicated CTLG sequence tagger +
 # compositional synthesizer.  The synthesizer produces a
 # :class:`ncms.domain.tlg.semantic_parser.TLGQuery`, which is the
 # structured logical form the TLG dispatcher now consumes directly.
@@ -980,18 +980,9 @@ class ExtractedLabel(BaseModel):
     # without pulling adapter schemas into the domain layer.
     role_spans: list[dict] = Field(default_factory=list)
 
-    # v8+ CTLG cue tags (6th head — per-token BIO sequence labeler
-    # over 33 causal / temporal / ordinal / modal / referent /
-    # subject / scope labels).  Each entry is a dict with
-    # ``char_start``, ``char_end``, ``surface``, ``cue_label``,
-    # ``confidence`` — the serialised form of
-    # :class:`ncms.domain.tlg.cue_taxonomy.TaggedToken`.  Serialises
-    # directly as JSON into ``memory.structured["intent_slot"]
-    # ["cue_tags"]`` so the ingest pipeline's
-    # ``_extract_and_persist_causal_edges`` can consume it without
-    # per-row conversion.  Empty list on pre-v8 adapters
-    # (manifest.cue_labels empty) — callers treat an empty
-    # cue_tags as "no CTLG signal".
+    # Deprecated compatibility field for the retired v8 joint-head
+    # experiment.  New CTLG implementations must use the dedicated
+    # cue-tagger boundary and serialise to ``memory.structured["ctlg"]``.
     cue_tags: list[dict] = Field(default_factory=list)
 
     method: str = ""  # backend name that produced this label

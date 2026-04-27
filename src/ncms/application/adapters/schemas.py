@@ -396,7 +396,7 @@ class ExtractedLabel:
     admission_confidence: float | None = None
     state_change: StateChange | None = None
     state_change_confidence: float | None = None
-    # 6th head (v7+) — role-classified gazetteer spans.  Superset of
+    # v7+ role-classified gazetteer spans.  Superset of
     # the ``slots`` dict: ``slots`` is derived from ``role_spans`` at
     # inference time (primary → typed slot, alternative → alternative
     # slot, casual/not_relevant → dropped).  Empty tuple when the

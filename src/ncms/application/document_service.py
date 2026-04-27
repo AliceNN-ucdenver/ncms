@@ -37,7 +37,7 @@ class DocumentService:
 
     Wraps the DocumentStore with business logic:
     - Content hashing (SHA-256) at publish time
-    - GLiNER entity extraction (delegates to memory_service)
+    - Configured entity extraction (delegates to memory_service)
     - Automatic document link creation
     - Review score parsing from expert responses
     - Project quality score aggregation
@@ -47,7 +47,7 @@ class DocumentService:
     def __init__(
         self,
         store: Any,  # SQLiteDocumentStore — avoids circular import
-        memory_svc: Any | None = None,  # MemoryService for GLiNER extraction
+        memory_svc: Any | None = None,  # MemoryService for entity extraction policy
     ) -> None:
         self._store = store
         self._memory_svc = memory_svc
@@ -145,7 +145,7 @@ class DocumentService:
         """Publish a new document with content hashing and entity extraction.
 
         If entities are not provided and memory_svc is available,
-        GLiNER extraction runs automatically.
+        configured automatic entity extraction runs.
         """
         # Content hash for immutability verification
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
@@ -153,32 +153,41 @@ class DocumentService:
         # Auto-extract entities if not provided
         if entities is None and self._memory_svc is not None:
             try:
+                from ncms.application.entity_extraction_mode import use_gliner_entities
                 from ncms.application.label_cache import load_cached_labels
                 from ncms.domain.entity_extraction import resolve_labels
 
-                doc_domains = [d for d in [from_agent, "software"] if d]
-                cached = await load_cached_labels(
-                    self._memory_svc._store,
-                    doc_domains,
-                )
-                labels = resolve_labels(doc_domains, cached_labels=cached)
+                if use_gliner_entities(self._memory_svc._config):
+                    doc_domains = [d for d in [from_agent, "software"] if d]
+                    cached = await load_cached_labels(
+                        self._memory_svc._store,
+                        doc_domains,
+                    )
+                    labels = resolve_labels(doc_domains, cached_labels=cached)
 
-                import asyncio
+                    import asyncio
 
-                from ncms.infrastructure.extraction.gliner_extractor import (
-                    extract_with_label_budget,
-                )
+                    from ncms.infrastructure.extraction.gliner_extractor import (
+                        extract_with_label_budget,
+                    )
 
-                entities = await asyncio.to_thread(
-                    extract_with_label_budget,
-                    content,
-                    labels,
-                )
-                logger.info(
-                    "[doc-svc] GLiNER extracted %d entities for %s",
-                    len(entities),
-                    title[:40],
-                )
+                    entities = await asyncio.to_thread(
+                        extract_with_label_budget,
+                        content,
+                        labels,
+                    )
+                    logger.info(
+                        "[doc-svc] GLiNER extracted %d entities for %s",
+                        len(entities),
+                        title[:40],
+                    )
+                else:
+                    entities = []
+                    logger.info(
+                        "[doc-svc] Auto entity extraction skipped for %s: mode=%s",
+                        title[:40],
+                        self._memory_svc._config.entity_extraction_mode,
+                    )
             except Exception as e:
                 logger.warning("[doc-svc] Entity extraction failed: %s", e)
                 entities = []

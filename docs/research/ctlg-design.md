@@ -496,9 +496,8 @@ Nothing yet — we don't delete code paths we might still learn from. Preserve t
 ### 6.3 What to rename / relabel
 
 - `shape_intent` → `shape_cue` in all new code
-- `manifest.json` keeps `shape_intent_labels` as a deprecated field during transition (v8 writes both `shape_intent_labels=[]` and `shape_cue_labels=[...]`)
-- `ExtractedLabel.shape_intent` → `ExtractedLabel.cue_tags: tuple[TaggedToken, ...]`
-- Keep `ExtractedLabel.shape_intent` as a `@property` computed from cue_tags + synthesizer for one release cycle, with a deprecation warning
+- The dedicated CTLG adapter manifest owns `cue_labels`; the v9 five-head manifest keeps no CTLG label fields.
+- Runtime CTLG output serializes to `memory.structured["ctlg"]["cue_tags"]`; `intent_slot` remains reserved for the five content heads.
 
 ### 6.4 Docs to update
 
@@ -659,10 +658,10 @@ benchmarks/
       multi-task balancing.  Trains in isolation so the v8
       saturation mode cannot recur.
 - [ ] Inference wrapper produces ``cue_tags: tuple[TaggedToken, ...]``
-      via the existing ``ChainedExtractor`` protocol (the cue tags
-      land on ``ExtractedLabel.cue_tags``, which is already wired).
-- [ ] Production factory hook in ``ncms.application.intent_slot_chain``
-      to load both adapters in sequence and merge outputs.
+      via the dedicated ``CTLGCueTagger`` protocol (the cue tags
+      serialize under ``memory.structured["ctlg"]`` on ingest).
+- [ ] Production factory hook to load the CTLG adapter alongside the
+      5-head SLM and pass it as ``MemoryService(ctlg_cue_tagger=...)``.
 
 **Exit criterion:** CTLG adapter trains alone, saves + loads
 correctly, and chains cleanly with the 5-head SLM at inference.
@@ -704,10 +703,10 @@ correctly, and chains cleanly with the 5-head SLM at inference.
 
 **Exit criterion:** end-to-end dry run: surface not in catalog → observed → classified → merged.
 
-### Phase 7 — Train v8, forensics, benchmarks (week 4-5)
+### Phase 7 — Train CTLG adapter, forensics, benchmarks (week 4-5)
 
 **Deliverables:**
-- [ ] Train v8 software_dev adapter (cue head + all other heads)
+- [ ] Train ``software_dev/ctlg-v1`` adapter (cue head only)
 - [ ] Re-run CTLG benchmark suite
 - [ ] Re-run MSEB + LongMemEval regressions
 - [ ] Update `docs/forensics/v8-ctlg-forensics.md`

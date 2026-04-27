@@ -1,12 +1,12 @@
 """CTLG causal-edge extraction (CAUSED_BY / ENABLES).
 
-Reads ``intent_slot.cue_tags`` from the memory's structured payload,
+Reads ``ctlg.cue_tags`` from the memory's structured payload,
 runs the causal extractor, resolves cue surfaces to memory IDs via
 the L2 ENTITY_STATE store, and persists typed graph edges.
 
 Extracted from :class:`IngestionPipeline` in the Phase F MI cleanup.
-No-op on pre-CTLG adapters (v9 ships ``cue: 0`` so ``cue_tags`` is
-always empty); design at ``docs/research/ctlg-design.md``.
+No-op when no dedicated CTLG adapter populated cue tags; design at
+``docs/research/ctlg-design.md``.
 """
 
 from __future__ import annotations
@@ -21,28 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_cue_tags(memory: Memory) -> list:
-    """Deserialise ``intent_slot.cue_tags`` into TaggedToken dataclasses."""
-    from ncms.domain.tlg.cue_taxonomy import TaggedToken
+    """Deserialise ``ctlg.cue_tags`` into TaggedToken dataclasses."""
+    from ncms.application.ctlg import payload_to_tagged_tokens
 
-    slm_label = (memory.structured or {}).get("intent_slot") or {}
-    cue_tag_dicts = slm_label.get("cue_tags") or []
-    if not cue_tag_dicts:
-        return []
-    tokens: list[TaggedToken] = []
-    for t in cue_tag_dicts:
-        try:
-            tokens.append(
-                TaggedToken(
-                    char_start=int(t["char_start"]),
-                    char_end=int(t["char_end"]),
-                    surface=str(t["surface"]),
-                    cue_label=t["cue_label"],
-                    confidence=float(t.get("confidence", 1.0)),
-                )
-            )
-        except (KeyError, TypeError, ValueError):
-            continue
-    return tokens
+    structured = memory.structured or {}
+    ctlg_payload = structured.get("ctlg") or {}
+    cue_tag_dicts = ctlg_payload.get("cue_tags") or []
+    if cue_tag_dicts:
+        return payload_to_tagged_tokens(cue_tag_dicts)
+
+    # Backward compatibility for any old rows written during the v8
+    # joint-head experiment.  New writes must use ``structured["ctlg"]``.
+    legacy_label = structured.get("intent_slot") or {}
+    return payload_to_tagged_tokens(legacy_label.get("cue_tags") or [])
 
 
 def _extract_causal_pairs_safe(
@@ -128,9 +119,14 @@ async def _persist_causal_edges(
                     target_id=edge.dst,
                     edge_type=edge_type,
                     metadata={
+                        "schema_version": 1,
                         "cue_type": edge.cue_type,
+                        "cue_surface": edge.cue_surface,
+                        "cue_char_start": edge.cue_char_start,
+                        "cue_char_end": edge.cue_char_end,
                         "source": "ctlg_cue_head",
                         "confidence": round(edge.confidence, 3),
+                        "ingest_memory_id": memory.id,
                     },
                 )
             )
@@ -156,8 +152,8 @@ async def extract_and_persist_causal_edges(
 ) -> None:
     """Extract CAUSED_BY / ENABLES edges from memory-voice cue tags.
 
-    Gated on ``cue_tags`` presence in ``memory.structured["intent_slot"]``.
-    No-op on pre-CTLG adapters.  Best-effort: any lookup error is
+    Gated on ``cue_tags`` presence in ``memory.structured["ctlg"]``.
+    No-op when CTLG is not wired.  Best-effort: any lookup error is
     logged and swallowed; a dropped pair doesn't break ingest.
     """
     tokens = _parse_cue_tags(memory)

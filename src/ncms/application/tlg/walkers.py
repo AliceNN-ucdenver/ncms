@@ -93,6 +93,39 @@ async def _find_event_node(
     return None
 
 
+async def _find_subject_section_node(
+    store: object,
+    node_index: dict[str, MemoryNode],
+    *,
+    section_keywords: tuple[str, ...],
+    content_keywords: tuple[str, ...] = (),
+) -> MemoryNode | None:
+    """Find a subject-scoped section node by metadata or content hints."""
+    nodes = sorted(node_index.values(), key=lambda n: n.observed_at or n.created_at)
+    section_needles = tuple(k.lower() for k in section_keywords)
+    content_needles = tuple(k.lower() for k in content_keywords)
+    for node in nodes:
+        meta_text = " ".join(
+            str(value).lower()
+            for key, value in node.metadata.items()
+            if key in {"section", "title", "kind"}
+        )
+        if any(needle in meta_text for needle in section_needles):
+            return node
+        try:
+            memory = await store.get_memory(node.memory_id)  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover - defensive guard
+            memory = None
+        if memory is None:
+            continue
+        content = (memory.content or "").lower()
+        if any(needle in content for needle in section_needles):
+            return node
+        if content_needles and any(needle in content for needle in content_needles):
+            return node
+    return None
+
+
 # ---------------------------------------------------------------------------
 # New-intent dispatchers — sequence / predecessor / interval / range /
 #                         concurrent / before_named / transitive_cause /
@@ -410,6 +443,10 @@ async def _dispatch_transitive_cause(
             ancestor = winner.memory_ids[-1]
             trace.grammar_answer = ancestor
             trace.zone_context = list(winner.memory_ids[1:-1])
+            trace.causal_edges_traversed = [
+                {"source_id": path[i], "target_id": path[i + 1], "edge_type": edge_type}
+                for i, edge_type in enumerate(edge_types)
+            ]
             trace.proof = (
                 f"transitive_cause(CTLG causal chain, subject={subject}, "
                 f"for={entity}): ancestor={ancestor} depth={len(path) - 1} "
