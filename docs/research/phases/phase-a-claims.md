@@ -81,10 +81,12 @@ Phase A must address each separately:
 Files that call `MemoryService.store_memory`. These accept caller
 input and must canonicalize subjects.
 
-`src/ncms/` callers (production code paths):
+`src/ncms/` callers (production code paths) — only files that
+actually invoke `.store_memory(` (verified by the grep below;
+`memory_service.py` defines but does not call externally;
+`index_worker.py` only mentions in docstrings):
 - `src/ncms/application/knowledge_loader.py`
 - `src/ncms/application/section_service.py`
-- `src/ncms/application/index_worker.py` *(internal — async worker pool; calls store_memory only via task replay; not a user-facing entry)*
 - `src/ncms/integrations/nat_memory.py`
 - `src/ncms/interfaces/mcp/tools.py`
 - `src/ncms/interfaces/http/api.py`
@@ -101,12 +103,21 @@ input and must canonicalize subjects.
 - `benchmarks/tuning/{eval_quality,run_smoke_test,tune_episodes,tune_reconciliation}.py`
 
 **Verify:**
-- `grep -rln --include="*.py" "store_memory(" src/ncms/ benchmarks/ 2>/dev/null | grep -v __pycache__ | grep -v "def store_memory" | grep -v "/results/" | sort`
+- `grep -rn --include="*.py" "\.store_memory(" src/ncms/ benchmarks/ 2>/dev/null | grep -v __pycache__ | grep -v "/results/" | cut -d: -f1 | sort -u`
 - Expected: at minimum the files listed above. Codex must compare
   the actual output against this list — if NEW `.py` files appear
   that aren't enumerated, they may need Phase A treatment too. If
   LISTED files are missing, the audit was wrong.
-- `--include="*.py"` and the `results/` exclusion together suppress
+- The pattern `\.store_memory(` matches method-call sites only —
+  it skips `def store_memory` lines (the round-2 leak that put
+  `memory_service.py` in the list) and module docstrings (the
+  round-3 leak that put `index_worker.py` in the list). The
+  `cut -d: -f1 | sort -u` collapses line-number output to unique
+  filenames. Round-3 verified output matches the enumerated list
+  exactly with `memory_service.py` and `index_worker.py` correctly
+  absent (both define/document but do not call `store_memory`
+  externally).
+- `--include="*.py"` and the `/results/` exclusion together suppress
   log-file false positives codex round-2 flagged.
 
 **Phase A coverage scope decision:**
@@ -188,20 +199,43 @@ pre-conditions are auditable later.
 - `grep -n "memory_svc\.recall\|svc\.recall" src/ncms/interfaces/mcp/tools.py`
 - Expected: at least one call site in MCP tools.
 
-### PC-A.13 — MCP tools that need subject-payload threading
+### PC-A.13 — MCP store-side tools that need `subjects=` threading
 **[API]**
-Phase A must thread the new `subjects=` kwarg through the MCP tools
-that accept user content. Two confirmed entry points exist today;
+Phase A must thread the new `subjects=` kwarg through every MCP
+tool that accepts user content and persists it via
+`memory_svc.store_memory(...)`. Two such tools exist today
+(both call `store_memory` directly):
+
+1. `store_memory` (line 172) — the canonical write API.
+2. `commit_knowledge` (line 322) — session-checkpoint store path;
+   round-3 audit caught that I missed this one.
+
+`load_knowledge` (line 444) is also a store-side MCP tool but it
+delegates through `KnowledgeLoader.load_file` /
+`bulk_load_directory`, so its subject coverage is inherited
+through Cat-1 coverage of `KnowledgeLoader` (PC-A.13b makes this
+explicit).
+
+`recall_memory` (line 89) is a query-side tool — it does NOT
+write memories — so it's NOT in Phase A scope. It belongs to
+Phase C (subject-binding context at query time).
+
 `publish_document` does NOT exist as an MCP tool (codex round-2
-audit caught my false claim). Phase A scope is limited to the
-two below.
+audit caught my earlier false claim).
+
 **Verify:**
-- `grep -nE "^\s+async def (store_memory|recall_memory)\b" src/ncms/interfaces/mcp/tools.py`
-- Expected: two matches — one for `store_memory`, one for `recall_memory`.
+- `grep -nE "^\s+async def (store_memory|commit_knowledge)\b" src/ncms/interfaces/mcp/tools.py`
+- Expected: two matches — one for each.
 - `grep -n "publish_document" src/ncms/interfaces/mcp/tools.py`
-- Expected: NO match — confirms `publish_document` is not an MCP tool.
-- Optional broader audit: `grep -nE "^\s+async def \w+\(" src/ncms/interfaces/mcp/tools.py | head -25` enumerates every MCP-decorated function. Reviewer should confirm none of the listed tools accept user-facing content beyond `store_memory` / `load_knowledge`.
-**Failure mode if mismatched:** Phase A targets the wrong MCP surface.
+- Expected: NO match.
+- `grep -B 30 "memory_svc\.store_memory\|svc\.store_memory" src/ncms/interfaces/mcp/tools.py | grep -E "^\s+async def \w+\(" | sort -u`
+- Expected: exactly two distinct functions — `store_memory` and `commit_knowledge`. If a NEW MCP tool calls `store_memory` directly, it must be added to Phase A scope.
+- Optional broader audit: `grep -nE "^\s+async def \w+\(" src/ncms/interfaces/mcp/tools.py` enumerates every MCP-decorated function. Reviewer cross-checks that no other tool accepts user-content-to-be-stored beyond the three above (`store_memory`, `commit_knowledge`, `load_knowledge`).
+
+**Failure mode if mismatched:** Phase A targets the wrong MCP
+surface (e.g. plumbs subjects into recall but misses
+commit_knowledge — repeating the SLM/GLiNER divergence pattern
+where one path got updated and others silently didn't).
 
 ### PC-A.13b — MCP `load_knowledge` is a separate ingest entry
 **[API]**
