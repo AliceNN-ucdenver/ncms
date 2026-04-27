@@ -106,8 +106,18 @@ class KnowledgeLoader:
         source_agent: str = "knowledge-loader",
         project: str | None = None,
         importance: float = 6.0,
+        subjects: list | None = None,
     ) -> LoadStats:
-        """Load a single file into memory."""
+        """Load a single file into memory.
+
+        Phase A — when ``subjects`` is provided (a list of
+        :class:`Subject` instances), every chunk produced from this
+        file is stored with the same subject payload.  Useful for
+        importing structured documents (ADRs, case files, etc.)
+        where every section relates to the same canonical timeline.
+        Leave as ``None`` to fall back to caller-content-derived or
+        SLM-derived subjects.
+        """
         stats = LoadStats()
         path = Path(path)
 
@@ -161,6 +171,7 @@ class KnowledgeLoader:
                     source_agent=source_agent,
                     project=project,
                     importance=importance,
+                    subjects=subjects,
                 )
                 stats.memories_created += 1
             except Exception as e:
