@@ -56,18 +56,46 @@ that an explicitly-pinned subject is honored.
 - `uv run python -c "from ncms.domain.tlg.semantic_parser import TLGQuery; t = TLGQuery(axis='state', relation='current', subject='application:xyz'); print(t.subject)"`
 - Expected: `application:xyz`.
 
-### PC-C.5 — CTLG is shadow-only end-to-end
+### PC-C.5 — CTLG composition is gated by `config.temporal_enabled`
 **[BEHAVIOR]**
+
+**Honest scope (revised after codex round 2):** the original claim
+"CTLG is shadow-only end-to-end" was over-stated. Reality:
+
+1. CTLG composition is wired and produces traces.
+2. When `config.temporal_enabled=True` AND the trace is HIGH/MEDIUM
+   confidence, composition CAN mutate `ranked_mids`.
+3. Default config has `temporal_enabled=False` so CTLG does not run
+   in default deployments.
+4. Production hub deployments (NemoClaw) may set
+   `temporal_enabled=True` — at that point CTLG IS live, not shadow.
+5. The benchmark harness has a separate `ctlg_shadow` mode that
+   captures CTLG diagnostics WITHOUT routing through live ranking;
+   that's the "shadow-only" path the implementation plan §5
+   describes.
+
+So the falsifiable claim is the OFF-BY-DEFAULT one, not
+"shadow-only end-to-end."
+
 **Verify:**
-- `grep -E "^\s*-\s*\[\s\]\s*\`ctlg_on" docs/research/ctlg-implementation-plan.md`
-- Expected: matches — confirms `ctlg_on` mode is checklisted as not-done.
-- `grep -n "ranked_mids" benchmarks/mseb/backends/ncms_backend.py | head`
-- Expected: `ranked_mids` is set from baseline retrieval (not from CTLG composition).
-- `grep -n "compose_grammar_with_results\|grammar_composed" benchmarks/mseb/harness.py` — count.
-- Expected: zero matches that would write back to `ranked_mids`.
-- `uv run pytest tests/integration/test_tlg_search_composition.py -q 2>&1 | tail`
-- Expected: TLG composition is gated by `temporal_enabled` and the test asserts no live mutation when CTLG-off.
-**Failure mode:** Phase C accidentally enables CTLG mutation; not in scope.
+- `grep -nE "^\s+temporal_enabled:\s*bool\s*=\s*False" src/ncms/config.py`
+- Expected: one match — confirms default is False.
+- `grep -B 1 -A 4 "if config.temporal_enabled:" src/ncms/application/diagnostics/search_diag.py | grep -i "tlg composition\|compose_grammar"`
+- Expected: matches — confirms TLG composition is inside the
+  `temporal_enabled` gate.
+- `grep -E "^\s*-\s*\[\s\]\s*\`ctlg_on\`" docs/research/ctlg-implementation-plan.md`
+- Expected: match — confirms `ctlg_on` mode is still checklisted as
+  not-done. (This is independent of `temporal_enabled`; it's a
+  benchmark-harness mode for shadow-vs-live testing.)
+
+**Note:** The grep for `ranked_mids` returning zero matches in
+`ncms_backend.py` (round-2 finding) is because the backend's
+`search_with_stages` returns the dataclass, not a `ranked_mids`
+literal — that's an artifact of the backend API, not evidence of
+shadow-only behaviour. PC-C.5 no longer claims that.
+
+**Failure mode:** Phase C inadvertently moves the composition
+gate; CTLG starts running on default-config deployments.
 
 ### PC-C.6 — Subject-resolver code (deterministic) does not yet exist in `src/`
 **[SCHEMA]**
@@ -102,9 +130,9 @@ class SubjectBindingContext:
 ```
 All fields optional; passing none is equivalent to today's behavior.
 **Verify:**
-- `python -c "from ncms.domain.models import SubjectBindingContext; ctx = SubjectBindingContext(); print(ctx)"`
+- `uv run python -c "from ncms.domain.models import SubjectBindingContext; ctx = SubjectBindingContext(); print(ctx)"`
 - Expected: prints without error.
-- `python -c "from ncms.domain.models import SubjectBindingContext; ctx = SubjectBindingContext(subject_hint='application:xyz'); print(ctx.subject_hint)"`
+- `uv run python -c "from ncms.domain.models import SubjectBindingContext; ctx = SubjectBindingContext(subject_hint='application:xyz'); print(ctx.subject_hint)"`
 - Expected: `application:xyz`.
 **Citation:** `src/ncms/domain/models.py` (NEW field block).
 

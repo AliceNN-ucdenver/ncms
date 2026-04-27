@@ -103,7 +103,7 @@ Every `Verify:` line is a literal command codex (or a script) can
 run. Examples:
 
 - `grep -n "class Subject" src/ncms/domain/models.py` — exact-string
-- `python -c "from ncms.domain.models import Subject; assert ..."` — import
+- `uv run python -c "from ncms.domain.models import Subject; assert ..."` — import
 - `uv run pytest tests/integration/test_subject_payload_parity.py::test_inline_async_parity` — test
 - `sqlite3 :memory: "EXPLAIN QUERY PLAN SELECT ... ;" | grep idx_mnodes_subject` — query plan
 - `uv run radon cc <path> -nc --min D` — complexity gate

@@ -63,15 +63,36 @@ and under-credited what already exists.
 | Causal edge ingest from cue tags | `application/ingestion/causal_edges.py:1-186` | Reads `memory.structured["ctlg"].cue_tags`; persists `CAUSED_BY`/`ENABLES` with cue\_type, surface, char offsets, confidence, ingest\_memory\_id. |
 | MSEB shadow diagnostics | `benchmarks/mseb/backends/ncms_backend.py` (`_subject_anchor_candidates`, `_oracle_subject_candidate`, `ctlg_shadow_query`) | Diagnostic-only; never affect live ranking. |
 
-### 1.2 What's gated by infrastructure that exists but is shadow-only
+### 1.2 CTLG runtime status (revised after codex round-2 audit)
 
-CTLG today is **shadow-only end-to-end**. The cue tagger emits, the
-synthesizer composes, the dispatcher logs, walkers can produce
-HIGH/MEDIUM traces — but the benchmark harness does not let those
-traces mutate live ranking. Per `ctlg-implementation-plan.md` §5,
-`ctlg_on` mode is gated until shadow shows useful rank movement. The
-honest production line: **CTLG has not yet contributed a single
-ranking change in any deployment.**
+The earlier framing said CTLG was "shadow-only end-to-end." That
+overstated. The accurate picture:
+
+- CTLG composition (`tlg/composition.py::compose_grammar_with_results`)
+  IS wired to mutate `ranked_mids` when called.
+- It is gated by `config.temporal_enabled` (default: `False`) AND
+  the grammar trace's HIGH/MEDIUM confidence threshold.
+- In default deployments (`temporal_enabled=False`) CTLG does not
+  run.
+- Production hub deployments (NemoClaw) may set
+  `temporal_enabled=True`. At that point CTLG composition runs
+  live, not shadow.
+- The benchmark harness has separate shadow modes
+  (`ctlg-implementation-plan.md` §5: `gold_cues`, `adapter_only`,
+  `ctlg_shadow`) that capture diagnostics without routing through
+  live ranking. The `ctlg_on` mode (live composition during
+  benchmarks) is checklisted as not-done.
+
+So: CTLG is **off-by-default in production, opt-in via config flag,
+and shadow-only in benchmarks.** It has not been deployed against
+production traffic with `temporal_enabled=True` AND validated to
+improve rather than harm ranking, which is what the design doc's
+section §0 stress-mini results address.
+
+The subject-binding gap is the reason that gate hasn't been
+crossed: with naive subject anchor (the only resolver shipped
+without oracle context), CTLG worsens 8 queries and improves 0.
+That's why subject binding is the unblock.
 
 ### 1.3 What's actually missing
 

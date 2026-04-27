@@ -101,11 +101,13 @@ input and must canonicalize subjects.
 - `benchmarks/tuning/{eval_quality,run_smoke_test,tune_episodes,tune_reconciliation}.py`
 
 **Verify:**
-- `grep -rln "store_memory(" src/ncms/ benchmarks/ 2>/dev/null | grep -v __pycache__ | grep -v "def store_memory" | sort`
+- `grep -rln --include="*.py" "store_memory(" src/ncms/ benchmarks/ 2>/dev/null | grep -v __pycache__ | grep -v "def store_memory" | grep -v "/results/" | sort`
 - Expected: at minimum the files listed above. Codex must compare
-  the actual output against this list — if NEW files appear that
-  aren't enumerated, they may need Phase A treatment too. If LISTED
-  files are missing, the audit was wrong.
+  the actual output against this list — if NEW `.py` files appear
+  that aren't enumerated, they may need Phase A treatment too. If
+  LISTED files are missing, the audit was wrong.
+- `--include="*.py"` and the `results/` exclusion together suppress
+  log-file false positives codex round-2 flagged.
 
 **Phase A coverage scope decision:**
 Of the ~26 callers above, the design must explicitly state which
@@ -186,14 +188,33 @@ pre-conditions are auditable later.
 - `grep -n "memory_svc\.recall\|svc\.recall" src/ncms/interfaces/mcp/tools.py`
 - Expected: at least one call site in MCP tools.
 
-### PC-A.13 — MCP tools layer surfaces `store_memory` and `recall_memory`
+### PC-A.13 — MCP tools that need subject-payload threading
 **[API]**
-Phase A may need to expose subject payload through MCP. PC asserts
-the entry points exist today.
+Phase A must thread the new `subjects=` kwarg through the MCP tools
+that accept user content. Two confirmed entry points exist today;
+`publish_document` does NOT exist as an MCP tool (codex round-2
+audit caught my false claim). Phase A scope is limited to the
+two below.
 **Verify:**
-- `grep -n "store_memory\|recall_memory\|publish_document" src/ncms/interfaces/mcp/tools.py | head`
-- Expected: at least one MCP-tool-decorated function for each.
-**Failure mode if mismatched:** MCP API drifts from the Python API for subject payload.
+- `grep -nE "^\s+async def (store_memory|recall_memory)\b" src/ncms/interfaces/mcp/tools.py`
+- Expected: two matches — one for `store_memory`, one for `recall_memory`.
+- `grep -n "publish_document" src/ncms/interfaces/mcp/tools.py`
+- Expected: NO match — confirms `publish_document` is not an MCP tool.
+- Optional broader audit: `grep -nE "^\s+async def \w+\(" src/ncms/interfaces/mcp/tools.py | head -25` enumerates every MCP-decorated function. Reviewer should confirm none of the listed tools accept user-facing content beyond `store_memory` / `load_knowledge`.
+**Failure mode if mismatched:** Phase A targets the wrong MCP surface.
+
+### PC-A.13b — MCP `load_knowledge` is a separate ingest entry
+**[API]**
+The MCP `load_knowledge` tool delegates to `KnowledgeLoader`, which
+calls `MemoryService.store_memory`. Subject canonicalization there
+is inherited via Cat-1 coverage of `KnowledgeLoader` in PC-A.9. PC
+exists to make the relationship explicit so reviewer doesn't miss
+it as a "new" path.
+**Verify:**
+- `grep -nE "^\s+async def load_knowledge\b" src/ncms/interfaces/mcp/tools.py`
+- Expected: one match.
+- `grep -A 30 "async def load_knowledge" src/ncms/interfaces/mcp/tools.py | grep -E "KnowledgeLoader|loader\.load"`
+- Expected: at least one match — confirms it delegates to KnowledgeLoader (the import is ~23 lines into the function body, so `-A 30` is the minimum window).
 
 ### PC-A.14 — `IngestionPipeline.create_memory_nodes` is the L1/L2 emission point
 **[API]**
@@ -220,7 +241,7 @@ shape before depending on it.
 - `source: Literal["caller", "document", "episode", "slm_role", "ctlg_cue", "resolver"]`
 - `confidence: float` (range [0.0, 1.0])
 **Verify:**
-- `python -c "from ncms.domain.models import Subject; s = Subject(id='application:xyz', type='application', primary=True, aliases=(), source='caller', confidence=1.0); print(s)"`
+- `uv run python -c "from ncms.domain.models import Subject; s = Subject(id='application:xyz', type='application', primary=True, aliases=(), source='caller', confidence=1.0); print(s)"`
 - Expected: prints without error.
 - `grep -n "^class Subject" src/ncms/domain/models.py`
 - Expected: one match.
