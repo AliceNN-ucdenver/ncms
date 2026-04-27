@@ -1014,10 +1014,13 @@ class IngestionPipeline:
             memory_id=memory.id,
         )
 
-        # L2: Detect state change or declaration (or use caller subject)
+        # L2: Detect state change or declaration (or use caller subject).
+        # Phase A sub-PR 4: returns a list — multi-subject ingest can
+        # produce more than one L2 (one per affected timeline).  Each
+        # gets its own reconciliation pass below.
         from ncms.application.ingestion.l2_detection import detect_and_create_l2_node
 
-        l2_node = await detect_and_create_l2_node(
+        l2_nodes = await detect_and_create_l2_node(
             store=self._store,
             config=self._config,
             extract_entity_state_meta_fn=self.extract_entity_state_meta,
@@ -1030,18 +1033,24 @@ class IngestionPipeline:
             subject=subject,
         )
 
-        # Reconcile entity state against existing states
+        # Reconcile every L2 entity_state node independently — each
+        # subject's timeline reconciles against its own prior states.
         if (
-            l2_node is not None
-            and self._reconciliation is not None
+            self._reconciliation is not None
             and self._config.temporal_enabled
-            and l2_node.metadata.get("entity_id")
         ):
-            await self._reconcile_entity_state(
-                l2_node,
-                memory.id,
-                emit_stage,
-            )
+            for l2_node in l2_nodes:
+                if l2_node.metadata.get("entity_id"):
+                    await self._reconcile_entity_state(
+                        l2_node,
+                        memory.id,
+                        emit_stage,
+                    )
+
+        # Single-L2 view used by the causal-edges step below (it
+        # only consumes the primary L2 today; multi-subject causal
+        # edges are out of scope for sub-PR 4).
+        l2_node = l2_nodes[0] if l2_nodes else None
 
         # Episode formation (links to L1 atomic node)
         if self._episode is not None and self._config.temporal_enabled:

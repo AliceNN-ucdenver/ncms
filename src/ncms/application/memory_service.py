@@ -588,14 +588,14 @@ class MemoryService:
         # induction sees it.  The ENTITY_STATE node is created with
         # ``entity_id = subject`` downstream in create_memory_nodes.
         #
-        # Phase A note (sub-PR 3): the legacy `subject=` raw-string
-        # entity-link is preserved here unchanged so the inline /
-        # async indexing parity fitness test still holds.  Sub-PRs 4
-        # and 5 generalize this to multi-subject L2 emission +
-        # canonical entity ids on BOTH paths atomically — that's
-        # the only way to keep parity.  Until then,
-        # ``resolved_subjects`` is consumed by the structured payload
-        # bake only, not by the entity-graph linking step.
+        # Phase A note (sub-PR 4): the legacy raw-string entity-link
+        # block stays exactly as it was so the inline / async parity
+        # fitness test still holds (the test passes subject="svc-api"
+        # and expects entity name "svc-api", not the canonical
+        # "subject:svc-api").  The MULTI-subject block below handles
+        # the new subjects= kwarg path; it skips any subject whose
+        # id or aliases already match an existing entity, so the
+        # parity case stays single-entity.
         if subject:
             _subject_lower = subject.lower()
             _existing = {e["name"].lower() for e in merged_entities}
@@ -607,6 +607,33 @@ class MemoryService:
                         "attributes": {"source": "caller_subject"},
                     },
                 )
+
+        # ── Phase A sub-PR 4: link resolved subjects as entities ────────
+        # For each resolved Subject, ensure there's an entity row
+        # with a name that matches either its canonical id or one
+        # of its aliases.  This is what makes MENTIONS_ENTITY edges
+        # in :mod:`multi_subject_l2` find a target.  Skip when an
+        # entity already exists for this subject (legacy raw-string
+        # block above, or GLiNER/SLM picked the same surface).
+        for s in resolved_subjects:
+            _existing = {e["name"].lower() for e in merged_entities}
+            if s.id.lower() in _existing:
+                continue
+            if any(a.lower() in _existing for a in s.aliases):
+                continue
+            merged_entities.append(
+                {
+                    "name": s.id,
+                    "type": "subject",
+                    "attributes": {
+                        "source": s.source,
+                        "subject_type": s.type,
+                        "primary": s.primary,
+                        "aliases": list(s.aliases),
+                        "confidence": s.confidence,
+                    },
+                },
+            )
 
         # ── Background indexing (fast path) ─────────────────────────────
         # If the async index pool accepts the task, return immediately.

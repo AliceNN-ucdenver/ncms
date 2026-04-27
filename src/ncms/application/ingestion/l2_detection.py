@@ -247,20 +247,65 @@ async def detect_and_create_l2_node(
     emit_stage: Callable | None = None,
     subject: str | None = None,
     skip_section_memory_types: frozenset[str] | None = None,
-) -> MemoryNode | None:
-    """Detect entity state change and create L2 ENTITY_STATE node.
+) -> list[MemoryNode]:
+    """Detect entity state change and create L2 ENTITY_STATE nodes.
 
-    Dispatches to one of two strategies based on whether the caller
-    asserts a ``subject`` for the memory.
+    Phase A sub-PR 4 changed the return type to ``list[MemoryNode]``
+    so multi-subject ingest can emit one L2 per affected timeline
+    (claim A.6).  Single-subject ingest still returns a list of
+    length 0 or 1; callers iterate uniformly.
 
-    ``skip_section_memory_types`` short-circuits the no-subject path
-    when ``memory.type`` matches.  Used by the async-indexing path to
-    avoid spurious L2 nodes on structural document content.  Pass
-    :data:`SECTION_CONTENT_TYPES` to opt in.
+    Dispatch order:
+
+    1. **Multi-subject path (Phase A).** When
+       ``memory.structured["subjects"]`` is populated, emit one L2
+       per subject whose timeline has a state event (helper:
+       :func:`multi_subject_l2.create_l2_nodes_for_subjects`) plus
+       ``MENTIONS_ENTITY`` edges for *every* subject (helper:
+       :func:`multi_subject_l2.create_mentions_entity_edges`).
+    2. **Legacy caller-asserted subject** (single ``subject="..."``
+       string, no Phase A bake — e.g. cold-start regressions).
+    3. **Legacy SLM-state-detection** fallback.
+
+    ``skip_section_memory_types`` short-circuits the legacy
+    no-subject path when ``memory.type`` matches.  Used by the
+    async-indexing path to avoid spurious L2 nodes on structural
+    document content.  Pass :data:`SECTION_CONTENT_TYPES` to opt in.
     """
     slm_label = (memory.structured or {}).get("intent_slot") or {}
+
+    # ── Path 1: Phase A multi-subject from structured payload ────────
+    from ncms.application.ingestion.multi_subject_l2 import (
+        create_l2_nodes_for_subjects,
+        create_mentions_entity_edges,
+        subjects_from_memory,
+    )
+
+    subjects = subjects_from_memory(memory)
+    if subjects:
+        l2_nodes = await create_l2_nodes_for_subjects(
+            store=store,
+            config=config,
+            memory=memory,
+            content=content,
+            l1_node=l1_node,
+            subjects=subjects,
+            slm_label=slm_label,
+            save_l2_fn=_save_l2_node,
+            emit_stage=emit_stage,
+        )
+        await create_mentions_entity_edges(
+            store=store,
+            memory=memory,
+            l1_node=l1_node,
+            subjects=subjects,
+            emit_stage=emit_stage,
+        )
+        return l2_nodes
+
+    # ── Path 2: Legacy caller-asserted subject ───────────────────────
     if subject:
-        return await create_l2_with_subject(
+        l2 = await create_l2_with_subject(
             store=store,
             config=config,
             memory=memory,
@@ -270,9 +315,12 @@ async def detect_and_create_l2_node(
             subject=subject,
             emit_stage=emit_stage,
         )
+        return [l2] if l2 is not None else []
+
+    # ── Path 3: Legacy SLM-detection fallback ────────────────────────
     if skip_section_memory_types and memory.type in skip_section_memory_types:
-        return None
-    return await create_l2_via_state_detection(
+        return []
+    l2 = await create_l2_via_state_detection(
         store=store,
         config=config,
         extract_entity_state_meta_fn=extract_entity_state_meta_fn,
@@ -284,3 +332,4 @@ async def detect_and_create_l2_node(
         slm_label=slm_label,
         emit_stage=emit_stage,
     )
+    return [l2] if l2 is not None else []

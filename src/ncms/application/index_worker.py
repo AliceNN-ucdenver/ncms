@@ -675,13 +675,18 @@ class IndexWorkerPool:
         and async paths share one implementation.  The async path
         opts into ``SECTION_CONTENT_TYPES`` skip + tail-runs its own
         reconciliation + TLG cache invalidation.
+
+        Phase A sub-PR 4: ``detect_and_create_l2_node`` now returns
+        ``list[MemoryNode]``.  Each emitted L2 gets its own
+        reconciliation + TLG-cache invalidation pass — multi-subject
+        ingest reconciles per timeline.
         """
         from ncms.application.ingestion.l2_detection import (
             SECTION_CONTENT_TYPES,
             detect_and_create_l2_node,
         )
 
-        l2_node = await detect_and_create_l2_node(
+        l2_nodes = await detect_and_create_l2_node(
             store=self._svc._store,
             config=self._svc._config,
             extract_entity_state_meta_fn=self._svc._ingestion.extract_entity_state_meta,
@@ -693,7 +698,7 @@ class IndexWorkerPool:
             subject=subject,
             skip_section_memory_types=SECTION_CONTENT_TYPES,
         )
-        if l2_node is not None:
+        for l2_node in l2_nodes:
             await self._bg_reconcile_and_invalidate(l2_node)
 
     async def _bg_reconcile_and_invalidate(
