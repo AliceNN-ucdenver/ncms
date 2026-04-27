@@ -379,6 +379,7 @@ class NcmsBackend:
         MSEB mid on the search side.
         """
         from ncms.application.memory_service import MemoryService
+        from ncms.domain.models import Subject
 
         if self._svc is None:
             raise RuntimeError("setup() must be called before ingest()")
@@ -398,11 +399,23 @@ class NcmsBackend:
                 memory_type="fact",
                 source_agent=m.metadata.get("source_agent", "mseb"),
                 domains=m.metadata.get("domains") or [],
-                # Option D' Part 4: pass MSEB subject as first-class
-                # kwarg so the ingest pipeline forces creation of an
-                # L2 ENTITY_STATE node with entity_id=subject, seeding
-                # the TLG L1 vocabulary induction.
-                subject=m.subject,
+                # Phase A — multi-subject API.  Pass through the
+                # MSEB-asserted subject as a canonicalized
+                # Subject so the SubjectRegistry registers the
+                # alias (m.subject) and downstream graph
+                # consumers see a stable canonical id.  ``subject_map``
+                # downstream still keys off ``m.subject`` because
+                # the harness contract takes the raw string.
+                subjects=[
+                    Subject(
+                        id=m.subject,
+                        type="subject",
+                        primary=True,
+                        aliases=(m.subject,),
+                        source="caller",
+                        confidence=1.0,
+                    ),
+                ],
                 tags=["mseb", f"mid:{m.mid}"],
                 observed_at=observed_at,
             )
