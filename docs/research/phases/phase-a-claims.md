@@ -31,8 +31,8 @@ If any pre-condition fails, stop. Either the audit was wrong or
 ### PC-A.2 — Subject creates an Entity with `type="subject"`
 **[BEHAVIOR]**
 **Verify:**
-- `grep -B 1 -A 8 "Caller-asserted subject" src/ncms/application/memory_service.py | grep -E '"type":\s*"subject"'`
-- Expected: matches.
+- `awk '/Caller-asserted subject/,/^\s*\)/' src/ncms/application/memory_service.py | grep -E '"type":\s*"subject"'`
+- Expected: one match. (The previous `-A 8` window was too narrow for the surrounding dict literal; awk reads the whole block until the closing paren.)
 
 ### PC-A.3 — `Memory` has no `subject` column today
 **[SCHEMA]**
@@ -58,11 +58,12 @@ If any pre-condition fails, stop. Either the audit was wrong or
 - `grep -rln "SubjectRegistry\|subject_aliases" src/ncms 2>/dev/null | grep -v __pycache__`
 - Expected: no output.
 
-### PC-A.7 — 14 `EdgeType` values
+### PC-A.7 — 15 `EdgeType` values
 **[SCHEMA]**
 **Verify:**
-- `python -c "from ncms.domain.models import EdgeType; print(len(list(EdgeType)))"`
-- Expected: `14`.
+- `uv run python -c "from ncms.domain.models import EdgeType; print(len(list(EdgeType)))"`
+- Expected: `15`.
+- (Original audit said 14; codex pre-flight caught the miscount. The 15 are: belongs\_to\_episode, abstracts, derived\_from, summarizes, mentions\_entity, related\_to, supports, refines, supersedes, superseded\_by, conflicts\_with, current\_state\_of, precedes, caused\_by, enables.)
 
 ### PC-A.8 — `IndexTask.subject` is singular
 **[SCHEMA]**
@@ -70,21 +71,89 @@ If any pre-condition fails, stop. Either the audit was wrong or
 - `grep -E "subject:\s*str" src/ncms/application/index_worker.py`
 - Expected: matches at IndexTask dataclass; never `list[str]`.
 
-### PC-A.9 — Every ingest path that writes Memory exists
-**[COVERAGE]** (audit existence; PR will update them)
-**Verify:** the following files all contain a call into `MemoryService.store_memory` or `IngestionPipeline.create_memory_nodes`:
-- `src/ncms/application/memory_service.py` — inline path
-- `src/ncms/application/index_worker.py` — async pool path
-- `src/ncms/application/document_service.py` — document publish
-- `src/ncms/application/reindex_service.py` — reindex path
-- `src/ncms/application/knowledge_loader.py` — bulk import
-- `src/ncms/application/section_service.py` — section ingest
-- `benchmarks/mseb/backends/ncms_backend.py` — MSEB harness
+### PC-A.9 — Memory-creating entry points (categorized)
+**[COVERAGE]** (audit existence; PR will update the user-facing ones)
+
+Memories enter the system by THREE distinct mechanisms today.
+Phase A must address each separately:
+
+**Category 1 — User-facing `store_memory` API (Phase A target):**
+Files that call `MemoryService.store_memory`. These accept caller
+input and must canonicalize subjects.
+
+`src/ncms/` callers (production code paths):
+- `src/ncms/application/knowledge_loader.py`
+- `src/ncms/application/section_service.py`
+- `src/ncms/application/index_worker.py` *(internal — async worker pool; calls store_memory only via task replay; not a user-facing entry)*
+- `src/ncms/integrations/nat_memory.py`
+- `src/ncms/interfaces/mcp/tools.py`
+- `src/ncms/interfaces/http/api.py`
+- `src/ncms/interfaces/a2a/server.py`
+- `src/ncms/interfaces/agent/base.py`
+- `src/ncms/experimental/commit_hook.py` *(experimental, may not require subject support)*
+- `src/ncms/demo/run_nemoclaw_demo.py` *(demo, lower priority)*
+
+`benchmarks/` callers (test infrastructure):
+- `benchmarks/mseb/backends/ncms_backend.py` — *required to canonicalize*
+- `benchmarks/{beir,dream,hub_replay,locomo,longmemeval,memoryagentbench,swebench}/harness.py`
+- `benchmarks/mseb/forensic.py`
+- `benchmarks/profile_{pipeline,store}.py`
+- `benchmarks/tuning/{eval_quality,run_smoke_test,tune_episodes,tune_reconciliation}.py`
 
 **Verify:**
-- `grep -ln "store_memory\|create_memory_nodes" <each file>`
-- Expected: each file has at least one match.
-**Failure mode:** PR ships subject canonicalization in some paths but not others — the SLM/GLiNER divergence problem.
+- `grep -rln "store_memory(" src/ncms/ benchmarks/ 2>/dev/null | grep -v __pycache__ | grep -v "def store_memory" | sort`
+- Expected: at minimum the files listed above. Codex must compare
+  the actual output against this list — if NEW files appear that
+  aren't enumerated, they may need Phase A treatment too. If LISTED
+  files are missing, the audit was wrong.
+
+**Phase A coverage scope decision:**
+Of the ~26 callers above, the design must explicitly state which
+get the new `subjects=` kwarg threaded through:
+- **MUST:** mseb backend, MCP tools, HTTP API, A2A server, agent base — these surface to users.
+- **SHOULD:** knowledge_loader, section_service, integrations/nat_memory — used in production flows.
+- **MAY/DEFER:** benchmark harnesses other than mseb (test code; can be updated incrementally), demo files, experimental/commit_hook.
+
+Phase A's PR description must enumerate which category each caller
+falls into. Reviewer flags as 🚧 Partial if scope is left ambiguous.
+
+**Category 2 — Direct `_store.save_memory` writers (out of scope but
+must not regress):**
+Internal-system-synthesized memories that bypass `store_memory`.
+These do NOT take user-provided subjects; their subject treatment
+is design-deferred (see Open Questions §10).
+- `src/ncms/application/memory_service.py:457` — the canonical
+  `store_memory` path's terminal write
+- `src/ncms/application/consolidation_service.py:171` — insight
+  memories from clustering
+- `src/ncms/application/consolidation_service.py:659` — abstract
+  memories from synthesis
+- `src/ncms/application/episode_service.py:707` — episode summary
+  memories
+
+**Verify:**
+- `grep -rn "_store\.save_memory(\|store\.save_memory(" src/ncms/ 2>/dev/null | grep -v __pycache__ | grep -v "def save_memory" | sort`
+- Expected: exactly these four sites.
+- Failure mode if list grows: a new direct-save path appeared that
+  bypasses `store_memory`; Phase A must decide whether to backport
+  subjects there or document the exception.
+
+**Category 3 — Documents (separate storage primitive):**
+`document_service.publish_document` writes to the `documents` table,
+not the `memories` table. It does NOT create a `Memory` row directly;
+it produces a Document, and a separate code path may produce a
+document profile Memory via `store_memory`. Phase A's contract: the
+profile Memory carries the subject; the Document row does not.
+
+**Verify:**
+- `grep "save_memory\|store_memory" src/ncms/application/document_service.py`
+- Expected: no calls to `save_memory` or `store_memory` in this file.
+  (The doc profile is created by a separate caller, e.g. `section_service`.)
+- `grep -n "save_document\|self._store\.save_document" src/ncms/application/document_service.py`
+- Expected: matches present (the document persistence path).
+
+**Failure mode (any category):** PR ships subject canonicalization in
+some paths but not others — the SLM/GLiNER divergence problem.
 
 ### PC-A.10 — `link_memory_entity` is the canonical memory→entity attach point
 **[COVERAGE]**
@@ -92,6 +161,49 @@ If any pre-condition fails, stop. Either the audit was wrong or
 - `grep -rn "link_memory_entity" src/ncms 2>/dev/null | grep -v __pycache__`
 - Expected: at least one call site in ingestion or memory_service.
 **Failure mode:** PR adds new entity-linking code that bypasses this hook, splitting the graph.
+
+### PC-A.11 — `Memory.structured` survives SQLite round-trip
+**[BEHAVIOR]**
+Phase A's payload (`memory.structured["subjects"]`) only works if
+`Memory.structured` is persisted as JSON and re-hydrated correctly.
+Verify the existing path before depending on it.
+**Verify:**
+- `grep -A 3 "structured" src/ncms/infrastructure/storage/row_mappers.py | head -10`
+- Expected: `row["structured"]` is parsed via `json.loads(...)`.
+- `uv run pytest tests/integration -k "structured" -q 2>&1 | tail`
+- Expected: at least one test asserting `Memory.structured` round-trip works.
+- If no such test exists, this PC is ⚠️ Unverifiable until one is added — flag for codex.
+**Failure mode:** Phase A writes `subjects` into structured but it doesn't survive read-back; payload is silently lost.
+
+### PC-A.12 — `MemoryService.recall` exists and is the secondary user-facing API
+**[API]**
+Phase A doesn't modify recall, but Phase C does. Codex should
+confirm recall is a real first-class method so Phase C's
+pre-conditions are auditable later.
+**Verify:**
+- `grep -n "async def recall" src/ncms/application/memory_service.py`
+- Expected: one match (typically around line 1159).
+- `grep -n "memory_svc\.recall\|svc\.recall" src/ncms/interfaces/mcp/tools.py`
+- Expected: at least one call site in MCP tools.
+
+### PC-A.13 — MCP tools layer surfaces `store_memory` and `recall_memory`
+**[API]**
+Phase A may need to expose subject payload through MCP. PC asserts
+the entry points exist today.
+**Verify:**
+- `grep -n "store_memory\|recall_memory\|publish_document" src/ncms/interfaces/mcp/tools.py | head`
+- Expected: at least one MCP-tool-decorated function for each.
+**Failure mode if mismatched:** MCP API drifts from the Python API for subject payload.
+
+### PC-A.14 — `IngestionPipeline.create_memory_nodes` is the L1/L2 emission point
+**[API]**
+Phase A modifies L2 emission per-subject. Verify the entry point
+shape before depending on it.
+**Verify:**
+- `grep -n "async def create_memory_nodes\|def create_memory_nodes" src/ncms/application/ingestion/pipeline.py`
+- Expected: one match.
+- `grep -n "detect_and_create_l2_node" src/ncms/application/ingestion/l2_detection.py`
+- Expected: one match (the canonical helper after Phase G.1 DRY).
 
 ---
 
@@ -262,10 +374,10 @@ where each dict is `Subject.model_dump()`.
 - Expected: no output.
 **Failure mode:** Phase A inadvertently changed L2 fields; reconciliation regression risk.
 
-### NEG-A.2 — `EdgeType` enum has 14 values (unchanged)
+### NEG-A.2 — `EdgeType` enum has 15 values (unchanged from Phase A start)
 **[NEGATIVE]**
 **Verify:**
-- `python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 14"`
+- `uv run python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 15"`
 - Expected: assertion holds.
 **Failure mode:** A new edge type slipped in despite the design saying "no new edge types in Phase A."
 

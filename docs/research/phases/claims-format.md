@@ -27,6 +27,44 @@ the diff; fail means at least one claim is unsupported.
 | `[NEGATIVE]` | This code/behavior did NOT change. Verifiable with grep + diff. |
 | `[PERF]` | A latency or throughput threshold. Verifiable with a benchmark run. |
 
+## Reproducible verify commands
+
+**All Python imports must use `uv run python`, never bare `python`.**
+The repo uses `uv` for env management; bare `python` produces
+`ModuleNotFoundError: No module named 'ncms'` for environment
+reasons that have nothing to do with code state. A reviewer running
+into that gets a useless audit signal.
+
+Correct:
+```
+uv run python -c "from ncms.domain.models import EdgeType; print(len(list(EdgeType)))"
+```
+
+Incorrect:
+```
+python -c "from ncms.domain.models import EdgeType; print(len(list(EdgeType)))"
+```
+
+Same rule for any verify line that imports the package.
+
+## Pre-conditions per phase
+
+Each phase doc's pre-conditions assert state on a specific commit:
+
+| Phase | Pre-conditions verified against |
+|---|---|
+| A | `main` *today* (no merge prereqs) |
+| B | the commit immediately after Phase A merges |
+| C | the commit immediately after Phase B merges |
+
+A reviewer auditing Phase B's pre-conditions on a commit where
+Phase A hasn't merged will see ❌ failures by definition. That's
+expected — the doc is verifiable in sequence, not in parallel.
+
+The pre-flight audit (before any code lands) verifies **Phase A
+pre-conditions only**. Phase B and C pre-conditions are verified
+after their predecessor phase ships.
+
 ## Claim shape
 
 Every claim follows this template:

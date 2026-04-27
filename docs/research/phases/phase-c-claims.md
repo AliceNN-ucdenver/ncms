@@ -21,14 +21,20 @@ that an explicitly-pinned subject is honored.
 
 ---
 
-## Pre-conditions (verify on `main` after Phases A and B merge)
+## Pre-conditions (verify on the commit immediately after Phase B merges)
+
+> **Reviewer note:** these pre-conditions are NOT verifiable on
+> `main` today. They become verifiable after Phase B's PR merges.
+> A pre-flight audit before Phase A code lands should report these
+> as "deferred — Phases A/B not yet merged" rather than ❌ failures.
 
 ### PC-C.1 — Phases A and B merged
 **[BEHAVIOR]**
 **Verify:**
-- Commit log mentions both phases.
-- `python -c "from ncms.domain.models import Subject; from ncms.infrastructure.storage.sqlite_memory_nodes import get_subject_states; print('OK')"`
-- Expected: imports without error.
+- `git log --oneline | grep -iE "Phase A.*subject|subject.*payload"` — at least one match.
+- `git log --oneline | grep -iE "Phase B.*subject|subject.*index"` — at least one match.
+- `uv run python -c "from ncms.domain.models import Subject; from ncms.infrastructure.storage.sqlite_memory_nodes import get_subject_states; print('OK')"`
+- Expected: prints `OK`.
 
 ### PC-C.2 — `search()` and `recall()` do not accept context kwargs
 **[API]**
@@ -47,16 +53,20 @@ that an explicitly-pinned subject is honored.
 ### PC-C.4 — TLGQuery has a `subject` field
 **[SCHEMA]**
 **Verify:**
-- `python -c "from ncms.domain.tlg.semantic_parser import TLGQuery; t = TLGQuery(axis='state', relation='current', subject='application:xyz'); print(t.subject)"`
+- `uv run python -c "from ncms.domain.tlg.semantic_parser import TLGQuery; t = TLGQuery(axis='state', relation='current', subject='application:xyz'); print(t.subject)"`
 - Expected: `application:xyz`.
 
 ### PC-C.5 — CTLG is shadow-only end-to-end
 **[BEHAVIOR]**
 **Verify:**
-- Inspect `benchmarks/mseb/backends/ncms_backend.py::ctlg_shadow_query`.
-- Expected: returns diagnostics only; baseline `ranked_mids` not mutated.
-- `grep -i "ctlg.*on\|ctlg.*live" docs/research/ctlg-implementation-plan.md`
-- Expected: phase 5 lists `ctlg_on` as `[ ]` (not done).
+- `grep -E "^\s*-\s*\[\s\]\s*\`ctlg_on" docs/research/ctlg-implementation-plan.md`
+- Expected: matches — confirms `ctlg_on` mode is checklisted as not-done.
+- `grep -n "ranked_mids" benchmarks/mseb/backends/ncms_backend.py | head`
+- Expected: `ranked_mids` is set from baseline retrieval (not from CTLG composition).
+- `grep -n "compose_grammar_with_results\|grammar_composed" benchmarks/mseb/harness.py` — count.
+- Expected: zero matches that would write back to `ranked_mids`.
+- `uv run pytest tests/integration/test_tlg_search_composition.py -q 2>&1 | tail`
+- Expected: TLG composition is gated by `temporal_enabled` and the test asserts no live mutation when CTLG-off.
 **Failure mode:** Phase C accidentally enables CTLG mutation; not in scope.
 
 ### PC-C.6 — Subject-resolver code (deterministic) does not yet exist in `src/`
@@ -240,7 +250,8 @@ without removing the abstain default.
 **Verify:**
 - `git diff main -- src/ncms/domain/models.py | grep -E "^[+-]\s+(state_key|state_value|entity_id)"`
 - Expected: empty.
-- `python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 14"`
+- `uv run python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 15"`
+- Expected: assertion holds.
 
 ### NEG-C.5 — `search()` / `recall()` callers without context: zero behavior change
 **[NEGATIVE]**

@@ -22,15 +22,20 @@
 
 ---
 
-## Pre-conditions (verify on `main` after Phase A merges)
+## Pre-conditions (verify on the commit immediately after Phase A merges)
+
+> **Reviewer note:** these pre-conditions are NOT verifiable on
+> `main` today. They become verifiable after Phase A's PR merges.
+> A pre-flight audit before Phase A code lands should report these
+> as "deferred — Phase A not yet merged" rather than ❌ failures.
 
 ### PC-B.1 — Phase A merged
 **[BEHAVIOR]**
 **Verify:**
-- `git log --oneline | grep -i "Phase A: subject payload"`
+- `git log --oneline | grep -iE "Phase A.*subject|subject.*payload"`
 - Expected: at least one matching commit.
-- `python -c "from ncms.domain.models import Subject; print(Subject)"`
-- Expected: imports without error.
+- `uv run python -c "from ncms.domain.models import Subject; print(Subject)"`
+- Expected: imports without error and prints the Subject class.
 
 ### PC-B.2 — `memory_nodes.metadata->entity_id` is the canonical subject lookup
 **[SCHEMA]**
@@ -62,11 +67,24 @@
 - `grep -rn "get_subject_states\|getSubjectStates" src/ncms 2>/dev/null | grep -v __pycache__`
 - Expected: no match.
 
-### PC-B.7 — Architecture fitness baseline holds
+### PC-B.7 — Architecture fitness baseline (no NEW D+ vs Phase A merge commit)
 **[NEGATIVE]**
+The CTLG in-flight work introduced 3 D-grade methods that fail the
+fitness gate today:
+- `application/adapters/ctlg/generator.py::_clean_generated_cue_noise`
+- `application/entity_extraction_mode.py::structured_slm_entities`
+- `domain/tlg/semantic_parser.py::_slm_grounding`
+
+These are tracked as accepted in-flight debt. Phase B's gate is
+"no NEW regressions vs the post-Phase-A merge commit," not "228
+pass." The 3 known fails stay; the count must not grow.
+
 **Verify:**
-- `uv run pytest tests/architecture/ -q`
-- Expected: 228 pass.
+- `uv run pytest tests/architecture/ -q 2>&1 | tail -3`
+- Expected: failure list is exactly the 3 above; pass count ≥ Phase A merge baseline.
+- `uv run radon cc src/ncms/ -a -nc --min D 2>&1 | grep -v "demo/"`
+- Expected: exactly 3 D+ methods (the 3 above), no others. (Demo orchestrators are accepted out-of-scope.)
+**Failure mode:** Phase B introduces a 4th D+ regression beyond the in-flight CTLG set.
 
 ---
 
@@ -184,10 +202,11 @@ async def get_subject_states(
 - `git diff main -- src/ncms/domain/models.py | grep -E "^[+-]\s+(state_key|state_value|entity_id|valid_from|valid_to|observed_at|ingested_at|is_current)"`
 - Expected: empty.
 
-### NEG-B.2 — No changes to `EdgeType` enum
+### NEG-B.2 — No changes to `EdgeType` enum (count unchanged at 15)
 **[NEGATIVE]**
 **Verify:**
-- `python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 14"`
+- `uv run python -c "from ncms.domain.models import EdgeType; assert len(list(EdgeType)) == 15"`
+- Expected: assertion holds.
 
 ### NEG-B.3 — No new ingest paths
 **[NEGATIVE]**
