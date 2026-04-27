@@ -348,13 +348,30 @@ Passing both with conflicting `primary` values raises `ValueError`.
 **[BEHAVIOR]**
 **Pre:** No canonicalization exists.
 **Post:** `SubjectRegistry.canonicalize(surface: str, type_hint: str | None, domain: str | None) -> Subject` returns a `Subject` with:
-- Existing canonical id when alias matches (exact or normalized lowercase).
+- Existing canonical id when alias matches **exactly** (verbatim) or
+  **normalized** (whitespace-collapsed + lowercased).
 - Newly minted canonical id otherwise; alias persisted before return.
 - `confidence` reflects which lookup tier hit (exact: 1.0; fuzzy: 0.85; minted: 0.6).
+
+**Scope note (sub-PR 2):** matching is strict whitespace + case
+folding only.  Article-stripping ("the foo" → "foo") and synonym
+matching are NOT part of the deterministic canonicalizer — they
+land in the Phase C resolver layer where unbounded fuzziness can
+be gated by the SLM/CTLG signals.  This keeps `canonicalize()`
+itself reproducible and free of LLM dependencies.
 **Verify:**
-- Test: `tests/unit/application/test_subject_registry.py::test_alias_variants_resolve_to_one_canonical` — ingest "application xyz", "the xyz service", "app xyz" → all return same canonical id.
-- Test: `test_minted_id_persists_aliases`.
-- Test: `test_exact_match_higher_confidence_than_fuzzy`.
+- Test: `tests/unit/application/test_subject_registry.py::TestCanonicalizeTier2Fuzzy::test_alias_variants_resolve_to_one_canonical`
+  — surfaces "auth service", "AUTH SERVICE", "  auth   service  "
+  all return the same canonical id (they share normalized form
+  "auth service").
+- Test: `TestCanonicalizeTier3Mint::test_minted_alias_persisted` — the
+  minting path persists both subject + alias rows.
+- Test: `TestCanonicalizeTier1Exact::test_exact_repeat_returns_confidence_1_0`
+  — exact match returns 1.0; first-time mint is 0.6; tier-2 fuzzy is 0.85.
+- Test: `TestTypeScoping::test_type_hint_isolates_lookup` — same
+  surface in different `type_hint`s yields distinct canonical ids
+  (so `auth-api` doesn't collide between `service:auth-api` and
+  `decision:auth-api`).
 
 ### A.6 — Multi-subject ingest emits one L2 per affected timeline
 **[BEHAVIOR]**
