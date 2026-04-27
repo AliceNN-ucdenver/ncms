@@ -24,6 +24,7 @@ from ncms.application.ingestion import IngestionPipeline
 from ncms.application.label_cache import load_cached_labels
 from ncms.application.retrieval import RetrievalPipeline
 from ncms.application.scoring import ScoringPipeline
+from ncms.application.subject_registry import SubjectRegistry, resolve_subjects
 from ncms.application.traversal import TraversalPipeline
 from ncms.config import NCMSConfig
 from ncms.domain.entity_extraction import resolve_labels
@@ -35,6 +36,7 @@ from ncms.domain.models import (
     RecallResult,
     Relationship,
     ScoredMemory,
+    Subject,
     SynthesisMode,
     SynthesizedResponse,
     TemporalArithmeticResult,
@@ -215,6 +217,15 @@ class MemoryService:
             intent_slot=self._intent_slot,
         )
 
+        # Subject canonicalization registry (Phase A — claims A.4 / A.5).
+        # Lazy: constructed on first use because the store may not have
+        # initialised its sqlite connection at MemoryService construction
+        # time.  Holds an aiosqlite connection borrowed from the store;
+        # lifecycle is managed by the store, not the registry.  Bound to
+        # the same event log so subject.alias_collision events flow into
+        # the dashboard's event stream.
+        self._subject_registry: SubjectRegistry | None = None
+
         # TLG L1 vocabulary cache — lazy; rebuilt on first use after
         # ingestion.  Always constructed so callers of ``retrieve_lg``
         # don't need to branch on the feature flag; the cache simply
@@ -263,6 +274,20 @@ class MemoryService:
     @property
     def graph(self) -> GraphEngine:
         return self._graph
+
+    def _get_subject_registry(self) -> SubjectRegistry:
+        """Lazily construct the subject registry on first use.
+
+        Defers construction until ``store.db`` is guaranteed to exist
+        (the store initializes the connection in ``initialize()``,
+        which is typically called after ``MemoryService.__init__``).
+        """
+        if self._subject_registry is None:
+            self._subject_registry = SubjectRegistry(
+                self._store.db,  # type: ignore[attr-defined]
+                event_log=self._event_log,
+            )
+        return self._subject_registry
 
     async def start_index_pool(self, queue_size: int | None = None) -> None:
         """Start background indexing workers.
@@ -329,19 +354,35 @@ class MemoryService:
         relationships: list[dict] | None = None,
         observed_at: datetime | None = None,
         subject: str | None = None,
+        subjects: list[Subject] | None = None,
     ) -> Memory:
         """Store a new memory with automatic indexing and graph updates.
 
-        When ``subject`` is provided, the caller is asserting the
-        entity-subject this memory pertains to (e.g. "adr-0001",
-        "ticket-ABC-123", "patient-42").  The ingest pipeline will
-        force creation of an L2 ENTITY_STATE node with
-        ``metadata["entity_id"] = subject``, bypassing the
-        regex / SLM state-change detection fork.  The subject name
-        is also linked as an entity so the TLG L1 vocabulary picks
-        it up.  Leave as ``None`` for the legacy behaviour where the
-        pipeline infers subject from content heuristics.  See
-        ``docs/completed/slm-extraction-audits/slm-entity-extraction-design.md`` Part 4.
+        Subject precedence (Phase A — see claim A.3):
+
+        1. ``subjects=[...]`` — caller passes a fully-shaped list of
+           :class:`Subject` instances; canonical ids and aliases are
+           registered idempotently.  This is the multi-subject path.
+        2. ``subject="..."`` — legacy single-subject string.  Promoted
+           to a one-element list with ``primary=True``,
+           ``source="caller"``.
+        3. SLM auto-suggest — when the v9 SLM chain is active and
+           ``role_head`` produced ``role="primary"`` spans above the
+           confidence threshold, those become the subjects with
+           ``source="slm_role"``.  This is the GLiNER-retirement
+           wiring (claim A.17).
+        4. Empty — Memory persists with ``structured["subjects"] = []``.
+
+        The resolved list is baked into ``memory.structured["subjects"]``
+        as ``list[dict]`` (each dict is :meth:`Subject.model_dump`)
+        so the payload survives SQLite round-trip.  Multi-subject L2
+        emission lands in sub-PR 4; this PR only persists the payload.
+
+        Passing ``subjects`` with multiple ``primary=True`` raises
+        ``ValueError``.
+
+        See ``docs/research/phases/phase-a-claims.md`` claims A.2,
+        A.3, A.8, A.17.
         """
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()
@@ -439,6 +480,36 @@ class MemoryService:
                     {"n_cue_tags": len(ctlg_result.tokens), "voice": "memory"},
                 )
 
+        # ── Subject resolution + payload bake (Phase A — claims A.2/A.3/A.17) ─
+        # Apply the precedence chain and bake the resolved list into
+        # ``structured["subjects"]`` BEFORE Memory construction so the
+        # payload lands in the same INSERT as the rest of structured.
+        # Multi-subject L2 emission is sub-PR 4's job; this just
+        # persists the payload.
+        from ncms.application.ingestion.store_helpers import bake_subjects_payload
+
+        t0_subjects = time.perf_counter()
+        resolved_subjects = await resolve_subjects(
+            registry=self._get_subject_registry(),
+            config=self._config,
+            domains=domains,
+            subject_legacy=subject,
+            subjects_explicit=subjects,
+            intent_slot_label=intent_slot_label,
+        )
+        structured = bake_subjects_payload(
+            subjects=resolved_subjects,
+            structured=structured,
+        )
+        _emit_stage(
+            "subjects_resolved",
+            (time.perf_counter() - t0_subjects) * 1000,
+            {
+                "n_subjects": len(resolved_subjects),
+                "sources": sorted({s.source for s in resolved_subjects}),
+            },
+        )
+
         memory = Memory(
             content=content,
             type=cast(Any, memory_type),
@@ -516,6 +587,15 @@ class MemoryService:
         # link it as a first-class entity so TLG L1 vocabulary
         # induction sees it.  The ENTITY_STATE node is created with
         # ``entity_id = subject`` downstream in create_memory_nodes.
+        #
+        # Phase A note (sub-PR 3): the legacy `subject=` raw-string
+        # entity-link is preserved here unchanged so the inline /
+        # async indexing parity fitness test still holds.  Sub-PRs 4
+        # and 5 generalize this to multi-subject L2 emission +
+        # canonical entity ids on BOTH paths atomically — that's
+        # the only way to keep parity.  Until then,
+        # ``resolved_subjects`` is consumed by the structured payload
+        # bake only, not by the entity-graph linking step.
         if subject:
             _subject_lower = subject.lower()
             _existing = {e["name"].lower() for e in merged_entities}
@@ -525,7 +605,7 @@ class MemoryService:
                         "name": subject,
                         "type": "subject",
                         "attributes": {"source": "caller_subject"},
-                    }
+                    },
                 )
 
         # ── Background indexing (fast path) ─────────────────────────────

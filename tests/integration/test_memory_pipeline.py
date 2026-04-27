@@ -130,7 +130,10 @@ class TestMemoryPipeline:
         results = await memory_service.search("GET users")
         matched = [r for r in results if r.memory.id == mem.id]
         assert len(matched) == 1
-        assert matched[0].memory.structured == structured
+        # Phase A: every memory carries ``structured["subjects"]``;
+        # equality-compare on the caller-supplied keys only.
+        for k, v in structured.items():
+            assert matched[0].memory.structured[k] == v
 
 
 class TestAutoEntityExtraction:

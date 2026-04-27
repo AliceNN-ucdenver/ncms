@@ -1,10 +1,16 @@
-"""Subject canonicalization registry (Phase A).
+"""Subject canonicalization registry + ingest-time resolver (Phase A).
 
 The :class:`SubjectRegistry` maps surface forms (e.g.
 ``"the auth-service"``, ``"auth service"``, ``"auth-api"``) onto
 canonical subject ids (e.g. ``"service:auth-api"``) so the rest
 of the system can index, dedupe, and reason over subjects without
 worrying about how the caller spelled them.
+
+The module-level :func:`resolve_subjects` glues the registry to
+the ingest pipeline: it implements the A.3 precedence chain
+(caller subjects → caller subject string → SLM auto-suggest) so
+``store_memory`` can compute the final ``list[Subject]`` to bake
+into ``memory.structured["subjects"]``.
 
 **Sub-PR 2 (this commit):** real three-tier alias lookup:
 
@@ -390,6 +396,196 @@ class SubjectRegistry:
             },
         )
         self._event_log.emit(event)
+
+
+# ---------------------------------------------------------------------------
+# Ingest-time resolver (claim A.3 precedence + A.17 SLM auto-suggest)
+# ---------------------------------------------------------------------------
+
+
+def _validate_primary_count(subjects: list[Subject]) -> None:
+    """Raise ``ValueError`` when more than one subject has ``primary=True``.
+
+    A.3: "Passing both with conflicting primary values raises
+    ``ValueError``."  Exactly one Subject in a list should be the
+    primary timeline anchor.
+    """
+    primaries = [s for s in subjects if s.primary]
+    if len(primaries) > 1:
+        raise ValueError(
+            "Multiple subjects with primary=True: "
+            + ", ".join(p.id for p in primaries),
+        )
+
+
+async def _persist_caller_subjects(
+    registry: SubjectRegistry,
+    subjects: list[Subject],
+) -> None:
+    """Idempotently persist caller-provided subjects + their aliases.
+
+    Caller-provided ``Subject`` instances may carry already-canonical
+    ids (the MSEB-backend pattern: canonicalize via the registry,
+    then pass the result through ``subjects=``).  We register them
+    so future surface-driven lookups via :meth:`canonicalize` find
+    these aliases.  Both inserts are ``INSERT OR IGNORE`` so re-runs
+    are safe.
+    """
+    for s in subjects:
+        await registry._persist_subject(s.id, s.type)  # noqa: SLF001
+        for alias in s.aliases:
+            await registry._persist_alias(  # noqa: SLF001
+                s.id,
+                s.type,
+                alias,
+                normalize_surface(alias),
+            )
+
+
+async def _derive_subjects_from_slm(
+    registry: SubjectRegistry,
+    *,
+    intent_slot_label: Any,
+    config: Any,
+    domains: list[str] | None,
+) -> list[Subject]:
+    """Derive subjects from the SLM ``role_head`` ``primary`` spans.
+
+    Implements claim A.17 — the GLiNER-retirement path.  When the
+    v9 SLM chain produces ``role_spans`` with role="primary" above
+    the configured confidence threshold, each becomes a candidate
+    subject (the first is marked primary, the rest co-subjects).
+
+    Skipped silently when:
+
+    * The SLM chain is not active (``config.default_adapter_domain``
+      is unset → ``intent_slot_label`` is the heuristic null
+      passthrough; ``role_spans`` is empty).
+    * The label's overall confidence is below
+      ``config.slm_confidence_threshold``.
+    * No span has role="primary".
+    """
+    if intent_slot_label is None:
+        return []
+    threshold = float(getattr(config, "slm_confidence_threshold", 0.3) or 0.3)
+    is_confident_fn = getattr(intent_slot_label, "is_confident", None)
+    if callable(is_confident_fn) and not is_confident_fn(threshold):
+        return []
+
+    role_spans = list(getattr(intent_slot_label, "role_spans", ()) or ())
+    primary_spans = [
+        rs for rs in role_spans
+        if (rs.get("role") if isinstance(rs, dict) else getattr(rs, "role", "")) == "primary"
+    ]
+    if not primary_spans:
+        return []
+
+    domain_hint = domains[0] if domains else None
+    slot_confidences = dict(getattr(intent_slot_label, "slot_confidences", {}) or {})
+    overall_confidence = float(
+        getattr(intent_slot_label, "intent_confidence", 1.0) or 1.0,
+    )
+
+    resolved: list[Subject] = []
+    for i, rs in enumerate(primary_spans):
+        # rs may be dict (from structured["intent_slot"]) or RoleSpan dataclass.
+        if isinstance(rs, dict):
+            surface = rs.get("surface") or rs.get("canonical") or ""
+            slot = rs.get("slot") or "subject"
+        else:
+            surface = getattr(rs, "surface", "") or getattr(rs, "canonical", "")
+            slot = getattr(rs, "slot", "subject")
+        if not surface:
+            continue
+        s = await registry.canonicalize(
+            surface,
+            type_hint=slot,
+            domain=domain_hint,
+            source="slm_role",
+        )
+        # SLM's confidence in this span: prefer per-slot, else overall.
+        span_conf = slot_confidences.get(slot, overall_confidence)
+        # A primary subject is the first; co-subjects follow.
+        # Cap inherited confidence at the SLM's signal so a
+        # tier-1 (1.0) registry hit doesn't overstate confidence.
+        resolved.append(
+            s.model_copy(
+                update={
+                    "primary": (i == 0),
+                    "confidence": min(s.confidence, span_conf),
+                },
+            ),
+        )
+    return resolved
+
+
+async def resolve_subjects(
+    *,
+    registry: SubjectRegistry,
+    config: Any,
+    domains: list[str] | None,
+    subject_legacy: str | None,
+    subjects_explicit: list[Subject] | None,
+    intent_slot_label: Any | None,
+) -> list[Subject]:
+    """Compute the final subject list per claim A.3 precedence.
+
+    Precedence (highest wins):
+
+    1. ``subjects_explicit`` provided → use as-is (after persisting
+       to the registry so aliases are usable for future lookups).
+    2. ``subject_legacy`` provided → canonicalize the string,
+       promote to a one-element list with ``primary=True``,
+       ``source="caller"``.
+    3. SLM ``role_head`` ``primary`` spans → derive per A.17.
+    4. Otherwise → empty list (Memory persists with no subjects).
+
+    Args:
+        registry: The :class:`SubjectRegistry`.
+        config: ``NCMSConfig`` (or any object exposing
+            ``slm_confidence_threshold``).
+        domains: Memory domains; first element used as the
+            type-set scope hint for canonicalization.
+        subject_legacy: The legacy ``subject=str`` kwarg from
+            ``store_memory``.
+        subjects_explicit: The new ``subjects=list[Subject]`` kwarg.
+        intent_slot_label: SLM extraction output.
+
+    Returns:
+        The resolved ``list[Subject]``.  May be empty.
+
+    Raises:
+        ValueError: When the resolved list contains more than one
+            ``Subject`` with ``primary=True``.
+    """
+    # Precedence 1: caller-provided list wins.
+    if subjects_explicit is not None:
+        _validate_primary_count(subjects_explicit)
+        out = list(subjects_explicit)
+        # When no Subject is marked primary, promote the first.
+        if out and not any(s.primary for s in out):
+            out[0] = out[0].model_copy(update={"primary": True})
+        await _persist_caller_subjects(registry, out)
+        return out
+
+    # Precedence 2: legacy single-subject string.
+    if subject_legacy:
+        domain_hint = domains[0] if domains else None
+        s = await registry.canonicalize(
+            subject_legacy,
+            type_hint=None,
+            domain=domain_hint,
+            source="caller",
+        )
+        return [s.model_copy(update={"primary": True})]
+
+    # Precedence 3: SLM auto-suggest (A.17 — GLiNER-retirement path).
+    return await _derive_subjects_from_slm(
+        registry,
+        intent_slot_label=intent_slot_label,
+        config=config,
+        domains=domains,
+    )
 
 
 # ---------------------------------------------------------------------------

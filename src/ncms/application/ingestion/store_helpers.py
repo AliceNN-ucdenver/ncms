@@ -88,6 +88,26 @@ def bake_intent_slot_payload(
     return result
 
 
+def bake_subjects_payload(
+    *,
+    subjects: list,
+    structured: dict | None,
+) -> dict:
+    """Serialise the resolved subject list into ``memory.structured``.
+
+    Claim A.2: every persisted memory has
+    ``structured["subjects"] = list[dict]`` where each dict is
+    ``Subject.model_dump(mode="json")`` (JSON-ready — tuples
+    serialised as lists so SQLite round-trip preserves equality).
+    When the resolved list is empty the key is set to ``[]`` rather
+    than omitted, so downstream consumers can rely on the key
+    existing on every post-Phase-A memory.
+    """
+    result = dict(structured or {})
+    result["subjects"] = [s.model_dump(mode="json") for s in subjects]
+    return result
+
+
 async def run_slm_and_admission(
     *,
     config,
