@@ -153,34 +153,30 @@ async def get_current_entity_states(
     entity_id: str,
     state_key: str,
 ) -> list[MemoryNode]:
-    """Find current entity state nodes for entity_id + state_key."""
-    cursor = await db.execute(
-        """SELECT * FROM memory_nodes
-           WHERE node_type = ?
-             AND is_current = 1
-             AND json_extract(metadata, '$.entity_id') = ?
-             AND json_extract(metadata, '$.state_key') = ?
-           ORDER BY created_at DESC""",
-        (NodeType.ENTITY_STATE.value, entity_id, state_key),
+    """Find current entity state nodes for entity_id + state_key.
+
+    Phase B (claim B.6): wrapper around :func:`get_subject_states`
+    so the index covers both call paths from a single source.
+    Public signature unchanged; behavior byte-equivalent to the
+    pre-Phase-B SQL.
+    """
+    return await get_subject_states(
+        db,
+        entity_id,
+        scope=state_key,
+        is_current=True,
     )
-    rows = await cursor.fetchall()
-    return [row_to_memory_node(r) for r in rows]
 
 
 async def get_entity_states_by_entity(
     db: aiosqlite.Connection,
     entity_id: str,
 ) -> list[MemoryNode]:
-    """All entity state nodes (current + superseded) for an entity."""
-    cursor = await db.execute(
-        """SELECT * FROM memory_nodes
-           WHERE node_type = ?
-             AND json_extract(metadata, '$.entity_id') = ?
-           ORDER BY created_at DESC""",
-        (NodeType.ENTITY_STATE.value, entity_id),
-    )
-    rows = await cursor.fetchall()
-    return [row_to_memory_node(r) for r in rows]
+    """All entity state nodes (current + superseded) for an entity.
+
+    Phase B (claim B.6): wrapper around :func:`get_subject_states`.
+    """
+    return await get_subject_states(db, entity_id)
 
 
 # ---------------------------------------------------------------------------
@@ -193,19 +189,19 @@ async def get_current_state(
     entity_id: str,
     state_key: str,
 ) -> MemoryNode | None:
-    """Single most-recent current state for entity+key."""
-    cursor = await db.execute(
-        """SELECT * FROM memory_nodes
-           WHERE node_type = ?
-             AND is_current = 1
-             AND json_extract(metadata, '$.entity_id') = ?
-             AND json_extract(metadata, '$.state_key') = ?
-           ORDER BY created_at DESC
-           LIMIT 1""",
-        (NodeType.ENTITY_STATE.value, entity_id, state_key),
+    """Single most-recent current state for entity+key.
+
+    Phase B (claim B.6): wrapper around :func:`get_subject_states`
+    with ``limit=1``.  Returns the first match or ``None``.
+    """
+    rows = await get_subject_states(
+        db,
+        entity_id,
+        scope=state_key,
+        is_current=True,
+        limit=1,
     )
-    row = await cursor.fetchone()
-    return row_to_memory_node(row) if row else None
+    return rows[0] if rows else None
 
 
 async def get_state_at_time(
@@ -264,16 +260,15 @@ async def get_state_history(
     entity_id: str,
     state_key: str,
 ) -> list[MemoryNode]:
-    cursor = await db.execute(
-        """SELECT * FROM memory_nodes
-           WHERE node_type = ?
-             AND json_extract(metadata, '$.entity_id') = ?
-             AND json_extract(metadata, '$.state_key') = ?
-           ORDER BY created_at ASC""",
-        (NodeType.ENTITY_STATE.value, entity_id, state_key),
-    )
-    rows = await cursor.fetchall()
-    return [row_to_memory_node(r) for r in rows]
+    """All states for entity+key in chronological (ASC) order.
+
+    Phase B (claim B.6): wrapper around :func:`get_subject_states`.
+    The new helper returns ``created_at DESC``; this helper's
+    public contract is ``ASC`` so we reverse in Python.  Cheap,
+    single source of truth for the SQL.
+    """
+    rows = await get_subject_states(db, entity_id, scope=state_key)
+    return list(reversed(rows))
 
 
 # ---------------------------------------------------------------------------
