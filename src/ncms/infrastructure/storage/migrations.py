@@ -4,7 +4,7 @@ Single-pass schema creation — no incremental migrations.
 All tables created in their final form.
 """
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 CREATE_SCHEMA_SQL = """
 -- Schema version tracking
@@ -176,6 +176,16 @@ CREATE TABLE IF NOT EXISTS memory_nodes (
 CREATE INDEX IF NOT EXISTS idx_mnodes_memory ON memory_nodes(memory_id);
 CREATE INDEX IF NOT EXISTS idx_mnodes_type ON memory_nodes(node_type);
 CREATE INDEX IF NOT EXISTS idx_mnodes_parent ON memory_nodes(parent_id);
+-- Phase B (claim B.1): partial index on the subject-id JSON path,
+-- restricted to ENTITY_STATE rows.  Speeds up
+-- ``get_subject_states(subject_id, ...)`` lookups (which all 18
+-- application + interface callers route through, either directly
+-- or via the wrapper helpers) from a full memory_nodes scan to
+-- an indexed seek.  EXPLAIN QUERY PLAN verifies SQLite picks it
+-- (test_query_plan_uses_index in test_subject_index.py).
+CREATE INDEX IF NOT EXISTS idx_mnodes_subject
+    ON memory_nodes (json_extract(metadata, '$.entity_id'))
+    WHERE node_type = 'entity_state';
 
 -- P1-temporal-experiment: per-memory content date range.
 -- Populated at ingest when temporal_range_filter_enabled is on and

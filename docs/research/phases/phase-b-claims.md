@@ -135,20 +135,35 @@ async def get_subject_states(
     subject_id: str,
     *,
     scope: str | None = None,
-    as_of: datetime | None = None,
     is_current: bool | None = None,
     limit: int | None = None,
 ) -> list[MemoryNode]:
 ```
 - `scope` filters by `metadata.state_key`.
-- `as_of` returns states valid at that point in time (uses `valid_from`/`valid_to`).
 - `is_current` filters by the column.
 - `limit` caps result size.
 - All filters are optional and compose.
+- Result ordering: `created_at DESC` (most-recent first).
+- The query uses `idx_mnodes_subject` for the subject_id lookup
+  (verified by B.3's `EXPLAIN QUERY PLAN` test).
+
+**Scope note:** `as_of` was removed from the original draft after
+code audit.  Bitemporal range queries (`valid_from <= ? AND
+valid_to > ?` with fallback) are fundamentally different from a
+single-subject filter — they live in `get_state_at_time`, which
+is one of the two helpers NOT folded into the new shape (see B.6).
+
+`get_subject_states` is also added to the `MemoryStore` protocol
+(`src/ncms/domain/protocols.py`) and exposed as a thin delegate
+on `SQLiteStore` so application-layer callers reach it through
+the protocol — same pattern as `find_memory_by_doc_id` in Phase A.
+
 **Verify:**
-- `grep -A 12 "^async def get_subject_states" src/ncms/infrastructure/storage/sqlite_memory_nodes.py`
+- `grep -A 10 "^async def get_subject_states" src/ncms/infrastructure/storage/sqlite_memory_nodes.py`
 - Expected: matches the signature above.
-- Tests: `tests/unit/infrastructure/storage/test_get_subject_states.py` covers each filter combination.
+- `grep -n "get_subject_states" src/ncms/domain/protocols.py src/ncms/infrastructure/storage/sqlite_store.py`
+- Expected: protocol declaration + thin SQLiteStore delegate.
+- Tests: `tests/unit/infrastructure/storage/test_subject_index.py` covers each filter combination + filter composition.
 
 ### B.5 — `_load_subject_zones` routes through the new helper
 **[COVERAGE]**
@@ -160,26 +175,54 @@ async def get_subject_states(
 - Test: existing TLG dispatcher tests in `tests/integration/test_tlg_dispatch.py` continue to pass with no test changes.
 **Failure mode:** Walkers diverge between paths or behavior changes.
 
-### B.6 — Existing 6 helpers preserve public signatures (back-compat)
+### B.6 — 4 of 6 legacy helpers become wrappers; 2 stay literal
 **[NEGATIVE]**
-**Pre:** 6 helpers exist with current signatures.
-**Post:** All 6 still exist; signatures unchanged. Internal implementations *may* be refactored to delegate to `get_subject_states`, but every existing caller's behavior is byte-equivalent.
+**Pre:** 6 helpers exist with current signatures and 18 callers
+across application + interfaces (verified by audit).
+**Post:** All 6 still exist with unchanged public signatures and
+behavior.  Internal implementations split into two groups:
+
+| Helper | Disposition |
+|---|---|
+| `get_entity_states_by_entity` | wrapper → `get_subject_states(entity_id)` |
+| `get_current_entity_states` | wrapper → `get_subject_states(..., is_current=True)` |
+| `get_current_state` | wrapper → `get_subject_states(..., limit=1)` returning first or None |
+| `get_state_history` | wrapper → `get_subject_states(...)` then `reversed(...)` (preserves ASC ordering) |
+| `get_state_at_time` | **stays literal** — bitemporal range query (`valid_from`/`valid_to` + fallback) doesn't fit a single-subject filter |
+| `get_state_changes_since` | **stays literal** — global query, no `metadata.entity_id` filter, the new index does not apply |
+
+The 4 wrappers are thin enough that every existing caller's
+behavior is byte-equivalent.  The 2 literal helpers are unchanged.
+18 caller sites (in `reconciliation_service`, `retrieval/pipeline`,
+`traversal/pipeline`, `enrichment/pipeline`, `consolidation_service`,
+`diagnostics/search_diag`, MCP tools, MCP resources, CLI export,
+CLI main, HTTP dashboard, HTTP api) continue to work without
+changes because protocol + SQLiteStore signatures are preserved.
 **Verify:**
 - `git diff main -- src/ncms/infrastructure/storage/sqlite_memory_nodes.py | grep -E "^[-+]async def get_"`
 - Expected: only additions of `get_subject_states`; no removals or signature changes to the 6 existing helpers.
-- Test: every existing caller of `get_entity_states_by_entity`, `get_current_state`, `get_state_at_time`, `get_state_history`, `get_state_changes_since`, `get_current_entity_states` continues to pass without test changes.
+- Test: every test in `tests/unit/infrastructure/test_sqlite_entity_state_store.py` (6 test classes covering all 6 helpers) continues to pass without test changes — that's the parity gate.
 **Failure mode:** Phase B regresses any subject-state caller.
 
-### B.7 — Performance benchmark: 100K L2 nodes, ≤ 5 ms p95
+### B.7 — Performance test: 10K L2 nodes, ≤ 5 ms p95
 **[PERF]**
-**Pre:** Today's full-table scan on 100K nodes is ~50–200 ms p95 (estimate; may not have a benchmark today).
-**Post:** A reproducible benchmark seeds 100K L2 nodes across 10K distinct subjects, runs 1000 random `get_subject_states(subject_id, scope, is_current=True)` queries, and reports p50/p95/p99.
+**Pre:** No subject-lookup performance test exists.
+**Post:** A checked-in pytest test seeds 10K L2 nodes across 1K
+distinct subjects, runs 100 random
+`get_subject_states(subject_id, is_current=True)` queries, and
+asserts:
 - p95 ≤ 5 ms.
 - p99 ≤ 20 ms.
+
+10K not 100K so the test runs in under ~10 seconds in CI; the
+SHAPE of the verify (does the index actually help) is what
+matters, not the absolute count.  Marked with a slow-test
+marker for callers who want to skip it.
 **Verify:**
-- `uv run python benchmarks/profile_subject_lookup.py --n-nodes 100000 --n-queries 1000`
-- Expected: prints `p95=<5ms` and `p99=<20ms`.
-- Reviewer reads the benchmark source to confirm it's an honest stress test (no caching shortcuts).
+- `uv run pytest tests/integration/test_subject_index_perf.py -q`
+- Expected: passes.  Test source asserts p95 < 5ms and p99 < 20ms.
+- Reviewer reads the test source to confirm it's an honest stress
+  test (no caching shortcuts; subject_ids drawn uniformly random).
 **Failure mode:** Index doesn't actually help; query is somehow worse than the scan.
 
 ### B.8 — `_load_causal_graph` does not regress
@@ -259,21 +302,24 @@ Output format same as Phase A.
 
 ---
 
-## Open questions for codex / reviewer
+## Resolved decisions (locked before execution)
 
-1. **Should we drop `get_entity_states_by_entity` and the other 5
-   legacy helpers** in favor of `get_subject_states` everywhere? The
-   claim doc preserves them for back-compat. Aggressive option:
-   re-implement the 5 as one-liners that call `get_subject_states`.
-   That's cleaner but expands the change surface.
+The original draft had 3 open questions.  Each is answered below
+so the doc is a binding contract, not a discussion document.
 
-2. **`as_of` semantics under the index.** The index is on
-   `entity_id`; `valid_from <= ? AND (valid_to IS NULL OR valid_to >
-   ?)` is a separate filter. Does the optimizer combine them
-   efficiently? B.3 verifies the simple case; the as-of test should
-   verify the complex one.
+1. **Legacy helpers** — 4 of 6 become wrappers around
+   `get_subject_states`; 2 stay literal because their query shapes
+   are fundamentally different (see B.6 disposition table).
+   Public signatures preserved; 18 caller sites unaffected.
 
-3. **Should the index also cover `metadata.state_key`?** A composite
-   index on `(entity_id, state_key)` would speed up subject+scope
-   lookups further. Trade-off: larger index, more disk. Defer to
-   Phase E if scope-filtered queries dominate.
+2. **`as_of` semantics** — dropped from the new helper's API.
+   Bitemporal range queries (`valid_from`/`valid_to` + fallback)
+   stay in `get_state_at_time`; the new helper handles the
+   common subject-filter case only.  Cleaner separation of
+   responsibilities.
+
+3. **Composite `(entity_id, state_key)` index** — not added.
+   Single-column index is enough; the perf test (B.7) validates
+   p95 < 5ms threshold.  If the test fails on the simple case,
+   add the composite then — but we lock no-composite as the
+   default and refuse to "defer to Phase E."

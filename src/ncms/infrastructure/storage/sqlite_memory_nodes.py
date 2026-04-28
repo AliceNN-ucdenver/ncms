@@ -98,8 +98,54 @@ async def get_memory_nodes_for_memories(
 
 
 # ---------------------------------------------------------------------------
-# Entity state queries (Phase 2A)
+# Entity state queries (Phase 2A + Phase B subject-centered)
 # ---------------------------------------------------------------------------
+
+
+async def get_subject_states(
+    db: aiosqlite.Connection,
+    subject_id: str,
+    *,
+    scope: str | None = None,
+    is_current: bool | None = None,
+    limit: int | None = None,
+) -> list[MemoryNode]:
+    """Return ENTITY_STATE nodes for a subject, most-recent-first.
+
+    Phase B (claim B.4) — the subject-centered query that the
+    new ``idx_mnodes_subject`` partial index covers.  Filters
+    compose; all are optional.
+
+    * ``scope`` — filters by ``metadata.state_key``.
+    * ``is_current`` — filters by the ``is_current`` column.
+    * ``limit`` — caps the result size.
+
+    Result ordering: ``created_at DESC`` (most-recent first).
+    The query plan for the simple subject-only case uses
+    ``idx_mnodes_subject`` (verified by B.3).
+    """
+    where = [
+        "node_type = ?",
+        "json_extract(metadata, '$.entity_id') = ?",
+    ]
+    params: list[object] = [NodeType.ENTITY_STATE.value, subject_id]
+    if scope is not None:
+        where.append("json_extract(metadata, '$.state_key') = ?")
+        params.append(scope)
+    if is_current is not None:
+        where.append("is_current = ?")
+        params.append(1 if is_current else 0)
+    sql = (
+        "SELECT * FROM memory_nodes WHERE "
+        + " AND ".join(where)
+        + " ORDER BY created_at DESC"
+    )
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+    cursor = await db.execute(sql, tuple(params))
+    rows = await cursor.fetchall()
+    return [row_to_memory_node(r) for r in rows]
 
 
 async def get_current_entity_states(

@@ -629,6 +629,26 @@ class SQLiteStore:
 
         return await _mn.get_state_history(self.db, entity_id, state_key)
 
+    # ── Subject lookup (Phase B) ─────────────────────────────────────
+
+    async def get_subject_states(
+        self,
+        subject_id: str,
+        *,
+        scope: str | None = None,
+        is_current: bool | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryNode]:
+        from ncms.infrastructure.storage import sqlite_memory_nodes as _mn
+
+        return await _mn.get_subject_states(
+            self.db,
+            subject_id,
+            scope=scope,
+            is_current=is_current,
+            limit=limit,
+        )
+
     # ── Episode Queries (Phase 3) ─────────────────────────────────────
 
     async def get_open_episodes(self) -> list[MemoryNode]:

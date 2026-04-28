@@ -116,6 +116,30 @@ class MemoryNodeStore(Protocol):
         entity_id: str,
         state_key: str,
     ) -> list[MemoryNode]: ...
+    # Phase B: indexed subject lookup (claim B.4)
+    async def get_subject_states(
+        self,
+        subject_id: str,
+        *,
+        scope: str | None = None,
+        is_current: bool | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryNode]:
+        """Return ENTITY_STATE nodes for a subject, most-recent-first.
+
+        The subject-centered query that the new ``idx_mnodes_subject``
+        partial index covers.  Filters compose; all are optional.
+
+        * ``scope`` — filters by ``metadata.state_key``.
+        * ``is_current`` — filters by the ``is_current`` column.
+        * ``limit`` — caps the result size.
+
+        Result ordering: ``created_at DESC``.
+
+        See ``docs/research/phases/phase-b-claims.md`` claim B.4.
+        """
+        ...
+
     # Phase 4: Batch node lookup for intent-aware retrieval
     async def get_memory_nodes_for_memories(
         self,
