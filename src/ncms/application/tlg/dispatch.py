@@ -136,7 +136,13 @@ async def _load_subject_zones(
     from ncms.domain.tlg import ZoneEdge as _ZoneEdge
     from ncms.domain.tlg import compute_zones as _compute_zones
 
-    nodes = await store.get_entity_states_by_entity(subject)  # type: ignore[attr-defined]
+    # Phase B (claim B.5): direct call to the indexed helper.
+    # ``get_subject_states(subject_id)`` returns the same set of
+    # ENTITY_STATE rows as the legacy ``get_entity_states_by_entity``
+    # (current + superseded, ORDER BY created_at DESC), but the
+    # query plan uses ``idx_mnodes_subject`` so the lookup is
+    # O(log n) instead of a full scan.
+    nodes = await store.get_subject_states(subject_id=subject)  # type: ignore[attr-defined]
     node_index = {n.id: n for n in nodes}
     node_ids = set(node_index.keys())
 
