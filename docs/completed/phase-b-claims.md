@@ -1,10 +1,36 @@
 # Phase B Claims — Subject Index + Lookup Helpers
 
+> **🏁 RETIRED — Phase B complete.**
+>
+> Phase B shipped: ``idx_mnodes_subject`` partial index on the
+> subject-id JSON path, the new ``get_subject_states`` helper
+> with composable filters (added to ``MemoryStore`` protocol +
+> ``SQLiteStore`` delegate), the walker ``_load_subject_zones``
+> cut over to direct calls of the new helper, 4 of 6 legacy
+> helpers rewritten as wrappers (single source of truth for the
+> subject-state SQL), and a real pytest perf test that asserts
+> p95 < 5ms / p99 < 20ms on 10K rows × 1K subjects.
+>
+> Schema bumped 14 → 15.  No changes to L2 schema, no new edge
+> types, no ingest-path changes (read-side optimization only).
+>
+> The claim doc was locked at the start of execution under the
+> user's Option-B sign-off (B.4 + B.6 + B.7 rewrite + Open
+> Questions → Resolved Decisions); no further edits during the
+> work.  All 18 callers of legacy helpers continue to work
+> unchanged because public signatures are preserved.
+>
+> 1685 tests pass; ruff / mypy (Phase B surface) / vulture clean.
+>
+> This document is preserved for audit history; do not edit further.
+> Phase C claim doc remains in ``docs/research/phases/`` until
+> Phase C lands.
+
 **Phase:** B
-**Status:** not-yet-started — claim doc only
+**Status:** ✅ retired — implementation complete and merged
 **Owner:** NCMS core
 **Reviewer:** codex 5.5 (format spec at `claims-format.md`)
-**Companion:** `subject-centered-graph-design.md` §6 Phase B
+**Companion:** `../research/subject-centered-graph-design.md` §6 Phase B
 **Depends on:** Phase A merged
 
 ## What Phase B delivers
