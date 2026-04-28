@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 import aiosqlite
 import pytest
 
-from ncms.application.subject_registry import (
+from ncms.application.subject import (
     SubjectRegistry,
     resolve_subjects,
 )
@@ -163,7 +163,9 @@ class TestPrecedenceCallerSubjectsList:
         registry: SubjectRegistry,
         config: NCMSConfig,
     ) -> None:
-        """Both kwargs provided → subjects= wins, subject= ignored."""
+        """Both kwargs agree → subjects= wins (no raise; redundant is OK)."""
+        # subject="auth-api" + type_hint="service" canonicalizes to
+        # "service:auth-api" — same as the explicit Subject's id.
         explicit = [
             Subject(
                 id="service:auth-api",
@@ -176,12 +178,79 @@ class TestPrecedenceCallerSubjectsList:
             registry=registry,
             config=config,
             domains=None,
-            subject_legacy="some-other-subject",
+            subject_legacy="auth-api",
             subjects_explicit=explicit,
             intent_slot_label=None,
         )
         assert len(out) == 1
         assert out[0].id == "service:auth-api"
+
+    async def test_conflicting_kwargs_raises(
+        self,
+        registry: SubjectRegistry,
+        config: NCMSConfig,
+    ) -> None:
+        """Both kwargs disagree on canonical id → ValueError (A.3 cross-kwarg)."""
+        explicit = [
+            Subject(
+                id="service:auth-api",
+                type="service",
+                primary=True,
+                source="caller",
+            ),
+        ]
+        with pytest.raises(ValueError, match="Conflicting primary"):
+            await resolve_subjects(
+                registry=registry,
+                config=config,
+                domains=None,
+                subject_legacy="payments-service",
+                subjects_explicit=explicit,
+                intent_slot_label=None,
+            )
+
+    async def test_conflicting_kwargs_does_not_mutate_registry(
+        self,
+        registry: SubjectRegistry,
+        config: NCMSConfig,
+        db: aiosqlite.Connection,
+    ) -> None:
+        """A.3: a raised conflict leaves the registry untouched.
+
+        Codex round-1 caught that the original conflict-check
+        called ``registry.canonicalize`` which idempotently mints
+        + persists, leaving a row behind on a "validation failure."
+        The fix uses a deterministic formula that doesn't touch
+        the registry.
+        """
+        explicit = [
+            Subject(
+                id="service:auth-api",
+                type="service",
+                primary=True,
+                source="caller",
+            ),
+        ]
+        with pytest.raises(ValueError, match="Conflicting primary"):
+            await resolve_subjects(
+                registry=registry,
+                config=config,
+                domains=None,
+                subject_legacy="payments-service",
+                subjects_explicit=explicit,
+                intent_slot_label=None,
+            )
+        # The registry should be empty — no canonical_id was minted.
+        cur = await db.execute("SELECT COUNT(*) FROM subjects")
+        row = await cur.fetchone()
+        assert row[0] == 0, (
+            "conflict raise unexpectedly minted a subject row"
+        )
+        cur = await db.execute("SELECT COUNT(*) FROM subject_aliases")
+        row = await cur.fetchone()
+        assert row[0] == 0, (
+            "conflict raise unexpectedly minted an alias row"
+        )
 
     async def test_conflicting_primaries_raises(
         self,

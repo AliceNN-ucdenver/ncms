@@ -136,6 +136,15 @@ class NCMSMemoryEditor:
                 else:
                     domains.append(str(d))
 
+            # Phase A subject payload (claims A.3 / A.10): NAT
+            # callers can attach subject metadata via the item's
+            # metadata dict (``subject``, ``subjects``, ``parent_doc_id``).
+            from ncms.domain.models import Subject as _Subject
+
+            raw_subjects = metadata.get("subjects")
+            parsed_subjects = (
+                [_Subject(**s) for s in raw_subjects] if raw_subjects else None
+            )
             memory = await self._memory_svc.store_memory(
                 content=text,
                 memory_type=metadata.get("type", "fact"),
@@ -144,6 +153,9 @@ class NCMSMemoryEditor:
                 importance=metadata.get("importance", 5.0),
                 source_agent=agent_id or metadata.get("source_agent"),
                 structured=metadata.get("structured"),
+                subject=metadata.get("subject"),
+                subjects=parsed_subjects,
+                parent_doc_id=metadata.get("parent_doc_id"),
             )
             memory_ids.append(memory.id)
 

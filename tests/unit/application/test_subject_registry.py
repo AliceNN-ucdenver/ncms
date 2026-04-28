@@ -14,7 +14,7 @@ from __future__ import annotations
 import aiosqlite
 import pytest
 
-from ncms.application.subject_registry import (
+from ncms.application.subject import (
     SubjectRegistry,
     normalize_surface,
     slugify,

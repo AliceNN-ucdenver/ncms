@@ -260,9 +260,9 @@ async def detect_and_create_l2_node(
     1. **Multi-subject path (Phase A).** When
        ``memory.structured["subjects"]`` is populated, emit one L2
        per subject whose timeline has a state event (helper:
-       :func:`multi_subject_l2.create_l2_nodes_for_subjects`) plus
+       :func:`subject.l2_emission.create_l2_nodes_for_subjects`) plus
        ``MENTIONS_ENTITY`` edges for *every* subject (helper:
-       :func:`multi_subject_l2.create_mentions_entity_edges`).
+       :func:`subject.edges.create_mentions_entity_edges`).
     2. **Legacy caller-asserted subject** (single ``subject="..."``
        string, no Phase A bake — e.g. cold-start regressions).
     3. **Legacy SLM-state-detection** fallback.
@@ -275,7 +275,7 @@ async def detect_and_create_l2_node(
     slm_label = (memory.structured or {}).get("intent_slot") or {}
 
     # ── Path 1: Phase A multi-subject from structured payload ────────
-    from ncms.application.ingestion.multi_subject_l2 import (
+    from ncms.application.subject import (
         create_l2_nodes_for_subjects,
         create_mentions_entity_edges,
         subjects_from_memory,

@@ -11,6 +11,8 @@ import contextlib
 import logging
 import time
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
@@ -24,7 +26,13 @@ from ncms.application.ingestion import IngestionPipeline
 from ncms.application.label_cache import load_cached_labels
 from ncms.application.retrieval import RetrievalPipeline
 from ncms.application.scoring import ScoringPipeline
-from ncms.application.subject_registry import SubjectRegistry, resolve_subjects
+from ncms.application.subject import (
+    SubjectRegistry,
+    bake_subjects_payload,
+    inherit_primary_subject_from_parent_doc,
+    link_resolved_subject_entities,
+    resolve_subjects,
+)
 from ncms.application.traversal import TraversalPipeline
 from ncms.config import NCMSConfig
 from ncms.domain.entity_extraction import resolve_labels
@@ -113,6 +121,47 @@ def _format_answer_text(value: float, unit: str) -> str:
     if float(value).is_integer():
         return f"{int(value)} {unit}"
     return f"{value} {unit}"
+
+
+@dataclass
+class _StorePipelineContext:
+    """Rolling state for one ``MemoryService.store_memory`` invocation.
+
+    Phase A refactor: ``store_memory`` is now a thin orchestrator
+    (CC ≤ 5, A-grade) that builds this context and threads it
+    through a sequence of named phase methods.  Each phase reads
+    the fields it needs and writes back the fields it owns; no
+    long parameter lists, no shared mutable state via closure
+    capture.
+    """
+
+    # ── Inputs (set at construction; treated as immutable) ─────────
+    content: str
+    memory_type: str
+    importance: float
+    source_agent: str | None
+    project: str | None
+    relationships: list[dict] | None
+    observed_at: datetime | None
+    subject_legacy: str | None
+    subjects_explicit: list[Subject] | None
+    parent_doc_id: str | None
+    entities_caller: list[dict] | None
+    pipeline_id: str
+    pipeline_start: float
+    emit_stage: Callable[..., None]
+
+    # ── Mutable across phases ─────────────────────────────────────
+    domains: list[str] | None = None
+    tags: list[str] | None = None
+    structured: dict | None = None
+    content_hash: str | None = None
+    intent_slot_label: Any | None = None
+    admission_route: str | None = None
+    admission_features: object | None = None
+    resolved_subjects: list[Subject] = field(default_factory=list)
+    merged_entities: list[dict] = field(default_factory=list)
+    slot_entities_present: bool = False
 
 
 class MemoryService:
@@ -355,35 +404,70 @@ class MemoryService:
         observed_at: datetime | None = None,
         subject: str | None = None,
         subjects: list[Subject] | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory:
         """Store a new memory with automatic indexing and graph updates.
 
-        Subject precedence (Phase A — see claim A.3):
+        Phase A refactor: this method is a thin orchestrator (CC ≤ 5).
+        Each pipeline phase lives in its own helper method and reads
+        the rolling :class:`_StorePipelineContext`.  See
+        ``docs/research/phases/phase-a-claims.md`` claims A.2, A.3,
+        A.8, A.10, A.17 for the subject-payload contract.
 
-        1. ``subjects=[...]`` — caller passes a fully-shaped list of
-           :class:`Subject` instances; canonical ids and aliases are
-           registered idempotently.  This is the multi-subject path.
-        2. ``subject="..."`` — legacy single-subject string.  Promoted
-           to a one-element list with ``primary=True``,
-           ``source="caller"``.
-        3. SLM auto-suggest — when the v9 SLM chain is active and
-           ``role_head`` produced ``role="primary"`` spans above the
-           confidence threshold, those become the subjects with
-           ``source="slm_role"``.  This is the GLiNER-retirement
-           wiring (claim A.17).
-        4. Empty — Memory persists with ``structured["subjects"] = []``.
-
-        The resolved list is baked into ``memory.structured["subjects"]``
-        as ``list[dict]`` (each dict is :meth:`Subject.model_dump`)
-        so the payload survives SQLite round-trip.  Multi-subject L2
-        emission lands in sub-PR 4; this PR only persists the payload.
-
-        Passing ``subjects`` with multiple ``primary=True`` raises
-        ``ValueError``.
-
-        See ``docs/research/phases/phase-a-claims.md`` claims A.2,
-        A.3, A.8, A.17.
+        Subject precedence (claim A.3): caller subjects → caller
+        legacy string → SLM ``primary`` role spans → parent-doc
+        inheritance (when ``parent_doc_id`` provided) → empty.
         """
+        ctx = self._build_store_pipeline_context(
+            content=content,
+            memory_type=memory_type,
+            domains=domains,
+            tags=tags,
+            source_agent=source_agent,
+            project=project,
+            structured=structured,
+            importance=importance,
+            entities=entities,
+            relationships=relationships,
+            observed_at=observed_at,
+            subject=subject,
+            subjects=subjects,
+            parent_doc_id=parent_doc_id,
+        )
+        early = await self._run_pre_admission_gates(ctx)
+        if early is not None:
+            return early
+        early = await self._run_slm_extraction(ctx)
+        if early is not None:
+            return early
+        await self._run_ctlg_extraction(ctx)
+        await self._resolve_and_bake_subjects(ctx)
+        memory = await self._build_and_persist_memory(ctx)
+        await self._apply_slm_side_effects(memory, ctx)
+        self._compose_entity_set(ctx)
+        return await self._dispatch_indexing(memory, ctx)
+
+    # ── Phase A store_memory orchestrator helpers ──────────────────────
+
+    def _build_store_pipeline_context(
+        self,
+        *,
+        content: str,
+        memory_type: str,
+        domains: list[str] | None,
+        tags: list[str] | None,
+        source_agent: str | None,
+        project: str | None,
+        structured: dict | None,
+        importance: float,
+        entities: list[dict] | None,
+        relationships: list[dict] | None,
+        observed_at: datetime | None,
+        subject: str | None,
+        subjects: list[Subject] | None,
+        parent_doc_id: str | None,
+    ) -> _StorePipelineContext:
+        """Construct the pipeline context + bind the stage emitter."""
         pipeline_id = uuid.uuid4().hex[:12]
         pipeline_start = time.perf_counter()
 
@@ -403,272 +487,359 @@ class MemoryService:
                 memory_id=memory_id,
             )
 
-        _emit_stage("start", 0.0, {"content_preview": content[:120], "memory_type": memory_type})
-
-        # ── Pre-admission gates: dedup, size check, classification ────────
-        gate_result = await self._ingestion.pre_admission_gates(
+        _emit_stage(
+            "start",
+            0.0,
+            {"content_preview": content[:120], "memory_type": memory_type},
+        )
+        return _StorePipelineContext(
             content=content,
             memory_type=memory_type,
             importance=importance,
+            source_agent=source_agent,
+            project=project,
+            relationships=relationships,
+            observed_at=observed_at,
+            subject_legacy=subject,
+            subjects_explicit=subjects,
+            parent_doc_id=parent_doc_id,
+            entities_caller=entities,
+            pipeline_id=pipeline_id,
+            pipeline_start=pipeline_start,
+            emit_stage=_emit_stage,
+            domains=domains,
             tags=tags,
             structured=structured,
-            source_agent=source_agent,
-            emit_stage=_emit_stage,
-            pipeline_start=pipeline_start,
+        )
+
+    async def _run_pre_admission_gates(
+        self,
+        ctx: _StorePipelineContext,
+    ) -> Memory | None:
+        """Dedup + size + classification gates.  Early-exit on hit.
+
+        ``subjects`` and ``parent_doc_id`` are forwarded so the
+        navigable / section-service path can plumb them through to
+        the recursive ``store_memory`` call that creates the
+        document-profile memory (claims A.2 / A.3 / A.10).
+        """
+        gate_result = await self._ingestion.pre_admission_gates(
+            content=ctx.content,
+            memory_type=ctx.memory_type,
+            importance=ctx.importance,
+            tags=ctx.tags,
+            structured=ctx.structured,
+            source_agent=ctx.source_agent,
+            emit_stage=ctx.emit_stage,
+            pipeline_start=ctx.pipeline_start,
+            subjects=ctx.subjects_explicit,
+            parent_doc_id=ctx.parent_doc_id,
         )
         if isinstance(gate_result, Memory):
-            return gate_result  # dedup hit or navigable classification
-        content_hash, tags = gate_result
+            return gate_result
+        ctx.content_hash, ctx.tags = gate_result
+        return None
 
-        # ── Intent-slot SLM extraction (P2) + admission gate ─────────────
-        # The SLM runs BEFORE admission so its heads can drive the
-        # routing decision.  Topic auto-populates ``Memory.domains``;
-        # the rest is baked into ``structured["intent_slot"]`` after
-        # admission (and BEFORE save_memory) so the column-persistence
-        # path writes everything in one INSERT.
-        from ncms.application.ingestion.store_helpers import (
-            finalize_inline_store,
-            run_slm_and_admission,
-            try_enqueue_indexing,
-        )
+    async def _run_slm_extraction(
+        self,
+        ctx: _StorePipelineContext,
+    ) -> Memory | None:
+        """Run SLM extraction + admission gate.
+
+        Returns a ``Memory`` when admission discards / shunts to
+        ephemeral cache (early-exit).  Otherwise unpacks the SLM
+        result onto the context and returns ``None``.
+        """
+        from ncms.application.ingestion.store_helpers import run_slm_and_admission
 
         slm_result = await run_slm_and_admission(
             config=self._config,
             ingestion=self._ingestion,
             admission=self._admission,
-            content=content,
-            domains=domains,
-            tags=tags,
-            source_agent=source_agent,
-            project=project,
-            memory_type=memory_type,
-            importance=importance,
-            structured=structured,
-            emit_stage=_emit_stage,
-            pipeline_start=pipeline_start,
+            content=ctx.content,
+            domains=ctx.domains,
+            tags=ctx.tags,
+            source_agent=ctx.source_agent,
+            project=ctx.project,
+            memory_type=ctx.memory_type,
+            importance=ctx.importance,
+            structured=ctx.structured,
+            emit_stage=ctx.emit_stage,
+            pipeline_start=ctx.pipeline_start,
         )
         if isinstance(slm_result, Memory):
-            return slm_result  # discard or ephemeral — early exit
+            return slm_result
         (
-            intent_slot_label,
-            domains,
-            admission_route,
-            admission_features,
-            structured,
+            ctx.intent_slot_label,
+            ctx.domains,
+            ctx.admission_route,
+            ctx.admission_features,
+            ctx.structured,
         ) = slm_result
+        return None
 
-        if self._config.temporal_enabled and self._ctlg_cue_tagger is not None:
-            from ncms.application.ctlg import bake_ctlg_payload, extract_ctlg_cues
+    async def _run_ctlg_extraction(self, ctx: _StorePipelineContext) -> None:
+        """Optionally run CTLG cue tagging on the memory voice.
 
-            domain_hint = (domains or [""])[0]
-            ctlg_result = await extract_ctlg_cues(
-                self._ctlg_cue_tagger,
-                content,
-                domain=domain_hint,
-            )
-            if ctlg_result.tokens:
-                structured = bake_ctlg_payload(
-                    structured=structured,
-                    cue_tags=ctlg_result.tokens,
-                    method=getattr(self._ctlg_cue_tagger, "name", "ctlg_cue_tagger"),
-                    latency_ms=ctlg_result.latency_ms,
-                    voice="memory",
-                )
-                _emit_stage(
-                    "ctlg_cues",
-                    ctlg_result.latency_ms,
-                    {"n_cue_tags": len(ctlg_result.tokens), "voice": "memory"},
-                )
+        Gated by ``config.temporal_enabled`` AND a wired CTLG cue
+        tagger.  No-op otherwise.
+        """
+        if not (self._config.temporal_enabled and self._ctlg_cue_tagger is not None):
+            return
+        from ncms.application.ctlg import bake_ctlg_payload, extract_ctlg_cues
 
-        # ── Subject resolution + payload bake (Phase A — claims A.2/A.3/A.17) ─
-        # Apply the precedence chain and bake the resolved list into
-        # ``structured["subjects"]`` BEFORE Memory construction so the
-        # payload lands in the same INSERT as the rest of structured.
-        # Multi-subject L2 emission is sub-PR 4's job; this just
-        # persists the payload.
-        from ncms.application.ingestion.store_helpers import bake_subjects_payload
+        domain_hint = (ctx.domains or [""])[0]
+        ctlg_result = await extract_ctlg_cues(
+            self._ctlg_cue_tagger,
+            ctx.content,
+            domain=domain_hint,
+        )
+        if not ctlg_result.tokens:
+            return
+        ctx.structured = bake_ctlg_payload(
+            structured=ctx.structured,
+            cue_tags=ctlg_result.tokens,
+            method=getattr(self._ctlg_cue_tagger, "name", "ctlg_cue_tagger"),
+            latency_ms=ctlg_result.latency_ms,
+            voice="memory",
+        )
+        ctx.emit_stage(
+            "ctlg_cues",
+            ctlg_result.latency_ms,
+            {"n_cue_tags": len(ctlg_result.tokens), "voice": "memory"},
+        )
 
-        t0_subjects = time.perf_counter()
-        resolved_subjects = await resolve_subjects(
+    async def _resolve_and_bake_subjects(
+        self,
+        ctx: _StorePipelineContext,
+    ) -> None:
+        """Apply the A.3 precedence chain and bake the payload.
+
+        Implements claims A.2 (bake) + A.3 (precedence + cross-kwarg
+        conflict raise) + A.10 (parent-doc inheritance) + A.17 (SLM
+        auto-suggest).  Mutation-free on conflict raise.
+
+        Lookup chain for parent-doc inheritance is hash-independent:
+        ``parent_doc_id`` → parent Document → profile Memory whose
+        ``structured.source_doc_id`` equals ``parent_doc_id`` →
+        first ``primary=True`` entry → tagged ``source="document"``.
+        """
+        t0 = time.perf_counter()
+        resolved = await resolve_subjects(
             registry=self._get_subject_registry(),
             config=self._config,
-            domains=domains,
-            subject_legacy=subject,
-            subjects_explicit=subjects,
-            intent_slot_label=intent_slot_label,
+            domains=ctx.domains,
+            subject_legacy=ctx.subject_legacy,
+            subjects_explicit=ctx.subjects_explicit,
+            intent_slot_label=ctx.intent_slot_label,
         )
-        structured = bake_subjects_payload(
-            subjects=resolved_subjects,
-            structured=structured,
+        if not resolved and ctx.parent_doc_id:
+            inherited = await inherit_primary_subject_from_parent_doc(
+                store=self._store,
+                document_service=self._document_service,
+                parent_doc_id=ctx.parent_doc_id,
+            )
+            if inherited is not None:
+                resolved = [inherited]
+
+        ctx.resolved_subjects = resolved
+        ctx.structured = bake_subjects_payload(
+            subjects=resolved,
+            structured=ctx.structured,
         )
-        _emit_stage(
+        ctx.emit_stage(
             "subjects_resolved",
-            (time.perf_counter() - t0_subjects) * 1000,
+            (time.perf_counter() - t0) * 1000,
             {
-                "n_subjects": len(resolved_subjects),
-                "sources": sorted({s.source for s in resolved_subjects}),
+                "n_subjects": len(resolved),
+                "sources": sorted({s.source for s in resolved}),
             },
         )
 
+    async def _build_and_persist_memory(
+        self,
+        ctx: _StorePipelineContext,
+    ) -> Memory:
+        """Construct the Memory model and persist it to SQLite."""
         memory = Memory(
-            content=content,
-            type=cast(Any, memory_type),
-            domains=domains or [],
-            tags=tags or [],
-            source_agent=source_agent,
-            project=project,
-            structured=structured,
-            importance=importance,
-            content_hash=content_hash,
-            observed_at=observed_at,
+            content=ctx.content,
+            type=cast(Any, ctx.memory_type),
+            domains=ctx.domains or [],
+            tags=ctx.tags or [],
+            source_agent=ctx.source_agent,
+            project=ctx.project,
+            structured=ctx.structured,
+            importance=ctx.importance,
+            content_hash=ctx.content_hash,
+            observed_at=ctx.observed_at,
         )
-
-        # Persist to SQLite
         t0 = time.perf_counter()
         await self._store.save_memory(memory)
-        _emit_stage("persist", (time.perf_counter() - t0) * 1000, memory_id=memory.id)
-
-        # ── Intent-slot side-effects (post-save) ─────────────────────────
-        # Slot surface-forms + dashboard event.  Deferred until after
-        # save_memory because memory_slots has a FK on memories(id).
-        if intent_slot_label is not None:
-            try:
-                if hasattr(self._store, "save_memory_slots"):
-                    await self._store.save_memory_slots(
-                        memory.id,
-                        slots=intent_slot_label.slots,
-                        confidences=intent_slot_label.slot_confidences,
-                    )
-            except Exception:
-                logger.warning(
-                    "[intent_slot] save_memory_slots failed for %s",
-                    memory.id,
-                    exc_info=True,
-                )
-            try:
-                if hasattr(self._event_log, "intent_slot_extracted"):
-                    self._event_log.intent_slot_extracted(
-                        memory_id=memory.id,
-                        label=intent_slot_label,
-                        agent_id=source_agent,
-                    )
-            except Exception:
-                logger.debug(
-                    "[intent_slot] dashboard event emit failed for %s",
-                    memory.id,
-                    exc_info=True,
-                )
-
-        # ── Entity extraction lane ──────────────────────────────────────
-        # ``slm_only`` promotes the SLM slot/role output into the
-        # entity graph and prevents GLiNER from running downstream.
-        # ``gliner_only`` leaves SLM entities out of the graph so
-        # the zero-shot NER lane can be measured independently.
-        slm_entity_dicts = (
-            slm_slots_to_entity_dicts(
-                intent_slot_label,
-                confidence_threshold=self._config.slm_confidence_threshold,
-            )
-            if use_slm_entities(self._config)
-            else []
+        ctx.emit_stage(
+            "persist",
+            (time.perf_counter() - t0) * 1000,
+            memory_id=memory.id,
         )
-        merged_entities = list(entities or [])
-        slot_entities_present = False
-        if slm_entity_dicts:
-            existing_names = {e["name"].lower() for e in merged_entities}
-            merged_entities.extend(
-                e for e in slm_entity_dicts if e["name"].lower() not in existing_names
-            )
-            slot_entities_present = True
+        return memory
 
-        # ── Caller-asserted subject (Option D' Part 4) ───────────────────
-        # When the caller knows the entity-subject of this memory
-        # (MSEB backend, ticket system, patient record, etc.), we
-        # link it as a first-class entity so TLG L1 vocabulary
-        # induction sees it.  The ENTITY_STATE node is created with
-        # ``entity_id = subject`` downstream in create_memory_nodes.
-        #
-        # Phase A note (sub-PR 4): the legacy raw-string entity-link
-        # block stays exactly as it was so the inline / async parity
-        # fitness test still holds (the test passes subject="svc-api"
-        # and expects entity name "svc-api", not the canonical
-        # "subject:svc-api").  The MULTI-subject block below handles
-        # the new subjects= kwarg path; it skips any subject whose
-        # id or aliases already match an existing entity, so the
-        # parity case stays single-entity.
-        if subject:
-            _subject_lower = subject.lower()
-            _existing = {e["name"].lower() for e in merged_entities}
-            if _subject_lower not in _existing:
-                merged_entities.append(
-                    {
-                        "name": subject,
-                        "type": "subject",
-                        "attributes": {"source": "caller_subject"},
-                    },
+    async def _apply_slm_side_effects(
+        self,
+        memory: Memory,
+        ctx: _StorePipelineContext,
+    ) -> None:
+        """Persist memory_slots + emit dashboard event for the SLM run.
+
+        Runs after ``save_memory`` because the ``memory_slots``
+        table has an FK on ``memories(id)``.  Both side-effects
+        are wrapped in try/except so a transient backend failure
+        doesn't propagate up to the caller — losing the slot rows
+        is recoverable; failing the ingest is not.
+        """
+        if ctx.intent_slot_label is None:
+            return
+        await self._save_memory_slots_safe(memory.id, ctx.intent_slot_label)
+        self._emit_intent_slot_event_safe(memory.id, ctx)
+
+    async def _save_memory_slots_safe(
+        self,
+        memory_id: str,
+        intent_slot_label: Any,
+    ) -> None:
+        try:
+            if hasattr(self._store, "save_memory_slots"):
+                await self._store.save_memory_slots(
+                    memory_id,
+                    slots=intent_slot_label.slots,
+                    confidences=intent_slot_label.slot_confidences,
                 )
-
-        # ── Phase A sub-PR 4: link resolved subjects as entities ────────
-        # For each resolved Subject, ensure there's an entity row
-        # with a name that matches either its canonical id or one
-        # of its aliases.  This is what makes MENTIONS_ENTITY edges
-        # in :mod:`multi_subject_l2` find a target.  Skip when an
-        # entity already exists for this subject (legacy raw-string
-        # block above, or GLiNER/SLM picked the same surface).
-        for s in resolved_subjects:
-            _existing = {e["name"].lower() for e in merged_entities}
-            if s.id.lower() in _existing:
-                continue
-            if any(a.lower() in _existing for a in s.aliases):
-                continue
-            merged_entities.append(
-                {
-                    "name": s.id,
-                    "type": "subject",
-                    "attributes": {
-                        "source": s.source,
-                        "subject_type": s.type,
-                        "primary": s.primary,
-                        "aliases": list(s.aliases),
-                        "confidence": s.confidence,
-                    },
-                },
+        except Exception:
+            logger.warning(
+                "[intent_slot] save_memory_slots failed for %s",
+                memory_id,
+                exc_info=True,
             )
 
-        # ── Background indexing (fast path) ─────────────────────────────
-        # If the async index pool accepts the task, return immediately.
-        # Otherwise fall through to inline indexing.
+    def _emit_intent_slot_event_safe(
+        self,
+        memory_id: str,
+        ctx: _StorePipelineContext,
+    ) -> None:
+        try:
+            if hasattr(self._event_log, "intent_slot_extracted"):
+                self._event_log.intent_slot_extracted(
+                    memory_id=memory_id,
+                    label=ctx.intent_slot_label,
+                    agent_id=ctx.source_agent,
+                )
+        except Exception:
+            logger.debug(
+                "[intent_slot] dashboard event emit failed for %s",
+                memory_id,
+                exc_info=True,
+            )
+
+    def _compose_entity_set(self, ctx: _StorePipelineContext) -> None:
+        """Merge caller / SLM / subject entities into a single list.
+
+        Three independent sources contribute:
+        1. ``ctx.entities_caller`` — caller-provided entity dicts.
+        2. SLM slot entities — when ``slm_only`` mode AND the SLM
+           emitted slot surface forms above the confidence threshold.
+        3. Resolved subjects — every Subject in ``ctx.resolved_subjects``
+           gets an entity row (canonical id as name) so MENTIONS_ENTITY
+           edges have a target; legacy raw-string entity-link block
+           still fires for ``ctx.subject_legacy`` to preserve the
+           inline / async parity fitness test.
+
+        Mutates ``ctx.merged_entities`` and ``ctx.slot_entities_present``.
+        """
+        ctx.merged_entities = list(ctx.entities_caller or [])
+        ctx.slot_entities_present = self._merge_slm_slot_entities(ctx)
+        self._link_legacy_subject_entity(ctx)
+        link_resolved_subject_entities(ctx.merged_entities, ctx.resolved_subjects)
+
+    def _merge_slm_slot_entities(
+        self,
+        ctx: _StorePipelineContext,
+    ) -> bool:
+        """Append SLM slot entities; return whether any were added."""
+        if not use_slm_entities(self._config):
+            return False
+        slm_entity_dicts = slm_slots_to_entity_dicts(
+            ctx.intent_slot_label,
+            confidence_threshold=self._config.slm_confidence_threshold,
+        )
+        if not slm_entity_dicts:
+            return False
+        existing = {e["name"].lower() for e in ctx.merged_entities}
+        ctx.merged_entities.extend(
+            e for e in slm_entity_dicts if e["name"].lower() not in existing
+        )
+        return True
+
+    @staticmethod
+    def _link_legacy_subject_entity(ctx: _StorePipelineContext) -> None:
+        """Append the legacy ``subject=`` raw-string entity if absent.
+
+        Phase A note: the legacy raw-string entity-link block stays
+        exactly as it was so the inline / async parity fitness test
+        still holds.  The multi-subject block downstream skips any
+        subject whose id or aliases already match an existing entity,
+        so the parity case stays single-entity.
+        """
+        if not ctx.subject_legacy:
+            return
+        existing = {e["name"].lower() for e in ctx.merged_entities}
+        if ctx.subject_legacy.lower() in existing:
+            return
+        ctx.merged_entities.append(
+            {
+                "name": ctx.subject_legacy,
+                "type": "subject",
+                "attributes": {"source": "caller_subject"},
+            },
+        )
+
+    async def _dispatch_indexing(
+        self,
+        memory: Memory,
+        ctx: _StorePipelineContext,
+    ) -> Memory:
+        """Try the async pool first, fall through to inline."""
+        from ncms.application.ingestion.store_helpers import (
+            finalize_inline_store,
+            try_enqueue_indexing,
+        )
+
         enqueued = try_enqueue_indexing(
             index_pool=self._index_pool,
             memory=memory,
-            content=content,
-            memory_type=memory_type,
-            domains=domains,
-            tags=tags,
-            source_agent=source_agent,
-            importance=importance,
-            entities=merged_entities,
-            relationships=relationships,
-            admission_features=admission_features,
-            admission_route=admission_route,
-            pipeline_start=pipeline_start,
-            emit_stage=_emit_stage,
-            subject=subject,
-            slot_entities_present=slot_entities_present,
+            content=ctx.content,
+            memory_type=ctx.memory_type,
+            domains=ctx.domains,
+            tags=ctx.tags,
+            source_agent=ctx.source_agent,
+            importance=ctx.importance,
+            entities=ctx.merged_entities,
+            relationships=ctx.relationships,
+            admission_features=ctx.admission_features,
+            admission_route=ctx.admission_route,
+            pipeline_start=ctx.pipeline_start,
+            emit_stage=ctx.emit_stage,
+            subject=ctx.subject_legacy,
+            slot_entities_present=ctx.slot_entities_present,
         )
         if enqueued:
             return memory
 
-        # ── Inline indexing (fallback / async_indexing disabled) ─────────
         all_entities, linked_entity_ids = await self._ingestion.run_inline_indexing(
             memory=memory,
-            content=content,
-            domains=domains,
-            entities_manual=merged_entities,
-            emit_stage=_emit_stage,
-            slot_entities_present=slot_entities_present,
+            content=ctx.content,
+            domains=ctx.domains,
+            entities_manual=ctx.merged_entities,
+            emit_stage=ctx.emit_stage,
+            slot_entities_present=ctx.slot_entities_present,
         )
-
         await finalize_inline_store(
             store=self._store,
             graph=self._graph,
@@ -678,18 +849,18 @@ class MemoryService:
             episode=self._episode,
             tlg_vocab_cache=self._tlg_vocab_cache,
             memory=memory,
-            content=content,
-            memory_type=memory_type,
-            relationships=relationships,
+            content=ctx.content,
+            memory_type=ctx.memory_type,
+            relationships=ctx.relationships,
             all_entities=all_entities,
             linked_entity_ids=linked_entity_ids,
-            admission_route=admission_route,
-            admission_features=admission_features,
-            source_agent=source_agent,
-            subject=subject,
-            pipeline_id=pipeline_id,
-            pipeline_start=pipeline_start,
-            emit_stage=_emit_stage,
+            admission_route=ctx.admission_route,
+            admission_features=ctx.admission_features,
+            source_agent=ctx.source_agent,
+            subject=ctx.subject_legacy,
+            pipeline_id=ctx.pipeline_id,
+            pipeline_start=ctx.pipeline_start,
+            emit_stage=ctx.emit_stage,
         )
         return memory
 

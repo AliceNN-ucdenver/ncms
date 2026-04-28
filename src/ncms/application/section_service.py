@@ -50,6 +50,8 @@ class SectionService:
         source: str | None,
         agent_id: str | None,
         domains: list[str] | None = None,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory:
         """Ingest navigable content.
 
@@ -75,6 +77,8 @@ class SectionService:
                 source=source,
                 agent_id=agent_id,
                 domains=domains,
+                subjects=subjects,
+                parent_doc_id=parent_doc_id,
             )
         else:
             logger.info(
@@ -91,6 +95,8 @@ class SectionService:
                 source=source,
                 agent_id=agent_id,
                 domains=domains,
+                subjects=subjects,
+                parent_doc_id=parent_doc_id,
             )
 
     # ── New approach: document profile + document store ───────────────
@@ -107,6 +113,8 @@ class SectionService:
         source: str | None,
         agent_id: str | None,
         domains: list[str] | None = None,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory:
         """Ingest via document store: one profile memory + full doc + child sections.
 
@@ -151,6 +159,7 @@ class SectionService:
                 content=content,
                 from_agent=agent_id,
                 doc_type=classification.format_hint,
+                parent_doc_id=parent_doc_id,
                 metadata={
                     "content_classification": classification.content_class.value,
                     "section_count": len(sections),
@@ -219,6 +228,8 @@ class SectionService:
             source=source,
             agent_id=agent_id,
             domains=domains,
+            subjects=subjects,
+            parent_doc_id=parent_doc_id,
         )
 
         logger.info(
@@ -244,8 +255,16 @@ class SectionService:
         source: str | None,
         agent_id: str | None,
         domains: list[str] | None = None,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory:
-        """Legacy ingestion: creates section_index + section children in memory store."""
+        """Legacy ingestion: creates section_index + section children in memory store.
+
+        Phase A claims A.3 / A.10: ``subjects`` and ``parent_doc_id``
+        flow through to BOTH the section-index memory AND every
+        child section memory, so the legacy path doesn't drop the
+        subject payload that the doc-store path preserves.
+        """
         content_hash = hashlib.sha256(content.encode()).hexdigest()
         tags = list(tags or [])
 
@@ -270,6 +289,8 @@ class SectionService:
             source=source,
             agent_id=agent_id,
             domains=domains,
+            subjects=subjects,
+            parent_doc_id=parent_doc_id,
         )
 
         logger.info(
@@ -279,7 +300,12 @@ class SectionService:
             classification.format_hint,
         )
 
-        # Store each section as a child memory
+        # Store each section as a child memory.  The legacy path
+        # has no document store, so ``parent_doc_id`` for the
+        # children points at the in-memory section-index id (the
+        # parent we just created); ``subjects`` propagates as-is so
+        # every section's structured["subjects"] carries the same
+        # payload the doc-store path would have produced.
         for section in sections:
             section_structured = {
                 "parent_index_id": parent.id,
@@ -301,6 +327,8 @@ class SectionService:
                 structured=section_structured,
                 source=source,
                 agent_id=agent_id,
+                subjects=subjects,
+                parent_doc_id=parent_doc_id,
             )
 
         logger.info(
@@ -323,11 +351,20 @@ class SectionService:
         source: str | None,
         agent_id: str | None,
         domains: list[str] | None = None,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory:
         """Store a memory bypassing content classification to avoid recursion.
 
-        Temporarily disables content_classification_enabled on the config,
-        calls store_memory, then restores the flag.
+        Temporarily disables ``content_classification_enabled`` on the
+        config, calls ``store_memory``, then restores the flag.
+
+        Phase A claim A.10: ``subjects`` (caller-pinned) and
+        ``parent_doc_id`` (for inheritance) flow through to the
+        recursive ``store_memory`` call so the profile memory
+        either carries the caller's subjects directly OR inherits
+        from the parent document.  Either way, the bake step on
+        the recursive call lands the right ``structured["subjects"]``.
         """
         original = self._config.content_classification_enabled
         try:
@@ -342,6 +379,8 @@ class SectionService:
                 structured=structured,
                 source_agent=agent_id,
                 domains=domains or [],
+                subjects=subjects,
+                parent_doc_id=parent_doc_id,
             )
         finally:
             object.__setattr__(

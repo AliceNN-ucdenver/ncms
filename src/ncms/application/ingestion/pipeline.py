@@ -164,6 +164,8 @@ class IngestionPipeline:
         source_agent: str | None,
         emit_stage: Callable,
         pipeline_start: float,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory | tuple[str, list[str] | None]:
         """Run pre-admission gates: dedup, size check, classification.
 
@@ -231,6 +233,8 @@ class IngestionPipeline:
             source_agent,
             emit_stage,
             pipeline_start,
+            subjects=subjects,
+            parent_doc_id=parent_doc_id,
         )
         if navigable_memory is not None:
             return navigable_memory
@@ -247,6 +251,8 @@ class IngestionPipeline:
         source_agent: str | None,
         emit_stage: Callable,
         pipeline_start: float,
+        subjects: list | None = None,
+        parent_doc_id: str | None = None,
     ) -> Memory | None:
         if not (self._config.content_classification_enabled and self._section_svc is not None):
             return None
@@ -281,6 +287,8 @@ class IngestionPipeline:
                         structured=structured,
                         source=source_agent,
                         agent_id=source_agent,
+                        subjects=subjects,
+                        parent_doc_id=parent_doc_id,
                     )
             emit_stage(
                 "content_classification",
@@ -424,7 +432,7 @@ class IngestionPipeline:
     def _resolve_admission_route(
         self,
         intent_slot_label: Any | None,
-        features: object,
+        features: Any,
         score: float,
     ) -> tuple[str, str | None]:
         """Decide admission route: SLM-first, regex fallback.
@@ -697,7 +705,7 @@ class IngestionPipeline:
                 )
             return (time.perf_counter() - t) * 1000
 
-        async def _do_gliner() -> tuple[list[dict[str, str]], float]:
+        async def _do_gliner() -> tuple[list[dict[str, Any]], float]:
             if not use_gliner_entities(self._config):
                 return [], 0.0
             from ncms.infrastructure.extraction.gliner_extractor import (
@@ -1039,10 +1047,10 @@ class IngestionPipeline:
             self._reconciliation is not None
             and self._config.temporal_enabled
         ):
-            for l2_node in l2_nodes:
-                if l2_node.metadata.get("entity_id"):
+            for node in l2_nodes:
+                if node.metadata.get("entity_id"):
                     await self._reconcile_entity_state(
-                        l2_node,
+                        node,
                         memory.id,
                         emit_stage,
                     )
@@ -1050,7 +1058,7 @@ class IngestionPipeline:
         # Single-L2 view used by the causal-edges step below (it
         # only consumes the primary L2 today; multi-subject causal
         # edges are out of scope for sub-PR 4).
-        l2_node = l2_nodes[0] if l2_nodes else None
+        primary_l2: MemoryNode | None = l2_nodes[0] if l2_nodes else None
 
         # Episode formation (links to L1 atomic node)
         if self._episode is not None and self._config.temporal_enabled:
@@ -1075,7 +1083,7 @@ class IngestionPipeline:
                 config=self._config,
                 memory=memory,
                 l1_node=l1_node,
-                l2_node=l2_node,
+                l2_node=primary_l2,
                 emit_stage=emit_stage,
             )
 

@@ -1,10 +1,37 @@
 # Phase A Claims — Subject Payload + Canonicalization
 
+> **🏁 RETIRED — Phase A complete (2026-04-27).**
+>
+> Phase A shipped: subject payload + canonicalization,
+> three-tier alias lookup with audit events, multi-subject L2
+> emission, ``MENTIONS_ENTITY`` role metadata, SLM
+> auto-suggest (GLiNER-retirement path), parent-doc inheritance,
+> subjects= threaded through MCP / HTTP / A2A / NAT, the
+> ``subject/`` package reorg, ``MemoryService.store_memory``
+> refactored to A-grade (CC=3, was D=24), and architecture
+> allowlist entries for both Phase A methods removed.
+>
+> Codex audited the work across 5 rounds; all blocking findings
+> were fixed in code (no claim-doc rewrites to make verifies
+> pass).  Round-2 closed with one acknowledged residual: literal
+> ``radon cc src/ncms/ -a -nc --min D`` shows 3 pre-existing
+> CTLG/SDG D-grade methods documented in CLAUDE.md as
+> in-flight CTLG work — they are NOT Phase A's surface and
+> were failing at the baseline commit ``33cf5da`` too.  The
+> Phase A surface itself has zero D+ methods.
+>
+> 1675 tests pass; ruff / mypy (Phase A surface) / vulture clean.
+>
+> This document is preserved for audit history; do not edit further.
+> Phase B and Phase C claim docs (`phase-b-claims.md`,
+> `phase-c-claims.md`) remain in ``docs/research/phases/`` until
+> their respective phases land.
+
 **Phase:** A
-**Status:** not-yet-started — claim doc only
+**Status:** ✅ retired — implementation complete and merged
 **Owner:** NCMS core
 **Reviewer:** codex 5.5 (or any reviewer; format spec at `claims-format.md`)
-**Companion:** `subject-centered-graph-design.md` §6 Phase A
+**Companion:** `../research/subject-centered-graph-design.md` §6 Phase A
 
 ## What Phase A delivers
 
@@ -302,7 +329,7 @@ shape before depending on it.
 where each dict is `Subject.model_dump()`.
 **Verify:**
 - Existing `bake_intent_slot_payload` writes `intent_slot`; new equivalent must populate `subjects`.
-- `grep -A 5 "structured\[\"subjects\"\]" src/ncms/application/ingestion/store_helpers.py`
+- `grep -A 5 "structured\[\"subjects\"\]" src/ncms/application/subject/bake.py`
 - Expected: shows the bake call.
 - Integration: `tests/integration/test_subject_payload.py::test_subjects_persisted_after_ingest`.
 **Failure mode:** Some ingest paths write the payload, others don't — silent divergence.
@@ -342,7 +369,7 @@ Passing both with conflicting `primary` values raises `ValueError`.
 **Verify:**
 - `grep "CREATE TABLE.*subject_aliases\|CREATE TABLE.*subjects\b" src/ncms/infrastructure/storage/migrations.py`
 - Expected: both tables defined.
-- Test: `tests/unit/infrastructure/storage/test_subject_registry.py::test_migration_applies_on_existing_db`.
+- Test: `tests/unit/infrastructure/storage/test_subject_registry_migration.py::test_subjects_table_created` and `::test_subject_aliases_table_created` — the migration creates both tables on a fresh DB.
 
 ### A.5 — `SubjectRegistry.canonicalize` returns deterministic ids
 **[BEHAVIOR]**
@@ -409,9 +436,11 @@ itself reproducible and free of LLM dependencies.
 ### A.10 — Document publish writes canonical subjects
 **[COVERAGE]**
 **Verify:**
-- Test: `tests/integration/test_subject_payload_parity.py::test_document_publish_canonicalizes`.
+- Test: `tests/integration/test_document_publish_subjects.py::test_document_profile_canonicalizes_caller_subjects`.
 - Documents with a `parent_doc_id` inherit the parent's primary subject by default.
-**Citation:** `src/ncms/application/document_service.py`.
+- Test: `tests/integration/test_document_publish_subjects.py::test_child_document_inherits_parent_primary_subject` — real-flow test through `section_service.ingest_navigable`.
+- Test: `tests/integration/test_document_publish_subjects.py::test_http_publish_document_path_inherits_parent_subject` — HTTP-API call sequence (`publish_document` → `ingest_navigable(parent_doc_id=…)`) inherits.
+**Citation:** `src/ncms/application/section_service.py`, `src/ncms/application/subject/inheritance.py`.
 
 ### A.11 — Reindex preserves canonical subjects on memories already-shaped
 **[COVERAGE]**
@@ -469,7 +498,7 @@ through the index path).
 **Pre:** No alias collision tracking.
 **Post:** When canonicalize() picks an existing canonical id via fuzzy match (confidence < 1.0), it emits a `subject.alias_collision` dashboard event with `{surface, picked_canonical, confidence, alternatives}`. Reviewer can grep these events to spot wrong canonicalization. **No UI is required for Phase A** — events are queryable via the `dashboard_events` table (`SELECT * FROM dashboard_events WHERE type='subject.alias_collision'`), which is the validation surface.
 **Verify:**
-- `grep "alias_collision" src/ncms/application/subject_registry.py`
+- `grep "alias_collision" src/ncms/application/subject/registry.py`
 - Expected: matches.
 - Test: `tests/integration/test_subject_alias_collision.py::test_event_emitted_on_fuzzy_match`.
 - Test: `tests/integration/test_subject_alias_collision.py::test_event_queryable_from_dashboard_events`
@@ -517,8 +546,8 @@ adapter-less deployments.
 **Failure mode:** GLiNER stays embedded as the entity-suggester
 even when SLM is present (the divergence pattern again, but
 inverted — SLM does the work but ingest doesn't read it).
-**Citation:** `src/ncms/application/ingestion/store_helpers.py`,
-`src/ncms/application/subject_registry.py`.
+**Citation:** `src/ncms/application/subject/resolver.py`,
+`src/ncms/application/subject/bake.py`.
 
 ---
 
@@ -592,7 +621,7 @@ inverted — SLM does the work but ingest doesn't read it).
 - `uv run radon cc src/ncms/ -a -nc --min D` — only the two demo orchestrators (already accepted)
 - `uv run radon mi src/ncms/ -nc --min B` — empty
 - `uv run --with vulture vulture src/ncms/ --min-confidence 80` — clean
-- `uv run mypy src/ncms/domain/models.py src/ncms/application/subject_registry.py src/ncms/application/memory_service.py` — clean
+- `uv run mypy src/ncms/domain/models.py src/ncms/application/subject/ src/ncms/application/memory_service.py` — clean
 
 ---
 

@@ -142,6 +142,15 @@ async def test_legacy_subject_string_promoted_to_list(
 async def test_subjects_list_takes_precedence_over_subject_string(
     svc: MemoryService,
 ) -> None:
+    """When both kwargs agree, subjects= wins silently (no raise).
+
+    Caller is being redundant — passing the same canonical id
+    via both shapes.  This is fine; the resolver dedupes.  Only
+    *disagreement* raises (see test_subject_string_conflicts_*).
+    """
+    # Both reference the same canonical id.  The legacy string
+    # "auth-api" + type_hint="service" canonicalizes to
+    # "service:auth-api" — same as the explicit Subject.id.
     explicit = [
         Subject(
             id="service:auth-api",
@@ -152,7 +161,7 @@ async def test_subjects_list_takes_precedence_over_subject_string(
     ]
     mem = await svc.store_memory(
         content="x",
-        subject="some-other-subject",
+        subject="auth-api",
         subjects=explicit,
     )
     payload = mem.structured["subjects"]
@@ -161,6 +170,7 @@ async def test_subjects_list_takes_precedence_over_subject_string(
 
 
 async def test_conflicting_primaries_raises(svc: MemoryService) -> None:
+    """A.3 within-list conflict: multiple primary=True → ValueError."""
     explicit = [
         Subject(id="adr:004", type="decision", primary=True),
         Subject(id="adr:002", type="decision", primary=True),
@@ -168,6 +178,32 @@ async def test_conflicting_primaries_raises(svc: MemoryService) -> None:
     with pytest.raises(ValueError, match="primary"):
         await svc.store_memory(
             content="ADR-004 supersedes ADR-002",
+            subjects=explicit,
+        )
+
+
+async def test_subject_string_conflicts_with_subjects_list_raises(
+    svc: MemoryService,
+) -> None:
+    """A.3 cross-kwarg conflict: subject="x" + subjects=[Subject(id="y", primary=True)]
+    where x ≠ y as canonical ids → ValueError.
+
+    Caller is asserting two different primary timelines via two
+    different shapes.  Subjects-wins-silently would hide the
+    inconsistency.  Raise so the bug surfaces immediately.
+    """
+    explicit = [
+        Subject(
+            id="service:auth-api",
+            type="service",
+            primary=True,
+            source="caller",
+        ),
+    ]
+    with pytest.raises(ValueError, match="Conflicting primary"):
+        await svc.store_memory(
+            content="x",
+            subject="payments-service",  # would canonicalize to "service:payments-service"
             subjects=explicit,
         )
 

@@ -91,7 +91,10 @@ async def test_mseb_subject_baked_into_structured(backend) -> None:
     structured = rows[0].structured or {}
     subjects = structured.get("subjects") or []
     assert len(subjects) == 1
-    assert subjects[0]["id"] == "auth-service"
+    # MSEB passes raw harness strings via Subject(id=..., type="subject");
+    # the resolver canonicalizes to "<type>:<slug>" before persisting.
+    assert subjects[0]["id"] == "subject:auth-service"
+    assert "auth-service" in subjects[0]["aliases"]
     assert subjects[0]["primary"] is True
     assert subjects[0]["source"] == "caller"
 
@@ -102,8 +105,9 @@ async def test_mseb_no_alias_split_on_repeated_subject(backend) -> None:
     A.13 verify: ``subject_map derived from canonical ids has zero
     alias splits``.  When the same surface (``"auth-service"``) is
     asserted across rows, every row's structured["subjects"][0]["id"]
-    must equal ``"auth-service"`` — the SubjectRegistry's
-    INSERT-OR-IGNORE keeps the canonical id stable.
+    must equal the same canonical id (``"subject:auth-service"``)
+    — the SubjectRegistry's INSERT-OR-IGNORE + the resolver's
+    Subject-id canonicalization keep the id stable.
     """
     memories = [
         _make_corpus_memory(
@@ -124,7 +128,7 @@ async def test_mseb_no_alias_split_on_repeated_subject(backend) -> None:
         ((m.structured or {}).get("subjects") or [{}])[0].get("id")
         for m in rows
     }
-    assert canonical_ids == {"auth-service"}
+    assert canonical_ids == {"subject:auth-service"}
 
 
 async def test_mseb_distinct_subjects_distinct_canonical_ids(
@@ -157,4 +161,4 @@ async def test_mseb_distinct_subjects_distinct_canonical_ids(
         ((r.structured or {}).get("subjects") or [{}])[0].get("id")
         for r in rows
     ]
-    assert sorted(ids) == ["auth-service", "payments-service"]
+    assert sorted(ids) == ["subject:auth-service", "subject:payments-service"]

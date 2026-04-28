@@ -240,6 +240,18 @@ def create_api_app(
         if not content:
             return JSONResponse({"error": "content is required"}, status_code=400)
 
+        # Phase A: optional subject payload from request body.
+        # ``subject`` is the legacy single-string form; ``subjects``
+        # is the multi-subject list (each entry matches the
+        # :class:`Subject` schema).  ``parent_doc_id`` triggers
+        # parent-doc inheritance.
+        from ncms.domain.models import Subject as _Subject
+
+        raw_subjects = body.get("subjects")
+        parsed_subjects = (
+            [_Subject(**s) for s in raw_subjects] if raw_subjects else None
+        )
+
         agent_id = request.headers.get("X-Agent-ID")
         memory = await memory_svc.store_memory(
             content=content,
@@ -249,6 +261,9 @@ def create_api_app(
             importance=body.get("importance", 5.0),
             source_agent=agent_id or body.get("source_agent"),
             structured=body.get("structured"),
+            subject=body.get("subject"),
+            subjects=parsed_subjects,
+            parent_doc_id=body.get("parent_doc_id"),
         )
         return JSONResponse(
             {
@@ -1451,6 +1466,11 @@ def create_api_app(
                                     source=from_agent,
                                     agent_id=from_agent,
                                     domains=doc_domains,
+                                    # Phase A claim A.10: thread parent_doc_id
+                                    # so the child profile memory inherits
+                                    # the parent's primary subject when the
+                                    # caller didn't pin one.
+                                    parent_doc_id=parent_doc_id,
                                 )
                                 _used_section_path = True
                                 logger.info(
@@ -1480,6 +1500,10 @@ def create_api_app(
                                 source=from_agent,
                                 agent_id=from_agent,
                                 domains=doc_domains,
+                                # Phase A claim A.10: atomic doc-profile path
+                                # also inherits parent's primary subject when
+                                # parent_doc_id is provided.
+                                parent_doc_id=parent_doc_id,
                             )
                             _used_section_path = True
                             logger.info(

@@ -123,6 +123,27 @@ class SQLiteStore:
             return None
         return row_to_memory(row)
 
+    async def find_memory_by_doc_id(self, doc_id: str) -> Memory | None:
+        """Look up the profile memory whose ``structured.doc_id`` equals ``doc_id``.
+
+        Implements the :class:`MemoryStore` protocol.  Uses SQLite's
+        JSON1 ``json_extract`` to query the ``structured`` column
+        without a dedicated index — Phase A scale (one profile per
+        document) makes this acceptable; a future schema bump can
+        add an indexed ``doc_id`` column if profile-memory volume
+        grows enough to warrant one.
+        """
+        cursor = await self.db.execute(
+            "SELECT * FROM memories "
+            "WHERE json_extract(structured, '$.doc_id') = ? "
+            "LIMIT 1",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return row_to_memory(row)
+
     async def get_memory(self, memory_id: str) -> Memory | None:
         cursor = await self.db.execute("SELECT * FROM memories WHERE id = ?", (memory_id,))
         row = await cursor.fetchone()

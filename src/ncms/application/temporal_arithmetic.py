@@ -18,6 +18,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ncms.domain.models import Memory
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +83,7 @@ def _pick_anchor_memory(
     *,
     candidates: list,
     bm25_scores: dict[str, float],
-) -> tuple[object, datetime] | None:
+) -> tuple[Memory, datetime] | None:
     """BM25-top preferred; earliest-by-date fallback."""
     if bm25_scores:
         ranked = sorted(
@@ -97,7 +101,7 @@ def _pick_anchor_memory(
             if when is not None:
                 return top_mem, when
     # Fallback: earliest observed_at.
-    best: tuple[object, datetime] | None = None
+    best: tuple[Memory, datetime] | None = None
     for mem in candidates:
         when = getattr(mem, "observed_at", None) or getattr(mem, "created_at", None)
         if when is None:
@@ -152,7 +156,7 @@ async def resolve_anchor_dates(
     config,
     anchor_names: list[str],
     query: str | None = None,
-) -> tuple[list[datetime], list[object]]:
+) -> tuple[list[datetime], list[Memory]]:
     """Resolve each anchor name to a representative memory + event date.
 
     See :meth:`MemoryService.compute_temporal_arithmetic` for the
@@ -162,7 +166,7 @@ async def resolve_anchor_dates(
         await _bm25_anchor_ranking(index=index, config=config, query=query) if query else {}
     )
     dates: list[datetime] = []
-    memories: list[object] = []
+    memories: list[Memory] = []
     for name in anchor_names:
         candidates = await _candidates_for_anchor(store=store, graph=graph, name=name)
         if not candidates:

@@ -27,15 +27,13 @@ ALLOWLIST: set[tuple[str, str]] = {
     # clarifying behavior.  Fully unit-tested in
     # tests/unit/domain/test_temporal_parser.py.
     ("domain/temporal_parser.py", "parse_temporal_reference"),
-    # Pre-existing F-grade orchestrators targeted by the
-    # ``validated-giggling-dove`` refactor plan (phases 2 + 9).  Both
-    # are composition-root methods that walk a long sequential pipeline
-    # of SLM extraction → admission gate → persist → SLM side-effects
-    # → indexing fork → node creation.  The refactor plan extracts
-    # 5-6 sub-pipelines from each; holding that work out of the
-    # slm-entity-extraction-design PR to keep the diff readable.
-    ("application/memory_service.py", "MemoryService.store_memory"),
-    ("application/index_worker.py", "IndexWorkerPool._detect_and_create_l2_node"),
+    # ``IndexWorkerPool._detect_and_create_l2_node`` was removed
+    # from this allowlist by Phase 0b of the Phase A architectural
+    # refactor; ``MemoryService.store_memory`` was removed by Phase 0a
+    # (refactored from D=24 to A=3 by extracting per-phase helpers
+    # via a ``_StorePipelineContext`` dataclass — see commit history).
+    # Re-adding either entry should require a documented design
+    # justification; the default is "extract more helpers."
     # 6-head SLM merge loop: each head has a 3-clause gate
     # (confident OR last-backend OR null-confidence pass-through).
     # Splitting into per-head helpers would duplicate the control

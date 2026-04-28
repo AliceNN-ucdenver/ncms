@@ -148,6 +148,14 @@ def create_a2a_routes(
     async def _execute_skill(skill_name: str, params: dict, from_agent: str) -> dict:
         """Execute an NCMS skill and return the result."""
         if skill_name == "memory_store":
+            # Phase A subject payload (claims A.3 / A.10): callers
+            # may pass ``subject``, ``subjects``, or ``parent_doc_id``.
+            from ncms.domain.models import Subject as _Subject
+
+            raw_subjects = params.get("subjects")
+            parsed_subjects = (
+                [_Subject(**s) for s in raw_subjects] if raw_subjects else None
+            )
             memory = await memory_svc.store_memory(
                 content=params["content"],
                 memory_type=params.get("type", "fact"),
@@ -155,6 +163,9 @@ def create_a2a_routes(
                 tags=params.get("tags"),
                 importance=params.get("importance", 5.0),
                 source_agent=from_agent,
+                subject=params.get("subject"),
+                subjects=parsed_subjects,
+                parent_doc_id=params.get("parent_doc_id"),
             )
             return {
                 "memory_id": memory.id,

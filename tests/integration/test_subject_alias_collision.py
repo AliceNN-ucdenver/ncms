@@ -21,7 +21,7 @@ import json
 import aiosqlite
 import pytest
 
-from ncms.application.subject_registry import SubjectRegistry
+from ncms.application.subject import SubjectRegistry
 from ncms.infrastructure.observability.event_log import EventLog
 from ncms.infrastructure.storage.migrations import create_schema
 

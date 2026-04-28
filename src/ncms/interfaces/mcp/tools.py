@@ -178,6 +178,9 @@ def register_tools(
         structured: dict[str, Any] | None = None,
         importance: float = 5.0,
         show_admission: bool = False,
+        subject: str | None = None,
+        subjects: list[dict[str, Any]] | None = None,
+        parent_doc_id: str | None = None,
     ) -> dict[str, Any]:
         """Store a new memory with automatic entity extraction and indexing.
 
@@ -190,10 +193,22 @@ def register_tools(
             structured: Optional structured data (OpenAPI spec, JSON schema).
             importance: Importance score (1-10).
             show_admission: If True, include admission scoring details in response.
+            subject: Legacy single-subject string (claim A.3 precedence).
+            subjects: Multi-subject list — each dict matches the
+                :class:`ncms.domain.models.Subject` schema (id,
+                type, primary, aliases, source, confidence).
+            parent_doc_id: When provided AND no subjects/subject
+                resolved, child memory inherits the parent doc's
+                primary subject (claim A.10).
 
         Returns:
             The stored memory with its generated ID.
         """
+        from ncms.domain.models import Subject as _Subject
+
+        parsed_subjects = (
+            [_Subject(**s) for s in subjects] if subjects else None
+        )
         memory = await memory_svc.store_memory(
             content=content,
             memory_type=type,
@@ -202,6 +217,9 @@ def register_tools(
             project=project,
             structured=structured,
             importance=importance,
+            subject=subject,
+            subjects=parsed_subjects,
+            parent_doc_id=parent_doc_id,
         )
         result: dict[str, Any] = {
             "memory_id": memory.id,
@@ -327,6 +345,9 @@ def register_tools(
         project: str | None = None,
         tags: list[str] | None = None,
         session_id: str | None = None,
+        subject: str | None = None,
+        subjects: list[dict[str, Any]] | None = None,
+        parent_doc_id: str | None = None,
     ) -> dict[str, Any]:
         """Store knowledge learned during a coding session.
 
@@ -341,10 +362,19 @@ def register_tools(
             project: Project/repo context.
             tags: Free-form tags.
             session_id: Links to a specific coding session.
+            subject: Legacy single-subject string (claim A.3).
+            subjects: Multi-subject list — each dict matches the
+                :class:`ncms.domain.models.Subject` schema.
+            parent_doc_id: For inherit-from-parent (claim A.10).
 
         Returns:
             The stored memory with entity count.
         """
+        from ncms.domain.models import Subject as _Subject
+
+        parsed_subjects = (
+            [_Subject(**s) for s in subjects] if subjects else None
+        )
         memory = await memory_svc.store_memory(
             content=content,
             memory_type=type,
@@ -353,6 +383,9 @@ def register_tools(
             project=project,
             structured=structured,
             importance=6.0,
+            subject=subject,
+            subjects=parsed_subjects,
+            parent_doc_id=parent_doc_id,
         )
         return {
             "memory_id": memory.id,
