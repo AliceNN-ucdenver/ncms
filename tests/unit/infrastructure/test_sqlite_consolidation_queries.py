@@ -1,4 +1,4 @@
-"""Tests for Phase 5 SQLite query methods."""
+"""Tests for SQLite consolidation query methods."""
 
 from __future__ import annotations
 

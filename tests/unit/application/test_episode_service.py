@@ -1,4 +1,4 @@
-"""Unit tests: hybrid episode linker (Phase 3 rework).
+"""Unit tests for the hybrid episode linker.
 
 Tests entity-based topic matching, BM25/SPLADE candidate generation,
 weighted multi-signal scoring, and episode lifecycle.

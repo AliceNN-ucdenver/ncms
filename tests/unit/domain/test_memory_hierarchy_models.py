@@ -1,4 +1,4 @@
-"""Tests for Phase 1 domain models: NodeType, EdgeType, MemoryNode, GraphEdge, EphemeralEntry."""
+"""Tests for memory hierarchy domain models."""
 
 from datetime import UTC, datetime
 

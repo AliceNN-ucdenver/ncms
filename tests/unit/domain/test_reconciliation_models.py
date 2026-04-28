@@ -1,4 +1,4 @@
-"""Tests for Phase 2 domain models: RelationType, EntityStateMeta, ReconciliationResult."""
+"""Tests for reconciliation domain models."""
 
 from __future__ import annotations
 

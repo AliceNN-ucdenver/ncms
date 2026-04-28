@@ -1,4 +1,4 @@
-"""Schema v12 (TLG integration, Phase 0) — tests.
+"""Schema integration tests.
 
 Verifies that the clean-create migration produces:
 
@@ -9,9 +9,8 @@ Verifies that the clean-create migration produces:
 Plus round-trip coverage for ``GraphEdge.retires_entities`` through
 ``SQLiteStore.save_graph_edge`` / ``get_graph_edges``.
 
-These are pure schema tests — they do not depend on Phase 1
-reconciliation changes, and pass with ``retires_entities`` empty on
-every edge (which is the Phase 0 steady state).
+These are pure schema tests. They pass with ``retires_entities`` empty
+on every edge, which is the clean-create steady state.
 """
 
 from __future__ import annotations
@@ -32,15 +31,11 @@ async def store() -> SQLiteStore:
 
 
 class TestSchemaVersion:
-    async def test_schema_version_is_14(self) -> None:
-        # Phase A bumped to 14 (subjects + subject_aliases tables).
-        assert SCHEMA_VERSION == 14
-
-    async def test_persisted_version_matches(self, store: SQLiteStore) -> None:
+    async def test_persisted_version_matches_code_constant(self, store: SQLiteStore) -> None:
         cursor = await store.db.execute("SELECT MAX(version) FROM schema_version")
         row = await cursor.fetchone()
         assert row is not None
-        assert row[0] == 14
+        assert row[0] == SCHEMA_VERSION
 
 
 class TestGraphEdgesRetiresColumn:

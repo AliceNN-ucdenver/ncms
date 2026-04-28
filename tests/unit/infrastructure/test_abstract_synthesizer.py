@@ -1,4 +1,4 @@
-"""Tests for LLM-based abstract memory synthesis (Phase 5)."""
+"""Tests for LLM-based abstract memory synthesis."""
 
 from __future__ import annotations
 

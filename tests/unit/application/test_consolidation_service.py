@@ -1,4 +1,4 @@
-"""Tests for Phase 5 hierarchical consolidation in ConsolidationService."""
+"""Tests for hierarchical consolidation in ConsolidationService."""
 
 from __future__ import annotations
 
@@ -78,11 +78,11 @@ def _pattern_config(**overrides) -> NCMSConfig:
     return NCMSConfig(**defaults)
 
 
-# ── Phase 5A: Episode Consolidation ─────────────────────────────────────
+# ── Episode Consolidation ────────────────────────────────────────────────
 
 
 class TestConsolidateEpisodes:
-    """Tests for consolidate_episodes (Phase 5A)."""
+    """Tests for consolidate_episodes."""
 
     async def test_disabled_returns_zero(self, store, index) -> None:
         config = NCMSConfig(db_path=":memory:", episode_consolidation_enabled=False)
@@ -217,11 +217,11 @@ class TestConsolidateEpisodes:
         assert count == 0
 
 
-# ── Phase 5B: Trajectory Consolidation ──────────────────────────────────
+# ── Trajectory Consolidation ─────────────────────────────────────────────
 
 
 class TestConsolidateTrajectories:
-    """Tests for consolidate_trajectories (Phase 5B)."""
+    """Tests for consolidate_trajectories."""
 
     async def test_disabled_returns_zero(self, store, index) -> None:
         config = NCMSConfig(db_path=":memory:", trajectory_consolidation_enabled=False)
@@ -322,11 +322,11 @@ class TestConsolidateTrajectories:
         mock_llm.assert_not_called()
 
 
-# ── Phase 5C: Pattern Consolidation ─────────────────────────────────────
+# ── Pattern Consolidation ────────────────────────────────────────────────
 
 
 class TestConsolidatePatterns:
-    """Tests for consolidate_patterns (Phase 5C)."""
+    """Tests for consolidate_patterns."""
 
     async def test_disabled_returns_zero(self, store, index) -> None:
         config = NCMSConfig(db_path=":memory:", pattern_consolidation_enabled=False)

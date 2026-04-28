@@ -1,9 +1,8 @@
-"""Unit tests for Phase 4 scoring functions (hierarchy match bonus).
+"""Unit tests for intent-aware hierarchy scoring functions.
 
-Phase H.1 added :func:`intent_alignment_bonus`, the second member of
-the intent-aware bonus family.  It lives here next to its sibling so
-the calibration assumption (both default to ``0.5`` raw, applied
-additively to ``combined``) is testable in one place.
+The intent alignment bonus lives next to its hierarchy sibling so the
+calibration assumption (both default to ``0.5`` raw, applied additively
+to ``combined``) is testable in one place.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from ncms.domain.scoring import (
 
 
 class TestHierarchyMatchBonus:
-    """Tests for hierarchy_match_bonus() — intent-aware type matching."""
+    """Tests for hierarchy_match_bonus() intent-aware type matching."""
 
     def test_returns_bonus_when_match(self) -> None:
         bonus = hierarchy_match_bonus(
@@ -72,7 +71,7 @@ class TestHierarchyMatchBonus:
 
 
 class TestIntentAlignmentBonus:
-    """Tests for intent_alignment_bonus() — Phase H.1.
+    """Tests for intent_alignment_bonus().
 
     The function is the pure scoring primitive: given a memory's
     SLM-emitted preference-intent label and the set of labels the

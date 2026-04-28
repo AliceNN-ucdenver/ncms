@@ -1,4 +1,4 @@
-"""Tests for Phase 1 SQLite store: memory_nodes, graph_edges, ephemeral_cache, and V2 migration."""
+"""Tests for SQLite memory graph persistence."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -26,17 +26,12 @@ async def store():
 @pytest.fixture
 async def memory(store: SQLiteStore) -> Memory:
     """A persisted Memory to reference from memory_nodes."""
-    m = Memory(content="Test memory for Phase 1", domains=["test"])
+    m = Memory(content="Test memory graph persistence", domains=["test"])
     await store.save_memory(m)
     return m
 
 
 class TestV2Migration:
-    async def test_schema_version_is_at_least_2(self, store: SQLiteStore):
-        cursor = await store.db.execute("SELECT MAX(version) FROM schema_version")
-        row = await cursor.fetchone()
-        assert row[0] >= 2
-
     async def test_memory_nodes_table_exists(self, store: SQLiteStore):
         cursor = await store.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='memory_nodes'"

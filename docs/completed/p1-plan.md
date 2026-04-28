@@ -1990,12 +1990,12 @@ All 4 background loops are orthogonal to retrieval-side TLG:
 | `tests/integration/test_ordinal_sequence_primitive.py` | Ordinal end-to-end | **Retire** |
 | `tests/integration/test_arithmetic_resolver.py` | Arithmetic resolver | Keep (orthogonal) |
 | `tests/integration/test_named_entity_no_regression.py` | Baseline | Keep |
-| `tests/unit/domain/test_models_phase1.py` | Model schema | Keep |
+| `tests/unit/domain/test_memory_hierarchy_models.py` | Model schema | Keep |
 | `tests/unit/test_admission_service.py` | Admission (orthogonal) | Keep |
 | `tests/unit/test_scoring_admission.py` | Admission (orthogonal) | Keep |
 | `tests/unit/test_contradiction_detector.py` | Contradiction (orthogonal) | Keep |
-| `tests/unit/infrastructure/storage/test_sqlite_store_phase1.py` | Storage basic | Keep |
-| `tests/unit/infrastructure/storage/test_sqlite_store_phase2.py` | Storage extended | Keep |
+| `tests/unit/infrastructure/test_sqlite_memory_graph_store.py` | Storage basic | Keep |
+| `tests/unit/infrastructure/test_sqlite_entity_state_store.py` | Storage extended | Keep |
 
 ### F.11 Benchmarks
 

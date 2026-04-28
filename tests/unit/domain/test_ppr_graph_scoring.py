@@ -1,4 +1,4 @@
-"""Tests for Phase 9 scoring: ppr_graph_score()."""
+"""Tests for personalized PageRank graph scoring."""
 
 from __future__ import annotations
 

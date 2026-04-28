@@ -279,11 +279,11 @@ class TestSourceAndDomain:
         )
         assert s.source == "slm_role"
 
-    async def test_domain_kwarg_accepted_and_ignored_in_phase_a(
+    async def test_domain_kwarg_accepted_and_ignored(
         self,
         registry: SubjectRegistry,
     ) -> None:
-        # Phase A: domain kwarg is reserved; passing it is a no-op.
+        # The domain kwarg is reserved for future scoping; passing it is a no-op.
         s = await registry.canonicalize(
             "auth service",
             type_hint="service",

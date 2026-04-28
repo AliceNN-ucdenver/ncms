@@ -1,4 +1,4 @@
-"""Tests for Phase 9 NetworkX: Personalized PageRank."""
+"""Tests for NetworkX personalized PageRank."""
 
 from __future__ import annotations
 

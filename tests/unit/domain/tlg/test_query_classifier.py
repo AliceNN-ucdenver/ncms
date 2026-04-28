@@ -1,8 +1,8 @@
 """Unit tests for the query-intent classifier.
 
-Pins the three patterns supported in Phase 3c: current / origin /
-still.  Anything else (or nothing matching) returns ``None`` so the
-caller can fall back to BM25 unchanged.
+Pins the three supported patterns: current / origin / still. Anything
+else (or nothing matching) returns ``None`` so the caller can fall back
+to BM25 unchanged.
 """
 
 from __future__ import annotations

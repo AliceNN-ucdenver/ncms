@@ -1,4 +1,4 @@
-"""Tests for Phase 2C scoring penalty functions."""
+"""Tests for reconciliation scoring penalty functions."""
 
 from __future__ import annotations
 

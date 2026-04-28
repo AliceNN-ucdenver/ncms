@@ -1,4 +1,4 @@
-"""Tests for Phase 8 dream cycle methods in ConsolidationService."""
+"""Tests for dream cycle methods in ConsolidationService."""
 
 from __future__ import annotations
 
@@ -275,7 +275,7 @@ class TestDreamCycle:
         assert result == {"rehearsal": 0, "associations": 0, "drift": 0}
         await store.close()
 
-    async def test_runs_all_phases(self, dream_env) -> None:
+    async def test_runs_full_cycle(self, dream_env) -> None:
         store, index, graph, config, svc = dream_env
 
         # Create some memories so rehearsal has work to do

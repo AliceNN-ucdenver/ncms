@@ -9,15 +9,7 @@ from __future__ import annotations
 import aiosqlite
 import pytest
 
-from ncms.infrastructure.storage.migrations import (
-    SCHEMA_VERSION,
-    create_schema,
-)
-
-
-@pytest.mark.asyncio
-async def test_schema_version_bumped_to_14() -> None:
-    assert SCHEMA_VERSION == 14
+from ncms.infrastructure.storage.migrations import create_schema
 
 
 @pytest.mark.asyncio

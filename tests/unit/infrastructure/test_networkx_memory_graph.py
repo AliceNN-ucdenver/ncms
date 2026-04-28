@@ -1,4 +1,4 @@
-"""Tests for Phase 8 NetworkX graph: PageRank centrality, get_memory_ids_for_entity."""
+"""Tests for NetworkX memory graph centrality and entity links."""
 
 from __future__ import annotations
 

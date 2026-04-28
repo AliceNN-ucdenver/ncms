@@ -4,9 +4,9 @@ Covers the three retirement-pattern shapes (active / passive /
 directional), the ``dst_new`` filter, the ``MID`` cross-reference
 exclusion, the domain-noun exclusion, and the seed-verb inventory.
 
-These tests pin the structural contract the extractor enforces;
-Phase 2 induction will replace the seed inventory with corpus-mined
-markers but the extraction rules themselves should not move.
+These tests pin the structural contract the extractor enforces. Marker
+induction can replace the seed inventory with corpus-mined markers, but
+the extraction rules themselves should not move.
 """
 
 from __future__ import annotations
@@ -180,7 +180,7 @@ class TestSetDiffTail:
 
 
 # ---------------------------------------------------------------------------
-# Custom verb inventory (simulates Phase 2 marker induction output)
+# Custom verb inventory (simulates marker induction output)
 # ---------------------------------------------------------------------------
 
 
